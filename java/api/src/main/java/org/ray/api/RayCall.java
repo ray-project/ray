@@ -24,7 +24,7 @@ class RayCall {
   // =======================================
   public static <R> RayObject<R> call(RayFunc0<R> f) {
     Object[] args = new Object[]{};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <R> RayObject<R> call(RayFunc0<R> f, CallOptions options) {
     Object[] args = new Object[]{};
@@ -32,11 +32,11 @@ class RayCall {
   }
   public static <T0, R> RayObject<R> call(RayFunc1<T0, R> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, R> RayObject<R> call(RayFunc1<T0, R> f, RayObject<T0> t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, R> RayObject<R> call(RayFunc1<T0, R> f, T0 t0, CallOptions options) {
     Object[] args = new Object[]{t0};
@@ -48,19 +48,19 @@ class RayCall {
   }
   public static <T0, T1, R> RayObject<R> call(RayFunc2<T0, T1, R> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, R> RayObject<R> call(RayFunc2<T0, T1, R> f, T0 t0, RayObject<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, R> RayObject<R> call(RayFunc2<T0, T1, R> f, RayObject<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, R> RayObject<R> call(RayFunc2<T0, T1, R> f, RayObject<T0> t0, RayObject<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, R> RayObject<R> call(RayFunc2<T0, T1, R> f, T0 t0, T1 t1, CallOptions options) {
     Object[] args = new Object[]{t0, t1};
@@ -80,35 +80,35 @@ class RayCall {
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, T0 t0, T1 t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, T0 t0, RayObject<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, RayObject<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, R> RayObject<R> call(RayFunc3<T0, T1, T2, R> f, T0 t0, T1 t1, T2 t2, CallOptions options) {
     Object[] args = new Object[]{t0, t1, t2};
@@ -144,67 +144,67 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, R> RayObject<R> call(RayFunc4<T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, T3 t3, CallOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3};
@@ -272,131 +272,131 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, R> RayObject<R> call(RayFunc5<T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, CallOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
@@ -528,259 +528,259 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().call(f, args, new CallOptions());
+    return Ray.internal().call(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, R> RayObject<R> call(RayFunc6<T0, T1, T2, T3, T4, T5, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, CallOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
@@ -1298,7 +1298,7 @@ class RayCall {
   // ===========================
   public static <A> RayActor<A> createActor(RayFunc0<A> f) {
     Object[] args = new Object[]{};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <A> RayActor<A> createActor(RayFunc0<A> f, ActorCreationOptions options) {
     Object[] args = new Object[]{};
@@ -1306,11 +1306,11 @@ class RayCall {
   }
   public static <T0, A> RayActor<A> createActor(RayFunc1<T0, A> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, A> RayActor<A> createActor(RayFunc1<T0, A> f, RayObject<T0> t0) {
     Object[] args = new Object[]{t0};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, A> RayActor<A> createActor(RayFunc1<T0, A> f, T0 t0, ActorCreationOptions options) {
     Object[] args = new Object[]{t0};
@@ -1322,19 +1322,19 @@ class RayCall {
   }
   public static <T0, T1, A> RayActor<A> createActor(RayFunc2<T0, T1, A> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, A> RayActor<A> createActor(RayFunc2<T0, T1, A> f, T0 t0, RayObject<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, A> RayActor<A> createActor(RayFunc2<T0, T1, A> f, RayObject<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, A> RayActor<A> createActor(RayFunc2<T0, T1, A> f, RayObject<T0> t0, RayObject<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, A> RayActor<A> createActor(RayFunc2<T0, T1, A> f, T0 t0, T1 t1, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1};
@@ -1354,35 +1354,35 @@ class RayCall {
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, T0 t0, RayObject<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, RayObject<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, A> RayActor<A> createActor(RayFunc3<T0, T1, T2, A> f, T0 t0, T1 t1, T2 t2, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1, t2};
@@ -1418,67 +1418,67 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, A> RayActor<A> createActor(RayFunc4<T0, T1, T2, T3, A> f, T0 t0, T1 t1, T2 t2, T3 t3, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3};
@@ -1546,131 +1546,131 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, A> RayActor<A> createActor(RayFunc5<T0, T1, T2, T3, T4, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
@@ -1802,259 +1802,259 @@ class RayCall {
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, T1 t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, T2 t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, T3 t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, T4 t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, T5 t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, RayObject<T0> t0, RayObject<T1> t1, RayObject<T2> t2, RayObject<T3> t3, RayObject<T4> t4, RayObject<T5> t5) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};
-    return Ray.internal().createActor(f, args, new ActorCreationOptions());
+    return Ray.internal().createActor(f, args, null);
   }
   public static <T0, T1, T2, T3, T4, T5, A> RayActor<A> createActor(RayFunc6<T0, T1, T2, T3, T4, T5, A> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, ActorCreationOptions options) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4, t5};

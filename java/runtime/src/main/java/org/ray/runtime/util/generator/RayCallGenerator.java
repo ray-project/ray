@@ -109,7 +109,7 @@ public class RayCallGenerator extends BaseGenerator {
       if (hasOptionsParam) {
         optionsArg = ", options";
       } else {
-        optionsArg = forActorCreation ? ", new ActorCreationOptions()" : ", new CallOptions()";
+        optionsArg = ", null";
       }
     }
 
