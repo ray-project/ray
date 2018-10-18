@@ -1968,6 +1968,28 @@ def test_pickling_actor_handle(ray_start_regular):
     ray.get(new_f.method.remote())
 
 
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
+    @ray.remote
+    class Actor1(object):
+        def f(self):
+            return 1
+
+    @ray.remote
+    class Actor2(object):
+        def __init__(self, constructor):
+            self.actor = constructor()
+
+        def step(self):
+            ray.get(self.actor.f.remote())
+
+    a = Actor1.remote()
+
+    b = Actor2.remote(lambda: a)
+
+    ray.get(b.step.remote())
+    ray.get(b.step.remote())
+
+
 def test_register_and_get_named_actors(ray_start_regular):
     # TODO(heyucongtom): We should test this from another driver.
 
