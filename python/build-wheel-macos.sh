@@ -28,6 +28,11 @@ PY_MMS=("2.7"
         "3.5"
         "3.6"
         "3.7")
+# On python 3.7, a newer version of numpy seems to be necessary.
+NUMPY_VERSIONS=("1.10.4"
+                "1.10.4"
+                "1.10.4"
+                "1.14.5")
 
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
@@ -36,6 +41,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
   PY_MM=${PY_MMS[i]}
+  NUMPY_VERSION=${NUMPY_VERSIONS[i]}
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
@@ -63,7 +69,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q setuptools_scm==2.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy==1.14.5 cython==0.27.3
+    $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.27.3
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Add the correct Python to the path and build the wheel. This is only
