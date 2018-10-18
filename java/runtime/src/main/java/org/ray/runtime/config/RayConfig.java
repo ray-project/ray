@@ -53,6 +53,9 @@ public class RayConfig {
   public final String rayletExecutablePath;
   public final String driverResourcePath;
 
+  // number of threads that  processing tasks under SINGLE_PROCESS mode
+  public final int numberExecThreads;
+
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
@@ -163,6 +166,9 @@ public class RayConfig {
     } else {
       driverResourcePath = null;
     }
+
+    // number of threads that  processing tasks under SINGLE_PROCESS mode
+    numberExecThreads = config.getInt("ray.dev-runtime.execution-parallelism");
 
     // validate config
     validate();

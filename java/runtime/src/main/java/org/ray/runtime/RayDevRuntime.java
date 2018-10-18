@@ -15,11 +15,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   public void start() {
     MockObjectStore store = new MockObjectStore(this);
     objectStoreProxy = new ObjectStoreProxy(this, store);
-    rayletClient = new MockRayletClient(this, store);
+    rayletClient = new MockRayletClient(this, store, rayConfig.numberExecThreads);
   }
 
   @Override
   public void shutdown() {
-      rayletClient.destroy();
+    rayletClient.destroy();
   }
 }
