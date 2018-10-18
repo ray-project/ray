@@ -146,6 +146,7 @@ matrix:
         - python -m pytest -v test/stress_tests.py
         - pytest test/component_failures_test.py
         - python test/multi_node_test.py
+        - python -m pytest -v test/multi_node_test_2.py
         - python -m pytest -v test/recursion_test.py
         - pytest test/monitor_test.py
         - python -m pytest -v test/cython_test.py
@@ -222,6 +223,7 @@ script:
   - python -m pytest -v test/stress_tests.py
   - python -m pytest -v test/component_failures_test.py
   - python test/multi_node_test.py
+  - python -m pytest -v test/multi_node_test_2.py
   - python -m pytest -v test/recursion_test.py
   - python -m pytest -v test/monitor_test.py
   - python -m pytest -v test/cython_test.py
