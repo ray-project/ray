@@ -7,6 +7,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.util.Serializer;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.ray.runtime.util.exception.TaskExecutionException;
 
 /**
@@ -15,9 +16,10 @@ import org.ray.runtime.util.exception.TaskExecutionException;
  */
 public class ObjectStoreProxy {
 
+  private static final int GET_TIMEOUT_MS = 1000;
+
   private final AbstractRayRuntime runtime;
   private final ObjectStoreLink store;
-  private final int getTimeoutMs = 1000;
 
   public ObjectStoreProxy(AbstractRayRuntime runtime, ObjectStoreLink store) {
     this.runtime = runtime;
@@ -26,7 +28,7 @@ public class ObjectStoreProxy {
 
   public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
       throws TaskExecutionException {
-    return get(objectId, getTimeoutMs, isMetadata);
+    return get(objectId, GET_TIMEOUT_MS, isMetadata);
   }
 
   public <T> Pair<T, GetStatus> get(UniqueId id, int timeoutMs, boolean isMetadata)
@@ -46,12 +48,12 @@ public class ObjectStoreProxy {
 
   public <T> List<Pair<T, GetStatus>> get(List<UniqueId> objectIds, boolean isMetadata)
       throws TaskExecutionException {
-    return get(objectIds, getTimeoutMs, isMetadata);
+    return get(objectIds, GET_TIMEOUT_MS, isMetadata);
   }
 
   public <T> List<Pair<T, GetStatus>> get(List<UniqueId> ids, int timeoutMs, boolean isMetadata)
       throws TaskExecutionException {
-    List<byte[]> objs = store.get(getIdBytes(ids), timeoutMs, isMetadata);
+    List<byte[]> objs = store.get(UniqueIdUtil.getIdBytes(ids), timeoutMs, isMetadata);
     List<Pair<T, GetStatus>> ret = new ArrayList<>();
     for (int i = 0; i < objs.size(); i++) {
       byte[] obj = objs.get(i);
@@ -67,15 +69,6 @@ public class ObjectStoreProxy {
       }
     }
     return ret;
-  }
-
-  private static byte[][] getIdBytes(List<UniqueId> objectIds) {
-    int size = objectIds.size();
-    byte[][] ids = new byte[size][];
-    for (int i = 0; i < size; i++) {
-      ids[i] = objectIds.get(i).getBytes();
-    }
-    return ids;
   }
 
   public void put(UniqueId id, Object obj, Object metadata) {

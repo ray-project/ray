@@ -267,7 +267,7 @@ class NodeManager {
   bool CheckDependencyManagerInvariant() const;
 
   /// Process client message of RegisterClientRequest
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -275,26 +275,30 @@ class NodeManager {
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of GetTask
-  //
+  ///
   /// \param client The client that sent the message.
   /// \return Void.
   void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
 
-  /// Process client message of DisconnectClient
-  //
+  /// Handle a client that has disconnected. This can be called multiple times
+  /// on the same client because this is triggered both when a client
+  /// disconnects and when the node manager fails to write a message to the
+  /// client.
+  ///
   /// \param client The client that sent the message.
+  /// \param push_warning Propogate error message if true.
   /// \return Void.
   void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client);
+      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
 
   /// Process client message of SubmitTask
-  //
+  ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
   /// Process client message of ReconstructObjects
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -302,7 +306,7 @@ class NodeManager {
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -310,7 +314,7 @@ class NodeManager {
                                  const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
-  //
+  ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);

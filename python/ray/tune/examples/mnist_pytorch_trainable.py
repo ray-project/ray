@@ -80,9 +80,9 @@ class Net(nn.Module):
 
 
 class TrainMNIST(Trainable):
-    def _setup(self):
-        args = self.config.pop("args")
-        vars(args).update(self.config)
+    def _setup(self, config):
+        args = config.pop("args")
+        vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
         torch.manual_seed(args.seed)

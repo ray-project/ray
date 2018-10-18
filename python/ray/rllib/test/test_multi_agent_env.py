@@ -15,6 +15,7 @@ from ray.rllib.optimizers import SyncSamplesOptimizer, \
 from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -305,6 +306,31 @@ class TestMultiAgentEnv(unittest.TestCase):
                          [False, False, False, False, True] * 2)
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist()[:10],
                          [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
+
+    def testCustomRNNStateValues(self):
+        h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
+
+        class StatefulPolicyGraph(PolicyGraph):
+            def compute_actions(self,
+                                obs_batch,
+                                state_batches,
+                                is_training=False,
+                                episodes=None):
+                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
+
+            def get_initial_state(self):
+                return [{}]  # empty dict
+
+        ev = PolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_graph=StatefulPolicyGraph,
+            batch_steps=5)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 5)
+        self.assertEqual(batch["state_in_0"][0], {})
+        self.assertEqual(batch["state_out_0"][0], h)
+        self.assertEqual(batch["state_in_0"][1], h)
+        self.assertEqual(batch["state_out_0"][1], h)
 
     def testReturningModelBasedRolloutsData(self):
         class ModelBasedPolicyGraph(PGPolicyGraph):

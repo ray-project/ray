@@ -114,7 +114,7 @@ class ClientConnection : public ServerConnection<T>,
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.
   const std::string debug_label_;
-  /// Buffers for the current message being read rom the client.
+  /// Buffers for the current message being read from the client.
   int64_t read_version_;
   int64_t read_type_;
   uint64_t read_length_;
