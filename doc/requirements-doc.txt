@@ -13,3 +13,4 @@ sphinx
 sphinx-click
 sphinx_rtd_theme
 pandas
+cython
