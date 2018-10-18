@@ -1342,7 +1342,7 @@ def get_address_info_from_redis(redis_address,
                 redis_address,
                 node_ip_address,
                 use_raylet=use_raylet,
-                redis_password=None)
+                redis_password=redis_password)
         except Exception:
             if counter == num_retries:
                 raise
