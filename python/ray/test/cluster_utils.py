@@ -9,7 +9,6 @@ import ray
 import ray.services as services
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
 
 
 class Cluster():
@@ -19,6 +18,9 @@ class Cluster():
         Arguments:
             initialize_head (bool): Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
+            connect (bool): If `initialize_head=True` and `connect=True`,
+                ray.init will be called with the redis address of this cluster
+                passed in.
             head_node_args (kwargs): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
         """
@@ -29,6 +31,8 @@ class Cluster():
             self.add_node(**head_node_args)
             if connect:
                 ray.init(redis_address=self.redis_address)
+        elif connect:
+            logger.warning("Head not started; not connecting.")
 
     def add_node(self, **kwargs):
         """Adds a node to the local Ray Cluster.
@@ -91,9 +95,13 @@ class Cluster():
             "There are zombie processes left over after killing...")
 
     def wait_for_nodes(self):
+        """Waits for all nodes to be registered with global state."""
         try:
             while True:
-                registered = len(ray.global_state.client_table())
+                registered = len([
+                    client for client in ray.global_state.client_table()
+                    if client["IsInsertion"]
+                ])
                 expected = len(self.list_all_nodes())
                 if registered == expected:
                     logger.info("All nodes registered as expected!")
@@ -102,7 +110,7 @@ class Cluster():
                     logger.info(
                         "Currently registering {} but expecting {}".format(
                             registered, expected))
-                time.sleep(0.1)
+                time.sleep(0.3)
         except Exception as e:
             logger.exception("Perhaps try Cluster(connect=True)?")
 
@@ -160,11 +168,11 @@ class Node():
 
     def live_processes(self):
         return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-        for proc in p_list if proc.poll() is None]
+                for proc in p_list if proc.poll() is None]
 
     def dead_processes(self):
         return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-        for proc in p_list if proc.poll() is not None]
+                for proc in p_list if proc.poll() is not None]
 
     def any_processes_alive(self):
         return any(self.live_processes())
@@ -174,6 +182,7 @@ class Node():
 
 
 def basic_test():
+    """Basic test for adding and removing nodes in cluster."""
     g = Cluster(initialize_head=False)
     node = g.add_node()
     node2 = g.add_node()
@@ -182,6 +191,25 @@ def basic_test():
     g.remove_node(node2)
     g.remove_node(node)
     assert not any(node.any_processes_alive() for node in g.list_all_nodes())
+
+
+def test_wait_for_nodes():
+    """Unit test for `Cluster.wait_for_nodes`.
+
+    Adds 4 workers, waits, then removes 4 workers, waits,
+    then adds 1 worker, waits, and removes 1 worker, waits.
+    """
+    g = Cluster(initialize_head=True, connect=True)
+    workers = [g.add_node() for i in range(4)]
+    g.wait_for_nodes()
+    [g.remove_node(w) for w in workers]
+    g.wait_for_nodes()
+    worker2 = g.add_node()
+    g.wait_for_nodes()
+    g.remove_node(worker2)
+    g.wait_for_nodes()
+    ray.shutdown()
+    g.shutdown()
 
 
 def test_worker_plasma_store_failure():
@@ -196,5 +224,6 @@ def test_worker_plasma_store_failure():
     print("Success")
     g.shutdown()
 
+
 if __name__ == '__main__':
-    test_worker_plasma_store_failure()
+    test_wait_for_nodes()
