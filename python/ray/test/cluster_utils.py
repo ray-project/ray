@@ -3,14 +3,17 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import time
 
+import ray
 import ray.services as services
 
 logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 class Cluster():
-    def __init__(self, initialize_head=False, **head_node_args):
+    def __init__(self, initialize_head=False, connect=False, **head_node_args):
         """Initializes the cluster.
 
         Arguments:
@@ -24,6 +27,8 @@ class Cluster():
         self.redis_address = ""
         if initialize_head:
             self.add_node(**head_node_args)
+            if connect:
+                ray.init(redis_address=self.redis_address)
 
     def add_node(self, **kwargs):
         """Adds a node to the local Ray Cluster.
@@ -64,6 +69,7 @@ class Cluster():
             self.worker_nodes[node] = address_info
         logging.info("Starting Node with raylet socket {}".format(
             address_info["raylet_socket_names"]))
+
         return node
 
     def remove_node(self, node):
@@ -84,6 +90,22 @@ class Cluster():
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing...")
 
+    def wait_for_nodes(self):
+        try:
+            while True:
+                registered = len(ray.global_state.client_table())
+                expected = len(self.list_all_nodes())
+                if registered == expected:
+                    logger.info("All nodes registered as expected!")
+                    break
+                else:
+                    logger.info(
+                        "Currently registering {} but expecting {}".format(
+                            registered, expected))
+                time.sleep(0.1)
+        except Exception as e:
+            logger.exception("Perhaps try Cluster(connect=True)?")
+
     def list_all_nodes(self):
         """Lists all nodes.
 
@@ -95,7 +117,7 @@ class Cluster():
         nodes = list(self.worker_nodes)
         if self.head_node:
             nodes = [self.head_node] + nodes
-        return
+        return nodes
 
     def shutdown(self):
         # We create a list here as a copy because `remove_node`
@@ -163,13 +185,15 @@ def basic_test():
 
 
 def test_worker_plasma_store_failure():
-    g = Cluster(initialize_head=True)
+    g = Cluster(initialize_head=True, connect=True)
     worker = g.add_node()
+    g.wait_for_nodes()
     # Log monitor doesn't die for some reason
     worker.kill_log_monitor()
     worker.kill_plasma_store()
-    # TODO(rliaw): how to wait for raylet timeout?
+    worker.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
     assert not worker.any_processes_alive(), worker.live_processes()
+    print("Success")
     g.shutdown()
 
 if __name__ == '__main__':

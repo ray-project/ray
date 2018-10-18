@@ -1837,10 +1837,6 @@ def shutdown(worker=global_worker):
         worker.plasma_client.disconnect()
 
     if worker.mode == SCRIPT_MODE:
-        # If this is a driver, push the finish time to Redis and clean up any
-        # other services that were started with the driver.
-        worker.redis_client.hmset(b"Drivers:" + worker.worker_id,
-                                  {"end_time": time.time()})
         services.cleanup()
     else:
         # If this is not a driver, make sure there are no orphan processes,
