@@ -27,6 +27,7 @@ You might also want to clone the Ray repo for convenient access to RLlib helper 
 Training APIs
 -------------
 * `Command-line <rllib-training.html>`__
+* `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
 * `REST API <rllib-training.html#rest-api>`__
 

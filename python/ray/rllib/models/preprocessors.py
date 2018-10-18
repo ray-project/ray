@@ -30,12 +30,18 @@ class Preprocessor(object):
         raise NotImplementedError
 
 
-class AtariPixelPreprocessor(Preprocessor):
+class GenericPixelPreprocessor(Preprocessor):
+    """Generic image preprocessor.
+
+    Note: for Atari games, use config {"preprocessor_pref": "deepmind"}
+    instead for deepmind-style Atari preprocessing.
+    """
+
     def _init(self):
-        self._grayscale = self._options.get("grayscale", False)
-        self._zero_mean = self._options.get("zero_mean", True)
-        self._dim = self._options.get("dim", 84)
-        self._channel_major = self._options.get("channel_major", False)
+        self._grayscale = self._options.get("grayscale")
+        self._zero_mean = self._options.get("zero_mean")
+        self._dim = self._options.get("dim")
+        self._channel_major = self._options.get("channel_major")
         if self._grayscale:
             self.shape = (self._dim, self._dim, 1)
         else:
@@ -130,7 +136,7 @@ def get_preprocessor(space):
     if isinstance(space, gym.spaces.Discrete):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
-        preprocessor = AtariPixelPreprocessor
+        preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):

@@ -19,10 +19,6 @@ ACTION_SPACES_TO_TEST = {
         Box(0.0, 1.0, (5, ), dtype=np.float32),
         Box(0.0, 1.0, (5, ), dtype=np.float32)
     ]),
-    "implicit_tuple": [
-        Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ],
     "mixed_tuple": Tuple(
         [Discrete(2),
          Discrete(3),
@@ -94,7 +90,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
-        check_support("IMPALA", {"gpu": False}, stats)
+        check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {

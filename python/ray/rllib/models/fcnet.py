@@ -13,8 +13,8 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     def _build_layers(self, inputs, num_outputs, options):
-        hiddens = options.get("fcnet_hiddens", [256, 256])
-        activation = get_activation_fn(options.get("fcnet_activation", "tanh"))
+        hiddens = options.get("fcnet_hiddens")
+        activation = get_activation_fn(options.get("fcnet_activation"))
 
         with tf.name_scope("fc_net"):
             i = 1

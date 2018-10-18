@@ -78,6 +78,7 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
+                                 redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -89,9 +90,10 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
+            redis_password: The password of the redis server.
         """
         self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
 
         start_time = time.time()
 
@@ -143,7 +145,10 @@ class GlobalState(object):
         for ip_address_port in ip_address_ports:
             shard_address, shard_port = ip_address_port.split(b":")
             self.redis_clients.append(
-                redis.StrictRedis(host=shard_address, port=shard_port))
+                redis.StrictRedis(
+                    host=shard_address,
+                    port=shard_port,
+                    password=redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.

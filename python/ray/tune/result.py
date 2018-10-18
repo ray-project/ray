@@ -16,10 +16,10 @@ NODE_IP = "node_ip"
 # (Auto-filled) The pid of the training process.
 PID = "pid"
 
-# Number of timesteps in this iteration.
+# Number of episodes in this iteration.
 EPISODES_THIS_ITER = "episodes_this_iter"
 
-# (Optional/Auto-filled) Accumulated time in seconds for this experiment.
+# (Optional/Auto-filled) Accumulated number of episodes for this experiment.
 EPISODES_TOTAL = "episodes_total"
 
 # Number of timesteps in this iteration.
@@ -35,7 +35,7 @@ TIME_THIS_ITER_S = "time_this_iter_s"
 # (Auto-filled) Accumulated time in seconds for this entire experiment.
 TIME_TOTAL_S = "time_total_s"
 
-# (Auto-filled) The index of thistraining iteration.
+# (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
 
 # Where Tune writes result files by default
