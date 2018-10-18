@@ -32,6 +32,7 @@ PY_MMS=("2.7"
 NUMPY_VERSIONS=("1.10.4"
                 "1.10.4"
                 "1.10.4"
+                "1.10.4"
                 "1.14.5")
 
 mkdir -p $DOWNLOAD_DIR
