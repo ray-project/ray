@@ -103,10 +103,14 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String optionsArg;
-    if (hasOptionsParam) {
-      optionsArg = ", options";
+    if (forActor) {
+      optionsArg = "";
     } else {
-      optionsArg = forActorCreation ? ", new ActorCreationOptions()" : ", new CallOptions()";
+      if (hasOptionsParam) {
+        optionsArg = ", options";
+      } else {
+        optionsArg = forActorCreation ? ", new ActorCreationOptions()" : ", new CallOptions()";
+      }
     }
 
     String returnType = !forActorCreation ? "RayObject<R>" : "RayActor<A>";

@@ -196,12 +196,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject call(RayFunc func, RayActor actor, Object[] args, CallOptions options) {
+  public RayObject call(RayFunc func, RayActor actor, Object[] args) {
     if (!(actor instanceof RayActorImpl)) {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, options);
+    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, null);
     spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
@@ -253,7 +253,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       actorCreationId = returnIds[0];
     }
 
-    Map<String, Double> resources = new HashMap<>(taskOptions.resources);
+    Map<String, Double> resources;
+    if (null == taskOptions) {
+      resources = new HashMap<>();
+    } else {
+      resources = new HashMap<>(taskOptions.resources);
+    }
+
     if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
             && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
       resources.put(ResourceUtil.CPU_LITERAL, 0.0);
