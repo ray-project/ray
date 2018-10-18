@@ -5,8 +5,8 @@
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
-                                         /*log_dir=*/"");
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO, /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
   RAY_CHECK(argc == 3 || argc == 4);
 
