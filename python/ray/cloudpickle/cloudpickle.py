@@ -1059,10 +1059,8 @@ def _fill_function(*args):
     else:
         raise ValueError('Unexpected _fill_value arguments: %r' % (args,))
 
-    # Only set global variables that do not exist.
-    for k, v in state['globals'].items():
-        if k not in func.__globals__:
-            func.__globals__[k] = v
+    # [Revert cloudpickle upstream changes]. Force update all globals.
+    func.__globals__.update(state['globals'])
 
     func.__defaults__ = state['defaults']
     func.__dict__ = state['dict']
