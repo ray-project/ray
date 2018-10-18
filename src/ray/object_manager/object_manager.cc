@@ -355,13 +355,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
-            // If the object has been evicted already, don't send the object.
-            // This can happen if the object is evicted between the call to post
-            // and the execution of this callback.
-            if (local_objects_.count(object_id) == 0) {
-              return;
-            }
-
+            // NOTE: When this callback executes, it's possible that the object
+            // will have already been evicted. It's also possible that the
+            // object could be in the process of being transferred to this
+            // object manager from another object manager.
             ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
                               info);
           });
@@ -412,9 +409,8 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
-  // TODO(hme): use to_flatbuf
   auto message = object_manager_protocol::CreatePushRequestMessage(
-      fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
+      fbb, to_flatbuf(fbb, object_id), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
   ray::Status status = conn->WriteMessage(
       static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
