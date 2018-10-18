@@ -29,8 +29,11 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 template <typename T>
 class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>> {
  public:
-  /// Create a connection to the server.
-  ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
+  /// Allocate a new server connection.
+  ///
+  /// \param socket A reference to the server socket.
+  /// \return std::shared_ptr<ServerConnection>.
+  static std::shared_ptr<ServerConnection<T>> Create(boost::asio::basic_stream_socket<T> &&socket);
 
   /// Write a message to the client.
   ///
@@ -69,6 +72,9 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   }
 
  protected:
+  /// A private constructor for a server connection.
+  ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
+
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
     int64_t write_version;

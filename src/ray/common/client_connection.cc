@@ -20,6 +20,11 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 }
 
 template <class T>
+std::shared_ptr<ServerConnection<T>> Create(boost::asio::basic_stream_socket<T> &&socket) {
+  return std::make_shared(std::move(socket));
+}
+
+template <class T>
 ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&socket)
     : socket_(std::move(socket)),
       async_write_max_messages_(1),

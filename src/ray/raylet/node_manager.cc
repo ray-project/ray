@@ -359,7 +359,7 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // The client is connected.
-  auto server_conn = TcpServerConnection(std::move(socket));
+  auto server_conn = TcpServerConnection::Create(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
 
   ResourceSet resources_total(client_data.resources_total_label,
@@ -1602,7 +1602,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   }
 
   auto &server_conn = it->second;
-  server_conn.WriteMessageAsync(
+  server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
       fbb.GetBufferPointer(),
       [this, on_error, task_id, node_id, spec](ray::Status status) {
