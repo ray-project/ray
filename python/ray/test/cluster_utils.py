@@ -11,11 +11,11 @@ import ray.services as services
 logger = logging.getLogger(__name__)
 
 
-class Cluster():
+class Cluster(object):
     def __init__(self, initialize_head=False, connect=False, **head_node_args):
         """Initializes the cluster.
 
-        Arguments:
+        Args:
             initialize_head (bool): Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
             connect (bool): If `initialize_head=True` and `connect=True`,
@@ -26,18 +26,19 @@ class Cluster():
         """
         self.head_node = None
         self.worker_nodes = {}
-        self.redis_address = ""
+        self.redis_address =None
+        if not initialize_head and connect:
+            raise RuntimeError("Cannot connect to uninitialized cluster.")
+
         if initialize_head:
             self.add_node(**head_node_args)
             if connect:
                 ray.init(redis_address=self.redis_address)
-        elif connect:
-            logger.warning("Head not started; not connecting.")
 
     def add_node(self, **kwargs):
         """Adds a node to the local Ray Cluster.
 
-        Arguments:
+        Args:
             kwargs: Keyword arguments used in `start_ray_head`
                 and `start_ray_node`.
 
@@ -84,35 +85,41 @@ class Cluster():
                 will be removed.
         """
         if self.head_node == node:
-            self.head_node.kill_allprocesses()
+            self.head_node.kill_all_processes()
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_allprocesses()
+            node.kill_all_processes()
             self.worker_nodes.pop(node)
 
         assert not node.any_processes_alive(), (
-            "There are zombie processes left over after killing...")
+            "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self):
-        """Waits for all nodes to be registered with global state."""
-        try:
-            while True:
-                registered = len([
-                    client for client in ray.global_state.client_table()
-                    if client["IsInsertion"]
-                ])
-                expected = len(self.list_all_nodes())
-                if registered == expected:
-                    logger.info("All nodes registered as expected!")
-                    break
-                else:
-                    logger.info(
-                        "Currently registering {} but expecting {}".format(
-                            registered, expected))
+    def wait_for_nodes(self, retries=20):
+        """Waits for all nodes to be registered with global state.
+
+        Args:
+            retries (int): Number of times to retry checking client table.
+        """
+        for i in range(retries):
+            if not ray.is_connected() or not self._check_registered_nodes():
                 time.sleep(0.3)
-        except Exception as e:
-            logger.exception("Perhaps try Cluster(connect=True)?")
+            else:
+                break
+
+    def _check_registered_nodes(self):
+        registered = len([
+            client for client in ray.global_state.client_table()
+            if client["IsInsertion"]
+        ])
+        expected = len(self.list_all_nodes())
+        if registered == expected:
+            logger.info("All nodes registered as expected.")
+        else:
+            logger.info(
+                "Currently registering {} but expecting {}".format(
+                    registered, expected))
+        return registered == expected
 
     def list_all_nodes(self):
         """Lists all nodes.
@@ -121,7 +128,8 @@ class Cluster():
         dies before worker nodes die?
 
         Returns:
-            List of all nodes, including the head node."""
+            List of all nodes, including the head node.
+        """
         nodes = list(self.worker_nodes)
         if self.head_node:
             nodes = [self.head_node] + nodes
@@ -136,7 +144,7 @@ class Cluster():
         self.remove_node(self.head_node)
 
 
-class Node():
+class Node(object):
     """Abstraction for a Ray node."""
 
     def __init__(self, process_dict):
@@ -155,7 +163,7 @@ class Node():
         self.process_dict["log_monitor"][0].kill()
         self.process_dict["log_monitor"][0].wait()
 
-    def kill_allprocesses(self):
+    def kill_all_processes(self):
         for process_name, process_list in self.process_dict.items():
             logger.info("Killing all {}(s)".format(process_name))
             for process in process_list:
