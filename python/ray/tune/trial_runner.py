@@ -97,7 +97,7 @@ class TrialRunner(object):
         scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         # TODO(rliaw): we should not need an executor checkpoint -
         # restoration should automatically repopulate the executor.
-        executor_checkpoint = self.trial_executor.save(checkpoint_dir)
+        # executor_checkpoint = self.trial_executor.save(checkpoint_dir)
         runner_state = {
             "trials": [pickle.dumps(t) for t in self._trials],
             "total_time": self._total_time,
@@ -106,15 +106,27 @@ class TrialRunner(object):
         with open(os.path.join(checkpoint_dir, "TEMP.p"), "wb") as f:
             pickle.dump([runner_state,
                          search_alg_checkpoint,
-                         scheduler_alg_checkpoint,
-                         executor_checkpoint],
+                         scheduler_alg_checkpoint],
                          f)
-        return checkpoint_path
 
 
-    def restore(self, checkpoint_path):
-        self._search_alg.restore()
-        pass
+    def restore(self, checkpoint_dir):
+        with open(os.path.join(checkpoint_dir, "TEMP.p"), "rb") as f:
+            state = pickle.load(f)
+
+        runner_state = state[0]
+        search_alg_checkpoint = state[1]
+        scheduler_alg_checkpoint = state[2]
+
+        self._trials = [pickle.loads(t) for t in runner_state["trials"]]
+        # somehow need to populate executor, scheduler.
+        # The number of resources can be resized to _anything_
+        # Perhaps all states for RUNNING -> PAUSED
+        self._total_time = runner_state["total_time"]
+        self._stop_queue = runner_state["stop_queue"]
+
+        self._search_alg.restore(search_alg_checkpoint)
+        self._scheduler_alg.restore(scheduler_alg_checkpoint)
 
 
     def is_finished(self):
