@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# YAPF + Clang formatter (if installed). This script formats all changed files from the last mergebase.
+# You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
 set -eo pipefail
@@ -50,6 +52,13 @@ format_changed() {
     if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    fi
+
+    if which clang-format >/dev/null; then
+        if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
+            git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
+                 clang-format -i
+        fi
     fi
 }
 
