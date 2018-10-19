@@ -1059,7 +1059,7 @@ def _fill_function(*args):
     else:
         raise ValueError('Unexpected _fill_value arguments: %r' % (args,))
 
-    # [Revert cloudpickle upstream changes]. Force update all globals.
+    # [Revert cloudpickle upstream changes]: Force updating all globals.
     func.__globals__.update(state['globals'])
 
     func.__defaults__ = state['defaults']
@@ -1100,20 +1100,7 @@ def _make_skel_func(code, cell_count, base_globals=None):
     """
     if base_globals is None:
         base_globals = {}
-    elif isinstance(base_globals, str):
-        base_globals_name = base_globals
-        try:
-            # First try to reuse the globals from the module containing the
-            # function. If it is not possible to retrieve it, fallback to an
-            # empty dictionary.
-            base_globals = vars(importlib.import_module(base_globals))
-        except ImportError:
-            base_globals = _dynamic_modules_globals.get(
-                    base_globals_name, None)
-            if base_globals is None:
-                base_globals = _DynamicModuleFuncGlobals()
-            _dynamic_modules_globals[base_globals_name] = base_globals
-
+    # [Revert upstream cloudpickle]: Do not try to reuse globals.
     base_globals['__builtins__'] = __builtins__
 
     closure = (
