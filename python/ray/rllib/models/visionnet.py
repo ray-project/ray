@@ -17,7 +17,7 @@ class VisionNetwork(Model):
         if not filters:
             filters = get_filter_config(options)
 
-        activation = get_activation_fn(options.get("conv_activation", "relu"))
+        activation = get_activation_fn(options.get("conv_activation"))
 
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
@@ -57,7 +57,7 @@ def get_filter_config(options):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    dim = options.get("dim", 84)
+    dim = options.get("dim")
     if dim == 84:
         return filters_84x84
     elif dim == 42:

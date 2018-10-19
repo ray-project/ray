@@ -7,7 +7,7 @@ from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
-    DDPG_CONFIG,
+    DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
     {
         "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(

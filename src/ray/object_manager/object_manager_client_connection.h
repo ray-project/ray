@@ -16,6 +16,7 @@
 
 namespace ray {
 
+// TODO(ekl) this class can be replaced with a plain ClientConnection
 class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
  public:
   /// Create a connection for sending data to other object managers.
@@ -42,6 +43,17 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// \return Status.
   ray::Status WriteMessage(int64_t type, uint64_t length, const uint8_t *message) {
     return conn_->WriteMessage(type, length, message);
+  }
+
+  /// Write a message to the client asynchronously.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \param handler A callback to run on write completion.
+  void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
+                         const std::function<void(const ray::Status &)> &handler) {
+    conn_->WriteMessageAsync(type, length, message, handler);
   }
 
   /// Write a buffer to this connection.

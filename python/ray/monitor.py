@@ -70,13 +70,18 @@ class Monitor(object):
             managers that were up at one point and have died since then.
     """
 
-    def __init__(self, redis_address, redis_port, autoscaling_config):
+    def __init__(self,
+                 redis_address,
+                 redis_port,
+                 autoscaling_config,
+                 redis_password=None):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
-        self.state._initialize_global_state(redis_address, redis_port)
+        self.state._initialize_global_state(
+            redis_address, redis_port, redis_password=redis_password)
         self.use_raylet = self.state.use_raylet
         self.redis = redis.StrictRedis(
-            host=redis_address, port=redis_port, db=0)
+            host=redis_address, port=redis_port, db=0, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -118,7 +123,9 @@ class Monitor(object):
             else:
                 addr_port = addr_port[0].split(b":")
                 self.redis_shard = redis.StrictRedis(
-                    host=addr_port[0], port=addr_port[1])
+                    host=addr_port[0],
+                    port=addr_port[1],
+                    password=redis_password)
                 try:
                     self.redis_shard.execute_command("HEAD.FLUSH 0")
                 except redis.exceptions.ResponseError as e:
@@ -774,6 +781,12 @@ if __name__ == "__main__":
         type=str,
         help="the path to the autoscaling config file")
     parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="the password to use for Redis")
+    parser.add_argument(
         "--logging-level",
         required=False,
         type=str,
@@ -798,7 +811,11 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
-    monitor = Monitor(redis_ip_address, redis_port, autoscaling_config)
+    monitor = Monitor(
+        redis_ip_address,
+        redis_port,
+        autoscaling_config,
+        redis_password=args.redis_password)
 
     try:
         monitor.run()

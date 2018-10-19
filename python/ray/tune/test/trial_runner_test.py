@@ -433,6 +433,71 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
         self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
 
+    def testCheckpointDict(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1}
+
+            def _train(self):
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        result = test_trainable.save()
+        test_trainable.state["hi"] = 2
+        test_trainable.restore(result)
+        self.assertEqual(test_trainable.state["hi"], 1)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+    def testMultipleCheckpoints(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return dict(timesteps_this_iter=1, done=True)
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        checkpoint_1 = test_trainable.save()
+        test_trainable.train()
+        checkpoint_2 = test_trainable.save()
+        self.assertNotEqual(checkpoint_1, checkpoint_2)
+        test_trainable.restore(checkpoint_2)
+        self.assertEqual(test_trainable.state["iter"], 1)
+        test_trainable.restore(checkpoint_1)
+        self.assertEqual(test_trainable.state["iter"], 0)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):

@@ -156,13 +156,6 @@ def get_ipython_notebook_path(port):
     return new_notebook_directory, webui_url, token
 
 
-def get_temp_redis_config_path():
-    """Get a temp name of the redis config file."""
-    redis_config_name = make_inc_temp(
-        prefix="redis_conf", directory_name=get_temp_root())
-    return redis_config_name
-
-
 def new_log_files(name, redirect_output):
     """Generate partially randomized filenames for log files.
 

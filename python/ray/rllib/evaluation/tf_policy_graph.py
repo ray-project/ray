@@ -95,11 +95,18 @@ class TFPolicyGraph(PolicyGraph):
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
-        assert len(self._state_inputs) == len(self._state_outputs) == \
-            len(self.get_initial_state()), \
-            (self._state_inputs, self._state_outputs, self.get_initial_state())
-        if self._state_inputs:
-            assert self._seq_lens is not None
+        if len(self._state_inputs) != len(self._state_outputs):
+            raise ValueError(
+                "Number of state input and output tensors must match, got: "
+                "{} vs {}".format(self._state_inputs, self._state_outputs))
+        if len(self.get_initial_state()) != len(self._state_inputs):
+            raise ValueError(
+                "Length of initial state must match number of state inputs, "
+                "got: {} vs {}".format(self.get_initial_state(),
+                                       self._state_inputs))
+        if self._state_inputs and self._seq_lens is None:
+            raise ValueError(
+                "seq_lens tensor must be given if state inputs are defined")
 
     def build_compute_actions(self,
                               builder,

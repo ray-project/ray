@@ -25,10 +25,13 @@ By default, Tune uses the `default search space and variant generation process <
     :noindex:
 
 
+Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
-The ``HyperOptSearch`` is a SearchAlgorithm that is backed by `HyperOpt <http://hyperopt.github.io/hyperopt>`__ to perform sequential model-based hyperparameter optimization.
+The ``HyperOptSearch`` is a SearchAlgorithm that is backed by `HyperOpt <http://hyperopt.github.io/hyperopt>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using HyperOptSearch.
+
 In order to use this search algorithm, you will need to install HyperOpt via the following command:
 
 .. code-block:: bash
@@ -46,7 +49,6 @@ An example of this can be found in `hyperopt_example.py <https://github.com/ray-
 .. autoclass:: ray.tune.suggest.HyperOptSearch
     :show-inheritance:
     :noindex:
-
 
 Contributing a New Algorithm
 ----------------------------

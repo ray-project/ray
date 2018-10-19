@@ -245,10 +245,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// Executes on main_service_ thread.
   void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Synchronously send a pull request via remote object manager connection.
+  /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
-  ray::Status PullSendRequest(const ObjectID &object_id,
-                              std::shared_ptr<SenderConnection> &conn);
+  void PullSendRequest(const ObjectID &object_id,
+                       std::shared_ptr<SenderConnection> &conn);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);

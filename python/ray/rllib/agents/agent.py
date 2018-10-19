@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import os
 import pickle
 import tempfile
@@ -11,6 +10,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
+from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -19,10 +19,11 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# __sphinx_doc_begin__
 COMMON_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
+    # Number of steps after which the episode is forced to terminate
     "horizon": None,
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
@@ -37,7 +38,7 @@ COMMON_CONFIG = {
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
-    # Which observation filter to apply to the observation
+    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
@@ -51,14 +52,12 @@ COMMON_CONFIG = {
     # Environment name can also be passed via config
     "env": None,
     # Arguments to pass to model
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-    },
-    # Arguments to pass to the rllib optimizer
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
+        # note: parallelism_threads is set to auto for the local evaluator
         "intra_op_parallelism_threads": 1,
         "inter_op_parallelism_threads": 1,
         "gpu_options": {
@@ -88,6 +87,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
+
+# __sphinx_doc_end__
 
 
 def with_common_config(extra_config):
@@ -175,7 +176,7 @@ class Agent(Trainable):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers` and other configs. See the "
                 "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: " + json.dumps(config))
+                "The config of this agent is: {}".format(config))
 
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
@@ -234,10 +235,10 @@ class Agent(Trainable):
 
         return Trainable.train(self)
 
-    def _setup(self):
+    def _setup(self, config):
         env = self._env_id
         if env:
-            self.config["env"] = env
+            config["env"] = env
             if _global_registry.contains(ENV_CREATOR, env):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
@@ -248,7 +249,7 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = deep_update(merged_config, self.config,
+        merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
