@@ -20,8 +20,8 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.suggest.suggestion import (
-    _MockSuggestionAlgorithm, SuggestionAlgorithm)
+from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
+                                         SuggestionAlgorithm)
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
 
@@ -1388,6 +1388,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testSearchAlgFinishes(self):
         """SearchAlg changing state in `next_trials` does not crash."""
+
         class FinishFastAlg(SuggestionAlgorithm):
             def next_trials(self):
                 self._finished = True
