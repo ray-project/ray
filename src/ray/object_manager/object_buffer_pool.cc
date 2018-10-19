@@ -40,11 +40,9 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_LOG(DEBUG) << "GetChunk " << object_id << " " << data_size << " " << metadata_size;
   if (get_buffer_state_.count(object_id) == 0) {
-    std::vector<plasma::ObjectBuffer> object_buffers;
+    plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
-    ARROW_CHECK_OK(store_client_.Get({plasma_id}, 0, &object_buffers));
-    RAY_CHECK(object_buffers.size() == 1);
-    plasma::ObjectBuffer &object_buffer = object_buffers[0];
+    ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
     if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(

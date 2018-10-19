@@ -127,6 +127,39 @@ bool is_equal_data_123(const uint8_t *data1,
   return true;
 }
 
+TEST plasma_nonblocking_get_tests(void) {
+  PlasmaClient client;
+  ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
+                                plasma::kPlasmaDefaultReleaseDelay));
+  ObjectID oid = random_object_id();
+  ObjectID oid_array[1] = {oid};
+  ObjectBuffer obj_buffer;
+
+  /* Test for object non-existence. */
+  ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
+  ASSERT(obj_buffer.data == nullptr);
+
+  /* Test for the object being in local Plasma store. */
+  /* First create object. */
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  std::shared_ptr<Buffer> data;
+  ARROW_CHECK_OK(client.Create(oid, data_size, metadata, metadata_size, &data));
+  init_data_123(data->mutable_data(), data_size, 0);
+  ARROW_CHECK_OK(client.Seal(oid));
+
+  sleep(1);
+  ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
+  ASSERT(is_equal_data_123(data->data(), obj_buffer.data->data(), data_size) ==
+         true);
+
+  sleep(1);
+  ARROW_CHECK_OK(client.Disconnect());
+
+  PASS();
+}
+
 TEST plasma_wait_for_objects_tests(void) {
   PlasmaClient client1;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
@@ -199,10 +232,100 @@ TEST plasma_wait_for_objects_tests(void) {
   PASS();
 }
 
+TEST plasma_get_tests(void) {
+  PlasmaClient client1, client2;
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 plasma::kPlasmaDefaultReleaseDelay));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 plasma::kPlasmaDefaultReleaseDelay));
+  ObjectID oid1 = random_object_id();
+  ObjectID oid2 = random_object_id();
+  ObjectBuffer obj_buffer1;
+
+  ObjectID oid_array1[1] = {oid1};
+  ObjectID oid_array2[1] = {oid2};
+
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  std::shared_ptr<Buffer> data;
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  init_data_123(data->mutable_data(), data_size, 1);
+  ARROW_CHECK_OK(client1.Seal(oid1));
+
+  ARROW_CHECK_OK(client1.Get(oid_array1, 1, -1, &obj_buffer1));
+  ASSERT(data->data()[0] == obj_buffer1.data->data()[0]);
+
+  ObjectBuffer obj_buffer2;
+  ARROW_CHECK_OK(
+      client2.Create(oid2, data_size, metadata, metadata_size, &data));
+  init_data_123(data->mutable_data(), data_size, 2);
+  ARROW_CHECK_OK(client2.Seal(oid2));
+
+  ARROW_CHECK_OK(client1.Fetch(1, oid_array2));
+  ARROW_CHECK_OK(client1.Get(oid_array2, 1, -1, &obj_buffer2));
+  ASSERT(data->data()[0] == obj_buffer2.data->data()[0]);
+
+  sleep(1);
+  ARROW_CHECK_OK(client1.Disconnect());
+  ARROW_CHECK_OK(client2.Disconnect());
+
+  PASS();
+}
+
+TEST plasma_get_multiple_tests(void) {
+  PlasmaClient client1, client2;
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 plasma::kPlasmaDefaultReleaseDelay));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 plasma::kPlasmaDefaultReleaseDelay));
+  ObjectID oid1 = random_object_id();
+  ObjectID oid2 = random_object_id();
+  ObjectID obj_ids[NUM_OBJ_REQUEST];
+  ObjectBuffer obj_buffer[NUM_OBJ_REQUEST];
+  int obj1_first = 1, obj2_first = 2;
+
+  obj_ids[0] = oid1;
+  obj_ids[1] = oid2;
+
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  std::shared_ptr<Buffer> data;
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  init_data_123(data->mutable_data(), data_size, obj1_first);
+  ARROW_CHECK_OK(client1.Seal(oid1));
+
+  /* This only waits for oid1. */
+  ARROW_CHECK_OK(client1.Get(obj_ids, 1, -1, obj_buffer));
+  ASSERT(data->data()[0] == obj_buffer[0].data->data()[0]);
+
+  ARROW_CHECK_OK(
+      client2.Create(oid2, data_size, metadata, metadata_size, &data));
+  init_data_123(data->mutable_data(), data_size, obj2_first);
+  ARROW_CHECK_OK(client2.Seal(oid2));
+
+  ARROW_CHECK_OK(client1.Fetch(2, obj_ids));
+  ARROW_CHECK_OK(client1.Get(obj_ids, 2, -1, obj_buffer));
+  ASSERT(obj1_first == obj_buffer[0].data->data()[0]);
+  ASSERT(obj2_first == obj_buffer[1].data->data()[0]);
+
+  sleep(1);
+  ARROW_CHECK_OK(client1.Disconnect());
+  ARROW_CHECK_OK(client2.Disconnect());
+
+  PASS();
+}
+
 SUITE(plasma_client_tests) {
   RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_tests);
+  RUN_TEST(plasma_nonblocking_get_tests);
   RUN_TEST(plasma_wait_for_objects_tests);
+  RUN_TEST(plasma_get_tests);
+  RUN_TEST(plasma_get_multiple_tests);
 }
 
 GREATEST_MAIN_DEFS();

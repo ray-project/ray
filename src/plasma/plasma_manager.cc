@@ -796,13 +796,11 @@ void process_transfer_request(event_loop *loop,
   }
 
   /* Allocate and append the request to the transfer queue. */
-  std::vector<plasma::ObjectBuffer> object_buffers;
+  plasma::ObjectBuffer object_buffer;
   plasma::ObjectID object_id = obj_id.to_plasma_id();
   /* We pass in 0 to indicate that the command should return immediately. */
   ARROW_CHECK_OK(
-      conn->manager_state->plasma_conn->Get({object_id}, 0, &object_buffers));
-  RAY_CHECK(object_buffers.size() == 1);
-  plasma::ObjectBuffer &object_buffer = object_buffers[0];
+      conn->manager_state->plasma_conn->Get(&object_id, 1, 0, &object_buffer));
   if (object_buffer.data == nullptr) {
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the
