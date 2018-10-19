@@ -19,10 +19,15 @@ def collect_metrics(local_evaluator, remote_evaluators=[]):
 def collect_episodes(local_evaluator, remote_evaluators=[]):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
-    metric_lists = ray.get([
+    pending = [
         a.apply.remote(lambda ev: ev.sampler.get_metrics())
         for a in remote_evaluators
-    ])
+    ]
+    collected, _ = ray.wait(pending, num_returns=len(pending), timeout=180000)
+    if len(collected) < len(pending):
+        print("only {} of {} actors returned metrics within 3 mins".format(
+            len(collected), len(pending)))
+    metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
     for metrics in metric_lists:
