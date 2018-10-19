@@ -1098,9 +1098,9 @@ def _make_skel_func(code, cell_count, base_globals=None):
         code and the correct number of cells in func_closure.  All other
         func attributes (e.g. func_globals) are empty.
     """
-    if base_globals is None:
-        base_globals = {}
     # [Revert upstream cloudpickle]: Do not try to reuse globals.
+    if base_globals is None or isinstance(base_globals, str):
+        base_globals = {}
     base_globals['__builtins__'] = __builtins__
 
     closure = (
