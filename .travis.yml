@@ -54,7 +54,7 @@ matrix:
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504
-        - .travis/yapf.sh --all
+        - .travis/format.sh --all
 
     - os: linux
       dist: trusty
@@ -185,6 +185,7 @@ install:
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/raylet/client_connection_test
   - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
   - ./src/ray/util/signal_test
 

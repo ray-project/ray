@@ -266,35 +266,31 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           }
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          Status pull_send_status = PullSendRequest(object_id, async_conn);
-          if (!pull_send_status.ok()) {
-            CheckIOError(pull_send_status, "Pull");
-          }
+          PullSendRequest(object_id, async_conn);
         },
         []() {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
         });
   } else {
-    status = PullSendRequest(object_id, conn);
-    if (!status.ok()) {
-      CheckIOError(status, "Pull");
-    }
+    PullSendRequest(object_id, conn);
   }
 }
 
-ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                           std::shared_ptr<SenderConnection> &conn) {
+void ObjectManager::PullSendRequest(const ObjectID &object_id,
+                                    std::shared_ptr<SenderConnection> &conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  Status status = conn->WriteMessage(
+  conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
-  if (status.ok()) {
-    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-  }
-  return status;
+      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) mutable {
+        if (status.ok()) {
+          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+        } else {
+          CheckIOError(status, "Pull");
+        }
+      });
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
