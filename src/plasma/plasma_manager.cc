@@ -802,7 +802,7 @@ void process_transfer_request(event_loop *loop,
   ARROW_CHECK_OK(
       conn->manager_state->plasma_conn->Get({object_id}, 0, &object_buffers));
   RAY_CHECK(object_buffers.size() == 1);
-  plasma::ObjectBuffer object_buffer = object_buffers[0];
+  plasma::ObjectBuffer &object_buffer = object_buffers[0];
   if (object_buffer.data == nullptr) {
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the

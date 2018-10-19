@@ -44,7 +44,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
     ARROW_CHECK_OK(store_client_.Get({plasma_id}, 0, &object_buffers));
     RAY_CHECK(object_buffers.size() == 1);
-    plasma::ObjectBuffer object_buffer = object_buffers[0];
+    plasma::ObjectBuffer &object_buffer = object_buffers[0];
     if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
