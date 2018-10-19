@@ -34,8 +34,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
               num_sgd_iter=10,
               train_batch_size=1024,
               num_gpus=0,
-              standardize_fields=[],
-              verbose=False):
+              standardize_fields=[]):
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
         self.train_batch_size = train_batch_size
@@ -53,7 +52,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.grad_timer = TimerStat()
         self.update_weights_timer = TimerStat()
         self.standardize_fields = standardize_fields
-        self.verbose = verbose
 
         print("LocalMultiGPUOptimizer devices", self.devices)
 
@@ -128,8 +126,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.grad_timer:
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
-            if self.verbose:
-                print("== sgd epochs ==")
+            print("== sgd epochs ==")
             for i in range(self.num_sgd_iter):
                 iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
@@ -139,8 +136,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         permutation[batch_index] * self.per_device_batch_size)
                     for k, v in batch_fetches.items():
                         iter_extra_fetches[k].append(v)
-                if self.verbose:
-                    print(i, _averaged(iter_extra_fetches))
+                print(i, _averaged(iter_extra_fetches))
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
