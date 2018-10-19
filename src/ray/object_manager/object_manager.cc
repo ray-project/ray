@@ -405,14 +405,19 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
 
   // Fail on status not okay. The object is local, and there is
   // no other anticipated error here.
-  RAY_CHECK_OK(chunk_status.second);
+  ray::Status status = chunk_status.second;
+  if (!chunk_status.second.ok()) {
+    RAY_LOG(WARNING) << "Attempting to push object " << object_id
+                     << " which is not local. It may have been evicted.";
+    RAY_RETURN_NOT_OK(status);
+  }
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePushRequestMessage(
       fbb, to_flatbuf(fbb, object_id), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
-  ray::Status status = conn->WriteMessage(
+  status = conn->WriteMessage(
       static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
       fbb.GetSize(), fbb.GetBufferPointer());
   if (!status.ok()) {
