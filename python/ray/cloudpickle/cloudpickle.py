@@ -639,16 +639,8 @@ class CloudPickler(Pickler):
         # save the dict
         dct = func.__dict__
 
-        base_globals = self.globals_ref.get(id(func.__globals__), None)
-        if base_globals is None:
-            # For functions defined in a well behaved module use
-            # vars(func.__module__) for base_globals. This is necessary to
-            # share the global variables across multiple pickled functions from
-            # this module.
-            if hasattr(func, '__module__') and func.__module__ is not None:
-                base_globals = func.__module__
-            else:
-                base_globals = {}
+        base_globals = self.globals_ref.get(id(func.__globals__), {})
+        # [Ray: Revert upstream changes]: Do not use __module__ of a function.
         self.globals_ref[id(func.__globals__)] = base_globals
 
         return (code, f_globals, defaults, closure, dct, base_globals)
@@ -1059,7 +1051,7 @@ def _fill_function(*args):
     else:
         raise ValueError('Unexpected _fill_value arguments: %r' % (args,))
 
-    # [Revert cloudpickle upstream changes]: Force updating all globals.
+    # [Ray: Revert cloudpickle upstream changes]: Force updating all globals.
     func.__globals__.update(state['globals'])
 
     func.__defaults__ = state['defaults']
@@ -1098,9 +1090,9 @@ def _make_skel_func(code, cell_count, base_globals=None):
         code and the correct number of cells in func_closure.  All other
         func attributes (e.g. func_globals) are empty.
     """
-    # [Revert upstream cloudpickle]: Do not try to reuse globals.
-    if base_globals is None or isinstance(base_globals, str):
+    if base_globals is None:
         base_globals = {}
+    # [Ray: Revert upstream cloudpickle]: Do not try to reuse globals.
     base_globals['__builtins__'] = __builtins__
 
     closure = (
