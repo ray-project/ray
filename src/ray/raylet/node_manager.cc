@@ -165,9 +165,11 @@ ray::Status NodeManager::RegisterGcs() {
       task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback to handle actor notifications.
-  auto actor_notification_callback = [this](
-      gcs::AsyncGcsClient *client, const ActorID &actor_id,
-      const std::vector<ActorTableDataT> &data) { HandleActorNotification(actor_id, data); };
+  auto actor_notification_callback = [this](gcs::AsyncGcsClient *client,
+                                            const ActorID &actor_id,
+                                            const std::vector<ActorTableDataT> &data) {
+    HandleActorNotification(actor_id, data);
+  };
 
   RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), actor_notification_callback, nullptr));
@@ -645,10 +647,10 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
                              ? ActorState::BEING_RECONSTRUCTED
                              : ActorState::DEAD;
   if (new_state == ActorState::BEING_RECONSTRUCTED && was_local) {
-    // If the actor was local and needs to be reconstructed, remove its previous dummy objects.
-    // So these tasks can be resubmitted.
+    // If the actor was local and needs to be reconstructed, remove its previous dummy
+    // objects. So these tasks can be resubmitted.
+    RAY_LOG(DEBUG) << "Removing dummy object for actor: " << actor_id;
     for (auto &id: actor_entry->second.GetDummyObjects()) {
-      RAY_LOG(DEBUG) << "Removing dummy object: " << id.hex();
       HandleObjectMissing(id);
     }
   }
@@ -1075,7 +1077,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-          // If this actor is local, queue the task for local execution, bypassing placement.
+          // If this actor is local, queue the task for local execution, bypassing
+          // placement.
           EnqueuePlaceableTask(task);
         } else {
           // The actor is remote. Forward the task to the node manager that owns
@@ -1093,7 +1096,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // was already created. Look up the actor's registered location in case
         // we missed the creation notification.
         // NOTE(swang): This codepath needs to be tested in a cluster setting.
-        auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
+        auto lookup_callback = [this](gcs::AsyncGcsClient *client,
+                                      const ActorID &actor_id,
                                       const std::vector<ActorTableDataT> &data) {
           if (!data.empty()) {
             // The actor has been created.
@@ -1423,15 +1427,15 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       // Also, we should subtract its remaining_reconstructions by 1.
       RAY_CHECK(actor_entry->second.GetState() == ActorState::BEING_RECONSTRUCTED);
       remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
-      log_length = 2 * (actor_entry->second.GetMaxReconstructions() -
-                        remaining_reconstructions);
+      log_length =
+          (actor_entry->second.GetMaxReconstructions() - remaining_reconstructions) * 2;
     }
     RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
         actor_id, task.GetTaskSpecification().ActorDummyObject(),
         task.GetTaskSpecification().DriverId(),
         gcs_client_->client_table().GetLocalClientId(), ActorState::ALIVE,
-        task.GetTaskSpecification().MaxActorReconstructions(),
-        remaining_reconstructions, log_length));
+        task.GetTaskSpecification().MaxActorReconstructions(), remaining_reconstructions,
+        log_length));
 
     // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.

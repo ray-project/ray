@@ -221,7 +221,7 @@ class NodeManager {
   /// \param data Data associated with this notification.
   /// \return Void.
   void HandleActorNotification(const ActorID &actor_id,
-                           const std::vector<ActorTableDataT> &data);
+                               const std::vector<ActorTableDataT> &data);
 
   /// When an actor dies, loop over all of the queued tasks for that actor and
   /// treat them as failed.

@@ -35,9 +35,7 @@ const int64_t ActorRegistration::GetRemainingReconstructions() const {
   return actor_table_data_.remaining_reconstructions;
 }
 
-const ActorState ActorRegistration::GetState() const {
-  return actor_table_data_.state;
-}
+const ActorState ActorRegistration::GetState() const { return actor_table_data_.state; }
 
 const std::vector<ObjectID> &ActorRegistration::GetDummyObjects() const {
   return dummy_objects_;
