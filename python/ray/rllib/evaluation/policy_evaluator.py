@@ -21,7 +21,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import getLogger
+from ray.rllib.utils import RLLIB_LOGGER
 
 
 class PolicyEvaluator(EvaluatorInterface):
@@ -164,7 +164,7 @@ class PolicyEvaluator(EvaluatorInterface):
         """
 
         if log_level:
-            logging.root.setLevel(log_level)
+            RLLIB_LOGGER.setLevel(log_level)
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}

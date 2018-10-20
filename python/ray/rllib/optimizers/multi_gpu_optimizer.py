@@ -57,7 +57,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.standardize_fields = standardize_fields
 
         logger.info("LocalMultiGPUOptimizer devices {}".format(self.devices))
-        logger.debug("HI")
 
         if set(self.local_evaluator.policy_map.keys()) != {"default"}:
             raise ValueError(
