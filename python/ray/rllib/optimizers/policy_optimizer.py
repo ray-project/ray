@@ -2,10 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
 
 
 class PolicyOptimizer(object):

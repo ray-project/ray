@@ -6,6 +6,10 @@ from ray.rllib.models.pytorch.model import Model, SlimFC
 from ray.rllib.models.pytorch.misc import normc_initializer
 import torch.nn as nn
 
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
+
 
 class FullyConnectedNetwork(Model):
     """TODO(rliaw): Logits, Value should both be contained here"""
@@ -19,7 +23,7 @@ class FullyConnectedNetwork(Model):
             activation = nn.Tanh
         elif fcnet_activation == "relu":
             activation = nn.ReLU
-        print("Constructing fcnet {} {}".format(hiddens, activation))
+        logger.info("Constructing fcnet {} {}".format(hiddens, activation))
 
         layers = []
         last_layer_size = inputs

@@ -7,13 +7,17 @@ import base64
 import numpy as np
 import pyarrow
 
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
+
 try:
     import lz4.frame
     LZ4_ENABLED = True
 except ImportError:
-    print("WARNING: lz4 not available, disabling sample compression. "
-          "This will significantly impact RLlib performance. "
-          "To install lz4, run `pip install lz4`.")
+    logger.warn("lz4 not available, disabling sample compression. "
+                "This will significantly impact RLlib performance. "
+                "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 

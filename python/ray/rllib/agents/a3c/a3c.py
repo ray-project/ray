@@ -10,6 +10,7 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
@@ -36,8 +37,8 @@ DEFAULT_CONFIG = with_common_config({
     # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
 })
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class A3CAgent(Agent):

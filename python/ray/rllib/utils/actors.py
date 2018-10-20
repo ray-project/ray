@@ -5,6 +5,10 @@ from __future__ import print_function
 import os
 import ray
 
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
+
 
 class TaskPool(object):
     """Helper class for tracking the status of many in-flight actor tasks."""
@@ -80,11 +84,12 @@ def split_colocated(actors):
 def try_create_colocated(cls, args, count):
     actors = [cls.remote(*args) for _ in range(count)]
     local, _ = split_colocated(actors)
-    print("Got {} colocated actors of {}".format(len(local), count))
+    logger.info("Got {} colocated actors of {}".format(len(local), count))
     return local
 
 
 def create_colocated(cls, args, count):
+    logger.info("Trying to create {} colocated actors".format(count))
     ok = []
     i = 1
     while len(ok) < count and i < 10:

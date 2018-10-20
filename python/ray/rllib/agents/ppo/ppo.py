@@ -8,6 +8,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
@@ -55,8 +56,8 @@ DEFAULT_CONFIG = with_common_config({
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
 })
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -111,7 +112,7 @@ class PPOAgent(Agent):
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
-                print("Warning: " + msg)
+                logger.warn(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(

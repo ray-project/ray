@@ -7,6 +7,9 @@ import time
 
 import tensorflow as tf
 from tensorflow.python.client import timeline
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
 
 
 class TFRunBuilder(object):
@@ -43,7 +46,7 @@ class TFRunBuilder(object):
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
             except Exception as e:
-                print("Error fetching: {}, feed_dict={}".format(
+                logger.error("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
                 raise e
         if isinstance(to_fetch, int):
@@ -76,8 +79,8 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
                 debug_name, os.getpid(), _count))
         _count += 1
         trace_file = open(outf, "w")
-        print("Wrote tf timeline ({} s) to {}".format(time.time() - start,
-                                                      os.path.abspath(outf)))
+        logger.info("Wrote tf timeline ({} s) to {}".format(
+            time.time() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
         fetches = sess.run(ops, feed_dict=feed_dict)

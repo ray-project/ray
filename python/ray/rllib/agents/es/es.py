@@ -15,15 +15,17 @@ from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
-from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.es import utils
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import merge_dicts, getLogger
+
+logger = getLogger(__name__)
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "l2_coeff": 0.005,
@@ -39,6 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     "report_length": 10,
 })
 # __sphinx_doc_end__
+# yapf: enable
 
 
 @ray.remote
@@ -169,12 +172,12 @@ class ESAgent(Agent):
         self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
-        print("Creating shared noise table.")
+        logger.info("Creating shared noise table.")
         noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
-        print("Creating actors.")
+        logger.info("Creating actors.")
         self.workers = [
             Worker.remote(self.config, policy_params, self.env_creator,
                           noise_id) for _ in range(self.config["num_workers"])
@@ -188,8 +191,9 @@ class ESAgent(Agent):
         num_episodes, num_timesteps = 0, 0
         results = []
         while num_episodes < min_episodes or num_timesteps < min_timesteps:
-            print("Collected {} episodes {} timesteps so far this iter".format(
-                num_episodes, num_timesteps))
+            logger.info(
+                "Collected {} episodes {} timesteps so far this iter".format(
+                    num_episodes, num_timesteps))
             rollout_ids = [
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
@@ -268,21 +272,6 @@ class ESAgent(Agent):
         # Store the rewards
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
-
-        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
-        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
-
-        tlogger.record_tabular("EpRewMean", noisy_returns.mean())
-        tlogger.record_tabular("EpRewStd", noisy_returns.std())
-        tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
-
-        tlogger.record_tabular("Norm", float(np.square(theta).sum()))
-        tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-        tlogger.record_tabular("UpdateRatio", float(update_ratio))
-
-        tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
-        tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        tlogger.dump_tabular()
 
         info = {
             "weights_norm": np.square(theta).sum(),

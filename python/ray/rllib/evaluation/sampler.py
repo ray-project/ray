@@ -15,6 +15,9 @@ from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils import getLogger
+
+logger = getLogger(__name__)
 
 RolloutMetrics = namedtuple(
     "RolloutMetrics", ["episode_length", "episode_reward", "agent_rewards"])
@@ -221,7 +224,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        print("*** WARNING ***: no episode horizon specified, assuming inf")
+        logger.warn("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 

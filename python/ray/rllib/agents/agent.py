@@ -18,7 +18,9 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.rllib.utils import getLogger
 
+# yapf: disable
 # __sphinx_doc_begin__
 COMMON_CONFIG = {
     # Discount factor of the MDP
@@ -74,6 +76,8 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
+    # Python log level to use for this agent and all remote evaluators
+    "log_level": None,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
 
@@ -88,8 +92,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 def with_common_config(extra_config):
@@ -170,7 +174,8 @@ class Agent(Trainable):
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            monitor_path=self.logdir if config["monitor"] else None)
+            monitor_path=self.logdir if config["monitor"] else None,
+            log_level=config["log_level"])
 
     @classmethod
     def resource_help(cls, config):
@@ -256,6 +261,8 @@ class Agent(Trainable):
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        if self.config["log_level"]:
+            logging.root.setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():

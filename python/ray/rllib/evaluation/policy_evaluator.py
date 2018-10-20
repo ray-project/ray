@@ -21,6 +21,7 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils import getLogger
 
 
 class PolicyEvaluator(EvaluatorInterface):
@@ -99,7 +100,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
-                 monitor_path=None):
+                 monitor_path=None,
+                 log_level=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -158,7 +160,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_level (str): Set the root log level on creation.
         """
+
+        if log_level:
+            logging.root.setLevel(log_level)
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
