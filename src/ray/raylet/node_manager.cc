@@ -379,6 +379,14 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor.";
 
+  // Check whether the dead node had any alive actor.
+  for (const auto &actor_entry : actor_registry_) {
+    if (actor_entry.second.GetNodeManagerId() == client_id &&
+        actor_entry.second.GetState() == ActorState::ALIVE) {
+      HandleDisconnectedActor(actor_entry.first, false);
+    }
+  }
+
   // Below, when we remove client_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
