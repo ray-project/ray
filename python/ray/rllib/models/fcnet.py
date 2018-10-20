@@ -13,6 +13,12 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
     def _build_layers(self, inputs, num_outputs, options):
+        """Process the flattened inputs.
+
+        Note that dict inputs will be flattened into a vector. To define a
+        model that processes the components separately, use _build_layers_v2().
+        """
+
         hiddens = options.get("fcnet_hiddens")
         activation = get_activation_fn(options.get("fcnet_activation"))
 

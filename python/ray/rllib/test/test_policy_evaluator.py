@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import numpy as np
 import time
 import unittest
 
@@ -21,6 +22,8 @@ class MockPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         return [0] * len(obs_batch), [], {}
@@ -33,6 +36,8 @@ class BadPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         raise Exception("intentional error")
@@ -107,8 +112,23 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_graph=MockPolicyGraph)
         batch = ev.sample()
-        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+        for key in [
+                "obs", "actions", "rewards", "dones", "advantages",
+                "prev_rewards", "prev_actions"
+        ]:
             self.assertIn(key, batch)
+
+        def to_prev(vec):
+            out = np.zeros_like(vec)
+            for i, v in enumerate(vec):
+                if i + 1 < len(out) and not batch["dones"][i]:
+                    out[i + 1] = v
+            return out.tolist()
+
+        self.assertEqual(batch["prev_rewards"].tolist(),
+                         to_prev(batch["rewards"]))
+        self.assertEqual(batch["prev_actions"].tolist(),
+                         to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
 
     def testGlobalVarsUpdate(self):

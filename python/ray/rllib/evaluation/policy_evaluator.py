@@ -11,8 +11,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.serving_env import ServingEnv
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
@@ -179,10 +177,14 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_context)
-        if isinstance(self.env, VectorEnv) or \
-                isinstance(self.env, ServingEnv) or \
-                isinstance(self.env, MultiAgentEnv) or \
+        if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
+
+            if model_config.get("custom_preprocessor"):
+                raise ValueError(
+                    "Custom preprocessors are not supported for env types "
+                    "MultiAgentEnv and AsyncVectorEnv. Please preprocess "
+                    "observations in your env directly.")
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
@@ -294,6 +296,18 @@ class PolicyEvaluator(EvaluatorInterface):
             merged_conf = policy_config.copy()
             merged_conf.update(conf)
             with tf.variable_scope(name):
+                if isinstance(obs_space, gym.spaces.Dict):
+                    raise ValueError(
+                        "Found raw Dict space as input to policy graph. "
+                        "Please preprocess your environment observations "
+                        "with DictFlatteningPreprocessor and set the "
+                        "obs space to `preprocessor.observation_space`.")
+                elif isinstance(obs_space, gym.spaces.Tuple):
+                    raise ValueError(
+                        "Found raw Tuple space as input to policy graph. "
+                        "Please preprocess your environment observations "
+                        "with TupleFlatteningPreprocessor and set the "
+                        "obs space to `preprocessor.observation_space`.")
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
 

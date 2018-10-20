@@ -2,7 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import OrderedDict
+
+import gym
 import tensorflow as tf
+
+from ray.rllib.models.preprocessors import get_preprocessor
 
 
 class Model(object):
@@ -16,12 +21,12 @@ class Model(object):
     needs to further post-processing (e.g. Actor and Critic networks in A3C).
 
     Attributes:
-        inputs (Tensor): The input placeholder for this model, of shape
-            [BATCH_SIZE, ...].
+        input_dict (dict): Dictionary of input tensors, including "obs",
+            "prev_action", "prev_reward".
         outputs (Tensor): The output vector of this model, of shape
             [BATCH_SIZE, num_outputs].
-        last_layer (Tensor): The network layer right before the model output,
-            of shape [BATCH_SIZE, N].
+        last_layer (Tensor): The feature layer right before the model output,
+            of shape [BATCH_SIZE, f].
         state_init (list): List of initial recurrent state tensors (if any).
         state_in (list): List of input recurrent state tensors (if any).
         state_out (list): List of output recurrent state tensors (if any).
@@ -38,12 +43,13 @@ class Model(object):
     """
 
     def __init__(self,
-                 inputs,
+                 input_dict,
+                 obs_space,
                  num_outputs,
                  options,
                  state_in=None,
                  seq_lens=None):
-        self.inputs = inputs
+        assert isinstance(input_dict, dict), input_dict
 
         # Default attribute values for the non-RNN case
         self.state_init = []
@@ -58,8 +64,26 @@ class Model(object):
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
-        self.outputs, self.last_layer = self._build_layers(
-            inputs, num_outputs, options)
+        try:
+            self.outputs, self.last_layer = self._build_layers_v2(
+                _restore_original_dimensions(input_dict, obs_space),
+                num_outputs, options)
+        except NotImplementedError:
+            self.outputs, self.last_layer = self._build_layers(
+                input_dict["obs"], num_outputs, options)
+
+        # Validate the output shape
+        try:
+            out = tf.convert_to_tensor(self.outputs)
+            shape = out.shape.as_list()
+        except Exception:
+            raise ValueError("Output is not a tensor: {}".format(self.outputs))
+        else:
+            if len(shape) != 2 or shape[1] != num_outputs:
+                raise ValueError(
+                    "Expected output shape of [None, {}], got {}".format(
+                        num_outputs, shape))
+
         if options.get("free_log_std", False):
             log_std = tf.get_variable(
                 name="log_std",
@@ -68,6 +92,80 @@ class Model(object):
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
-    def _build_layers(self):
-        """Builds and returns the output and last layer of the network."""
+    def _build_layers(self, inputs, num_outputs, options):
+        """Builds and returns the output and last layer of the network.
+
+        Deprecated: use _build_layers_v2 instead, which has better support
+        for dict and tuple spaces.
+        """
         raise NotImplementedError
+
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        """Define the layers of a custom model.
+
+        Arguments:
+            input_dict (dict): Dictionary of input tensors, including "obs",
+                "prev_action", "prev_reward".
+            num_outputs (int): Output tensor must be of size
+                [BATCH_SIZE, num_outputs].
+            options (dict): Model options.
+
+        Returns:
+            (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
+                and [BATCH_SIZE, desired_feature_size].
+
+        When using dict or tuple observation spaces, you can access
+        the nested sub-observation batches here as well:
+
+        Examples:
+            >>> print(input_dict)
+            {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
+             'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+             'obs': OrderedDict([
+                ('sensors', OrderedDict([
+                    ('front_cam', [
+                        <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
+                        <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
+                    ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
+                    ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
+        """
+        raise NotImplementedError
+
+
+def _restore_original_dimensions(input_dict, obs_space):
+    if hasattr(obs_space, "original_space"):
+        return dict(
+            input_dict,
+            obs=_unpack_obs(input_dict["obs"], obs_space.original_space))
+    return input_dict
+
+
+def _unpack_obs(obs, space):
+    if (isinstance(space, gym.spaces.Dict)
+            or isinstance(space, gym.spaces.Tuple)):
+        prep = get_preprocessor(space)(space)
+        if len(obs.shape) != 2 or obs.shape[1] != prep.shape[0]:
+            raise ValueError(
+                "Expected flattened obs shape of [None, {}], got {}".format(
+                    prep.shape[0], obs.shape))
+        assert len(prep.preprocessors) == len(space.spaces), \
+            (len(prep.preprocessors) == len(space.spaces))
+        offset = 0
+        if isinstance(space, gym.spaces.Tuple):
+            u = []
+            for p, v in zip(prep.preprocessors, space.spaces):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u.append(
+                    _unpack_obs(
+                        tf.reshape(obs_slice, [-1] + list(p.shape)), v))
+        else:
+            u = OrderedDict()
+            for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
+                obs_slice = obs[:, offset:offset + p.size]
+                offset += p.size
+                u[k] = _unpack_obs(
+                    tf.reshape(obs_slice, [-1] + list(p.shape)), v)
+        return u
+    else:
+        return obs

@@ -10,6 +10,9 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
+from ray.rllib.env.async_vector_env import _ServingEnvToAsync
+from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
     squash_to_range)
@@ -41,6 +44,8 @@ MODEL_DEFAULTS = {
     "max_seq_len": 20,
     # Size of the LSTM cell
     "lstm_cell_size": 256,
+    # Whether to feed a_{t-1}, r_{t-1} to LSTM
+    "lstm_use_prev_action_reward": False,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
@@ -133,10 +138,6 @@ class ModelCatalog(object):
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        # TODO(ekl) are list spaces valid?
-        if isinstance(action_space, list):
-            action_space = gym.spaces.Tuple(action_space)
-
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]), name="action")
@@ -160,11 +161,18 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options, state_in=None, seq_lens=None):
+    def get_model(input_dict,
+                  obs_space,
+                  num_outputs,
+                  options,
+                  state_in=None,
+                  seq_lens=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
-            inputs (Tensor): The input tensor to the model.
+            input_dict (dict): Dict of input tensors to the model, including
+                the observation under the "obs" key.
+            obs_space (Space): Observation space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
             state_in (list): Optional RNN state in tensors.
@@ -174,34 +182,40 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
+        assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
-        model = ModelCatalog._get_model(inputs, num_outputs, options, state_in,
-                                        seq_lens)
+        model = ModelCatalog._get_model(input_dict, obs_space, num_outputs,
+                                        options, state_in, seq_lens)
 
         if options.get("use_lstm"):
-            model = LSTM(model.last_layer, num_outputs, options, state_in,
+            copy = dict(input_dict)
+            copy["obs"] = model.last_layer
+            model = LSTM(copy, obs_space, num_outputs, options, state_in,
                          seq_lens)
 
         return model
 
     @staticmethod
-    def _get_model(inputs, num_outputs, options, state_in, seq_lens):
+    def _get_model(input_dict, obs_space, num_outputs, options, state_in,
+                   seq_lens):
         if options.get("custom_model"):
             model = options["custom_model"]
             print("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
-                inputs,
+                input_dict,
+                obs_space,
                 num_outputs,
                 options,
                 state_in=state_in,
                 seq_lens=seq_lens)
 
-        obs_rank = len(inputs.shape) - 1
+        obs_rank = len(input_dict["obs"].shape) - 1
 
         if obs_rank > 1:
-            return VisionNetwork(inputs, num_outputs, options)
+            return VisionNetwork(input_dict, obs_space, num_outputs, options)
 
-        return FullyConnectedNetwork(inputs, num_outputs, options)
+        return FullyConnectedNetwork(input_dict, obs_space, num_outputs,
+                                     options)
 
     @staticmethod
     def get_torch_model(input_shape, num_outputs, options=None):
@@ -243,7 +257,7 @@ class ModelCatalog(object):
         """Returns a suitable processor for the given environment.
 
         Args:
-            env (gym.Env): The gym environment to preprocess.
+            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
@@ -269,16 +283,23 @@ class ModelCatalog(object):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
-            env (gym.Env): The gym environment to wrap.
+            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
-            wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
+            env (RLlib env): Wrapped environment
         """
 
         options = options or MODEL_DEFAULTS
         preprocessor = ModelCatalog.get_preprocessor(env, options)
-        return _RLlibPreprocessorWrapper(env, preprocessor)
+        if isinstance(env, gym.Env):
+            return _RLlibPreprocessorWrapper(env, preprocessor)
+        elif isinstance(env, VectorEnv):
+            return _RLlibVectorPreprocessorWrapper(env, preprocessor)
+        elif isinstance(env, ServingEnv):
+            return _ServingEnvToAsync(env, preprocessor)
+        else:
+            raise ValueError("Don't know how to wrap {}".format(env))
 
     @staticmethod
     def register_custom_preprocessor(preprocessor_name, preprocessor_class):
@@ -314,10 +335,32 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
     def __init__(self, env, preprocessor):
         super(_RLlibPreprocessorWrapper, self).__init__(env)
         self.preprocessor = preprocessor
-
-        from gym.spaces.box import Box
-        self.observation_space = Box(
-            -1.0, 1.0, preprocessor.shape, dtype=np.float32)
+        self.observation_space = preprocessor.observation_space
 
     def observation(self, observation):
         return self.preprocessor.transform(observation)
+
+
+class _RLlibVectorPreprocessorWrapper(VectorEnv):
+    """Preprocessing wrapper for vector envs."""
+
+    def __init__(self, env, preprocessor):
+        self.env = env
+        self.prep = preprocessor
+        self.action_space = env.action_space
+        self.observation_space = preprocessor.observation_space
+        self.num_envs = env.num_envs
+
+    def vector_reset(self):
+        return [self.prep.transform(obs) for obs in self.env.vector_reset()]
+
+    def reset_at(self, index):
+        return self.prep.transform(self.env.reset_at(index))
+
+    def vector_step(self, actions):
+        obs, rewards, dones, infos = self.env.vector_step(actions)
+        obs = [self.prep.transform(o) for o in obs]
+        return obs, rewards, dones, infos
+
+    def get_unwrapped(self):
+        return self.env.get_unwrapped()
