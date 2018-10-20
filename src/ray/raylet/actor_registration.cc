@@ -39,8 +39,8 @@ const ActorState ActorRegistration::GetState() const {
   return actor_table_data_.state;
 }
 
-const void ActorRegistration::SetState(ActorState state) {
-  actor_table_data_.state = state;
+const std::vector<ObjectID> &ActorRegistration::GetDummyObjects() const {
+  return dummy_objects_;
 }
 
 const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf>
@@ -55,10 +55,6 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
   dummy_objects_.push_back(execution_dependency);
-}
-
-const std::vector<ObjectID> &ActorRegistration::GetDummyObjects() const {
-  return dummy_objects_;
 }
 
 }  // namespace raylet

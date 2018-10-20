@@ -215,11 +215,10 @@ class NodeManager {
   /// \return Void.
   void KillWorker(std::shared_ptr<Worker> worker);
 
-  /// Methods for actor scheduling.
-  /// Handler for the creation of an actor, possibly on a remote node.
+  /// The callback for handling an actor table update.
   ///
-  /// \param actor_id The actor ID of the actor that was created.
-  /// \param data Data associated with the actor creation event.
+  /// \param actor_id The actor ID of the actor whose state was updated.
+  /// \param data Data associated with this notification.
   /// \return Void.
   void HandleActorNotification(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
@@ -319,8 +318,15 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
-  /// TODO
-  void HandleDeadActor(const ActorID &actor_id, bool was_local);
+  /// Handle the case where an actor is disconnected, determine whether this
+  /// actor needs to be reconstructed and then update actor table.
+  /// This function needs to be called either when actor process dies or when
+  /// a node dies.
+  ///
+  /// \param actor_id Id of this actor.
+  /// \param was_local Whether the disconnected was on this local node.
+  /// \return Void.
+  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

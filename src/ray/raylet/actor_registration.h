@@ -49,16 +49,20 @@ class ActorRegistration {
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
 
-  /// TODO
+  /// Get actor's driver id.
   const DriverID GetDriverId() const;
 
+  /// Get the max number of times this actor should be reconstructed.
   const int64_t GetMaxReconstructions() const;
 
+  /// Get the remaining number of times this actor should be reconstructed.
   const int64_t GetRemainingReconstructions() const;
 
+  /// Get the current state of this actor.
   const ActorState GetState() const;
 
-  const void SetState(ActorState state);
+  /// Get all the dummy objects of this actor's tasks.
+  const std::vector<ObjectID> &GetDummyObjects() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
@@ -85,8 +89,6 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   void ExtendFrontier(const ActorHandleID &handle_id,
                       const ObjectID &execution_dependency);
-
-  const std::vector<ObjectID> &GetDummyObjects() const;
 
  private:
   /// Information from the global actor table about this actor, including the

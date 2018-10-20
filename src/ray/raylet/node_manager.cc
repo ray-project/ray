@@ -440,7 +440,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   // We only need the last entry, because it represents the latest state of this actor.
   ActorRegistration actor_registration(data.back());
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
-                 << ", node_manager_id = " << actor_registration.GetNodeManagerId().hex()
+                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
                  << ", state = " << static_cast<int64_t>(actor_registration.GetState())
                  << ", remaining_reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
@@ -632,7 +632,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
 }
 
-void NodeManager::HandleDeadActor(const ActorID &actor_id, bool was_local) {
+void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto actor_registration = actor_entry->second;
@@ -738,7 +738,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was an actor, add it to the list of dead actors.
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      HandleDeadActor(actor_id, true);
+      HandleDisconnectedActor(actor_id, true);
     }
 
     const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
