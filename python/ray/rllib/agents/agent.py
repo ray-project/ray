@@ -76,7 +76,7 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Python log level to use for this agent and all remote evaluators
+    # Set the global RLlib log level for this agent and its remote evaluators
     "log_level": None,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
