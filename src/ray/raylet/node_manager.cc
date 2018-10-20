@@ -456,6 +456,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   if (actor_registration.GetState() == ActorState::ALIVE) {
     // Extend the frontier to include the actor creation task. NOTE(swang): The
     // creator of the actor is always assigned nil as the actor handle ID.
+    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     actor_registry_.find(actor_id)->second.ExtendFrontier(
         ActorHandleID::nil(), actor_registration.GetActorCreationDependency());
 
@@ -487,12 +488,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
     CleanUpTasksForDeadActor(actor_id);
   } else {
     // state == ActorState::BEING_RECONSTRUCTED
-    if (actor_registration.GetNodeManagerId() ==
-        gcs_client_->client_table().GetLocalClientId()) {
-      RAY_LOG(DEBUG) << "Trying to reconstruction actor: " << actor_id;
-      const auto &creation_task_id = ComputeTaskId(actor_registration.GetActorCreationDependency());
-      HandleTaskReconstruction(creation_task_id);
-    }
+    RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
   }
 }
 
@@ -1066,10 +1062,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     bool seen = actor_entry != actor_registry_.end();
-    // If we haven't seen this actor or the actor is being reconstructed,
-    // its location is unknown.
-    bool location_known = seen
-      && actor_entry->second.GetState() != ActorState::BEING_RECONSTRUCTED;
+    // If we have already seen this actor and this actor is not being reconstructed,
+    // its location is known.
+    bool location_known =
+        seen && actor_entry->second.GetState() != ActorState::BEING_RECONSTRUCTED;
     if (location_known) {
       if (actor_entry->second.GetState() == ActorState::DEAD) {
         // If this actor is dead, either because the actor process is dead
@@ -1112,6 +1108,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         };
         RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
                                                        lookup_callback));
+      } else {
+        // The actor is being reconstructed.
+        reconstruction_policy_.ListenAndMaybeReconstruct(
+            actor_entry->second.GetActorCreationDependency());
       }
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
