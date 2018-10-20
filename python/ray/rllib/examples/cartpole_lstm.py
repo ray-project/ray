@@ -14,6 +14,7 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--use-prev-action-reward", action="store_true")
 parser.add_argument("--run", type=str, default="PPO")
 
 
@@ -183,10 +184,13 @@ if __name__ == "__main__":
             "stop": {
                 "episode_reward_mean": args.stop
             },
-            "config": dict(configs[args.run], **{
-                "model": {
-                    "use_lstm": True,
-                },
-            }),
+            "config": dict(
+                configs[args.run], **{
+                    "model": {
+                        "use_lstm": True,
+                        "lstm_use_prev_action_reward": args.
+                        use_prev_action_reward,
+                    },
+                }),
         }
     })

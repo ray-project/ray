@@ -51,7 +51,8 @@ COMMON_CONFIG = {
     "env_config": {},
     # Environment name can also be passed via config
     "env": None,
-    # Arguments to pass to model
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
     "model": MODEL_DEFAULTS,
     # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
@@ -196,6 +197,8 @@ class Agent(Trainable):
 
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
+        if not self._env_id:
+            raise ValueError("Must specify env (str) when creating agent")
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:

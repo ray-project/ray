@@ -88,7 +88,7 @@ class PPOAgent(Agent):
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"]
+                    "train_batch_size": self.config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(

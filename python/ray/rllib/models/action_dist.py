@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
+import distutils.version
+
 import tensorflow as tf
 import numpy as np
-import distutils.version
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
@@ -225,4 +227,8 @@ class MultiActionDistribution(ActionDistribution):
 
     def sample(self):
         """Draw a sample from the action distribution."""
-        return [[s.sample() for s in self.child_distributions]]
+
+        return TupleActions([s.sample() for s in self.child_distributions])
+
+
+TupleActions = namedtuple("TupleActions", ["batches"])

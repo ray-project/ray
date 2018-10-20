@@ -12,7 +12,8 @@ from ray.rllib.models.misc import get_activation_fn, flatten
 class VisionNetwork(Model):
     """Generic vision network."""
 
-    def _build_layers(self, inputs, num_outputs, options):
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
             filters = get_filter_config(options)
