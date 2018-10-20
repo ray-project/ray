@@ -197,6 +197,8 @@ class Agent(Trainable):
 
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
+        if not self._env_id:
+            raise ValueError("Must specify env (str) when creating agent")
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
