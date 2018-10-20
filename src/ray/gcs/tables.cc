@@ -278,7 +278,8 @@ Status ActorTable::AppendDataAt(const ActorID &actor_id,
                                 const DriverID &driver_id,
                                 const ClientID &node_manager_id, const ActorState &state,
                                 int64_t max_reconstructions,
-                                int64_t remaining_reconstructions, int log_length) {
+                                int64_t remaining_reconstructions, int log_length,
+                                bool error_on_failure) {
   RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id
                  << ", driver_id: " << driver_id
                  << ", state: " << static_cast<int64_t>(state)
@@ -294,9 +295,11 @@ Status ActorTable::AppendDataAt(const ActorID &actor_id,
   actor_notification->max_reconstructions = max_reconstructions;
   actor_notification->remaining_reconstructions = remaining_reconstructions;
 
-  auto failure_callback = [](AsyncGcsClient *client, const ActorID &id,
-                             const ActorTableDataT &data) {
-    RAY_LOG(FATAL) << "Failed to update state for actor " << id.hex();
+  auto failure_callback = [error_on_failure](AsyncGcsClient *client, const ActorID &id,
+                                             const ActorTableDataT &data) {
+    if (error_on_failure) {
+      RAY_LOG(FATAL) << "Failed to update state for actor " << id;
+    }
   };
   return AppendAt(JobID::nil(), actor_id, actor_notification, nullptr, failure_callback,
                   log_length);

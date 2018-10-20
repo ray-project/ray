@@ -661,7 +661,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
       actor_id, actor_registration.GetActorCreationDependency(),
       actor_registration.GetDriverId(), gcs_client_->client_table().GetLocalClientId(),
       new_state, actor_registration.GetMaxReconstructions(),
-      actor_registration.GetRemainingReconstructions(), log_length));
+      actor_registration.GetRemainingReconstructions(), log_length, was_local));
 }
 
 void NodeManager::ProcessGetTaskMessage(
@@ -1043,8 +1043,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: task_id = " << task_id
-                 << ", actor_id = " << spec.ActorId().hex()
-                 << ", actor_creation_id = " << spec.ActorCreationId().hex();
+                 << ", actor_id = " << spec.ActorId()
+                 << ", actor_creation_id = " << spec.ActorCreationId();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1435,7 +1435,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
         task.GetTaskSpecification().DriverId(),
         gcs_client_->client_table().GetLocalClientId(), ActorState::ALIVE,
         task.GetTaskSpecification().MaxActorReconstructions(), remaining_reconstructions,
-        log_length));
+        log_length, true));
 
     // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.

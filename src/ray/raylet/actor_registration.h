@@ -103,6 +103,7 @@ class ActorRegistration {
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
 
+  /// Dummy object ids of this actor's tasks.
   std::vector<ObjectID> dummy_objects_;
 };
 
