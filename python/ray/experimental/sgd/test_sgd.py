@@ -24,9 +24,8 @@ parser.add_argument(
     "--gpu", action="store_true", help="Use GPUs for optimization")
 
 if __name__ == "__main__":
-    ray.init(redis_address=args.redis_address)
-
     args, _ = parser.parse_known_args()
+    ray.init(redis_address=args.redis_address)
 
     model_creator = (
         lambda worker_idx, device_idx: TFBenchModel(
