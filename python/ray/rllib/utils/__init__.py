@@ -1,20 +1,11 @@
 import copy
 
-import logging
-
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 
 __all__ = ["Filter", "FilterManager", "PolicyClient", "PolicyServer"]
-
-RLLIB_LOGGER = logging.getLogger("ray.rllib")
-
-
-def getLogger(*args, **kwargs):
-    """Get a child of the rllib logger."""
-    return RLLIB_LOGGER.getChild(*args, **kwargs)
 
 
 def merge_dicts(d1, d2):

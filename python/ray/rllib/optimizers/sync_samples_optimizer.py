@@ -3,13 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+import logging
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils import getLogger
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SyncSamplesOptimizer(PolicyOptimizer):

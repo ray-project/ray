@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import logging
 import numpy as np
 import tensorflow as tf
 from functools import partial
@@ -20,9 +21,8 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
-from ray.rllib.utils import getLogger
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__

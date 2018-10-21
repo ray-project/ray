@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import os
+import logging
 import pickle
 import tempfile
 from datetime import datetime
@@ -18,7 +19,6 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.rllib.utils import RLLIB_LOGGER
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -262,7 +262,7 @@ class Agent(Trainable):
                                     self._allow_unknown_subkeys)
         self.config = merged_config
         if self.config["log_level"]:
-            RLLIB_LOGGER.setLevel(self.config["log_level"])
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():

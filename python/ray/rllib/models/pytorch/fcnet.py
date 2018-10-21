@@ -2,13 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 from ray.rllib.models.pytorch.model import Model, SlimFC
 from ray.rllib.models.pytorch.misc import normc_initializer
 import torch.nn as nn
 
-from ray.rllib.utils import getLogger
-
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FullyConnectedNetwork(Model):

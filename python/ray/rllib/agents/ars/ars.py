@@ -7,19 +7,19 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
 import numpy as np
 import time
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.rllib.utils import getLogger
 from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import utils
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",

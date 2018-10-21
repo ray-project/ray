@@ -1,16 +1,16 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import cv2
+import logging
 import numpy as np
 import gym
-
-from ray.rllib.utils import getLogger
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Preprocessor(object):

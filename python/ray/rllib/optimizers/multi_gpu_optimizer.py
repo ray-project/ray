@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 from collections import defaultdict
 import tensorflow as tf
@@ -11,9 +12,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils import getLogger
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class LocalMultiGPUOptimizer(PolicyOptimizer):
