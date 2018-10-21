@@ -23,10 +23,35 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 # yapf: disable
 # __sphinx_doc_begin__
 COMMON_CONFIG = {
+    # === Debugging ===
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
+    # Set the RLlib log level for the agent process and its remote evaluators
+    "log_level": "INFO",
+
+    # === Policy ===
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
+    "optimizer": {},
+
+    # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
     # Number of steps after which the episode is forced to terminate
     "horizon": None,
+    # Arguments to pass to the env creator
+    "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
+    # Whether to use rllib or deepmind preprocessors by default
+    "preprocessor_pref": "deepmind",
+
+    # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
     # Number of actors used for parallelism
@@ -44,20 +69,6 @@ COMMON_CONFIG = {
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
-    "clip_rewards": None,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
-    # Arguments to pass to the env creator
-    "env_config": {},
-    # Environment name can also be passed via config
-    "env": None,
-    # Arguments to pass to model. See models/catalog.py for a full list of the
-    # available model options.
-    "model": MODEL_DEFAULTS,
-    # Arguments to pass to the policy optimizer. These vary by optimizer.
-    "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
         # note: parallelism_threads is set to auto for the local evaluator
@@ -74,10 +85,6 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Whether to write episode stats and videos to the agent log dir
-    "monitor": False,
-    # Set the Python log level for this agent and its remote evaluators
-    "log_level": "INFO",
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
 
