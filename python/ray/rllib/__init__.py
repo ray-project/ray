@@ -21,8 +21,9 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 def _setup_logger():
     logger = logging.getLogger("ray.rllib")
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        "%(levelname)s %(filename)s:%(lineno)s -- %(message)s"))
+    handler.setFormatter(
+        logging.Formatter(
+            "%(levelname)s %(filename)s:%(lineno)s -- %(message)s"))
     logger.addHandler(handler)
     logger.propagate = False
 
