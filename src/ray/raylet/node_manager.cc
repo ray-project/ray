@@ -1370,6 +1370,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
+    const auto driver_id = task.GetTaskSpecification().DriverId();
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
@@ -1377,11 +1378,10 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     actor_notification->actor_id = actor_id.binary();
     actor_notification->actor_creation_dummy_object_id =
         task.GetTaskSpecification().ActorDummyObject().binary();
-    // TODO(swang): The driver ID.
-    actor_notification->driver_id = JobID::nil().binary();
+    actor_notification->driver_id = driver_id.binary();
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
-    auto driver_id = task.GetTaskSpecification().DriverId();
+
     RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
                    << " driver_id: " << driver_id;
     RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
