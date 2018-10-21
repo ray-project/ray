@@ -13,7 +13,7 @@ from ray.experimental.sgd.sgd import DistributedSGD
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--num-iters", default=100, type=int, help="Number of iterations to run")
+    "--num-iters", default=10, type=int, help="Number of iterations to run")
 parser.add_argument("--batch-size", default=1, type=int, help="SGD batch size")
 parser.add_argument("--num-workers", default=2, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
@@ -39,13 +39,19 @@ if __name__ == "__main__":
         gpu=args.gpu,
         strategy=args.strategy)
 
+    t = []
+
     for i in range(args.num_iters):
         start = time.time()
         fetch_stats = i % args.stats_interval == 0
         print("== Step {} ==".format(i))
         stats = sgd.step(fetch_stats=fetch_stats)
-        print("Images per second",
-              (args.batch_size * args.num_workers * args.devices_per_worker) /
-              (time.time() - start))
+        ips = ((args.batch_size * args.num_workers * args.devices_per_worker) /
+               (time.time() - start))
+        print("Iteration time", time.time() - start, "Images per second", ips)
+        t.append(ips)
         if fetch_stats:
             print("Current loss", stats)
+
+    print("Peak throughput",
+          max([np.sum(t[i:i + 5]) / 5 for i in range(len(t))]))
