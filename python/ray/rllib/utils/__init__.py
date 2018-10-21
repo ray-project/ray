@@ -9,7 +9,7 @@ from ray.rllib.utils.policy_server import PolicyServer
 
 __all__ = ["Filter", "FilterManager", "PolicyClient", "PolicyServer"]
 
-RLLIB_LOGGER = logging.getLogger(__name__)
+RLLIB_LOGGER = logging.getLogger("ray.rllib")
 
 
 def getLogger(*args, **kwargs):
