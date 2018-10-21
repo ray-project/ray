@@ -16,6 +16,7 @@ parser.add_argument("--redis-address", default=None, type=str)
 parser.add_argument("--num-iters", default=10, type=int)
 parser.add_argument("--batch-size", default=1, type=int)
 parser.add_argument("--num-workers", default=2, type=int)
+parser.add_argument("--max-shard-bytes", default=10000000, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
 parser.add_argument("--stats-interval", default=10, type=int)
 parser.add_argument(
@@ -36,7 +37,8 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         devices_per_worker=args.devices_per_worker,
         gpu=args.gpu,
-        strategy=args.strategy)
+        strategy=args.strategy,
+        max_shard_bytes=args.max_shard_bytes)
 
     t = []
 
