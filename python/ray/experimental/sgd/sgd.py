@@ -258,7 +258,8 @@ class ParameterServer(object):
         self.num_sgd_workers = num_workers
         self.acc_counter = 0
         self.timeline = Timeline(tid)
-#        self.timeline.patch_ray()
+        # TODO(ekl) get this to work again so we get ray events
+        # self.timeline.patch_ray()
 
     def set_tid(self, tid):
         self.timeline.tid = tid
