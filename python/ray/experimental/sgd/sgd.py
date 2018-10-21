@@ -235,11 +235,14 @@ class SGDWorker(object):
                  oid) in zip(self.plasma_out_grads_oids, agg_grad_shard_oids)
         })
         fetch(agg_grad_shard_oids)
-        run_timeline(
-            self.sess,
-            [self.plasma_in_grads, self.apply_op, self.nccl_control_out],
+        fetches = run_timeline(
+            self.sess, [
+                self.models[0].loss, self.plasma_in_grads, self.apply_op,
+                self.nccl_control_out
+            ],
             feed_dict=feed_dict,
             write_timeline=write_timeline)
+        return fetches[0]
 
     def num_grad_shards(self):
         return self.num_grads
@@ -359,20 +362,24 @@ def simple_sgd_step(actors):
     return np.mean(losses)
 
 
-def distributed_sgd_step(actors, ps_list, write_timeline):
+def distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
     # Preallocate object ids that actors will write gradient shards to
     grad_shard_oids_list = [[np.random.bytes(20) for _ in ps_list]
                             for _ in actors]
-    logger.info("generated grad oids")
+    logger.info("Generated grad oids")
 
     # Preallocate object ids that param servers will write new weights to
     accum_shard_ids = [np.random.bytes(20) for _ in ps_list]
-    logger.info("generated accum oids")
+    logger.info("Generated accum oids")
 
     # Kick off the fused compute grad / update weights tf run for each actor
+    losses = []
     for actor, grad_shard_oids in zip(actors, grad_shard_oids_list):
-        actor.ps_compute_apply.remote(
-            grad_shard_oids, accum_shard_ids, write_timeline=write_timeline)
+        losses.append(
+            actor.ps_compute_apply.remote(
+                grad_shard_oids,
+                accum_shard_ids,
+                write_timeline=write_timeline))
     logger.info("Launched all ps_compute_applys on all actors")
 
     # Issue prefetch ops
@@ -405,6 +412,10 @@ def distributed_sgd_step(actors, ps_list, write_timeline):
     else:
         # Wait for at least the ps gets to finish
         ray.get(ps_gets)
+    if fetch_stats:
+        return np.mean(ray.get(losses))
+    else:
+        return None
 
 
 class DistributedSGD(object):
@@ -470,8 +481,12 @@ class DistributedSGD(object):
             out.extend(r)
         return r
 
-    def step(self):
+    def step(self, fetch_stats=False):
         if self.strategy == "ps":
-            return distributed_sgd_step(self.workers, self.ps_list, False)
+            return distributed_sgd_step(
+                self.workers,
+                self.ps_list,
+                write_timeline=False,
+                fetch_stats=fetch_stats)
         else:
             return simple_sgd_step(self.workers)

@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import time
 
 import ray
 from ray.experimental.sgd.tfbench.test_model import TFBenchModel
@@ -16,8 +17,9 @@ parser.add_argument(
 parser.add_argument("--batch-size", default=1, type=int, help="SGD batch size")
 parser.add_argument("--num-workers", default=2, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
+parser.add_argument("--stats-interval", default=10, type=int)
 parser.add_argument(
-    "--strategy", default="simple", type=str, help="One of 'simple' or 'ps'")
+    "--strategy", default="ps", type=str, help="One of 'simple' or 'ps'")
 parser.add_argument(
     "--gpu", action="store_true", help="Use GPUs for optimization")
 
@@ -38,6 +40,12 @@ if __name__ == "__main__":
         strategy=args.strategy)
 
     for i in range(args.num_iters):
-        print("Step", i)
-        loss = sgd.step()
-        print("Current loss", loss)
+        start = time.time()
+        fetch_stats = i % args.stats_interval == 0
+        print("== Step {} ==".format(i))
+        stats = sgd.step(fetch_stats=fetch_stats)
+        print("Images per second",
+              (args.batch_size * args.num_workers * args.devices_per_worker) /
+              (time.time() - start))
+        if fetch_stats:
+            print("Current loss", stats)
