@@ -80,7 +80,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // pair = ClientID, SchedulingResources
         ClientID node_client_id = client_resource_pair2.first;
         const auto &node_resources = client_resource_pair2.second;
-        if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
+        if (resource_demand.IsSubset(node_resources.GetAvailableResources())) {
           // This node is a feasible candidate.
           client_keys.push_back(node_client_id);
         }
@@ -127,7 +127,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
     if (spec.GetRequiredPlacementResources().IsSubset(
-            remote_scheduling_resources.GetTotalResources())) {
+            remote_scheduling_resources.GetAvailableResources())) {
       decision.push_back(spec.TaskId());
       new_load.AddResources(spec.GetRequiredResources());
     }
@@ -137,7 +137,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       if (spec.GetRequiredPlacementResources().IsSubset(
-              remote_scheduling_resources.GetTotalResources())) {
+              remote_scheduling_resources.GetAvailableResources())) {
         decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());
         break;
