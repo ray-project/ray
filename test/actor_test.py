@@ -922,25 +922,55 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
     @ray.remote
-    def create_actors(n):
+    def create_actors(i, n):
         @ray.remote(num_gpus=1)
         class Actor(object):
-            def __init__(self):
+            def __init__(self, i, j):
                 self.gpu_ids = ray.get_gpu_ids()
+                print("created actor", i, j, self.gpu_ids)
 
             def get_location_and_ids(self):
                 return ((
                     ray.worker.global_worker.plasma_client.store_socket_name),
-                        tuple(self.gpu_ids))
+                    tuple(self.gpu_ids))
+
+            def sleep(self):
+                time.sleep(100)
 
         # Create n actors.
-        for _ in range(n):
-            Actor.remote()
+        actors = []
+        for j in range(n):
+            actors.append(Actor.remote(i, j))
 
-    ray.get([
-        create_actors.remote(num_gpus_per_scheduler)
-        for _ in range(num_local_schedulers)
+        locations = ray.get([actor.get_location_and_ids.remote() for actor in
+                             actors])
+        print("got locations", i)
+
+        # Put each actor to sleep for a long time to prevent them from getting
+        # terminated.
+        for actor in actors:
+            actor.sleep.remote()
+        print("sleeping", i)
+
+        return locations
+
+    all_locations = ray.get([
+        create_actors.remote(i, num_gpus_per_scheduler)
+        for i in range(num_local_schedulers)
     ])
+
+    # Make sure that no two actors are assigned to the same GPU.
+    node_names = {location for locations in all_locations for location, gpu_id
+                  in locations}
+    assert len(node_names) == num_local_schedulers
+
+    # Keep track of which GPU IDs are being used for each location.
+    gpus_in_use = {node_name: [] for node_name in node_names}
+    for locations in all_locations:
+        for location, gpu_ids in locations:
+            gpus_in_use[location].extend(gpu_ids)
+    for node_name in node_names:
+        assert len(set(gpus_in_use[node_name])) == num_gpus_per_scheduler
 
     @ray.remote(num_gpus=1)
     class Actor(object):

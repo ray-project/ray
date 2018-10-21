@@ -451,7 +451,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
   for (const auto &heartbeat_data : heartbeat_batch.batch) {
-    ClientID client_id = ClientID::from_binary(heartbeat_data->client_id);
+    const ClientID &client_id = ClientID::from_binary(heartbeat_data->client_id);
     HeartbeatAdded(client_id, *heartbeat_data);
   }
 }
