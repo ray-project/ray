@@ -12,9 +12,9 @@ from ray.experimental.sgd.tfbench.test_model import TFBenchModel
 from ray.experimental.sgd.sgd import DistributedSGD
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--num-iters", default=10, type=int, help="Number of iterations to run")
-parser.add_argument("--batch-size", default=1, type=int, help="SGD batch size")
+parser.add_argument("--redis-address", default=None, type=str)
+parser.add_argument("--num-iters", default=10, type=int)
+parser.add_argument("--batch-size", default=1, type=int)
 parser.add_argument("--num-workers", default=2, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
 parser.add_argument("--stats-interval", default=10, type=int)
@@ -24,7 +24,7 @@ parser.add_argument(
     "--gpu", action="store_true", help="Use GPUs for optimization")
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(redis_address=args.redis_address)
 
     args, _ = parser.parse_known_args()
 
@@ -54,4 +54,4 @@ if __name__ == "__main__":
             print("Current loss", stats)
 
     print("Peak throughput",
-          max([np.sum(t[i:i + 5]) / 5 for i in range(len(t))]))
+          max([sum(t[i:i + 5]) / 5 for i in range(len(t))]))
