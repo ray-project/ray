@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
@@ -16,6 +18,14 @@ from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
+def _setup_logger():
+    logger = logging.getLogger("ray.rllib")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+
 def _register_all():
 
     for key in [
@@ -27,6 +37,7 @@ def _register_all():
         register_trainable(key, get_agent_class(key))
 
 
+_setup_logger()
 _register_all()
 
 __all__ = [
