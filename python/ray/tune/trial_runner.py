@@ -114,6 +114,10 @@ class TrialRunner(object):
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
+        elif self.is_finished():
+            # We check `is_finished` again here because the experiment
+            # may have finished while getting the next trial.
+            pass
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
