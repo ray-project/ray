@@ -8,6 +8,7 @@ from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default
@@ -15,8 +16,8 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate
     "lr": 0.0004,
 })
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class PGAgent(Agent):

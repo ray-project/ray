@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import logging
 import numpy as np
 import tensorflow as tf
 from functools import partial
@@ -21,6 +22,9 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
 # __sphinx_doc_begin__
 MODEL_DEFAULTS = {
     # === Built-in options ===
@@ -67,8 +71,8 @@ MODEL_DEFAULTS = {
     # Extra options to pass to the custom classes
     "custom_options": {},
 }
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class ModelCatalog(object):
@@ -200,7 +204,7 @@ class ModelCatalog(object):
                    seq_lens):
         if options.get("custom_model"):
             model = options["custom_model"]
-            print("Using custom model {}".format(model))
+            logger.info("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 input_dict,
                 obs_space,
@@ -238,7 +242,7 @@ class ModelCatalog(object):
         options = options or MODEL_DEFAULTS
         if options.get("custom_model"):
             model = options["custom_model"]
-            print("Using custom torch model {}".format(model))
+            logger.info("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 input_shape, num_outputs, options)
 
@@ -271,7 +275,7 @@ class ModelCatalog(object):
 
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
-            print("Using custom preprocessor {}".format(preprocessor))
+            logger.info("Using custom preprocessor {}".format(preprocessor))
             return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 

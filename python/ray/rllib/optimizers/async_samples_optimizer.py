@@ -6,6 +6,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import random
 import time
@@ -19,6 +20,8 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+
+logger = logging.getLogger(__name__)
 
 LEARNER_QUEUE_MAX_SIZE = 16
 NUM_DATA_LOAD_THREADS = 16
@@ -84,7 +87,7 @@ class TFMultiGPULearner(LearnerThread):
             self.devices = ["/cpu:0"]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
-            print("TFMultiGPULearner devices", self.devices)
+            logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
         self.policy = self.local_evaluator.policy_map["default"]
@@ -199,7 +202,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
 
         if num_gpus > 1 or num_parallel_data_loaders > 1:
-            print(
+            logger.info(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
                     num_gpus, num_parallel_data_loaders))
             if train_batch_size // max(1, num_gpus) % (

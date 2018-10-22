@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import logging
 import pickle
 import tensorflow as tf
 
@@ -99,7 +100,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
-                 monitor_path=None):
+                 monitor_path=None,
+                 log_level=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -158,7 +160,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_level (str): Set the root log level on creation.
         """
+
+        if log_level:
+            logging.getLogger("ray.rllib").setLevel(log_level)
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
