@@ -67,3 +67,8 @@ bash "$TP_SCRIPT_DIR/build_ui.sh"
 # rDSN (optional)
 ##############################################
 # bash "$TP_SCRIPT_DIR/build_rdsn.sh"
+
+##############################################
+# modin
+##############################################
+bash "$TP_SCRIPT_DIR/build_modin.sh"
