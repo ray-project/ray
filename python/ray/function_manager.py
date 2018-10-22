@@ -3,8 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
+import importlib
 import inspect
 import json
+import logging
 import time
 import traceback
 from collections import (
@@ -17,6 +19,7 @@ from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray.utils import (
+    binary_to_hex,
     is_cython,
     is_function_or_method,
     is_class_method,
@@ -32,6 +35,7 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 
 # Avoid circle import of worker.py.
 NIL_FUNCTION_ID = ray_constants.NIL_JOB_ID
+logger = logging.getLogger(__name__)
 
 
 class FunctionDescriptor(object):
@@ -55,7 +59,8 @@ class FunctionDescriptor(object):
 
     def __repr__(self):
         return ("FunctionDescriptor:" + self._module_name + "." +
-                self._class_name + "." + self._function_name)
+                self._class_name + "." + self._function_name + "." +
+                binary_to_hex(self._function_source_hash))
 
     @classmethod
     def from_bytes_list(cls, function_descriptor_list):
@@ -67,13 +72,16 @@ class FunctionDescriptor(object):
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
             return cls("", "", "", b"", True)
-        elif len(function_descriptor_list) == 4:
+        elif (len(function_descriptor_list) == 3 or
+            len(function_descriptor_list) == 4):
             module_name = function_descriptor_list[0].decode()
             class_name = function_descriptor_list[1].decode()
             function_name = function_descriptor_list[2].decode()
-            function_source_hash = function_descriptor_list[3]
-            return cls(module_name, function_name, class_name,
-                       function_source_hash)
+            if len(function_descriptor_list) == 4:
+                return cls(module_name, function_name, class_name,
+                           function_descriptor_list[3])
+            else:
+                return cls(module_name, function_name, class_name)
         else:
             raise Exception(
                 "Invalid input for FunctionDescriptor.from_bytes_list")
@@ -107,6 +115,13 @@ class FunctionDescriptor(object):
                    function_source_hash)
 
     @classmethod
+    def from_class(cls, target_class):
+        """Create a FunctionDescriptorm for a class."""
+        module_name = target_class.__module__
+        class_name = target_class.__name__
+        return cls(module_name, "", class_name)
+
+    @classmethod
     def create_driver_task(cls):
         return cls("", "", "", b"", True)
 
@@ -136,6 +151,12 @@ class FunctionDescriptor(object):
     def function_id(self):
         return ray.ObjectID(self._function_id)
 
+    def get_actor_descriptor(self):
+        """ FunctionDescriptor: a function descriptor
+        Return a function descriptor that represent a actor uniquely.
+        """
+        return self.__class__(self.module_name, "", self.class_name)
+
     def _get_function_id(self):
         """str: The function id of the function.
         This function id is calculated from all the fields of function
@@ -164,7 +185,8 @@ class FunctionDescriptor(object):
             descriptor_list.append(self.module_name.encode("ascii"))
             descriptor_list.append(self.class_name.encode("ascii"))
             descriptor_list.append(self.function_name.encode("ascii"))
-            descriptor_list.append(self._function_source_hash)
+            if len(self._function_source_hash) != 0:
+                descriptor_list.append(self._function_source_hash)
             return descriptor_list
 
 
@@ -194,6 +216,11 @@ class FunctionActorManager(object):
         # workers that execute remote functions.
         self._function_execution_info = defaultdict(lambda: {})
         self._num_task_executions = defaultdict(lambda: {})
+        # A set of all of the actor class keys that have been imported by the
+        # import thread. It is safe to convert this worker into an actor of
+        # these types.
+        self.imported_actor_classes = set()
+        self._loaded_actor_classes = {}
 
     def increase_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id.id()
@@ -262,7 +289,6 @@ class FunctionActorManager(object):
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
-
         key = (b"RemoteFunction:" + self._worker.task_driver_id.id() + b":" +
                remote_function._function_descriptor.function_id.id())
         self._worker.redis_client.hmset(
@@ -342,13 +368,16 @@ class FunctionActorManager(object):
         Returns:
             A FunctionExecutionInfo object.
         """
-        # Wait until the function to be executed has actually been registered
-        # on this worker. We will push warnings to the user if we spend too
-        # long in this loop.
+        function_id = function_descriptor.function_id.id()
+
+        # Wait until the function to be executed has actually been
+        # registered on this worker. We will push warnings to the user if
+        # we spend too long in this loop.
+        # The driver function may not be found in worker lib path. Try to load
+        # the function from GCS.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_descriptor, driver_id)
-        return self._function_execution_info[driver_id][
-            function_descriptor.function_id.id()]
+        return self._function_execution_info[driver_id][function_id]
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -410,9 +439,9 @@ class FunctionActorManager(object):
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, class_id, Class, actor_method_names,
+    def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
-        func_desc = FunctionDescriptor(Class.__module__, Class.__name__, Class.__name__)
+        func_desc = FunctionDescriptor.from_class(Class)
         key = b"ActorClass:" + func_desc.function_id.id()
         actor_class_info = {
             "class_name": Class.__name__,
@@ -442,6 +471,20 @@ class FunctionActorManager(object):
             # within tasks. I tried to disable this, but it may be necessary
             # because of https://github.com/ray-project/ray/issues/1146.
 
+    def load_actor(self, driver_id, function_descriptor):
+        function_id = function_descriptor.function_id.id()
+        actor_class = self._loaded_actor_classes.get(function_id, None)
+        if actor_class is None:
+            key = b"ActorClass:" + function_descriptor.function_id.id()
+            # Wait for the actor class key to have been imported by the
+            # import thread. TODO(rkn): It shouldn't be possible to end
+            # up in an infinite loop here, but we should push an error to
+            # the driver if too much time is spent here.
+            while key not in self.imported_actor_classes:
+                time.sleep(0.001)
+            with self._worker.lock:
+                self.fetch_and_register_actor(key)
+
     def fetch_and_register_actor(self, actor_class_key):
         """Import an actor.
 
@@ -454,11 +497,11 @@ class FunctionActorManager(object):
             worker: The worker to use.
         """
         actor_id_str = self._worker.actor_id
-        (driver_id, class_id, class_name, module, pickled_class,
+        (driver_id, class_name, module, pickled_class,
          checkpoint_interval,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [
-                 "driver_id", "class_id", "class_name", "module", "class",
+                 "driver_id", "class_name", "module", "class",
                  "checkpoint_interval", "actor_method_names"
              ])
 

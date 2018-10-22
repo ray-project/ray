@@ -388,6 +388,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *arguments;
   // Number of return values of this task.
   int num_returns;
+  // Task language type enum number.
+  int language = static_cast<int>(Language::PYTHON);
   // The ID of the task that called this task.
   TaskID parent_task_id;
   // The number of tasks that the parent task has called prior to this one.
@@ -408,14 +410,15 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // Function descriptor.
   std::vector<std::string> function_descriptor;
   if (!PyArg_ParseTuple(
-          args, "O&O&OiO&i|O&O&O&O&iOOOOO", &PyObjectToUniqueID, &driver_id,
+          args, "O&O&OiO&i|O&O&O&O&iOOOOOi", &PyObjectToUniqueID, &driver_id,
           &PyListStringToFunctionDescriptor, &function_descriptor, &arguments,
           &num_returns, &PyObjectToUniqueID, &parent_task_id, &parent_counter,
           &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
           &actor_creation_dummy_object_id, &PyObjectToUniqueID, &actor_id,
           &PyObjectToUniqueID, &actor_handle_id, &actor_counter,
           &is_actor_checkpoint_method_object, &execution_arguments,
-          &resource_map, &placement_resource_map, &use_raylet_object)) {
+          &resource_map, &placement_resource_map, &use_raylet_object,
+          &language)) {
     return -1;
   }
 
@@ -493,6 +496,12 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   } else {
     // The raylet code path.
+    if (language > static_cast<int>(Language::MAX) ||
+        language < static_cast<int>(Language::MIN)) {
+      PyErr_SetString(PyExc_TypeError,
+                      "the keys in resource_map must be strings");
+      return -1;
+    }
 
     // Parse the arguments from the list.
     std::vector<std::shared_ptr<ray::raylet::TaskArgument>> args;
@@ -518,7 +527,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
         driver_id, parent_task_id, parent_counter, actor_creation_id,
         actor_creation_dummy_object_id, actor_id, actor_handle_id,
         actor_counter, args, num_returns, required_resources,
-        required_placement_resources, Language::PYTHON, function_descriptor);
+        required_placement_resources, static_cast<Language>(language),
+        function_descriptor);
   }
 
   /* Set the task's execution dependencies. */

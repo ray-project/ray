@@ -46,6 +46,11 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 PYTHON_MODE = 3
 
+# This definition should be the same with gcs.fbs.
+LANGUAGE_PYTHON = 0
+LANGUAGE_CPP = 1
+LANGUAGE_JAVA = 2
+
 ERROR_KEY_PREFIX = b"Error:"
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
@@ -207,10 +212,6 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
-        # A set of all of the actor class keys that have been imported by the
-        # import thread. It is safe to convert this worker into an actor of
-        # these types.
-        self.imported_actor_classes = set()
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -550,7 +551,8 @@ class Worker(object):
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
-                    driver_id=None):
+                    driver_id=None,
+                    language=LANGUAGE_PYTHON):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with
@@ -647,7 +649,7 @@ class Worker(object):
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
                 execution_dependencies, resources, placement_resources,
-                self.use_raylet)
+                self.use_raylet, language)
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -798,7 +800,8 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if task.actor_id().id() != NIL_ACTOR_ID:
+        if (task.actor_id().id() != NIL_ACTOR_ID or
+                task.actor_creation_id().id() != NIL_ACTOR_ID):
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -823,11 +826,16 @@ class Worker(object):
         # Execute the task.
         try:
             with profiling.profile("task:execute", worker=self):
-                if task.actor_id().id() == NIL_ACTOR_ID:
+                if (task.actor_id().id() == NIL_ACTOR_ID and
+                        task.actor_creation_id().id() == NIL_ACTOR_ID):
                     outputs = function_executor(*arguments)
                 else:
+                    if task.actor_id().id() != NIL_ACTOR_ID:
+                        key = task.actor_id().id()
+                    else:
+                        key = task.actor_creation_id().id()
                     outputs = function_executor(
-                        dummy_return_id, self.actors[task.actor_id().id()],
+                        dummy_return_id, self.actors[key],
                         *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
@@ -879,36 +887,6 @@ class Worker(object):
         if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
             self.mark_actor_init_failed(error)
 
-    def _become_actor(self, task):
-        """Turn this worker into an actor.
-
-        Args:
-            task: The actor creation task.
-        """
-        assert self.actor_id == NIL_ACTOR_ID
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            task.function_descriptor_list())
-        actor_descriptor = FunctionDescriptor(function_descriptor.module_name,
-                                              function_descriptor.class_name,
-                                              function_descriptor.class_name)
-        
-        arguments = task.arguments()
-        assert len(arguments) == 1
-        self.actor_id = task.actor_creation_id().id()
-        class_id = actor_descriptor.function_id.id()
-
-        key = b"ActorClass:" + class_id
-
-        # Wait for the actor class key to have been imported by the import
-        # thread. TODO(rkn): It shouldn't be possible to end up in an infinite
-        # loop here, but we should push an error to the driver if too much time
-        # is spent here.
-        while key not in self.imported_actor_classes:
-            time.sleep(0.001)
-
-        with self.lock:
-            self.function_actor_manager.fetch_and_register_actor(key)
-
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
 
@@ -922,15 +900,15 @@ class Worker(object):
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
         if (task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID)):
-            assert function_descriptor.function_name == "__init__"
-            print("Received actor __init__ task")
-            self._become_actor(task)
-            #return
-        elif function_descriptor.function_name == "__init__":
-            print("Received actor __init__ task but actor_creation_id is NIL")
-        else:
-            print("_wait_for_and_process_task: %s" % function_descriptor)
-
+            assert self.actor_id == NIL_ACTOR_ID
+            self.actor_id = task.actor_creation_id().id()
+            self.function_actor_manager.load_actor(
+                driver_id, function_descriptor.get_actor_descriptor())
+            # Check whether this actor has __init__ function.
+            if len(function_descriptor.function_name) == 0:
+                return
+            else:
+                assert function_descriptor.function_name == "__init__"
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
