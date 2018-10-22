@@ -20,12 +20,15 @@ import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.Serializer;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A mock implementation of RayletClient, used in single process mode.
  */
 public class MockRayletClient implements RayletClient {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MockRayletClient.class);
 
   // tasks wait to be executed
   private final Map<UniqueId, TaskSpec> waitingTasks = new ConcurrentHashMap<>();
@@ -57,20 +60,23 @@ public class MockRayletClient implements RayletClient {
         runtime.getWorker().execute(task);
         //to simulate raylet's backend
         UniqueId[] returnIds = task.returnIds;
-        store.put(returnIds[returnIds.length - 1].getBytes(), Serializer.encode(new Object()),null);
+        store.put(returnIds[returnIds.length - 1].getBytes(),
+                Serializer.encode(new Object()), null);
       });
     } else {
       waitingTasks.put(id,task);
     }
   }
 
-  //check is every object that this task needs is ready
+  /**
+   * check is every object that this task needs is ready.
+   */
   private UniqueId getUnreadyObject(TaskSpec spec) {
     //check whether the arguments which this task needs is ready
     for (FunctionArg arg : spec.args) {
       if (arg.id != null) {
         if (!store.isObjectReady(arg.id)) {
-          // is this objectId doesn't exist in store ,then return this objectId
+          // if this objectId doesn't exist in store ,then return this objectId
           return arg.id;
         }
       }
@@ -114,25 +120,22 @@ public class MockRayletClient implements RayletClient {
     try {
       Future future = exec.submit(() -> {
         int trueCount = 0;
-        while (true) {
+        while (trueCount < numReturns) {
           for (int i = 0; i < ids.size(); i++) {
             if (!ready[i] && store.isObjectReady(ids.get(i))) {
               ready[i] = true;
               ++trueCount;
-            }
-            if (trueCount == numReturns) {
-              return;
             }
           }
         }
       });
       future.get(timeoutMs,TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
-      RayLog.core.error("ray wait timeout, there may not be enough RayObject ready");
+      LOGGER.error("ray wait timeout, there may not be enough RayObject ready");
     } catch (InterruptedException e) {
-      RayLog.core.error("ray wait is interrupted",e);
+      LOGGER.error("ray wait is interrupted", e);
     } catch (ExecutionException e) {
-      RayLog.core.error("ray wait error",e);
+      LOGGER.error("ray wait error", e);
     }
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();

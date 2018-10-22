@@ -53,8 +53,10 @@ public class RayConfig {
   public final String rayletExecutablePath;
   public final String driverResourcePath;
 
-  // number of threads that  processing tasks under SINGLE_PROCESS mode
-  public final int numberExecThreads;
+  /**
+   * number of threads that processing tasks under SINGLE_PROCESS mode.
+   */
+  public final int numberExecThreadsForDevRuntime;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -168,7 +170,7 @@ public class RayConfig {
     }
 
     // number of threads that  processing tasks under SINGLE_PROCESS mode
-    numberExecThreads = config.getInt("ray.dev-runtime.execution-parallelism");
+    numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
     // validate config
     validate();
