@@ -458,7 +458,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   // Update local registry.
   auto it = actor_registry_.find(actor_id);
   if (it == actor_registry_.end()) {
-    actor_registry_.emplace(actor_id, actor_registration);
+    it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
     it->second = actor_registration;
   }
@@ -467,7 +467,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
     // Extend the frontier to include the actor creation task. NOTE(swang): The
     // creator of the actor is always assigned nil as the actor handle ID.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
-    actor_registry_.find(actor_id)->second.ExtendFrontier(
+    it->second.ExtendFrontier(
         ActorHandleID::nil(), actor_registration.GetActorCreationDependency());
 
     // The actor's location is now known. Dequeue any methods that were
@@ -1420,8 +1420,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
-    const auto driver_id = task.GetTaskSpecification().DriverId();
-
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     int remaining_reconstructions;
