@@ -383,6 +383,9 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   for (const auto &actor_entry : actor_registry_) {
     if (actor_entry.second.GetNodeManagerId() == client_id &&
         actor_entry.second.GetState() == ActorState::ALIVE) {
+      RAY_LOG(DEBUG) << "Actor " << actor_entry.first
+                     << " is disconnected, because its node " << client_id
+                     << " is removed from cluster. Trying to reconstruct it.";
       HandleDisconnectedActor(actor_entry.first, false);
     }
   }

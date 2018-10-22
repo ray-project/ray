@@ -73,7 +73,7 @@ class Cluster(object):
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
                 services.all_processes[key] = []
-            node = Node(process_dict_copy)
+            node = Node(address_info, process_dict_copy)
             self.head_node = node
         else:
             address_info = services.start_ray_node(
@@ -83,7 +83,7 @@ class Cluster(object):
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
                 services.all_processes[key] = []
-            node = Node(process_dict_copy)
+            node = Node(address_info, process_dict_copy)
             self.worker_nodes[node] = address_info
         logging.info("Starting Node with raylet socket {}".format(
             address_info["raylet_socket_names"]))
@@ -159,8 +159,9 @@ class Cluster(object):
 class Node(object):
     """Abstraction for a Ray node."""
 
-    def __init__(self, process_dict):
+    def __init__(self, address_info, process_dict):
         # TODO(rliaw): Is there a unique identifier for a node?
+        self.address_info = address_info
         self.process_dict = process_dict
 
     def kill_plasma_store(self):

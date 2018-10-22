@@ -70,3 +70,62 @@ def test_worker_plasma_store_failure(start_connected_cluster):
     worker.kill_plasma_store()
     worker.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
     assert not worker.any_processes_alive(), worker.live_processes()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_actor_reconstruction(start_connected_cluster):
+    """Test actor reconstruction when node dies unexpectedly."""
+    cluster = start_connected_cluster
+    # Add a few nodes to the cluster.
+    # Use custom resource to make sure the actor is only created on worker
+    # nodes, not on the head node.
+    nodes = [cluster.add_node(resources={'a': 1}) for _ in range(4)]
+
+    # This actor will be reconstructed at most once.
+    @ray.remote(max_reconstructions=1, resources={'a': 1})
+    class MyActor(object):
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get_raylet_socket(self):
+            return ray.worker.global_worker.raylet_socket
+
+    # This actor will be created on the only node in the cluster.
+    actor = MyActor.remote()
+
+    def kill_node():
+        # Kill the node that the actor reside on.
+        # Return node's raylet socket name.
+        raylet_socket = ray.get(actor.get_raylet_socket.remote())
+        node_to_remove = None
+        for node in cluster.worker_nodes:
+            if raylet_socket in node.address_info['raylet_socket_names']:
+                node_to_remove = node
+        cluster.remove_node(node_to_remove)
+        return raylet_socket
+
+    # Call increase 3 times
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    # Kill actor's node and the actor should be reconstructed on another node
+    raylet_socket1 = kill_node()
+
+    # Call increase again.
+    # Check that actor is reconstructed and value is 4.
+    assert ray.get(actor.increase.remote()) == 4
+
+    # Kill the node again.
+    raylet_socket2 = kill_node()
+    # Check the actor was created on a different node.
+    assert raylet_socket1 != raylet_socket2
+
+    # The actor has exceeded max reconstructions, and this task should fail.
+    with pytest.raises(ray.worker.RayGetError):
+        ray.get(actor.increase.remote())

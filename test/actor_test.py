@@ -2145,7 +2145,6 @@ def test_creating_more_actors_than_resources(shutdown_only):
     reason="This test only works for xray.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
-
     # This actor will be reconstructed at most once.
     @ray.remote(max_reconstructions=1)
     class MyActor(object):
@@ -2170,7 +2169,7 @@ def test_actor_reconstruction(ray_start_regular):
     time.sleep(1)
 
     # Call increase again.
-    # Actor should be reconstructed and value should be 4.
+    # Check that actor is reconstructed and value is 4.
     assert ray.get(actor.increase.remote()) == 4
 
     # kill actor process one more time.

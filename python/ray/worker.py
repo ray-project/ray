@@ -2134,9 +2134,9 @@ def connect(info,
             plasma.connect(info["store_socket_name"], "", 64))
 
     if not worker.use_raylet:
-        local_scheduler_socket = info["local_scheduler_socket_name"]
+        worker.local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
-        local_scheduler_socket = info["raylet_socket_name"]
+        worker.raylet_socket = info["raylet_socket_name"]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2197,6 +2197,8 @@ def connect(info,
         # A non-driver worker begins without an assigned task.
         worker.current_task_id = ray.ObjectID(NIL_ID)
 
+    local_scheduler_socket = (worker.raylet_socket
+                              if use_raylet else worker.local_scheduler_socket)
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
         local_scheduler_socket, worker.worker_id, is_worker,
         worker.current_task_id, worker.use_raylet)
