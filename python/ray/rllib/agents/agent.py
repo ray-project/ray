@@ -267,7 +267,7 @@ class Agent(Trainable):
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
-        if self.config["log_level"]:
+        if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
