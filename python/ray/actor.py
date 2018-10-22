@@ -261,8 +261,21 @@ class ActorClass(object):
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
+        # Assign an __init__ function will avoid many checks later on.
+        def __init__(self):
+            pass
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
+        self._actor_method_names = [
+            method_name for method_name, _ in self._actor_methods
+        ]
+        if "__init__" not in self._actor_method_names:
+            self._modified_class.__init__ = __init__
+            self._actor_methods = inspect.getmembers(
+                self._modified_class, ray.utils.is_function_or_method)
+            self._actor_method_names = [
+                method_name for method_name, _ in self._actor_methods
+            ]
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
@@ -276,7 +289,6 @@ class ActorClass(object):
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not ray.utils.is_class_method(method))
-
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
                 self._actor_method_num_return_vals[method_name] = (
@@ -284,10 +296,6 @@ class ActorClass(object):
             else:
                 self._actor_method_num_return_vals[method_name] = (
                     DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
-
-        self._actor_method_names = [
-            method_name for method_name, _ in self._actor_methods
-        ]
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
@@ -349,8 +357,7 @@ class ActorClass(object):
         if worker.mode == ray.LOCAL_MODE:
             worker.actors[actor_id] = self._modified_class.__new__(
                 self._modified_class)
-            if "__init__" in self._method_signatures:
-                worker.actors[actor_id].__init__(*copy.deepcopy(args))
+            worker.actors[actor_id].__init__(*copy.deepcopy(args))
         else:
             # Export the actor.
             if not self._exported:
@@ -376,14 +383,9 @@ class ActorClass(object):
                 args = []
             if kwargs is None:
                 kwargs = {}
-            if "__init__" in self._method_signatures:
-                function_signature = self._method_signatures["_init__"]
-                creation_args = signature.extend_args(function_signature, args, kwargs)
-                function_name = "__init__"
-            else:
-                # Some actors may not have constructor.
-                creation_args = args
-                function_name = ""
+            function_name = "__init__"
+            function_signature = self._method_signatures[function_name]
+            creation_args = signature.extend_args(function_signature, args, kwargs)
             func_desc = FunctionDescriptor(self._modified_class.__module__,
                                            function_name,
                                            self._modified_class.__name__)

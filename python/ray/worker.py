@@ -904,11 +904,6 @@ class Worker(object):
             self.actor_id = task.actor_creation_id().id()
             self.function_actor_manager.load_actor(
                 driver_id, function_descriptor.get_actor_descriptor())
-            # Check whether this actor has __init__ function.
-            if len(function_descriptor.function_name) == 0:
-                return
-            else:
-                assert function_descriptor.function_name == "__init__"
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
