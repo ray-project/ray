@@ -170,7 +170,7 @@ Status ConnectWithRetries(const std::string &address, int port,
       }
       if ((*context)->err) {
         RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
-                       << port << " context.err was " << (*context)->err;
+                       << port << " (context.err = " << (*context)->err << ")";
       }
       break;
     }
