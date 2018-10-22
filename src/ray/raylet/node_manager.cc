@@ -497,7 +497,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   } else if (actor_registration.GetState() == ActorState::DEAD) {
     CleanUpTasksForDeadActor(actor_id);
   } else {
-    // state == ActorState::BEING_RECONSTRUCTED
+    RAY_CHECK(actor_registration.GetState() == ActorState::BEING_RECONSTRUCTED);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
   }
 }
@@ -645,7 +645,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
-  auto actor_registration = actor_entry->second;
+  const auto &actor_registration = actor_entry->second;
   RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died, "
                  << "remaining reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
@@ -658,13 +658,14 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     // If the actor was local and needs to be reconstructed, remove its previous dummy
     // objects. So these tasks can be resubmitted.
     RAY_LOG(DEBUG) << "Removing dummy object for actor: " << actor_id;
-    for (auto &id: actor_entry->second.GetDummyObjects()) {
+    for (auto &id : actor_entry->second.GetDummyObjects()) {
       HandleObjectMissing(id);
     }
   }
   // Update ActorTable.
-  int log_length = 1 + 2 * (actor_registration.GetMaxReconstructions() -
-                            actor_registration.GetRemainingReconstructions());
+  int log_length = 1 +
+                   2 * (actor_registration.GetMaxReconstructions() -
+                        actor_registration.GetRemainingReconstructions());
   RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
       actor_id, actor_registration.GetActorCreationDependency(),
       actor_registration.GetDriverId(), gcs_client_->client_table().GetLocalClientId(),
