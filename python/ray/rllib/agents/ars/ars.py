@@ -7,6 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
 import numpy as np
 import time
 
@@ -16,14 +17,16 @@ from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
-from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
+
+logger = logging.getLogger(__name__)
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "noise_stdev": 0.02,  # std deviation of parameter noise
@@ -38,6 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     "offset": 0,
 })
 # __sphinx_doc_end__
+# yapf: enable
 
 
 @ray.remote
@@ -163,12 +167,12 @@ class ARSAgent(Agent):
         self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
-        print("Creating shared noise table.")
+        logger.info("Creating shared noise table.")
         noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
-        print("Creating actors.")
+        logger.info("Creating actors.")
         self.workers = [
             Worker.remote(self.config, self.env_creator, noise_id)
             for _ in range(self.config["num_workers"])
@@ -182,8 +186,9 @@ class ARSAgent(Agent):
         num_episodes, num_timesteps = 0, 0
         results = []
         while num_episodes < min_episodes:
-            print("Collected {} episodes {} timesteps so far this iter".format(
-                num_episodes, num_timesteps))
+            logger.info(
+                "Collected {} episodes {} timesteps so far this iter".format(
+                    num_episodes, num_timesteps))
             rollout_ids = [
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
@@ -263,7 +268,6 @@ class ARSAgent(Agent):
             g /= np.std(noisy_returns)
         assert (g.shape == (self.policy.num_params, )
                 and g.dtype == np.float32)
-        print('the number of policy params is, ', self.policy.num_params)
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
@@ -272,18 +276,9 @@ class ARSAgent(Agent):
         if len(all_eval_returns) > 0:
             self.reward_list.append(eval_returns.mean())
 
-        tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
-        tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
-        tlogger.record_tabular("NoisyEpLenMean", noisy_lengths.mean())
-
-        tlogger.record_tabular("WeightsNorm", float(np.square(theta).sum()))
-        tlogger.record_tabular("WeightsStd", float(np.std(theta)))
-        tlogger.record_tabular("Grad2Norm", float(np.sqrt(np.square(g).sum())))
-        tlogger.record_tabular("UpdateRatio", float(update_ratio))
-        tlogger.dump_tabular()
-
         info = {
             "weights_norm": np.square(theta).sum(),
+            "weights_std": np.std(theta),
             "grad_norm": np.square(g).sum(),
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,

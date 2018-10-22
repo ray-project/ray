@@ -2,12 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
@@ -55,8 +60,8 @@ DEFAULT_CONFIG = with_common_config({
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
 })
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -111,7 +116,7 @@ class PPOAgent(Agent):
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
-                print("Warning: " + msg)
+                logger.warn(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(
