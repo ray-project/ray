@@ -7,6 +7,7 @@ import random
 import numpy as np
 import os
 import pytest
+import signal
 import sys
 import time
 
@@ -2138,3 +2139,45 @@ def test_creating_more_actors_than_resources(shutdown_only):
         ray.wait([object_id])
 
     ray.get(results)
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works for xray.")
+def test_actor_reconstruction(ray_start_regular):
+    """Test actor reconstruction when actor process is killed."""
+
+    # This actor will be reconstructed at most once.
+    @ray.remote(max_reconstructions=1)
+    class MyActor(object):
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = MyActor.remote()
+    # Call increase 3 times
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    # kill actor process
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    time.sleep(1)
+
+    # Call increase again.
+    # Actor should be reconstructed and value should be 4.
+    assert ray.get(actor.increase.remote()) == 4
+
+    # kill actor process one more time.
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    time.sleep(1)
+
+    # The actor has exceeded max reconstructions, and this task should fail.
+    with pytest.raises(ray.worker.RayGetError):
+        ray.get(actor.increase.remote())

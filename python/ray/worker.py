@@ -547,6 +547,7 @@ class Worker(object):
                     is_actor_checkpoint_method=False,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
+                    max_actor_reconstructions=0,
                     execution_dependencies=None,
                     num_return_vals=None,
                     resources=None,
@@ -642,13 +643,13 @@ class Worker(object):
                 self.task_index += 1
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
-                driver_id, ray.ObjectID(
-                    function_id.id()), args_for_local_scheduler,
-                num_return_vals, self.current_task_id, task_index,
-                actor_creation_id, actor_creation_dummy_object_id, actor_id,
-                actor_handle_id, actor_counter, is_actor_checkpoint_method,
-                execution_dependencies, resources, placement_resources,
-                self.use_raylet)
+                driver_id, ray.ObjectID(function_id.id()),
+                args_for_local_scheduler, num_return_vals,
+                self.current_task_id, task_index, actor_creation_id,
+                actor_creation_dummy_object_id, max_actor_reconstructions,
+                actor_id, actor_handle_id, actor_counter,
+                is_actor_checkpoint_method, execution_dependencies, resources,
+                placement_resources, self.use_raylet)
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -2169,7 +2170,7 @@ def connect(info,
         driver_task = ray.local_scheduler.Task(
             worker.task_driver_id, ray.ObjectID(NIL_FUNCTION_ID), [], 0,
             worker.current_task_id, worker.task_index,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID), 0,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter, False, [], {"CPU": 0}, {}, worker.use_raylet)
 
@@ -2582,6 +2583,7 @@ def make_decorator(num_return_vals=None,
                    resources=None,
                    max_calls=None,
                    checkpoint_interval=None,
+                   max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -2589,6 +2591,9 @@ def make_decorator(num_return_vals=None,
             # Set the remote function default resources.
             if checkpoint_interval is not None:
                 raise Exception("The keyword 'checkpoint_interval' is not "
+                                "allowed for remote functions.")
+            if max_reconstructions is not None:
+                raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -2619,7 +2624,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
                                      resources, actor_method_cpus,
-                                     checkpoint_interval)
+                                     checkpoint_interval, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2661,6 +2666,9 @@ def remote(*args, **kwargs):
       third-party libraries or to reclaim resources that cannot easily be
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
+    * **max_reconstructions**: Only for *actors*. This sepcifies the maximum
+      number of times that the actor should be reconstructed when it dies
+      unexpectedly.
 
     This can be done as follows:
 
@@ -2686,14 +2694,15 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', or 'checkpoint_interval', like "
+                    "'resources', 'max_calls', 'checkpoint_interval',"
+                    "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "checkpoint_interval"
+            "max_calls", "checkpoint_interval", "max_reconstructions"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2711,6 +2720,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     checkpoint_interval = kwargs.get("checkpoint_interval")
+    max_reconstructions = kwargs.get("max_reconstructions")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -2719,4 +2729,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         checkpoint_interval=checkpoint_interval,
+        max_reconstructions=max_reconstructions,
         worker=worker)
