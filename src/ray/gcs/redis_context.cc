@@ -157,10 +157,10 @@ Status AuthenticateRedis(redisAsyncContext *context, const std::string &password
   return Status::OK();
 }
 
-template<typename RedisContext, typename RedisConnectFunction>
+template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithRetries(const std::string &address, int port,
                           const RedisConnectFunction &connect_function,
-                          RedisContext** context) {
+                          RedisContext **context) {
   int connection_attempts = 0;
   *context = connect_function(address.c_str(), port);
   while (*context == nullptr || (*context)->err) {
