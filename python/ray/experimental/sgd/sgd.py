@@ -19,7 +19,7 @@ class DistributedSGD(object):
     """Experimental distributed SGD implementation in Ray.
 
     This supports two modes:
-        'simple': simple aggregation
+        'simple': centralized gradient aggregation
         'ps': sharded parameter-server implementation
 
     To use this class, you'll have to implement model.py:Model.
