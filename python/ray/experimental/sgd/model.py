@@ -24,7 +24,7 @@ class Model(object):
 
         >>> # To access or update model state
         >>> sgd.foreach_model(lambda model: ...)
-    
+
     Attributes:
         loss (tf.Tensor): Loss function to minimize.
         optimizer (tf.train.Optimizer): Optimizer to use to minimize the loss.
