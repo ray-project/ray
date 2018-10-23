@@ -166,7 +166,7 @@ class TestGlobalScheduler(unittest.TestCase):
         task2 = local_scheduler.Task(
             random_driver_id(), random_function_id(), [random_object_id()], 0,
             random_task_id(), 0, local_scheduler.ObjectID(NIL_ACTOR_ID),
-            local_scheduler.ObjectID(NIL_OBJECT_ID),
+            local_scheduler.ObjectID(NIL_OBJECT_ID), 0,
             local_scheduler.ObjectID(NIL_ACTOR_ID),
             local_scheduler.ObjectID(NIL_ACTOR_ID), 0, 0, [], {
                 "CPU": 1,

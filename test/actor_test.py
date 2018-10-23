@@ -2140,6 +2140,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
     ray.get(results)
 
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works for xray.")

@@ -752,7 +752,8 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
     if max_reconstructions < 0 or max_reconstructions > 2**32 - 1:
-        raise Exception("max_reconstructions must be in range [0, %d]." % 2**32 - 1)
+        raise Exception(
+            "max_reconstructions must be in range [0, %d]." % 2**32 - 1)
 
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
