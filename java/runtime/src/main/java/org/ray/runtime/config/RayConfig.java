@@ -39,6 +39,7 @@ public class RayConfig {
   public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
+  public final List<String> jvmParameters;
 
   private String redisAddress;
   private String redisIp;
@@ -131,6 +132,12 @@ public class RayConfig {
     List<String> customLibraryPath = config.getStringList("ray.library.path");
     // custom classpath
     classpath = config.getStringList("ray.classpath");
+    // custom worker jvm parameters
+    if (config.hasPath("ray.worker.jvm-parameters")) {
+      jvmParameters = config.getStringList("ray.worker.jvm-parameters");
+    } else {
+      jvmParameters = ImmutableList.of();
+    }
 
     // redis configurations
     String redisAddress = config.getString("ray.redis.address");

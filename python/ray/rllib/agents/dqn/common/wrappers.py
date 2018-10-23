@@ -13,7 +13,7 @@ def wrap_dqn(env, options):
 
     # Override atari default to use the deepmind wrappers.
     # TODO(ekl) this logic should be pushed to the catalog.
-    if is_atari and "custom_preprocessor" not in options:
+    if is_atari and not options.get("custom_preprocessor"):
         return wrap_deepmind(env, dim=options.get("dim", 84))
 
     return ModelCatalog.get_preprocessor_as_wrapper(env, options)

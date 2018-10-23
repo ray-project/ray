@@ -20,6 +20,7 @@ class CarlaModel(Model):
     further fully connected layers.
     """
 
+    # TODO(ekl): use build_layers_v2 for native dict space support
     def _build_layers(self, inputs, num_outputs, options):
         # Parse options
         image_shape = options["custom_options"]["image_shape"]

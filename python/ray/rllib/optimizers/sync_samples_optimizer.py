@@ -3,10 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+import logging
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
+
+logger = logging.getLogger(__name__)
 
 
 class SyncSamplesOptimizer(PolicyOptimizer):
@@ -52,7 +55,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 if "stats" in fetches:
                     self.learner_stats = fetches["stats"]
                 if self.num_sgd_iter > 1:
-                    print(i, fetches)
+                    logger.debug("{} {}".format(i, fetches))
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_sampled += samples.count
