@@ -276,9 +276,6 @@ class LineageCache {
   /// optional reference to the evicted task that is empty if the task was not
   /// in the lineage cache.
   void EvictTask(const TaskID &task_id);
-  /// Evict a remote task and its lineage. This should only be called if we
-  /// are sure that the remote task and its lineage are committed.
-  void EvictRemoteLineage(const TaskID &task_id);
   /// Subscribe to notifications for a task. Returns whether the operation
   /// was successful (whether we were not already subscribed).
   bool SubscribeTask(const TaskID &task_id);
@@ -299,8 +296,7 @@ class LineageCache {
   gcs::PubsubInterface<TaskID> &task_pubsub_;
   /// The set of tasks that have been committed but not evicted.
   std::unordered_set<TaskID> committed_tasks_;
-  /// A mapping from each task to its children. This mapping includes all
-  /// parents of tasks in the lineage cache.
+  /// A mapping from each task in the lineage cache to its children.
   std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.

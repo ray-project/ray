@@ -272,6 +272,8 @@ bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   // completely in case another task is submitted locally that depends on this
   // one.
   entry->ResetStatus(GcsStatus::UNCOMMITTED_REMOTE);
+  // The task is now remote, so subscribe to the task to make sure that we'll
+  // eventually clean it up.
   RAY_CHECK(SubscribeTask(task_id));
   return true;
 }
@@ -356,19 +358,22 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
 }
 
 void LineageCache::EvictTask(const TaskID &task_id) {
+  // If we haven't received a commit for this task yet. do not evict.
   auto commit_it = committed_tasks_.find(task_id);
   if (commit_it == committed_tasks_.end()) {
     return;
   }
+  // If the entry ahs already been evicted, exit.
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
     return;
   }
+  // Only evict tasks that we were subscribed to or that we were committing.
   if (!(entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE ||
         entry->GetStatus() == GcsStatus::COMMITTING)) {
-    // Only evict tasks that we were subscribed to or that we were committing.
     return;
   }
+  // Entries cannot be safely evicted until their parents are all evicted.
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     if (ContainsTask(parent_id)) {
       return;
@@ -380,16 +385,15 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   lineage_.PopEntry(task_id);
   committed_tasks_.erase(commit_it);
   UnsubscribeTask(task_id);
-  // Try to evict the children of the committed task. These are the tasks that
-  // have a dependency on the committed task.
+  // Try to evict the children of the evict task. These are the tasks that have
+  // a dependency on the evicted task.
   auto children_entry = children_.find(task_id);
   if (children_entry != children_.end()) {
-    // Get the children of the committed task that are uncommitted but ready.
+    // Get the children of the evicted task.
     auto children = std::move(children_entry->second);
     children_.erase(children_entry);
-
-    // Try to flush the children.  If all of the child's parents are committed,
-    // then the child will be flushed here.
+    // Try to evict the children.  If all of the child's parents are evicted,
+    // then the child will be evicted here.
     for (const auto &child_id : children) {
       EvictTask(child_id);
     }
@@ -398,35 +402,14 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   return;
 }
 
-void LineageCache::EvictRemoteLineage(const TaskID &task_id) {
-  auto entry = lineage_.GetEntry(task_id);
-  if (!entry) {
-    return;
-  }
-  // Only evict tasks that are remote. Other tasks, and their lineage, will be
-  // evicted once they are committed.
-  const auto parent_ids = entry->GetParentTaskIds();
-  committed_tasks_.insert(task_id);
-  if (entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE) {
-    // Remove the ancestor task.
-    // TODO: force evict
-    EvictTask(task_id);
-  }
-  // Recurse and remove this task's ancestors.
-  for (const auto &parent_id : parent_ids) {
-    EvictRemoteLineage(parent_id);
-  }
-}
-
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "task committed: " << task_id;
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
-    // The task has already been evicted due to a previous commit notification,
-    // or because one of its descendants was committed.
+    // The task has already been evicted due to a previous commit notification.
     return;
   }
-
+  // Record the commit acknowledgement and attempt to evict the task.
   committed_tasks_.insert(task_id);
   EvictTask(task_id);
 }
