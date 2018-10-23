@@ -11,6 +11,8 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
+from ray.experimental.sgd.sgd_worker import SGDWorker
+from ray.experimental.sgd.param_server import ParameterServer
 
 logger = logging.getLogger(__name__)
 

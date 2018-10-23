@@ -10,8 +10,6 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.sgd_worker import SGDWorker
-from ray.experimental.sgd.param_server import ParameterServer
 from ray.experimental.sgd.util import Timeline, fetch, run_timeline
 from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
     unpack_small_tensors
