@@ -5,13 +5,14 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tfbench import model_config
+from ray.experimental.sgd.model import Model
 
 
 class MockDataset():
     name = "synthetic"
 
 
-class TFBenchModel(object):
+class TFBenchModel(Model):
     def __init__(self, batch=64, use_cpus=False):
         image_shape = [batch, 224, 224, 3]
         labels_shape = [batch]
