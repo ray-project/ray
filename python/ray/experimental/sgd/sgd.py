@@ -39,6 +39,9 @@ class DistributedSGD(object):
 
         >>> # To access or update model state
         >>> sgd.foreach_model(lambda model: ...)
+
+        >>> # To access or update worker state
+        >>> sgd.foreach_worker(lambda worker: ...)
     """
 
     def __init__(self,
