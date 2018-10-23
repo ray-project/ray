@@ -37,6 +37,10 @@ const int64_t ActorRegistration::GetRemainingReconstructions() const {
 
 const ActorState ActorRegistration::GetState() const { return actor_table_data_.state; }
 
+void ActorRegistration::SetState(const ActorState &state) {
+  actor_table_data_.state = state;
+}
+
 const std::vector<ObjectID> &ActorRegistration::GetDummyObjects() const {
   return dummy_objects_;
 }

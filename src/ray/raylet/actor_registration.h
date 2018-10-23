@@ -61,6 +61,9 @@ class ActorRegistration {
   /// Get the current state of this actor.
   const ActorState GetState() const;
 
+  /// Update actor's state.
+  void SetState(const ActorState &state);
+
   /// Get all the dummy objects of this actor's tasks.
   const std::vector<ObjectID> &GetDummyObjects() const;
 

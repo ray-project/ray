@@ -463,7 +463,6 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    // TODO
     it->second = actor_registration;
   }
 
@@ -655,7 +654,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
                                           bool intentional_disconnect) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
-  const auto &actor_registration = actor_entry->second;
+  auto &actor_registration = actor_entry->second;
   RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died, "
                  << "remaining reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
@@ -672,6 +671,13 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     for (auto &id : actor_entry->second.GetDummyObjects()) {
       HandleObjectMissing(id);
     }
+  }
+  if (was_local) {
+    // If the actor was local, immediately update the state in actor registry.
+    // So if we receive any actor tasks before we recieve GCS notification,
+    // these tasks can be correctly routed to the `MethodsWaitingForActorCreation` queue,
+    // instead of being assigned to the dead actor.
+    actor_registration.SetState(new_state);
   }
   auto failure_callback = [was_local](gcs::AsyncGcsClient *client, const ActorID &id,
                                       const ActorTableDataT &data) {
