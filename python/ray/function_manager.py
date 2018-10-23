@@ -5,6 +5,7 @@ from __future__ import print_function
 import hashlib
 import inspect
 import json
+import sys
 import time
 import traceback
 from collections import (
@@ -341,6 +342,14 @@ class FunctionActorManager(object):
         module = decode(module)
         checkpoint_interval = int(checkpoint_interval)
         actor_method_names = json.loads(decode(actor_method_names))
+
+        # In Python 2, json loads strings as unicode, so convert them back to
+        # strings.
+        if sys.version_info < (3, 0):
+            actor_method_names = [
+                method_name.encode("ascii")
+                for method_name in actor_method_names
+            ]
 
         # Create a temporary actor with some temporary methods so that if
         # the actor fails to be unpickled, the temporary actor can be used

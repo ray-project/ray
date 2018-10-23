@@ -169,9 +169,9 @@ def cli(logging_level, logging_format):
     help="the file that contains the autoscaling config")
 @click.option(
     "--use-raylet",
-    is_flag=True,
     default=None,
-    help="use the raylet code path")
+    type=bool,
+    help="use the raylet code path, this defaults to false")
 @click.option(
     "--no-redirect-worker-output",
     is_flag=True,
@@ -207,10 +207,16 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
+    if use_raylet is None:
+        if os.environ.get("RAY_USE_XRAY") == "0":
+            # This environment variable is used in our testing setup.
+            logger.info("Detected environment variable 'RAY_USE_XRAY' with "
+                        "value {}. This turns OFF xray.".format(
+                            os.environ.get("RAY_USE_XRAY")))
+            use_raylet = False
+        else:
+            use_raylet = True
+
     if not use_raylet and redis_password is not None:
         raise Exception("Setting the 'redis-password' argument is not "
                         "supported in legacy Ray. To run Ray with "

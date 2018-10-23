@@ -430,7 +430,7 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
-                use_raylet=False,
+                use_raylet=True,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
@@ -450,8 +450,7 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -1100,7 +1099,7 @@ def start_plasma_store(node_ip_address,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
-                       use_raylet=False,
+                       use_raylet=True,
                        plasma_store_socket_name=None,
                        redis_password=None):
     """This method starts an object store process.
@@ -1130,8 +1129,7 @@ def start_plasma_store(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         redis_password (str): The password of the redis server.
 
     Return:
@@ -1359,7 +1357,7 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False,
+                        use_raylet=True,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
                         temp_dir=None):
@@ -1417,8 +1415,7 @@ def start_ray_processes(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1692,7 +1689,7 @@ def start_ray_node(node_ip_address,
                    resources=None,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=False,
+                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1730,8 +1727,7 @@ def start_ray_node(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1788,7 +1784,7 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False,
+                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1840,8 +1836,7 @@ def start_ray_head(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
