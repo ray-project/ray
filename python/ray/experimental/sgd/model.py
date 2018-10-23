@@ -7,7 +7,8 @@ class Model(object):
     """Your class must implement this interface to be used with Ray SGD.
 
     This supports any form of input pipeline: it is up to you to define it
-    using TensorFlow.
+    using TensorFlow. The only requirements are that the loss and optimizer
+    attributes must be defined.
 
     For an example implementation, see tfbench/test_model.py
 
