@@ -7,8 +7,6 @@ import random
 import time
 
 import numpy as np
-import pyarrow.plasma as plasma
-import tensorflow as tf
 
 import ray
 from ray.experimental.sgd.sgd_worker import SGDWorker
@@ -136,7 +134,7 @@ def _simple_sgd_step(actors):
         assert len(grads) == 1
         avg_grad = grads[0]
     else:
-        avg_grad = average_gradients(grads)
+        avg_grad = _average_gradients(grads)
         logger.debug("grad reduce time {}".format(time.time() - start))
     start = time.time()
     ray.get([a.apply_gradients.remote(avg_grad) for a in actors])

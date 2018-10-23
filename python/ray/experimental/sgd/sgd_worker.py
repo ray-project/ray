@@ -5,12 +5,11 @@ from __future__ import print_function
 import logging
 import time
 
-import numpy as np
 import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import Timeline, fetch, run_timeline
+from ray.experimental.sgd.util import fetch, run_timeline
 from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
     unpack_small_tensors
 

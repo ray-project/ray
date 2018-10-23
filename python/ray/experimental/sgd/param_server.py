@@ -6,11 +6,9 @@ import logging
 import time
 
 import numpy as np
-import pyarrow.plasma as plasma
-import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import fetch
+from ray.experimental.sgd.util import Timeline, fetch
 
 logger = logging.getLogger(__name__)
 
