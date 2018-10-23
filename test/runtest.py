@@ -2551,3 +2551,22 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
     assert not ray.is_initialized()
     ray.init(num_cpus=0, local_mode=True)
     assert ray.is_initialized()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works with xray.")
+def test_wait_reconstruction(shutdown_only):
+    ray.init(num_cpus=1, object_store_memory=10**8)
+
+    @ray.remote
+    def f():
+        return np.zeros(6 * 10**7, dtype=np.uint8)
+
+    x_id = f.remote()
+    ray.wait([x_id])
+    ray.wait([f.remote()])
+    assert not ray.worker.global_worker.plasma_client.contains(
+        ray.pyarrow.plasma.ObjectID(x_id.id()))
+    ready_ids, _ = ray.wait([x_id])
+    assert len(ready_ids) == 1
