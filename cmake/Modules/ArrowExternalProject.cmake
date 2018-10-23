@@ -15,10 +15,10 @@
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/apache/arrow.git)
-# The PR for this commit is https://github.com/apache/arrow/pull/2791. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2792. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-set(arrow_TAG 0ecba4f0479c159be86820096a6acac35088441b)
+set(arrow_TAG 2d0d3d0dc51999fbaafb15d8b8362a1ef3de2ef7)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
