@@ -373,7 +373,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   ObjectID actor_creation_dummy_object_id = ObjectID::nil();
   // Max number of times to reconstruct this actor (only used for actor creation
   // task).
-  int max_actor_reconstructions;
+  int32_t max_actor_reconstructions;
   // Arguments of the task that are execution-dependent. These must be
   // PyObjectIDs).
   PyObject *execution_arguments = nullptr;

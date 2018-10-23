@@ -2134,9 +2134,9 @@ def connect(info,
             plasma.connect(info["store_socket_name"], "", 64))
 
     if not worker.use_raylet:
-        worker.local_scheduler_socket = info["local_scheduler_socket_name"]
+        local_scheduler_socket = info["local_scheduler_socket_name"]
     else:
-        worker.raylet_socket = info["raylet_socket_name"]
+        local_scheduler_socket = info["raylet_socket_name"]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2197,8 +2197,6 @@ def connect(info,
         # A non-driver worker begins without an assigned task.
         worker.current_task_id = ray.ObjectID(NIL_ID)
 
-    local_scheduler_socket = (worker.raylet_socket
-                              if use_raylet else worker.local_scheduler_socket)
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
         local_scheduler_socket, worker.worker_id, is_worker,
         worker.current_task_id, worker.use_raylet)
@@ -2670,7 +2668,9 @@ def remote(*args, **kwargs):
       default this is infinite.
     * **max_reconstructions**: Only for *actors*. This sepcifies the maximum
       number of times that the actor should be reconstructed when it dies
-      unexpectedly.
+      unexpectedly. The minimum valid value is 0 (default), which indicates
+      that the actor doesn't need to be reconstructed. And the maximum valid
+      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
 
     This can be done as follows:
 

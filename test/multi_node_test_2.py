@@ -93,38 +93,42 @@ def test_actor_reconstruction(start_connected_cluster):
             self.value += 1
             return self.value
 
-        def get_raylet_socket(self):
-            return ray.worker.global_worker.raylet_socket
+        def get_object_store_socket(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This actor will be created on the only node in the cluster.
     actor = MyActor.remote()
 
     def kill_node():
         # Kill the node that the actor reside on.
-        # Return node's raylet socket name.
-        raylet_socket = ray.get(actor.get_raylet_socket.remote())
+        # Return node's object store socket name.
+        object_store_socket = ray.get(actor.get_object_store_socket.remote())
         node_to_remove = None
         for node in cluster.worker_nodes:
-            if raylet_socket in node.address_info['raylet_socket_names']:
+            object_store_sockets = [
+                address.name
+                for address in node.address_info['object_store_addresses']
+            ]
+            if object_store_socket in object_store_sockets:
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
-        return raylet_socket
+        return object_store_socket
 
     # Call increase 3 times
     for _ in range(3):
         ray.get(actor.increase.remote())
 
     # Kill actor's node and the actor should be reconstructed on another node
-    raylet_socket1 = kill_node()
+    object_store_socket1 = kill_node()
 
     # Call increase again.
     # Check that actor is reconstructed and value is 4.
     assert ray.get(actor.increase.remote()) == 4
 
     # Kill the node again.
-    raylet_socket2 = kill_node()
+    object_store_socket2 = kill_node()
     # Check the actor was created on a different node.
-    assert raylet_socket1 != raylet_socket2
+    assert object_store_socket1 != object_store_socket2
 
     # The actor has exceeded max reconstructions, and this task should fail.
     with pytest.raises(ray.worker.RayGetError):

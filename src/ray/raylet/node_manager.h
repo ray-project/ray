@@ -285,10 +285,11 @@ class NodeManager {
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param push_warning Propogate error message if true.
+  /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
   void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
+      const std::shared_ptr<LocalClientConnection> &client,
+      bool intentional_disconnect = false);
 
   /// Process client message of SubmitTask
   ///
@@ -325,8 +326,10 @@ class NodeManager {
   ///
   /// \param actor_id Id of this actor.
   /// \param was_local Whether the disconnected was on this local node.
+  /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local);
+  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
+                               bool intentional_disconnect);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

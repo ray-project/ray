@@ -77,3 +77,9 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
+
+
+# A constant indicates that an actor doesn't need reconstructions.
+NO_RECONSTRUCTION = 0
+# A constant indicates that an actor should be reconstructed infinite times.
+INFINITE_RECONSTRUCTION = 2**30

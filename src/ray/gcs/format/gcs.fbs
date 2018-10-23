@@ -102,11 +102,11 @@ table ClassTableData {
 enum ActorState:int {
   // Actor is alive.
   ALIVE = 0,
-  // Actor is already dead and won't be reconstructed.
-  DEAD = 1,
   // Actor is dead, now being reconstructed.
   // After reconstruction finishes, the state will become alive again.
-  BEING_RECONSTRUCTED = 2
+  RECONSTRUCTING = 1,
+  // Actor is already dead and won't be reconstructed.
+  DEAD = 2
 }
 
 table ActorTableData {

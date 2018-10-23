@@ -9,7 +9,7 @@ import java.util.Map;
 public class ActorCreationOptions extends BaseTaskOptions {
 
   public static final int NO_RECONSTRUCTION = 0;
-  public static final int INFINITE_RECONSTRUCTIONS = Integer.MAX_VALUE;
+  public static final int INFINITE_RECONSTRUCTIONS = (int) Math.pow(2, 30);
 
   public final int maxReconstructions;
 

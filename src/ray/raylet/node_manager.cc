@@ -386,7 +386,7 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
       RAY_LOG(DEBUG) << "Actor " << actor_entry.first
                      << " is disconnected, because its node " << client_id
                      << " is removed from cluster. Trying to reconstruct it.";
-      HandleDisconnectedActor(actor_entry.first, false);
+      HandleDisconnectedActor(actor_entry.first, false, false);
     }
   }
 
@@ -463,13 +463,19 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
+    // TODO
     it->second = actor_registration;
   }
 
   if (actor_registration.GetState() == ActorState::ALIVE) {
+    // The actor is now alive.
+    // If the actor was reconstructed, we need to cancel ongoing reconstruction attempt
+    // here (if there's any).
+    // Search ListenAndMaybeReconstruct in this file to see where the
+    // reconstruction attempt was submitted.
+    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // Extend the frontier to include the actor creation task. NOTE(swang): The
     // creator of the actor is always assigned nil as the actor handle ID.
-    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     it->second.ExtendFrontier(
         ActorHandleID::nil(), actor_registration.GetActorCreationDependency());
 
@@ -500,7 +506,7 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   } else if (actor_registration.GetState() == ActorState::DEAD) {
     CleanUpTasksForDeadActor(actor_id);
   } else {
-    RAY_CHECK(actor_registration.GetState() == ActorState::BEING_RECONSTRUCTED);
+    RAY_CHECK(actor_registration.GetState() == ActorState::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
   }
 }
@@ -584,7 +590,7 @@ void NodeManager::ProcessClientMessage(
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
-    ProcessDisconnectClientMessage(client, /* push_warning = */ false);
+    ProcessDisconnectClientMessage(client, /* intentional_disconnect = */ true);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
@@ -645,7 +651,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
 }
 
-void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local) {
+void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
+                                          bool intentional_disconnect) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   const auto &actor_registration = actor_entry->second;
@@ -654,10 +661,11 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
                  << actor_registration.GetRemainingReconstructions();
 
   // Check if this actor needs to be reconstructed.
-  ActorState new_state = actor_registration.GetRemainingReconstructions() > 0
-                             ? ActorState::BEING_RECONSTRUCTED
-                             : ActorState::DEAD;
-  if (new_state == ActorState::BEING_RECONSTRUCTED && was_local) {
+  ActorState new_state =
+      actor_registration.GetRemainingReconstructions() > 0 && !intentional_disconnect
+          ? ActorState::RECONSTRUCTING
+          : ActorState::DEAD;
+  if (new_state == ActorState::RECONSTRUCTING && was_local) {
     // If the actor was local and needs to be reconstructed, remove its previous dummy
     // objects. So these tasks can be resubmitted.
     RAY_LOG(DEBUG) << "Removing dummy object for actor: " << actor_id;
@@ -695,7 +703,7 @@ void NodeManager::ProcessGetTaskMessage(
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, bool push_warning) {
+    const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
   const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
   // This client can't be a worker and a driver.
@@ -736,7 +744,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
       const JobID &job_id = worker->GetAssignedDriverId();
 
-      if (push_warning) {
+      if (!intentional_disconnect) {
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
@@ -752,7 +760,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was an actor, add it to the list of dead actors.
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      HandleDisconnectedActor(actor_id, true);
+      HandleDisconnectedActor(actor_id, true, intentional_disconnect);
     }
 
     const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -1079,7 +1087,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // If we have already seen this actor and this actor is not being reconstructed,
     // its location is known.
     bool location_known =
-        seen && actor_entry->second.GetState() != ActorState::BEING_RECONSTRUCTED;
+        seen && actor_entry->second.GetState() != ActorState::RECONSTRUCTING;
     if (location_known) {
       if (actor_entry->second.GetState() == ActorState::DEAD) {
         // If this actor is dead, either because the actor process is dead
@@ -1433,9 +1441,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       log_length = 0;
     } else {
       // If we've already seen this actor, it means that this actor was reconstructed.
-      // Thus, its previous state must be BEING_RECONSTRUCTED.
+      // Thus, its previous state must be RECONSTRUCTING.
       // Also, we should subtract its remaining_reconstructions by 1.
-      RAY_CHECK(actor_entry->second.GetState() == ActorState::BEING_RECONSTRUCTED);
+      RAY_CHECK(actor_entry->second.GetState() == ActorState::RECONSTRUCTING);
       remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
       log_length =
           (actor_entry->second.GetMaxReconstructions() - remaining_reconstructions) * 2;
@@ -1509,6 +1517,15 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 
 void NodeManager::ResubmitTask(const Task &task) {
   RAY_LOG(DEBUG) << "Resubmitting task " << task.GetTaskSpecification().TaskId();
+
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    // If the resubmitted task is an actor creation task, the actor state must be
+    // RECONSTRUCTING.
+    const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
+    const auto it = actor_registry_.find(actor_id);
+    RAY_CHECK(it != actor_registry_.end() &&
+              it->second.GetState() == ActorState::RECONSTRUCTING);
+  }
 
   // Driver tasks cannot be reconstructed. If this is a driver task, push an
   // error to the driver and do not resubmit it.
