@@ -110,7 +110,7 @@ class ModelCatalog(object):
                     "Action space has multiple dimensions "
                     "{}. ".format(action_space.shape) +
                     " Please reshape this into a single dimension, or "
-                    "use a Tuple / Dict action space instead.")
+                    "use a Tuple action space instead.")
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
