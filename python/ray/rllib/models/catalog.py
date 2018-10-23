@@ -109,7 +109,7 @@ class ModelCatalog(object):
                 raise ValueError(
                     "Action space has multiple dimensions "
                     "{}. ".format(action_space.shape) +
-                    " Consider reshaping this into a single dimension, "
+                    "Consider reshaping this into a single dimension, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
                 dist = DiagGaussian
