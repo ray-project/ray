@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 @ray.remote(num_cpus=0)
 class ParameterServer(object):
+    """Helper class for ray.experimental.sgd.DistributedSGD."""
+
     def __init__(self, num_workers, tid):
         self.num_sgd_workers = num_workers
         self.acc_counter = 0
