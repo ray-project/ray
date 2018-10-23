@@ -294,8 +294,9 @@ Status ActorTable::UpdateActorState(const ActorID &actor_id,
   actor_notification->max_reconstructions = max_reconstructions;
   actor_notification->remaining_reconstructions = remaining_reconstructions;
 
-  // If this actor has been reconstructed N times, there should be 2 * N entries in
-  // actor table (N ALIVE + RECONSTRUCTING pairs).
+  // If this actor has been reconstructed N times and now ALIVE, there should be 2*N
+  // entries in actor table (N pairs of (ALIVE + RECONSTRUCTING)). If it's now not ALIVE,
+  // there should be 2*N + 1 ALIVE entries.
   int log_length = 2 * (max_reconstructions - remaining_reconstructions);
   if (state != ActorState::ALIVE) {
     log_length += 1;

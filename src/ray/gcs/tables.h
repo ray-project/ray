@@ -378,15 +378,17 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     prefix_ = TablePrefix::ACTOR;
   }
 
-  /// Update actor's state in actor table.
+  /// Update actor's state by appending a new entry to actor table. Log length will be
+  /// computed based on state, max_reconstructions, and remaining_reconstructions.
   ///
   /// \param actor_id Id of the actor.
   /// \param actor_creation_dummy_object_id Dummy object id of the actor creation task.
   /// \param driver_id Id of actor's driver.
   /// \param state State of the actor.
-  /// \param max_reconstructions Max number of times this actor should be reconstructed.
-  /// \param remaining_reconstructions Remaining number of times this actor should be
+  /// \param max_reconstructions Max number of times that this actor should be
   /// reconstructed.
+  /// \param remaining_reconstructions Remaining number of times that this
+  /// actor should be reconstructed.
   /// \param failure Callback that is called if the update fails.
   Status UpdateActorState(const ActorID &actor_id,
                           const ObjectID &actor_creation_dummy_object_id,
