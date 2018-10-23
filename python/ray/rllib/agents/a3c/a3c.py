@@ -10,6 +10,8 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
@@ -34,30 +36,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Model and preprocessor options
-    "model": {
-        # Use LSTM model. Requires TF.
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-        # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
-        # (Image statespace) - Each pixel
-        "zero_mean": False,
-        # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 84,
-        # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
-    },
-    # Configure TF for single-process operation
-    "tf_session_args": {
-        "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 1,
-        "gpu_options": {
-            "allow_growth": True,
-        },
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class A3CAgent(Agent):

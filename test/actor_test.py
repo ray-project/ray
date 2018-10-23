@@ -1232,7 +1232,7 @@ def test_blocking_actor_task(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 def test_exception_raised_when_actor_node_dies(shutdown_only):
     ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
@@ -1279,7 +1279,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1329,7 +1329,7 @@ def test_local_scheduler_dying(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1466,7 +1466,7 @@ def setup_counter_actor(test_checkpoint=False,
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1496,7 +1496,7 @@ def test_checkpointing(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1527,7 +1527,7 @@ def test_remote_checkpoint(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1558,7 +1558,7 @@ def test_lost_checkpoint(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1591,7 +1591,7 @@ def test_checkpoint_exception(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1663,7 +1663,7 @@ def test_distributed_handle(self):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1822,7 +1822,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1860,7 +1860,7 @@ def setup_queue_actor():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
@@ -1879,7 +1879,7 @@ def test_fork(setup_queue_actor):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
@@ -1966,6 +1966,28 @@ def test_pickling_actor_handle(ray_start_regular):
     # Verify that we can call a method on the unpickled handle. TODO(rkn):
     # we should also test this from a different driver.
     ray.get(new_f.method.remote())
+
+
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
+    @ray.remote
+    class Actor1(object):
+        def f(self):
+            return 1
+
+    @ray.remote
+    class Actor2(object):
+        def __init__(self, constructor):
+            self.actor = constructor()
+
+        def step(self):
+            ray.get(self.actor.f.remote())
+
+    a = Actor1.remote()
+
+    b = Actor2.remote(lambda: a)
+
+    ray.get(b.step.remote())
+    ray.get(b.step.remote())
 
 
 def test_register_and_get_named_actors(ray_start_regular):

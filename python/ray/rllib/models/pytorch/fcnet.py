@@ -2,9 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 from ray.rllib.models.pytorch.model import Model, SlimFC
 from ray.rllib.models.pytorch.misc import normc_initializer
 import torch.nn as nn
+
+logger = logging.getLogger(__name__)
 
 
 class FullyConnectedNetwork(Model):
@@ -19,7 +23,7 @@ class FullyConnectedNetwork(Model):
             activation = nn.Tanh
         elif fcnet_activation == "relu":
             activation = nn.ReLU
-        print("Constructing fcnet {} {}".format(hiddens, activation))
+        logger.info("Constructing fcnet {} {}".format(hiddens, activation))
 
         layers = []
         last_layer_size = inputs

@@ -70,6 +70,8 @@ class TorchPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         if state_batches:

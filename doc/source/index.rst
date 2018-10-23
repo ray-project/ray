@@ -135,6 +135,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
    troubleshooting.rst
    user-profiling.rst
+   security.rst
    development.rst
    profiling.rst
    contact.rst

@@ -26,11 +26,11 @@ import ray.plasma
 
 from ray.tempfile_services import (
     get_ipython_notebook_path, get_logs_dir_path, get_raylet_socket_name,
-    get_temp_redis_config_path, get_temp_root, new_global_scheduler_log_file,
-    new_local_scheduler_log_file, new_log_monitor_log_file,
-    new_monitor_log_file, new_plasma_manager_log_file,
-    new_plasma_store_log_file, new_raylet_log_file, new_redis_log_file,
-    new_webui_log_file, new_worker_log_file, set_temp_root)
+    get_temp_root, new_global_scheduler_log_file, new_local_scheduler_log_file,
+    new_log_monitor_log_file, new_monitor_log_file,
+    new_plasma_manager_log_file, new_plasma_store_log_file,
+    new_raylet_log_file, new_redis_log_file, new_webui_log_file,
+    new_worker_log_file, set_temp_root)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -261,7 +261,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
     return node_ip_address
 
 
-def record_log_files_in_redis(redis_address, node_ip_address, log_files):
+def record_log_files_in_redis(redis_address,
+                              node_ip_address,
+                              log_files,
+                              password=None):
     """Record in Redis that a new log file has been created.
 
     This is used so that each log monitor can check Redis and figure out which
@@ -273,23 +276,24 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
             on.
         log_files: A list of file handles for the log files. If one of the file
             handles is None, we ignore it.
+        password (str): The password of the redis server.
     """
     for log_file in log_files:
         if log_file is not None:
             redis_ip_address, redis_port = redis_address.split(":")
             redis_client = redis.StrictRedis(
-                host=redis_ip_address, port=redis_port)
+                host=redis_ip_address, port=redis_port, password=password)
             # The name of the key storing the list of log filenames for this IP
             # address.
             log_file_list_key = "LOG_FILENAMES:{}".format(node_ip_address)
             redis_client.rpush(log_file_list_key, log_file.name)
 
 
-def create_redis_client(redis_address):
+def create_redis_client(redis_address, password=None):
     """Create a Redis client.
 
     Args:
-        The IP address and port of the Redis server.
+        The IP address, port, and password of the Redis server.
 
     Returns:
         A Redis client.
@@ -297,10 +301,14 @@ def create_redis_client(redis_address):
     redis_ip_address, redis_port = redis_address.split(":")
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+    return redis.StrictRedis(
+        host=redis_ip_address, port=int(redis_port), password=password)
 
 
-def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
+def wait_for_redis_to_start(redis_ip_address,
+                            redis_port,
+                            password=None,
+                            num_retries=5):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -309,13 +317,15 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     Args:
         redis_ip_address (str): The IP address of the redis server.
         redis_port (int): The port of the redis server.
+        password (str): The password of the redis server.
         num_retries (int): The number of times to try connecting with redis.
             The client will sleep for one second between attempts.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
     """
-    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+    redis_client = redis.StrictRedis(
+        host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
     counter = 0
     while counter < num_retries:
@@ -420,11 +430,11 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
-                use_raylet=False,
+                use_raylet=True,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
-                protected_mode=False,
+                password=None,
                 use_credis=None):
     """Start the Redis global state store.
 
@@ -440,8 +450,7 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -451,6 +460,8 @@ def start_redis(node_ip_address,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
             exits.
+        password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
@@ -469,6 +480,13 @@ def start_redis(node_ip_address,
 
     if use_credis is None:
         use_credis = ("RAY_USE_NEW_GCS" in os.environ)
+    if use_credis and password is not None:
+        # TODO(pschafhalter) remove this once credis supports
+        # authenticating Redis ports
+        raise Exception("Setting the `redis_password` argument is not "
+                        "supported in credis. To run Ray with "
+                        "password-protected Redis ports, ensure that "
+                        "the environment variable `RAY_USE_NEW_GCS=off`.")
     if not use_credis:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
@@ -477,7 +495,7 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
-            protected_mode=protected_mode)
+            password=password)
     else:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
@@ -486,25 +504,27 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
-            protected_mode=protected_mode,
             executable=CREDIS_EXECUTABLE,
             # It is important to load the credis module BEFORE the ray module,
             # as the latter contains an extern declaration that the former
             # supplies.
-            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
+            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
+            password=password)
     if port is not None:
         assert assigned_port == port
     port = assigned_port
     redis_address = address(node_ip_address, port)
 
-    redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+    redis_client = redis.StrictRedis(
+        host=node_ip_address, port=port, password=password)
 
     # Store whether we're using the raylet code path or not.
     redis_client.set("UseRaylet", 1 if use_raylet else 0)
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    primary_redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+    primary_redis_client = redis.StrictRedis(
+        host=node_ip_address, port=port, password=password)
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
@@ -529,7 +549,7 @@ def start_redis(node_ip_address,
                 stdout_file=redis_stdout_file,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup,
-                protected_mode=protected_mode)
+                password=password)
         else:
             assert num_redis_shards == 1, \
                 "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
@@ -541,7 +561,7 @@ def start_redis(node_ip_address,
                 stdout_file=redis_stdout_file,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup,
-                protected_mode=protected_mode,
+                password=password,
                 executable=CREDIS_EXECUTABLE,
                 # It is important to load the credis module BEFORE the ray
                 # module, as the latter contains an extern declaration that the
@@ -557,7 +577,7 @@ def start_redis(node_ip_address,
 
     if use_credis:
         shard_client = redis.StrictRedis(
-            host=node_ip_address, port=redis_shard_port)
+            host=node_ip_address, port=redis_shard_port, password=password)
         # Configure the chain state.
         primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
                                              redis_shard_port)
@@ -567,22 +587,6 @@ def start_redis(node_ip_address,
     return redis_address, redis_shards
 
 
-def _make_temp_redis_config(node_ip_address):
-    """Create a configuration file for Redis.
-
-    Args:
-        node_ip_address: The IP address of this node. This should not be
-            127.0.0.1.
-    """
-    redis_config_name = get_temp_redis_config_path()
-    with open(redis_config_name, 'w') as f:
-        # This allows redis clients on the same machine to connect using the
-        # node's IP address as opposed to just 127.0.0.1. This is only relevant
-        # when the server is in protected mode.
-        f.write("bind 127.0.0.1 {}".format(node_ip_address))
-    return redis_config_name
-
-
 def _start_redis_instance(node_ip_address="127.0.0.1",
                           port=None,
                           redis_max_clients=None,
@@ -590,7 +594,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                           stdout_file=None,
                           stderr_file=None,
                           cleanup=True,
-                          protected_mode=False,
+                          password=None,
                           executable=REDIS_EXECUTABLE,
                           modules=None):
     """Start a single Redis server.
@@ -610,10 +614,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
-        protected_mode: True if we should start the Redis server in protected
-            mode. This will prevent clients on other machines from connecting
-            and is only used when the Redis servers are started via ray.init()
-            as opposed to ray start.
+        password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         executable (str): Full path tho the redis-server executable.
         modules (list of str): A list of pathnames, pointing to the redis
             module(s) that will be loaded in this redis server.  If None, load
@@ -639,9 +641,6 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     else:
         port = new_port()
 
-    if protected_mode:
-        redis_config_filename = _make_temp_redis_config(node_ip_address)
-
     load_module_args = []
     for module in modules:
         load_module_args += ["--loadmodule", module]
@@ -652,8 +651,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
 
         # Construct the command to start the Redis server.
         command = [executable]
-        if protected_mode:
-            command += [redis_config_filename]
+        if password:
+            command += ["--requirepass", password]
         command += (
             ["--port", str(port), "--loglevel", "warning"] + load_module_args)
 
@@ -672,17 +671,17 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             stdout_file.name, stderr_file.name))
 
     # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
+    redis_client = redis.StrictRedis(
+        host="127.0.0.1", port=port, password=password)
     # Wait for the Redis server to start.
-    wait_for_redis_to_start("127.0.0.1", port)
+    wait_for_redis_to_start("127.0.0.1", port, password=password)
     # Configure Redis to generate keyspace notifications. TODO(rkn): Change
     # this to only generate notifications for the export keys.
     redis_client.config_set("notify-keyspace-events", "Kl")
 
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
-    if not protected_mode:
-        redis_client.config_set("protected-mode", "no")
+    redis_client.config_set("protected-mode", "no")
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
     # number of Redis clients.
@@ -719,8 +718,9 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     redis_client.set("redis_start_time", time.time())
     # Record the log files in Redis.
     record_log_files_in_redis(
-        address(node_ip_address, port), node_ip_address,
-        [stdout_file, stderr_file])
+        address(node_ip_address, port),
+        node_ip_address, [stdout_file, stderr_file],
+        password=password)
     return port, p
 
 
@@ -728,7 +728,8 @@ def start_log_monitor(redis_address,
                       node_ip_address,
                       stdout_file=None,
                       stderr_file=None,
-                      cleanup=cleanup):
+                      cleanup=cleanup,
+                      redis_password=None):
     """Start a log monitor process.
 
     Args:
@@ -742,27 +743,31 @@ def start_log_monitor(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by services.cleanup() when the
             Python process that imported services exits.
+        redis_password (str): The password of the redis server.
     """
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
-    p = subprocess.Popen(
-        [
-            sys.executable, "-u", log_monitor_filepath, "--redis-address",
-            redis_address, "--node-ip-address", node_ip_address
-        ],
-        stdout=stdout_file,
-        stderr=stderr_file)
+    command = [
+        sys.executable, "-u", log_monitor_filepath, "--redis-address",
+        redis_address, "--node-ip-address", node_ip_address
+    ]
+    if redis_password:
+        command += ["--redis-password", redis_password]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_LOG_MONITOR].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
 
 def start_global_scheduler(redis_address,
                            node_ip_address,
                            stdout_file=None,
                            stderr_file=None,
-                           cleanup=True):
+                           cleanup=True,
+                           redis_password=None):
     """Start a global scheduler process.
 
     Args:
@@ -776,6 +781,7 @@ def start_global_scheduler(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by services.cleanup() when the
             Python process that imported services exits.
+        redis_password (str): The password of the redis server.
     """
     p = global_scheduler.start_global_scheduler(
         redis_address,
@@ -784,8 +790,10 @@ def start_global_scheduler(redis_address,
         stderr_file=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
 
 def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
@@ -911,7 +919,8 @@ def start_local_scheduler(redis_address,
                           stderr_file=None,
                           cleanup=True,
                           resources=None,
-                          num_workers=0):
+                          num_workers=0,
+                          redis_password=None):
     """Start a local scheduler process.
 
     Args:
@@ -935,6 +944,7 @@ def start_local_scheduler(redis_address,
             quantity of that resource.
         num_workers (int): The number of workers that the local scheduler
             should start.
+        redis_password (str): The password of the redis server.
 
     Return:
         The name of the local scheduler socket.
@@ -957,8 +967,10 @@ def start_local_scheduler(redis_address,
         num_workers=num_workers)
     if cleanup:
         all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
     return local_scheduler_name
 
 
@@ -973,7 +985,8 @@ def start_raylet(redis_address,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
-                 cleanup=True):
+                 cleanup=True,
+                 redis_password=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -996,6 +1009,7 @@ def start_raylet(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        redis_password (str): The password of the redis server.
 
     Returns:
         The raylet socket name.
@@ -1029,6 +1043,8 @@ def start_raylet(redis_address,
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
                                 get_temp_root()))
+    if redis_password:
+        start_worker_command += " --redis-password {}".format(redis_password)
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1042,6 +1058,7 @@ def start_raylet(redis_address,
         resource_argument,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
+        redis_password or "",
     ]
 
     if use_valgrind:
@@ -1063,8 +1080,10 @@ def start_raylet(redis_address,
 
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
     return raylet_name
 
@@ -1080,8 +1099,9 @@ def start_plasma_store(node_ip_address,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
-                       use_raylet=False,
-                       plasma_store_socket_name=None):
+                       use_raylet=True,
+                       plasma_store_socket_name=None,
+                       redis_password=None):
     """This method starts an object store process.
 
     Args:
@@ -1109,8 +1129,8 @@ def start_plasma_store(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
+        redis_password (str): The password of the redis server.
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -1186,8 +1206,10 @@ def start_plasma_store(node_ip_address,
 
     if cleanup:
         all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [store_stdout_file, store_stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [store_stdout_file, store_stderr_file],
+        password=redis_password)
     if not use_raylet:
         if cleanup:
             all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
@@ -1248,7 +1270,8 @@ def start_monitor(redis_address,
                   stdout_file=None,
                   stderr_file=None,
                   cleanup=True,
-                  autoscaling_config=None):
+                  autoscaling_config=None,
+                  redis_password=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1264,6 +1287,7 @@ def start_monitor(redis_address,
             Python process that imported services exits. This is True by
             default.
         autoscaling_config: path to autoscaling config file.
+        redis_password (str): The password of the redis server.
     """
     monitor_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "monitor.py")
@@ -1273,17 +1297,22 @@ def start_monitor(redis_address,
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
+    if redis_password:
+        command.append("--redis-password=" + redis_password)
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_MONITOR].append(p)
-    record_log_files_in_redis(redis_address, node_ip_address,
-                              [stdout_file, stderr_file])
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [stdout_file, stderr_file],
+        password=redis_password)
 
 
 def start_raylet_monitor(redis_address,
                          stdout_file=None,
                          stderr_file=None,
-                         cleanup=True):
+                         cleanup=True,
+                         redis_password=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1296,8 +1325,10 @@ def start_raylet_monitor(redis_address,
             then this process will be killed by services.cleanup() when the
             Python process that imported services exits. This is True by
             default.
+        redis_password (str): The password of the redis server.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
+    redis_password = redis_password or ""
     command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
@@ -1313,7 +1344,7 @@ def start_ray_processes(address_info=None,
                         object_store_memory=None,
                         num_redis_shards=1,
                         redis_max_clients=None,
-                        redis_protected_mode=False,
+                        redis_password=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_worker_output=False,
@@ -1326,7 +1357,7 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False,
+                        use_raylet=True,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
                         temp_dir=None):
@@ -1356,9 +1387,8 @@ def start_ray_processes(address_info=None,
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
-        redis_protected_mode: True if we should start Redis in protected mode.
-            This will prevent clients from other machines from connecting and
-            is only done when Redis is started via ray.init().
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1385,8 +1415,7 @@ def start_ray_processes(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1444,7 +1473,7 @@ def start_ray_processes(address_info=None,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup,
-            protected_mode=redis_protected_mode)
+            password=redis_password)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
@@ -1457,18 +1486,20 @@ def start_ray_processes(address_info=None,
             stdout_file=monitor_stdout_file,
             stderr_file=monitor_stderr_file,
             cleanup=cleanup,
-            autoscaling_config=autoscaling_config)
+            autoscaling_config=autoscaling_config,
+            redis_password=redis_password)
         if use_raylet:
             start_raylet_monitor(
                 redis_address,
                 stdout_file=monitor_stdout_file,
                 stderr_file=monitor_stderr_file,
-                cleanup=cleanup)
+                cleanup=cleanup,
+                redis_password=redis_password)
     if redis_shards == []:
         # Get redis shards from primary redis instance.
         redis_ip_address, redis_port = redis_address.split(":")
         redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
         redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
         redis_shards = [ray.utils.decode(shard) for shard in redis_shards]
         address_info["redis_shards"] = redis_shards
@@ -1482,7 +1513,8 @@ def start_ray_processes(address_info=None,
             node_ip_address,
             stdout_file=log_monitor_stdout_file,
             stderr_file=log_monitor_stderr_file,
-            cleanup=cleanup)
+            cleanup=cleanup,
+            redis_password=redis_password)
 
     # Start the global scheduler, if necessary.
     if include_global_scheduler and not use_raylet:
@@ -1493,7 +1525,8 @@ def start_ray_processes(address_info=None,
             node_ip_address,
             stdout_file=global_scheduler_stdout_file,
             stderr_file=global_scheduler_stderr_file,
-            cleanup=cleanup)
+            cleanup=cleanup,
+            redis_password=redis_password)
 
     # Initialize with existing services.
     if "object_store_addresses" not in address_info:
@@ -1537,7 +1570,8 @@ def start_ray_processes(address_info=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             use_raylet=use_raylet,
-            plasma_store_socket_name=plasma_store_socket_name)
+            plasma_store_socket_name=plasma_store_socket_name,
+            redis_password=redis_password)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
@@ -1575,7 +1609,8 @@ def start_ray_processes(address_info=None,
                 stderr_file=local_scheduler_stderr_file,
                 cleanup=cleanup,
                 resources=resources[i],
-                num_workers=num_local_scheduler_workers)
+                num_workers=num_local_scheduler_workers,
+                redis_password=redis_password)
             local_scheduler_socket_names.append(local_scheduler_name)
 
         # Make sure that we have exactly num_local_schedulers instances of
@@ -1599,7 +1634,8 @@ def start_ray_processes(address_info=None,
                     num_workers=workers_per_local_scheduler[i],
                     stdout_file=raylet_stdout_file,
                     stderr_file=raylet_stderr_file,
-                    cleanup=cleanup))
+                    cleanup=cleanup,
+                    redis_password=redis_password))
 
     if not use_raylet:
         # Start any workers that the local scheduler has not already started.
@@ -1645,6 +1681,7 @@ def start_ray_node(node_ip_address,
                    num_workers=0,
                    num_local_schedulers=1,
                    object_store_memory=None,
+                   redis_password=None,
                    worker_path=None,
                    cleanup=True,
                    redirect_worker_output=False,
@@ -1652,7 +1689,7 @@ def start_ray_node(node_ip_address,
                    resources=None,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=False,
+                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1673,6 +1710,8 @@ def start_ray_node(node_ip_address,
             start.
         object_store_memory (int): The maximum amount of memory (in bytes) to
             let the plasma store use.
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1688,8 +1727,7 @@ def start_ray_node(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1711,6 +1749,7 @@ def start_ray_node(node_ip_address,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
         object_store_memory=object_store_memory,
+        redis_password=redis_password,
         worker_path=worker_path,
         include_log_monitor=True,
         cleanup=cleanup,
@@ -1740,12 +1779,12 @@ def start_ray_head(address_info=None,
                    resources=None,
                    num_redis_shards=None,
                    redis_max_clients=None,
-                   redis_protected_mode=False,
+                   redis_password=None,
                    include_webui=True,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False,
+                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1789,17 +1828,15 @@ def start_ray_head(address_info=None,
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
-        redis_protected_mode: True if we should start Redis in protected mode.
-            This will prevent clients from other machines from connecting and
-            is only done when Redis is started via ray.init().
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         include_webui: True if the UI should be started and false otherwise.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used. This is
-            not supported yet.
+        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1831,7 +1868,7 @@ def start_ray_head(address_info=None,
         resources=resources,
         num_redis_shards=num_redis_shards,
         redis_max_clients=redis_max_clients,
-        redis_protected_mode=redis_protected_mode,
+        redis_password=redis_password,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,

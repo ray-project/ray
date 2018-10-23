@@ -78,6 +78,7 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
+                                 redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -89,9 +90,10 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
+            redis_password: The password of the redis server.
         """
         self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
 
         start_time = time.time()
 
@@ -130,20 +132,25 @@ class GlobalState(object):
 
         use_raylet = self.redis_client.get("UseRaylet")
         if use_raylet is not None:
-            self.use_raylet = int(use_raylet) == 1
-        elif os.environ.get("RAY_USE_XRAY") == "1":
+            self.use_raylet = bool(int(use_raylet))
+        elif os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
-            print("Detected environment variable 'RAY_USE_XRAY'.")
-            self.use_raylet = True
-        else:
+            print("Detected environment variable 'RAY_USE_XRAY' with value "
+                  "{}. This turns OFF xray.".format(
+                      os.environ.get("RAY_USE_XRAY")))
             self.use_raylet = False
+        else:
+            self.use_raylet = True
 
         # Get the rest of the information.
         self.redis_clients = []
         for ip_address_port in ip_address_ports:
             shard_address, shard_port = ip_address_port.split(b":")
             self.redis_clients.append(
-                redis.StrictRedis(host=shard_address, port=shard_port))
+                redis.StrictRedis(
+                    host=shard_address,
+                    port=shard_port,
+                    password=redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -1305,8 +1312,10 @@ class GlobalState(object):
         else:
             clients = self.client_table()
             for client in clients:
-                for key, value in client["Resources"].items():
-                    resources[key] += value
+                # Only count resources from live clients.
+                if client["IsInsertion"]:
+                    for key, value in client["Resources"].items():
+                        resources[key] += value
 
         return dict(resources)
 
@@ -1374,8 +1383,6 @@ class GlobalState(object):
                     if local_scheduler_id not in local_scheduler_ids:
                         del available_resources_by_id[local_scheduler_id]
         else:
-            # TODO(rliaw): Is this a fair assumption?
-            # Assumes the number of Redis clients does not change
             subscribe_clients = [
                 redis_client.pubsub(ignore_subscribe_messages=True)
                 for redis_client in self.redis_clients

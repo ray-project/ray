@@ -97,6 +97,7 @@ void ObjectManager::StopIOService() {
 void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
@@ -122,7 +123,9 @@ void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
-  local_objects_.erase(object_id);
+  auto it = local_objects_.find(object_id);
+  RAY_CHECK(it != local_objects_.end());
+  local_objects_.erase(it);
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
@@ -266,35 +269,31 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           }
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          Status pull_send_status = PullSendRequest(object_id, async_conn);
-          if (!pull_send_status.ok()) {
-            CheckIOError(pull_send_status, "Pull");
-          }
+          PullSendRequest(object_id, async_conn);
         },
         []() {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
         });
   } else {
-    status = PullSendRequest(object_id, conn);
-    if (!status.ok()) {
-      CheckIOError(status, "Pull");
-    }
+    PullSendRequest(object_id, conn);
   }
 }
 
-ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                           std::shared_ptr<SenderConnection> &conn) {
+void ObjectManager::PullSendRequest(const ObjectID &object_id,
+                                    std::shared_ptr<SenderConnection> &conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  Status status = conn->WriteMessage(
+  conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer());
-  if (status.ok()) {
-    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-  }
-  return status;
+      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) mutable {
+        if (status.ok()) {
+          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+        } else {
+          CheckIOError(status, "Pull");
+        }
+      });
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
@@ -356,6 +355,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
+            // NOTE: When this callback executes, it's possible that the object
+            // will have already been evicted. It's also possible that the
+            // object could be in the process of being transferred to this
+            // object manager from another object manager.
             ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
                               info);
           });
@@ -402,15 +405,19 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
 
   // Fail on status not okay. The object is local, and there is
   // no other anticipated error here.
-  RAY_CHECK_OK(chunk_status.second);
+  ray::Status status = chunk_status.second;
+  if (!chunk_status.second.ok()) {
+    RAY_LOG(WARNING) << "Attempting to push object " << object_id
+                     << " which is not local. It may have been evicted.";
+    RAY_RETURN_NOT_OK(status);
+  }
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
-  // TODO(hme): use to_flatbuf
   auto message = object_manager_protocol::CreatePushRequestMessage(
-      fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
+      fbb, to_flatbuf(fbb, object_id), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
-  ray::Status status = conn->WriteMessage(
+  status = conn->WriteMessage(
       static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
       fbb.GetSize(), fbb.GetBufferPointer());
   if (!status.ok()) {

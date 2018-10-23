@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
@@ -35,6 +36,7 @@ public class RayConfig {
   public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
+  public final List<String> jvmParameters;
 
   private String redisAddress;
   private String redisIp;
@@ -51,6 +53,7 @@ public class RayConfig {
   public final String redisModulePath;
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
+  public final String driverResourcePath;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -126,6 +129,12 @@ public class RayConfig {
     List<String> customLibraryPath = config.getStringList("ray.library.path");
     // custom classpath
     classpath = config.getStringList("ray.classpath");
+    // custom worker jvm parameters
+    if (config.hasPath("ray.worker.jvm-parameters")) {
+      jvmParameters = config.getStringList("ray.worker.jvm-parameters");
+    } else {
+      jvmParameters = ImmutableList.of();
+    }
 
     // redis configurations
     String redisAddress = config.getString("ray.redis.address");
@@ -155,6 +164,13 @@ public class RayConfig {
     redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
+
+    // driver resource path
+    if (config.hasPath("ray.driver.resource-path")) {
+      driverResourcePath = config.getString("ray.driver.resource-path");
+    } else {
+      driverResourcePath = null;
+    }
 
     // validate config
     validate();

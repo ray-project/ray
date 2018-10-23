@@ -10,6 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.models import ModelCatalog
 
@@ -56,6 +57,7 @@ class GenericPolicy(object):
     def __init__(self,
                  sess,
                  action_space,
+                 obs_space,
                  preprocessor,
                  observation_filter,
                  model_config,
@@ -73,7 +75,9 @@ class GenericPolicy(object):
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             action_space, model_config, dist_type="deterministic")
 
-        model = ModelCatalog.get_model(self.inputs, dist_dim, model_config)
+        model = ModelCatalog.get_model({
+            "obs": self.inputs
+        }, obs_space, dist_dim, model_config)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
@@ -90,6 +94,7 @@ class GenericPolicy(object):
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
+        action = _unbatch_tuple_actions(action)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
