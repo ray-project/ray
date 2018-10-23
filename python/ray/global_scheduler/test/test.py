@@ -55,7 +55,7 @@ class TestGlobalScheduler(unittest.TestCase):
         # Start one Redis server and N pairs of (plasma, local_scheduler)
         self.node_ip_address = "127.0.0.1"
         redis_address, redis_shards = services.start_redis(
-            self.node_ip_address)
+            self.node_ip_address, use_raylet=False)
         redis_port = services.get_port(redis_address)
         time.sleep(0.1)
         # Create a client for the global state store.

@@ -395,7 +395,7 @@ def ray_start_object_store_memory():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_put_error1(ray_start_object_store_memory):
     num_objects = 3
@@ -439,7 +439,7 @@ def test_put_error1(ray_start_object_store_memory):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
@@ -495,7 +495,7 @@ def test_version_mismatch(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 def test_warning_monitor_died(shutdown_only):
     ray.init(num_cpus=0)
@@ -539,7 +539,7 @@ def test_export_large_objects(ray_start_regular):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
@@ -592,7 +592,7 @@ def ray_start_two_nodes():
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 def test_warning_for_dead_node(ray_start_two_nodes):
     # Wait for the raylet to appear in the client table.

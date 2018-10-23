@@ -110,8 +110,9 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   if (result_client_id == ClientID::nil() || !data.is_insertion) {
     fail_callback();
   } else {
-    const auto &info = RemoteConnectionInfo(client_id, data.node_manager_address,
-                                            (uint16_t)data.object_manager_port);
+    const auto &info =
+        RemoteConnectionInfo(client_id, data.node_manager_address,
+                             static_cast<uint16_t>(data.object_manager_port));
     success_callback(info);
   }
   return ray::Status::OK();

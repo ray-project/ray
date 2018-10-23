@@ -230,8 +230,9 @@ class RayLogSpanRaylet(object):
             value: The attribute value.
         """
         if not isinstance(key, str) or not isinstance(value, str):
-            raise ValueError("The extra_data argument must be a "
-                             "dictionary mapping strings to strings.")
+            raise ValueError("The arguments 'key' and 'value' must both be "
+                             "strings. Instead they are {} and {}.".format(
+                                 key, value))
         self.extra_data[key] = value
 
     def __enter__(self):
@@ -250,7 +251,8 @@ class RayLogSpanRaylet(object):
         for key, value in self.extra_data.items():
             if not isinstance(key, str) or not isinstance(value, str):
                 raise ValueError("The extra_data argument must be a "
-                                 "dictionary mapping strings to strings.")
+                                 "dictionary mapping strings to strings. "
+                                 "Instead it is {}.".format(self.extra_data))
 
         if type is not None:
             extra_data = json.dumps({

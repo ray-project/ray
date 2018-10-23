@@ -79,7 +79,7 @@ void ConnectionPool::Remove(ReceiverMapType &conn_map, const ClientID &client_id
   auto &connections = it->second;
   int64_t pos =
       std::find(connections.begin(), connections.end(), conn) - connections.begin();
-  if (pos >= (int64_t)connections.size()) {
+  if (pos >= static_cast<int64_t>(connections.size())) {
     return;
   }
   connections.erase(connections.begin() + pos);
