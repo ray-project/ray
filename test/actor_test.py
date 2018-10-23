@@ -2141,43 +2141,57 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
+@ray.remote(max_reconstructions=1)
+class ReconstructableActor(object):
+    """An actor that will be reconstructed at most once."""
+
+    def __init__(self):
+        self.value = 0
+
+    def increase(self):
+        self.value += 1
+        return self.value
+
+    def get_pid(self):
+        return os.getpid()
+
+
+def kill_actor(actor):
+    """Kill actor process."""
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    time.sleep(1)
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works for xray.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
-    # This actor will be reconstructed at most once.
-    @ray.remote(max_reconstructions=1)
-    class MyActor(object):
-        def __init__(self):
-            self.value = 0
-
-        def increase(self):
-            self.value += 1
-            return self.value
-
-        def get_pid(self):
-            return os.getpid()
-
-    actor = MyActor.remote()
+    actor = ReconstructableActor.remote()
     # Call increase 3 times
     for _ in range(3):
         ray.get(actor.increase.remote())
-
     # kill actor process
-    pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
-
+    kill_actor(actor)
     # Call increase again.
     # Check that actor is reconstructed and value is 4.
     assert ray.get(actor.increase.remote()) == 4
-
     # kill actor process one more time.
-    pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
-
+    kill_actor(actor)
     # The actor has exceeded max reconstructions, and this task should fail.
+    with pytest.raises(ray.worker.RayGetError):
+        ray.get(actor.increase.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_XRAY") != "1",
+    reason="This test only works for xray.")
+def test_actor_not_reconstructed_on_intentional_exit(ray_start_regular):
+    """Test that actor won't be reconstructed, when it exited intentionlly."""
+    actor = ReconstructableActor.remote()
+    # Intentionlly exit the actor
+    actor.__ray_terminate__.remote()
+    # Check that the actor won't be reconstructed.
     with pytest.raises(ray.worker.RayGetError):
         ray.get(actor.increase.remote())
