@@ -105,6 +105,12 @@ class ModelCatalog(object):
 
         config = config or MODEL_DEFAULTS
         if isinstance(action_space, gym.spaces.Box):
+            if len(action_space.shape) > 1:
+                raise ValueError(
+                    "Action space has multiple dimensions "
+                    "{}. ".format(action_space.shape) +
+                    " Please reshape this into a single dimension, or "
+                    "use a Tuple / Dict action space instead.")
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
