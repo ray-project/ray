@@ -378,25 +378,21 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     prefix_ = TablePrefix::ACTOR;
   }
 
-  /// Append data to actor table at the given location.
+  /// Update actor's state in actor table.
   ///
   /// \param actor_id Id of the actor.
   /// \param actor_creation_dummy_object_id Dummy object id of the actor creation task.
   /// \param driver_id Id of actor's driver.
-  /// \param node_manager_id Client id of actor's node manager.
   /// \param state State of the actor.
   /// \param max_reconstructions Max number of times this actor should be reconstructed.
   /// \param remaining_reconstructions Remaining number of times this actor should be
   /// reconstructed.
-  /// \param log_length Number of existing records for this actor. Append operation will
-  /// fail if the number isn't correct.
-  /// \param error_on_failure Whether an error should be raised when the append fails.
-  Status AppendDataAt(const ActorID &actor_id,
-                      const ObjectID &actor_creation_dummy_object_id,
-                      const DriverID &driver_id, const ClientID &node_manager_id,
-                      const ActorState &state, int64_t max_reconstructions,
-                      int64_t remaining_reconstructions, int log_length,
-                      bool error_on_failure);
+  /// \param failure Callback that is called if the update fails.
+  Status UpdateActorState(const ActorID &actor_id,
+                          const ObjectID &actor_creation_dummy_object_id,
+                          const DriverID &driver_id, const ActorState &state,
+                          int64_t max_reconstructions, int64_t remaining_reconstructions,
+                          const WriteCallback &failure);
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {

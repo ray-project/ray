@@ -273,35 +273,34 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
                 });
 }
 
-Status ActorTable::AppendDataAt(const ActorID &actor_id,
-                                const ObjectID &actor_creation_dummy_object_id,
-                                const DriverID &driver_id,
-                                const ClientID &node_manager_id, const ActorState &state,
-                                int64_t max_reconstructions,
-                                int64_t remaining_reconstructions, int log_length,
-                                bool error_on_failure) {
+Status ActorTable::UpdateActorState(const ActorID &actor_id,
+                                    const ObjectID &actor_creation_dummy_object_id,
+                                    const DriverID &driver_id, const ActorState &state,
+                                    int64_t max_reconstructions,
+                                    int64_t remaining_reconstructions,
+                                    const WriteCallback &failure) {
   RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id
                  << ", driver_id: " << driver_id
                  << ", state: " << static_cast<int64_t>(state)
-                 << ", remaining_reconstructions: " << remaining_reconstructions
-                 << ", log_length: " << log_length;
+                 << ", remaining_reconstructions: " << remaining_reconstructions;
   auto actor_notification = std::make_shared<ActorTableDataT>();
   actor_notification->actor_id = actor_id.binary();
   actor_notification->actor_creation_dummy_object_id =
       actor_creation_dummy_object_id.binary();
   actor_notification->driver_id = driver_id.binary();
-  actor_notification->node_manager_id = node_manager_id.binary();
+  actor_notification->node_manager_id =
+      client_->client_table().GetLocalClientId().binary();
   actor_notification->state = state;
   actor_notification->max_reconstructions = max_reconstructions;
   actor_notification->remaining_reconstructions = remaining_reconstructions;
 
-  auto failure_callback = [error_on_failure](AsyncGcsClient *client, const ActorID &id,
-                                             const ActorTableDataT &data) {
-    if (error_on_failure) {
-      RAY_LOG(FATAL) << "Failed to update state for actor " << id;
-    }
-  };
-  return AppendAt(JobID::nil(), actor_id, actor_notification, nullptr, failure_callback,
+  // If this actor has been reconstructed N times, there should be 2 * N entries in
+  // actor table (N ALIVE + RECONSTRUCTING pairs).
+  int log_length = 2 * (max_reconstructions - remaining_reconstructions);
+  if (state != ActorState::ALIVE) {
+    log_length += 1;
+  }
+  return AppendAt(JobID::nil(), actor_id, actor_notification, nullptr, failure,
                   log_length);
 }
 

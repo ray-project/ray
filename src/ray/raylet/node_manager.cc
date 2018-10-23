@@ -673,15 +673,19 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
       HandleObjectMissing(id);
     }
   }
-  // Update ActorTable.
-  int log_length = 1 +
-                   2 * (actor_registration.GetMaxReconstructions() -
-                        actor_registration.GetRemainingReconstructions());
-  RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
+  auto failure_callback = [was_local](gcs::AsyncGcsClient *client, const ActorID &id,
+                                      const ActorTableDataT &data) {
+    if (was_local) {
+      // If the disconnected actor was local, only this node will try to update actor
+      // state. So the update shouldn't fail.
+      RAY_LOG(FATAL) << "Failed to update state for actor " << id;
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->actor_table().UpdateActorState(
       actor_id, actor_registration.GetActorCreationDependency(),
-      actor_registration.GetDriverId(), gcs_client_->client_table().GetLocalClientId(),
-      new_state, actor_registration.GetMaxReconstructions(),
-      actor_registration.GetRemainingReconstructions(), log_length, was_local));
+      actor_registration.GetDriverId(), new_state,
+      actor_registration.GetMaxReconstructions(),
+      actor_registration.GetRemainingReconstructions(), failure_callback));
 }
 
 void NodeManager::ProcessGetTaskMessage(
@@ -1434,26 +1438,21 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     int remaining_reconstructions;
-    int log_length;
     const auto actor_entry = actor_registry_.find(actor_id);
     if (actor_entry == actor_registry_.end()) {
       remaining_reconstructions = task.GetTaskSpecification().MaxActorReconstructions();
-      log_length = 0;
     } else {
       // If we've already seen this actor, it means that this actor was reconstructed.
       // Thus, its previous state must be RECONSTRUCTING.
       // Also, we should subtract its remaining_reconstructions by 1.
       RAY_CHECK(actor_entry->second.GetState() == ActorState::RECONSTRUCTING);
       remaining_reconstructions = actor_entry->second.GetRemainingReconstructions() - 1;
-      log_length =
-          (actor_entry->second.GetMaxReconstructions() - remaining_reconstructions) * 2;
     }
-    RAY_CHECK_OK(gcs_client_->actor_table().AppendDataAt(
+    RAY_CHECK_OK(gcs_client_->actor_table().UpdateActorState(
         actor_id, task.GetTaskSpecification().ActorDummyObject(),
-        task.GetTaskSpecification().DriverId(),
-        gcs_client_->client_table().GetLocalClientId(), ActorState::ALIVE,
+        task.GetTaskSpecification().DriverId(), ActorState::ALIVE,
         task.GetTaskSpecification().MaxActorReconstructions(), remaining_reconstructions,
-        log_length, true));
+        nullptr));
 
     // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.
