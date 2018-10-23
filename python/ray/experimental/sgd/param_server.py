@@ -1,0 +1,96 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import logging
+import time
+
+import numpy as np
+import pyarrow.plasma as plasma
+import tensorflow as tf
+
+import ray
+from ray.experimental.sgd.util import fetch
+
+logger = logging.getLogger(__name__)
+
+
+@ray.remote(num_cpus=0)
+class ParameterServer(object):
+    def __init__(self, num_workers, tid):
+        self.num_sgd_workers = num_workers
+        self.acc_counter = 0
+        self.timeline = Timeline(tid)
+        # TODO(ekl) get this to work again so we get ray events
+        # self.timeline.patch_ray()
+
+    def set_tid(self, tid):
+        self.timeline.tid = tid
+
+    def get_time(self):
+        return time.time() + self.timeline.offset
+
+    def set_time(self, ref_time):
+        self.timeline.offset = ref_time - time.time()
+
+    def initialize(self, shard_shape):
+        self.accumulated = np.zeros(shard_shape, dtype=np.float32)
+
+    def mark(self):
+        self.timeline.event("mark")
+
+    def prefetch(self, oids):
+        self.timeline.reset()
+        self.timeline.start("prefetch")
+        fetch(oids)
+        self.timeline.end("prefetch")
+
+    def add_spinwait(self, grad_shard_ids):
+        self.timeline.start("add_spinwait")
+        plasma_ids = [ray.pyarrow.plasma.ObjectID(x) for x in grad_shard_ids]
+        while plasma_ids:
+            for p in plasma_ids:
+                if ray.worker.global_worker.plasma_client.contains(p):
+                    self.timeline.start("get_buffers")
+                    grads = ray.worker.global_worker.plasma_client.get(p)
+                    self.accumulated += grads
+                    self.acc_counter += 1
+                    self.timeline.end("get_buffers")
+                    plasma_ids.remove(p)
+                    break
+        self.timeline.end("add_spinwait")
+
+    def add(self, grad_shard_id):
+        self.timeline.start("add")
+        self.timeline.start("get_buffers")
+        oid = ray.pyarrow.plasma.ObjectID(grad_shard_id)
+        grads = ray.worker.global_worker.plasma_client.get(oid)
+        self.timeline.end("get_buffers")
+        self.accumulated += grads
+        self.acc_counter += 1
+        self.timeline.end("add")
+
+    def get(self, object_id):
+        self.timeline.start("get")
+        client = ray.worker.global_worker.plasma_client
+        assert self.acc_counter == self.num_sgd_workers, self.acc_counter
+        oid = ray.pyarrow.plasma.ObjectID(object_id)
+        client.put(self.accumulated.flatten(), object_id=oid)
+        self.accumulated = np.zeros_like(self.accumulated)
+        self.acc_counter = 0
+        self.timeline.end("get")
+
+    def get_timeline(self):
+        return self.timeline
+
+    def ip(self):
+        return ray.services.get_node_ip_address()
+
+    def pin(self, cpu_id):
+        try:
+            import psutil
+            p = psutil.Process()
+            p.cpu_affinity([cpu_id])
+            logger.info("Setting CPU Affinity to: {}".format(cpu_id))
+        except Exception as e:
+            logger.error(e)
