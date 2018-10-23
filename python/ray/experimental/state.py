@@ -135,8 +135,9 @@ class GlobalState(object):
             self.use_raylet = int(use_raylet) != 0
         elif os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
-            print("Detected environment variable 'RAY_USE_XRAY' with value {}."
-                  .format(os.environ.get("RAY_USE_XRAY")))
+            print("Detected environment variable 'RAY_USE_XRAY' with value "
+                  "{}. This turns OFF xray.".format(
+                      os.environ.get("RAY_USE_XRAY")))
             self.use_raylet = False
         else:
             self.use_raylet = True

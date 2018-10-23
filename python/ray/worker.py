@@ -1501,7 +1501,8 @@ def _init(address_info=None,
         if os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
             logger.info("Detected environment variable 'RAY_USE_XRAY' with "
-                        "value {}.".format(os.environ.get("RAY_USE_XRAY")))
+                        "value {}. This turns OFF xray.".format(
+                            os.environ.get("RAY_USE_XRAY")))
             use_raylet = False
         else:
             use_raylet = True
@@ -1770,7 +1771,8 @@ def init(redis_address=None,
         if os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
             logger.info("Detected environment variable 'RAY_USE_XRAY' with "
-                        "value {}.".format(os.environ.get("RAY_USE_XRAY")))
+                        "value {}. This turns OFF xray.".format(
+                            os.environ.get("RAY_USE_XRAY")))
             use_raylet = False
         else:
             use_raylet = True

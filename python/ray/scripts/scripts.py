@@ -168,7 +168,10 @@ def cli(logging_level, logging_format):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--use-raylet", default=None, type=bool, help="use the raylet code path")
+    "--use-raylet",
+    default=None,
+    type=bool,
+    help="use the raylet code path, this defaults to false")
 @click.option(
     "--no-redirect-worker-output",
     is_flag=True,
@@ -208,7 +211,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if os.environ.get("RAY_USE_XRAY") == "0":
             # This environment variable is used in our testing setup.
             logger.info("Detected environment variable 'RAY_USE_XRAY' with "
-                        "value {}.".format(os.environ.get("RAY_USE_XRAY")))
+                        "value {}. This turns OFF xray.".format(
+                            os.environ.get("RAY_USE_XRAY")))
             use_raylet = False
         else:
             use_raylet = True
