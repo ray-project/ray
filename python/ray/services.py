@@ -1257,7 +1257,8 @@ def start_ray_processes(address_info=None,
         resources = num_local_schedulers * [resources]
 
     if num_workers is not None:
-        workers_per_local_scheduler = num_local_schedulers * [num_workers]
+        raise Exception("The 'num_workers' argument is deprecated. Please use "
+                        "'num_cpus' instead.")
     else:
         workers_per_local_scheduler = []
         for resource_dict in resources:

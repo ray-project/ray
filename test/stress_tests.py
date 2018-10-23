@@ -37,7 +37,6 @@ def ray_start_combination(request):
     # Start the Ray processes.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         num_cpus=10)
     yield num_local_schedulers, num_workers_per_scheduler
@@ -191,7 +190,6 @@ def ray_start_reconstruction(request):
     ray.worker._init(
         address_info=address_info,
         start_ray_local=True,
-        num_workers=1,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
         redirect_output=True)
