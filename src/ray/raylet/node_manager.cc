@@ -463,6 +463,12 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
+    if (it->second.GetNodeManagerId() == gcs_client_->client_table().GetLocalClientId()) {
+      // If the actor was local, check local state is not ALIVE. Because we should have
+      // updated the state when we first detect actor failure in `HandleDisconnectedActor`
+      // function.
+      RAY_CHECK(it->second.GetState() != ActorState::ALIVE);
+    }
     it->second = actor_registration;
   }
 
@@ -1126,18 +1132,18 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // was already created. Look up the actor's registered location in case
         // we missed the creation notification.
         // NOTE(swang): This codepath needs to be tested in a cluster setting.
-        auto lookup_callback = [this](gcs::AsyncGcsClient *client,
-                                      const ActorID &actor_id,
-                                      const std::vector<ActorTableDataT> &data) {
+        auto lookup_callback = [this, spec](gcs::AsyncGcsClient *client,
+                                            const ActorID &actor_id,
+                                            const std::vector<ActorTableDataT> &data) {
           if (!data.empty()) {
             // The actor has been created.
             if (actor_registry_.find(actor_id) == actor_registry_.end()) {
               HandleActorNotification(actor_id, data);
             }
           } else {
-            // The actor has not yet been created.
-            // TODO(swang): Set a timer for reconstructing the actor creation
-            // task.
+            // The actor has not yet been created. Try to reconstruct it.
+            reconstruction_policy_.ListenAndMaybeReconstruct(
+                spec.ActorCreationDummyObjectId());
           }
         };
         RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),

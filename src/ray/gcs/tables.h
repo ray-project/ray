@@ -368,6 +368,11 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
 
 using ClassTable = Table<ClassID, ClassTableData>;
 
+/// Actor table starts with an ALIVE entry, which represents the first time the actor
+/// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
+/// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
+/// These may be followed by a DEAD entry, which means that the actor has failed and will
+/// not be reconstructed.
 // TODO(swang): Set the pubsub channel for the actor table.
 class ActorTable : public Log<ActorID, ActorTableData> {
  public:
