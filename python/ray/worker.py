@@ -55,14 +55,6 @@ NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
 NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
 
-# This must be kept in sync with the `error_types` array in
-# common/state/error_table.h.
-OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
-PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
-
-# This must be kept in sync with the `scheduling_state` enum in common/task.h.
-TASK_STATUS_RUNNING = 8
-
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
@@ -2195,6 +2187,9 @@ def register_custom_serializer(cls,
             # In this case, the class ID only needs to be meaningful on this
             # worker and not across workers.
             class_id = random_string()
+
+        # Make sure class_id is a string.
+        class_id = ray.utils.binary_to_hex(class_id)
 
     if driver_id is None:
         driver_id_bytes = worker.task_driver_id.id()
