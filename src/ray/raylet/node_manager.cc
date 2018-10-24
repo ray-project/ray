@@ -463,12 +463,6 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    if (it->second.GetNodeManagerId() == gcs_client_->client_table().GetLocalClientId()) {
-      // If the actor was local, check local state is not ALIVE. Because we should have
-      // updated the state when we first detect actor failure in `HandleDisconnectedActor`
-      // function.
-      RAY_CHECK(it->second.GetState() != ActorState::ALIVE);
-    }
     it->second = actor_registration;
   }
 
@@ -673,14 +667,14 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   if (new_state == ActorState::RECONSTRUCTING && was_local) {
     // If the actor was local and needs to be reconstructed, remove its previous dummy
     // objects. So these tasks can be resubmitted.
-    RAY_LOG(DEBUG) << "Removing dummy object for actor: " << actor_id;
+    RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
     for (auto &id : actor_entry->second.GetDummyObjects()) {
       HandleObjectMissing(id);
     }
   }
   if (was_local) {
     // If the actor was local, immediately update the state in actor registry.
-    // So if we receive any actor tasks before we recieve GCS notification,
+    // So if we receive any actor tasks before we receive GCS notification,
     // these tasks can be correctly routed to the `MethodsWaitingForActorCreation` queue,
     // instead of being assigned to the dead actor.
     actor_registration.SetState(new_state);
