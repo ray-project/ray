@@ -114,10 +114,12 @@ UniqueID TaskSpecification::DriverId() const {
   return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->parent_counter();
 }
 FunctionID TaskSpecification::FunctionId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
@@ -153,15 +155,26 @@ ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
+
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return reinterpret_cast<const uint8_t *>(
+      message->args()->Get(arg_index)->data()->c_str());
 }
+
 size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->Get(arg_index)->data()->size();
 }
+
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  auto it = required_resources.find(resource_name);
+  RAY_CHECK(it != required_resources.end());
+  return it->second;
 }
+
 const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
