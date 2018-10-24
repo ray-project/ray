@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import collections
 
@@ -9,17 +10,20 @@ import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
 
-def collect_metrics(local_evaluator, remote_evaluators=[], timeout=180):
+logger = logging.getLogger(__name__)
+
+
+def collect_metrics(local_evaluator, remote_evaluators=[], timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
-    episodes, num_worker_still_sample = collect_episodes(
-        local_evaluator, remote_evaluators, timeout=timeout)
+    episodes, num_dropped = collect_episodes(
+        local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)
     metrics = summarize_episodes(episodes, episodes)
-    metrics["num_worker_still_sample"] = num_worker_still_sample
+    metrics.update(num_metric_batches_dropped=num_dropped)
     return metrics
 
 
-def collect_episodes(local_evaluator, remote_evaluators=[], timeout=180):
+def collect_episodes(local_evaluator, remote_evaluators=[], timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     pending = [
@@ -27,17 +31,17 @@ def collect_episodes(local_evaluator, remote_evaluators=[], timeout=180):
         for a in remote_evaluators
     ]
     collected, _ = ray.wait(
-        pending, num_returns=len(pending), timeout=timeout * 1000)
-    num_worker_still_sample = len(pending) - len(collected)
-    if num_worker_still_sample > 0:
-        print("{}/{} workers returned metrics within {}s".format(
-            len(collected), len(pending), timeout))
+        pending, num_returns=len(pending), timeout=timeout_seconds * 1000)
+    num_metric_batches_dropped = len(pending) - len(collected)
+    if num_metric_batches_dropped > 0:
+        logger.warn("WARNING: {}/{} workers returned metrics within {}s".format(
+            len(collected), len(pending), timeout_seconds))
     metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
-    return episodes, num_worker_still_sample
+    return episodes, num_metric_batches_dropped
 
 
 def summarize_episodes(episodes, new_episodes):

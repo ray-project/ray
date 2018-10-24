@@ -89,8 +89,8 @@ class PolicyOptimizer(object):
             res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
         """
-        episodes = collect_episodes(self.local_evaluator,
-                                    self.remote_evaluators)
+        episodes, num_dropped = collect_episodes(self.local_evaluator,
+                                                 self.remote_evaluators)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
         if missing > 0:
@@ -100,6 +100,7 @@ class PolicyOptimizer(object):
         self.episode_history = self.episode_history[-min_history:]
         res = summarize_episodes(episodes, orig_episodes)
         res.update(info=self.stats())
+        res.update(num_metric_batches_dropped=num_dropped)
         return res
 
     def save(self):
