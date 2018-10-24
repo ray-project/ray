@@ -22,7 +22,7 @@ def warmup():
         ray.put(zeros)
     logger.info("Initial latency for 100MB put {}".format(
         (time.time() - start) / 10))
-    for _ in range(10):
+    for _ in range(5):
         for _ in range(100):
             ray.put(zeros)
         start = time.time()
