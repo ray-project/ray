@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ray-head
+spec:
+  type: "LoadBalancer"
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+  - name: plasma
+    port: 12345
+    targetPort: 12345
+  selector:
+    app: ray-head
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ray-head
+  labels:
+    app: ray-head
+spec:
+  containers:
+  - name: ray-head
+    image: gcr.io/tutorial-218804/kube-cluster-demo:latest
+    env:
+    - name: MY_POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    ports:
+    - containerPort: 6379
+    - containerPort: 12345
+    command: [ "/bin/bash", "-c", "--" ]
+    args:
+      - "ray start --head --redis-port 6379 --object-manager-port 12345 --node-ip-address $MY_POD_IP &&
+        echo id_rsa.pub is - &&
+        more ~/.ssh/id_rsa.pub &&
+        echo export PATH=/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin >> ~/.bashrc &&
+        echo conda activate ray-kubernetes >> ~/.bashrc &&
+        while true; do sleep 30; done;"
