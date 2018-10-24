@@ -1732,10 +1732,7 @@ def test_multiple_local_schedulers(shutdown_only):
                 results.append(run_on_0_2.remote())
         return names, results
 
-    store_names = [
-        object_store_address.name
-        for object_store_address in address_info["object_store_addresses"]
-    ]
+    store_names = address_info["object_store_addresses"]
 
     def validate_names_and_results(names, results):
         for name, result in zip(names, ray.get(results)):
