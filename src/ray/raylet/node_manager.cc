@@ -481,8 +481,8 @@ void NodeManager::HandleActorNotification(const ActorID &actor_id,
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // Extend the frontier to include the actor creation task. NOTE(swang): The
     // creator of the actor is always assigned nil as the actor handle ID.
-    it->second.ExtendFrontier(
-        ActorHandleID::nil(), actor_registration.GetActorCreationDependency());
+    it->second.ExtendFrontier(ActorHandleID::nil(),
+                              actor_registration.GetActorCreationDependency());
 
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
