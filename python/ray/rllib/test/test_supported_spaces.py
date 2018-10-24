@@ -70,7 +70,7 @@ def check_support(alg, config, stats, check_bounds=False):
             try:
                 a = get_agent_class(alg)(config=config, env="stub_env")
                 a.train()
-            except UnsupportedSpaceException as e:
+            except UnsupportedSpaceException:
                 stat = "unsupported"
             except Exception as e:
                 stat = "ERROR"

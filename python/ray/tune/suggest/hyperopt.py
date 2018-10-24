@@ -10,7 +10,7 @@ try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
-except Exception as e:
+except Exception:
     hpo = None
 
 from ray.tune.error import TuneError

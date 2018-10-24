@@ -908,7 +908,7 @@ class GlobalState(object):
                     repr(arg)
                     for arg in task_table[task_id]["TaskSpec"]["Args"]
                 ]
-            except Exception as e:
+            except Exception:
                 print("Could not find task {}".format(task_id))
 
         # filter out tasks not in task_table

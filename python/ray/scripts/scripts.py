@@ -225,7 +225,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
     try:
         resources = json.loads(resources)
-    except Exception as e:
+    except Exception:
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "
