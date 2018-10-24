@@ -56,5 +56,3 @@ RUN ln -s /miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 RUN ssh-keygen -f /root/.ssh/id_rsa -P "" \
     && echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config
 
-#Clone the ray-kubes git repo for test codes
-RUN git clone https://github.com/jhpenger/ray-kubernetes-1.git
