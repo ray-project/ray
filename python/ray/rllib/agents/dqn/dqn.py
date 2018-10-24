@@ -116,7 +116,7 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    "min_iter_time_s": 1
 })
 
 
@@ -235,10 +235,12 @@ class DQNAgent(Agent):
             # Only collect metrics from the third of workers with lowest eps
             result = collect_metrics(
                 self.local_evaluator,
-                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:],
+                timeout=self.config["collect_metrics_timeout"])
         else:
             result = collect_metrics(self.local_evaluator,
-                                     self.remote_evaluators)
+                                     self.remote_evaluators,
+                                     timeout=self.config["collect_metrics_timeout"])
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,

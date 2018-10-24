@@ -71,6 +71,8 @@ COMMON_CONFIG = {
     "monitor": False,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
+    # Wait for the workers to collect metrics (seconds)
+    "collect_metrics_timeout": 180,
 
     # === Multiagent ===
     "multiagent": {
