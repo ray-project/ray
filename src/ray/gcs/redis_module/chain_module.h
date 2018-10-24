@@ -38,13 +38,12 @@ class RedisChainModule {
   // It is okay for this NodeFunc to call "RM_FreeString(mutated_key_str)" after
   // assigning the fourth arg, since that call presumably only decrements a ref
   // count.
-  using NodeFunc = std::function<
-      int(RedisModuleCtx *, RedisModuleString **, int, RedisModuleString **)>;
+  using NodeFunc = std::function<int(RedisModuleCtx *, RedisModuleString **, int,
+                                     RedisModuleString **)>;
 
   // A function that (1) runs only after all NodeFunc's have run, and (2) runs
   // once on the tail.  A typical usage is to publish a write.
-  using TailFunc =
-      std::function<int(RedisModuleCtx *, RedisModuleString **, int)>;
+  using TailFunc = std::function<int(RedisModuleCtx *, RedisModuleString **, int)>;
 
   // TODO(zongheng): document the RM_Reply semantics.
 
@@ -56,11 +55,8 @@ class RedisChainModule {
   // final tail_func().
   //
   // TODO(zongheng): currently only supports 1-node chain.
-  int ChainReplicate(RedisModuleCtx *ctx,
-                     RedisModuleString **argv,
-                     int argc,
-                     NodeFunc node_func,
-                     TailFunc tail_func);
+  int ChainReplicate(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
+                     NodeFunc node_func, TailFunc tail_func);
 };
 
 #endif  // RAY_CHAIN_MODULE_H_

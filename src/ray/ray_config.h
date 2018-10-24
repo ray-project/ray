@@ -12,9 +12,7 @@ class RayConfig {
 
   int64_t ray_protocol_version() const { return ray_protocol_version_; }
 
-  uint64_t handler_warning_timeout_ms() const {
-    return handler_warning_timeout_ms_;
-  }
+  uint64_t handler_warning_timeout_ms() const { return handler_warning_timeout_ms_; }
 
   int64_t heartbeat_timeout_milliseconds() const {
     return heartbeat_timeout_milliseconds_;
@@ -34,17 +32,13 @@ class RayConfig {
 
   int64_t worker_get_request_size() const { return worker_get_request_size_; }
 
-  int64_t worker_fetch_request_size() const {
-    return worker_fetch_request_size_;
-  }
+  int64_t worker_fetch_request_size() const { return worker_fetch_request_size_; }
 
   int64_t actor_max_dummy_objects() const { return actor_max_dummy_objects_; }
 
   int64_t num_connect_attempts() const { return num_connect_attempts_; }
 
-  int64_t connect_timeout_milliseconds() const {
-    return connect_timeout_milliseconds_;
-  }
+  int64_t connect_timeout_milliseconds() const { return connect_timeout_milliseconds_; }
 
   int64_t local_scheduler_fetch_timeout_milliseconds() const {
     return local_scheduler_fetch_timeout_milliseconds_;
@@ -64,9 +58,7 @@ class RayConfig {
     return kill_worker_timeout_milliseconds_;
   }
 
-  int64_t manager_timeout_milliseconds() const {
-    return manager_timeout_milliseconds_;
-  }
+  int64_t manager_timeout_milliseconds() const { return manager_timeout_milliseconds_; }
 
   int64_t buf_size() const { return buf_size_; }
 
@@ -86,9 +78,7 @@ class RayConfig {
     return redis_db_connect_wait_milliseconds_;
   };
 
-  int64_t plasma_default_release_delay() const {
-    return plasma_default_release_delay_;
-  }
+  int64_t plasma_default_release_delay() const { return plasma_default_release_delay_; }
 
   int64_t L3_cache_size_bytes() const { return L3_cache_size_bytes_; }
 
@@ -102,13 +92,9 @@ class RayConfig {
     return node_manager_forward_task_retry_timeout_milliseconds_;
   }
 
-  int object_manager_pull_timeout_ms() const {
-    return object_manager_pull_timeout_ms_;
-  }
+  int object_manager_pull_timeout_ms() const { return object_manager_pull_timeout_ms_; }
 
-  int object_manager_push_timeout_ms() const {
-    return object_manager_push_timeout_ms_;
-  }
+  int object_manager_push_timeout_ms() const { return object_manager_push_timeout_ms_; }
 
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;

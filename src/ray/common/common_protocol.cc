@@ -2,9 +2,8 @@
 
 #include "ray/util/logging.h"
 
-flatbuffers::Offset<flatbuffers::String> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    ray::ObjectID object_id) {
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                                                    ray::ObjectID object_id) {
   return fbb.CreateString(reinterpret_cast<const char *>(object_id.data()),
                           sizeof(ray::ObjectID));
 }
@@ -17,8 +16,7 @@ ray::ObjectID from_flatbuf(const flatbuffers::String &string) {
 }
 
 const std::vector<ray::ObjectID> from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-        &vector) {
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
   std::vector<ray::ObjectID> object_ids;
   for (int64_t i = 0; i < vector.Length(); i++) {
     object_ids.push_back(from_flatbuf(*vector.Get(i)));
@@ -26,10 +24,8 @@ const std::vector<ray::ObjectID> from_flatbuf(
   return object_ids;
 }
 
-flatbuffers::Offset<
-    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           ray::ObjectID object_ids[],
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ray::ObjectID object_ids[],
            int64_t num_objects) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (int64_t i = 0; i < num_objects; i++) {
@@ -38,8 +34,7 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
   return fbb.CreateVector(results);
 }
 
-flatbuffers::Offset<
-    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
            const std::vector<ray::ObjectID> &object_ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
@@ -54,8 +49,7 @@ std::string string_from_flatbuf(const flatbuffers::String &string) {
 }
 
 const std::unordered_map<std::string, double> map_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>>
-        &resource_vector) {
+    const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>> &resource_vector) {
   std::unordered_map<std::string, double> required_resources;
   for (int64_t i = 0; i < resource_vector.size(); i++) {
     const ResourcePair *resource_pair = resource_vector.Get(i);

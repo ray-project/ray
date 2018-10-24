@@ -91,9 +91,9 @@ class ObjectDirectoryInterface {
   /// \param client_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                        const ClientID &client_id,
-                                        const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectAdded(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -134,8 +134,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
-  ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
-                                const object_manager::protocol::ObjectInfoT &object_info) override;
+  ray::Status ReportObjectAdded(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).

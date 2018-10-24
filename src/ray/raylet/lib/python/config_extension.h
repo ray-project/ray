@@ -23,10 +23,8 @@ PyObject *PyRayConfig_worker_fetch_request_size(PyObject *self);
 PyObject *PyRayConfig_actor_max_dummy_objects(PyObject *self);
 PyObject *PyRayConfig_num_connect_attempts(PyObject *self);
 PyObject *PyRayConfig_connect_timeout_milliseconds(PyObject *self);
-PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(
-    PyObject *self);
-PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(
-    PyObject *self);
+PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(PyObject *self);
 PyObject *PyRayConfig_max_num_to_reconstruct(PyObject *self);
 PyObject *PyRayConfig_local_scheduler_fetch_request_size(PyObject *self);
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self);

@@ -1,7 +1,7 @@
 #include "ray/raylet/node_manager.h"
 
-#include "ray/id.h"
 #include "ray/common/common_protocol.h"
+#include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
@@ -12,7 +12,8 @@ namespace {
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> &actor_registry,
+    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
+        &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -79,10 +80,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
 
-  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const object_manager::protocol::ObjectInfoT &object_info) {
-    ObjectID object_id = ObjectID::from_binary(object_info.object_id);
-    HandleObjectLocal(object_id);
-  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
+      [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+        HandleObjectLocal(object_id);
+      }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 

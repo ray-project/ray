@@ -88,7 +88,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// already exist in the local store.
   /// \param callback The callback to invoke when objects are added to the local store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
+  ray::Status SubscribeObjAdded(
+      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///

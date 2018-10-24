@@ -50,7 +50,8 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
     RAY_LOG(FATAL) << boost_to_ray_status(error).ToString();
   }
 
-  const auto &object_info = flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
+  const auto &object_info =
+      flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
   const auto &object_id = from_flatbuf(*object_info->object_id());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
@@ -62,7 +63,8 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
   NotificationWait();
 }
 
-void ObjectStoreNotificationManager::ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info) {
+void ObjectStoreNotificationManager::ProcessStoreAdd(
+    const object_manager::protocol::ObjectInfoT &object_info) {
   for (auto &handler : add_handlers_) {
     handler(object_info);
   }

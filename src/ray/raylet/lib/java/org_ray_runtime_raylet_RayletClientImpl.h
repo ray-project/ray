@@ -12,27 +12,16 @@ extern "C" {
  * Method:    nativeInit
  * Signature: (Ljava/lang/String;[BZ[B)J
  */
-JNIEXPORT jlong JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(JNIEnv *,
-                                                        jclass,
-                                                        jstring,
-                                                        jbyteArray,
-                                                        jboolean,
-                                                        jbyteArray);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
+    JNIEnv *, jclass, jstring, jbyteArray, jboolean, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
  * Signature: (J[BLjava/nio/ByteBuffer;II)V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(JNIEnv *,
-                                                              jclass,
-                                                              jlong,
-                                                              jbyteArray,
-                                                              jobject,
-                                                              jint,
-                                                              jint);
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
+    JNIEnv *, jclass, jlong, jbyteArray, jobject, jint, jint);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -40,9 +29,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(JNIEnv *,
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(JNIEnv *,
-                                                           jclass,
-                                                           jlong);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -50,9 +37,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(JNIEnv *,
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *,
-                                                           jclass,
-                                                           jlong);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -60,34 +45,25 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *,
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
-    JNIEnv *,
-    jclass,
-    jlong,
-    jobjectArray,
-    jboolean);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(JNIEnv *, jclass,
+                                                                      jlong, jobjectArray,
+                                                                      jboolean);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeNotifyUnblocked
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(JNIEnv *,
-                                                                   jclass,
-                                                                   jlong);
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
+    JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativePutObject
  * Signature: (J[B[B)V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(JNIEnv *,
-                                                             jclass,
-                                                             jlong,
-                                                             jbyteArray,
-                                                             jbyteArray);
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(
+    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -95,12 +71,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(JNIEnv *,
  * Signature: (J[[BIIZ)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *,
-                                                              jclass,
-                                                              jlong,
-                                                              jobjectArray,
-                                                              jint,
-                                                              jint,
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, jlong,
+                                                              jobjectArray, jint, jint,
                                                               jboolean);
 
 /*
@@ -109,10 +81,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *,
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *,
-                                                                  jclass,
-                                                                  jbyteArray,
-                                                                  jbyteArray,
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *, jclass,
+                                                                  jbyteArray, jbyteArray,
                                                                   jint);
 
 /*
@@ -121,12 +91,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *,
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
-    JNIEnv *,
-    jclass,
-    jlong,
-    jobjectArray,
-    jboolean);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(JNIEnv *, jclass,
+                                                                     jlong, jobjectArray,
+                                                                     jboolean);
 
 #ifdef __cplusplus
 }

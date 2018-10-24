@@ -45,7 +45,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
-               ray::Status(const ObjectID &, const ClientID &, const object_manager::protocol::ObjectInfoT &));
+               ray::Status(const ObjectID &, const ClientID &,
+                           const object_manager::protocol::ObjectInfoT &));
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
   MOCK_METHOD1(RunFunctionForEachClient, void(const InfoSuccessCallback &success_cb));
 

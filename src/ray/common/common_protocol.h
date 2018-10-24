@@ -12,9 +12,8 @@
 /// @param fbb Reference to the flatbuffer builder.
 /// @param object_id The object ID to be converted.
 /// @return The flatbuffer string contining the object ID.
-flatbuffers::Offset<flatbuffers::String> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    ray::ObjectID object_id);
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                                                    ray::ObjectID object_id);
 
 /// Convert a flatbuffer string to an object ID.
 ///
@@ -27,8 +26,7 @@ ray::ObjectID from_flatbuf(const flatbuffers::String &string);
 /// @param vector The flatbuffer vector.
 /// @return The vector of object IDs.
 const std::vector<ray::ObjectID> from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-        &vector);
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
 
 /// Convert an array of object IDs to a flatbuffer vector of strings.
 ///
@@ -36,10 +34,8 @@ const std::vector<ray::ObjectID> from_flatbuf(
 /// @param object_ids Array of object IDs.
 /// @param num_objects Number of elements in the array.
 /// @return Flatbuffer vector of strings.
-flatbuffers::Offset<
-    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           ray::ObjectID object_ids[],
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ray::ObjectID object_ids[],
            int64_t num_objects);
 
 /// Convert a vector of object IDs to a flatbuffer vector of strings.
@@ -47,8 +43,7 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 /// @param fbb Reference to the flatbuffer builder.
 /// @param object_ids Vector of object IDs.
 /// @return Flatbuffer vector of strings.
-flatbuffers::Offset<
-    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
            const std::vector<ray::ObjectID> &object_ids);
 
@@ -75,7 +70,6 @@ map_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 /// @param resource_vector The flatbuffer object.
 /// @return A map from resource name to resource quantity.
 const std::unordered_map<std::string, double> map_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>>
-        &resource_vector);
+    const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>> &resource_vector);
 
 #endif

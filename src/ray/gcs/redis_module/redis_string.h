@@ -16,9 +16,7 @@
  * @params ... The parameters to be formated.
  * @return The formatted RedisModuleString, needs to be freed by the caller.
  */
-RedisModuleString *RedisString_Format(RedisModuleCtx *ctx,
-                                      const char *fmt,
-                                      ...) {
+RedisModuleString *RedisString_Format(RedisModuleCtx *ctx, const char *fmt, ...) {
   RedisModuleString *result = RedisModule_CreateString(ctx, "", 0);
   size_t initlen = strlen(fmt);
   size_t l;

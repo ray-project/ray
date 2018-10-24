@@ -21,8 +21,7 @@ struct LocalSchedulerConnection {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
-  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
-      resource_ids_;
+  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
   /// A mutex to protect stateful operations of the local scheduler client.
   std::mutex mutex;
   /// A mutext to protect write operations of the local scheduler client.
@@ -42,11 +41,8 @@ struct LocalSchedulerConnection {
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
-    const char *local_scheduler_socket,
-    const UniqueID &worker_id,
-    bool is_worker,
-    const JobID &driver_id,
-    const Language &language);
+    const char *local_scheduler_socket, const UniqueID &worker_id, bool is_worker,
+    const JobID &driver_id, const Language &language);
 
 /**
  * Disconnect from the local scheduler.
@@ -63,10 +59,9 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
 /// \param The execution dependencies.
 /// \param The task specification.
 /// \return Void.
-void local_scheduler_submit_raylet(
-    LocalSchedulerConnection *conn,
-    const std::vector<ObjectID> &execution_dependencies,
-    const ray::raylet::TaskSpecification &task_spec);
+void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
+                                   const std::vector<ObjectID> &execution_dependencies,
+                                   const ray::raylet::TaskSpecification &task_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This
@@ -103,10 +98,9 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn);
  * @param fetch_only Only fetch objects, do not reconstruct them.
  * @return Void.
  */
-void local_scheduler_reconstruct_objects(
-    LocalSchedulerConnection *conn,
-    const std::vector<ObjectID> &object_ids,
-    bool fetch_only = false);
+void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
+                                         const std::vector<ObjectID> &object_ids,
+                                         bool fetch_only = false);
 
 /**
  * Notify the local scheduler that this client (worker) is no longer blocked.
@@ -149,11 +143,8 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
 /// \return A pair with the first element containing the object ids that were
 /// found, and the second element the objects that were not found.
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
-    LocalSchedulerConnection *conn,
-    const std::vector<ObjectID> &object_ids,
-    int num_returns,
-    int64_t timeout_milliseconds,
-    bool wait_local);
+    LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
+    int num_returns, int64_t timeout_milliseconds, bool wait_local);
 
 /// Push an error to the relevant driver.
 ///
@@ -163,10 +154,8 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
 /// \param The error message.
 /// \param The timestamp of the error.
 /// \return Void.
-void local_scheduler_push_error(LocalSchedulerConnection *conn,
-                                const JobID &job_id,
-                                const std::string &type,
-                                const std::string &error_message,
+void local_scheduler_push_error(LocalSchedulerConnection *conn, const JobID &job_id,
+                                const std::string &type, const std::string &error_message,
                                 double timestamp);
 
 /// Store some profile events in the GCS.
@@ -174,9 +163,8 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn,
 /// \param conn The connection information.
 /// \param profile_events A batch of profiling event information.
 /// \return Void.
-void local_scheduler_push_profile_events(
-    LocalSchedulerConnection *conn,
-    const ProfileTableDataT &profile_events);
+void local_scheduler_push_profile_events(LocalSchedulerConnection *conn,
+                                         const ProfileTableDataT &profile_events);
 
 /// Free a list of objects from object stores.
 ///
@@ -186,8 +174,7 @@ void local_scheduler_push_profile_events(
 /// or send it to all the object stores.
 /// \return Void.
 void local_scheduler_free_objects_in_object_store(
-    LocalSchedulerConnection *conn,
-    const std::vector<ray::ObjectID> &object_ids,
+    LocalSchedulerConnection *conn, const std::vector<ray::ObjectID> &object_ids,
     bool local_only);
 
 #endif
