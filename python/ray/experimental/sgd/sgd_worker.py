@@ -9,7 +9,7 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import fetch, run_timeline
+from ray.experimental.sgd.util import fetch, run_timeline, warmup
 from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
     unpack_small_tensors
 
@@ -255,3 +255,6 @@ class SGDWorker(object):
 
     def ip(self):
         return ray.services.get_node_ip_address()
+
+    def warmup(self):
+        warmup()

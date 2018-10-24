@@ -8,7 +8,7 @@ import time
 import numpy as np
 
 import ray
-from ray.experimental.sgd.util import Timeline, fetch
+from ray.experimental.sgd.util import Timeline, fetch, warmup
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +94,6 @@ class ParameterServer(object):
             logger.info("Setting CPU Affinity to: {}".format(cpu_id))
         except Exception as e:
             logger.error(e)
+
+    def warmup(self):
+        warmup()

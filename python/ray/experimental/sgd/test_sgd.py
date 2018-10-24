@@ -39,6 +39,7 @@ if __name__ == "__main__":
         gpu=args.gpu,
         strategy=args.strategy,
         grad_shard_bytes=args.grad_shard_bytes)
+    sgd.warmup()
 
     t = []
 

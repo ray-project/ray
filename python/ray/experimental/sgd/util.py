@@ -13,6 +13,23 @@ import ray
 logger = logging.getLogger(__name__)
 
 
+def warmup():
+    logger.info("Warming up object store")
+    zeros = np.zeros(int(100e6 / 8), dtype=np.float64)
+    start = time.time()
+    for _ in range(10):
+        ray.put(zeros)
+    logger.info("Initial latency for 100MB put", (time.time() - start) / 10)
+    for _ in range(10):
+        for _ in range(100):
+            ray.put(zeros)
+        start = time.time()
+        for _ in range(10):
+            ray.put(zeros)
+        logger.info("Warmed up latency for 100MB put",
+                    (time.time() - start) / 10)
+
+
 def fetch(oids):
     if ray.global_state.use_raylet:
         local_sched_client = ray.worker.global_worker.local_scheduler_client

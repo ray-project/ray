@@ -96,6 +96,8 @@ class DistributedSGD(object):
                 for ps, s in zip(self.ps_list, shard_shapes)
             ])
             logger.info("Parameter servers started")
+        else:
+            self.ps_list = []
 
     def foreach_worker(self, fn):
         results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])
@@ -107,6 +109,13 @@ class DistributedSGD(object):
         for r in results:
             out.extend(r)
         return r
+
+    def warmup(self):
+        logger.info("Warming up object store of worker actors")
+        ray.get([w.warmup.remote() for w in self.workers])
+        logger.info("Warming up object store of param server actors")
+        ray.get([w.warmup.remote() for w in self.ps_list])
+        logger.info("Warmup complete")
 
     def step(self, fetch_stats=False):
         if self.strategy == "ps":
