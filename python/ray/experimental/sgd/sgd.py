@@ -112,8 +112,6 @@ class DistributedSGD(object):
     def warmup(self):
         logger.info("Warming up object store of worker actors")
         ray.get([w.warmup.remote() for w in self.workers])
-        logger.info("Warming up object store of param server actors")
-        ray.get([w.warmup.remote() for w in self.ps_list])
         logger.info("Warmup complete")
 
     def step(self, fetch_stats=False):

@@ -19,6 +19,9 @@ parser.add_argument("--num-workers", default=2, type=int)
 parser.add_argument("--grad-shard-bytes", default=10000000, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
 parser.add_argument("--stats-interval", default=10, type=int)
+parser.add_argument("--object-store-memory", default=None, type=int)
+parser.add_argument(
+    "--warmup", action="store_true", help="Warm up object store before start.")
 parser.add_argument(
     "--strategy", default="ps", type=str, help="One of 'simple' or 'ps'")
 parser.add_argument(
@@ -26,7 +29,9 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args, _ = parser.parse_known_args()
-    ray.init(redis_address=args.redis_address)
+    ray.init(
+        redis_address=args.redis_address,
+        object_store_memory=args.object_store_memory)
 
     model_creator = (
         lambda worker_idx, device_idx: TFBenchModel(
@@ -39,7 +44,9 @@ if __name__ == "__main__":
         gpu=args.gpu,
         strategy=args.strategy,
         grad_shard_bytes=args.grad_shard_bytes)
-    sgd.warmup()
+
+    if args.warmup:
+        sgd.warmup()
 
     t = []
 
