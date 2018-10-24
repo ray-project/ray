@@ -24,6 +24,8 @@ __all__ = [
     "TablePrefix", "TablePubsub", "construct_error_message"
 ]
 
+FUNCTION_PREFIX = "RemoteFunction:"
+
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
 
