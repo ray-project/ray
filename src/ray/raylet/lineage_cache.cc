@@ -358,7 +358,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
 }
 
 void LineageCache::EvictTask(const TaskID &task_id) {
-  // If we haven't received a commit for this task yet. do not evict.
+  // If we haven't received a commit for this task yet, do not evict.
   auto commit_it = committed_tasks_.find(task_id);
   if (commit_it == committed_tasks_.end()) {
     return;
