@@ -33,8 +33,7 @@ ENV PATH /miniconda3/envs/ray-kubernetes/bin:$PATH
 #update pip to 18.1 from conda-forge (or replace this section with: `pip install --upgrade pip`).
 #`pip install --upgrade` might be faster
 RUN conda config --add channels conda-forge && \
-    conda update -n ray-kubernetes pip && \
-    conda install libgcc
+    conda update -n ray-kubernetes pip
 #libgcc might be already downloaded with conda create
 
 
