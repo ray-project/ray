@@ -27,7 +27,7 @@ spec:
           - "ray start --node-ip-address $MY_POD_IP --redis-address $(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head.default.svc.cluster.local\"));sys.stdout.flush()'):6379 --object-manager-port 12345;
             mkdir /root/.ssh/;
             touch /root/.ssh/authorized_keys;
-            echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCvAdpmjr8gMTOU9HmaJ/8ShXYIwohLCBD5+hI6kprCROQ3JHLs85/Hx147Kk+PhuyFr3D9OguUwTtxJ7U4MnBNjU6aCLKhln0R/IEODM/UO3vMLDqEgRtfhwyrqMzCEyZUa3EosGIEuc8KYPWRflk4RokbjrALhT8D0KWBwT7oEf9f9e3QasqUsZPu/lKDEBSEBuC3JjlhtBmHmiBdUydzV7oIEJ3uMz4jemCEOfLHOVbe2FH/n2y4lBGH6IhcZJHYAbleLznkfyNlRCcrAw3KJ+2i/Yk9ozFEKX27xr7jOXdOVmtxPtFTcj+gGwO+/LbFuMT32jTU1mDtl0J6YCwB root@c1e99a2d8a8e' >> ~/.ssh/authorized_keys &&
+            echo '<PASTE-PUBKEY-HERE-ONELINE>' >> ~/.ssh/authorized_keys &&
             service ssh restart;
             service ssh restart;
             echo export PATH=/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin >> ~/.bashrc &&
