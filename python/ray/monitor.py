@@ -242,7 +242,7 @@ class Monitor(object):
 
                 # Determine the appropriate message handler.
                 message_handler = None
-                elif channel == ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL:
+                if channel == ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL:
                     # Similar functionality as local scheduler info channel
                     message_handler = self.xray_heartbeat_handler
                 elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
