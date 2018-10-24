@@ -54,9 +54,6 @@ python/.eggs
 *.dylib
 *.dll
 
-# Cython-generated files
-*.c
-
 # Incremental linking files
 *.ilk
 

@@ -1231,9 +1231,6 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "0",
-    reason="This test only works with xray.")
 def test_exception_raised_when_actor_node_dies(shutdown_only):
     ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
 

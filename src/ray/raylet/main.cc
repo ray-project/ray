@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "common/state/ray_config.h"
+#include "ray/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
 

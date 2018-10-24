@@ -162,9 +162,7 @@ def ray_start_reconstruction(request):
 
     # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    use_raylet = os.environ.get("RAY_USE_XRAY") != "0"
-    redis_address, redis_shards = ray.services.start_redis(
-        node_ip_address, use_raylet=use_raylet)
+    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
     redis_ip_address = ray.services.get_ip_address(redis_address)
     redis_port = ray.services.get_port(redis_address)
     time.sleep(0.1)
@@ -186,8 +184,7 @@ def ray_start_reconstruction(request):
                 store_stdout_file=store_stdout_file,
                 store_stderr_file=store_stderr_file,
                 manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file,
-                use_raylet=use_raylet))
+                manager_stderr_file=manager_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {

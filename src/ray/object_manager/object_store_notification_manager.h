@@ -38,7 +38,7 @@ class ObjectStoreNotificationManager {
   /// already exist in the local store
   ///
   /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjAdded(std::function<void(const ObjectInfoT &)> callback);
+  void SubscribeObjAdded(std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -52,10 +52,10 @@ class ObjectStoreNotificationManager {
   void ProcessStoreNotification(const boost::system::error_code &error);
 
   /// Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const ObjectInfoT &object_info);
+  void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info);
   void ProcessStoreRemove(const ObjectID &object_id);
 
-  std::vector<std::function<void(const ObjectInfoT &)>> add_handlers_;
+  std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>> add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
   plasma::PlasmaClient store_client_;

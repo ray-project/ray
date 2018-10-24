@@ -14,15 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def fetch(oids):
-    if ray.global_state.use_raylet:
-        local_sched_client = ray.worker.global_worker.local_scheduler_client
-        for o in oids:
-            ray_obj_id = ray.ObjectID(o)
-            local_sched_client.reconstruct_objects([ray_obj_id], True)
-    else:
-        for o in oids:
-            plasma_id = ray.pyarrow.plasma.ObjectID(o)
-            ray.worker.global_worker.plasma_client.fetch([plasma_id])
+    local_sched_client = ray.worker.global_worker.local_scheduler_client
+    for o in oids:
+        ray_obj_id = ray.ObjectID(o)
+        local_sched_client.reconstruct_objects([ray_obj_id], True)
 
 
 def run_timeline(sess, ops, feed_dict=None, write_timeline=False, name=""):

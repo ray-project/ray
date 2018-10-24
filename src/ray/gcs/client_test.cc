@@ -2,9 +2,7 @@
 
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop
 extern "C" {
-#include "hiredis/adapters/ae.h"
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
 }
 
 #include "ray/gcs/client.h"
@@ -54,35 +52,6 @@ class TestGcs : public ::testing::Test {
 };
 
 TestGcs *test;
-
-class TestGcsWithAe : public TestGcs {
- public:
-  TestGcsWithAe(CommandType command_type) : TestGcs(command_type) {
-    loop_ = aeCreateEventLoop(1024);
-    RAY_CHECK_OK(client_->primary_context()->AttachToEventLoop(loop_));
-    for (auto &context : client_->shard_contexts()) {
-      RAY_CHECK_OK(context->AttachToEventLoop(loop_));
-    }
-  }
-
-  TestGcsWithAe() : TestGcsWithAe(CommandType::kRegular) {}
-
-  ~TestGcsWithAe() override {
-    // Destroy the client first since it has a reference to the event loop.
-    client_.reset();
-    aeDeleteEventLoop(loop_);
-  }
-  void Start() override { aeMain(loop_); }
-  void Stop() override { aeStop(loop_); }
-
- private:
-  aeEventLoop *loop_;
-};
-
-class TestGcsWithChainAe : public TestGcsWithAe {
- public:
-  TestGcsWithChainAe() : TestGcsWithAe(gcs::CommandType::kChain){};
-};
 
 class TestGcsWithAsio : public TestGcs {
  public:
@@ -154,10 +123,8 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
     TEST(job_id_, client_);       \
   }
 
-TEST_MACRO(TestGcsWithAe, TestTableLookup);
 TEST_MACRO(TestGcsWithAsio, TestTableLookup);
 #if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTableLookup);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 #endif
 
@@ -199,11 +166,6 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   ASSERT_EQ(test->NumCallbacks(), managers.size());
 }
 
-TEST_F(TestGcsWithAe, TestLogLookup) {
-  test = this;
-  TestLogLookup(job_id_, client_);
-}
-
 TEST_F(TestGcsWithAsio, TestLogLookup) {
   test = this;
   TestLogLookup(job_id_, client_);
@@ -231,10 +193,8 @@ void TestTableLookupFailure(const JobID &job_id,
   test->Start();
 }
 
-TEST_MACRO(TestGcsWithAe, TestTableLookupFailure);
 TEST_MACRO(TestGcsWithAsio, TestTableLookupFailure);
 #if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTableLookupFailure);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
@@ -290,11 +250,6 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   ASSERT_EQ(test->NumCallbacks(), 2);
 }
 
-TEST_F(TestGcsWithAe, TestLogAppendAt) {
-  test = this;
-  TestLogAppendAt(job_id_, client_);
-}
-
 TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   test = this;
   TestLogAppendAt(job_id_, client_);
@@ -338,94 +293,6 @@ void TaskLookupAfterUpdateFailure(gcs::AsyncGcsClient *client, const TaskID &id)
   RAY_CHECK(false);
   test->Stop();
 }
-
-void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
-                        const TaskTableDataT &task, bool updated) {
-  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id,
-                                           &TaskLookupAfterUpdate, &TaskLookupFailure));
-}
-
-void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
-  auto data = std::make_shared<TaskTableDataT>();
-  data->scheduling_state = SchedulingState::SCHEDULED;
-  ClientID local_scheduler_id = ClientID::from_binary(kRandomId);
-  data->scheduler_id = local_scheduler_id.binary();
-  TaskID task_id = TaskID::from_random();
-  RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(
-      client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
-  auto update = std::make_shared<TaskTableTestAndUpdateT>();
-  update->test_scheduler_id = local_scheduler_id.binary();
-  update->test_state_bitmask = SchedulingState::SCHEDULED;
-  update->update_state = SchedulingState::LOST;
-  // After test-and-setting, the callback will lookup the current state of the
-  // task.
-  RAY_CHECK_OK(
-      client->task_table().TestAndUpdate(job_id, task_id, update, &TaskUpdateCallback));
-  // Run the event loop. The loop will only stop if the lookup after the
-  // test-and-set succeeds (or an assertion failure).
-  test->Start();
-}
-
-TEST_MACRO(TestGcsWithAe, TestTaskTable);
-TEST_MACRO(TestGcsWithAsio, TestTaskTable);
-#if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTaskTable);
-TEST_MACRO(TestGcsWithChainAsio, TestTaskTable);
-#endif
-
-void TestTableSubscribeAll(const JobID &job_id,
-                           std::shared_ptr<gcs::AsyncGcsClient> client) {
-  TaskID task_id = TaskID::from_random();
-  std::vector<std::string> task_specs = {"abc", "def", "ghi"};
-  // Callback for a notification.
-  auto notification_callback = [task_id, task_specs](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const protocol::TaskT &data) {
-    ASSERT_EQ(id, task_id);
-    // Check that we get notifications in the same order as the writes.
-    ASSERT_EQ(data.task_specification, task_specs[test->NumCallbacks()]);
-    test->IncrementNumCallbacks();
-    if (test->NumCallbacks() == task_specs.size()) {
-      test->Stop();
-    }
-  };
-
-  // The failure callback should not be called if we are subscribing to
-  // notifications for all keys.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
-    RAY_CHECK(false);
-  };
-
-  // Callback for subscription success. We are guaranteed to receive
-  // notifications after this is called.
-  auto subscribe_callback = [job_id, task_id, task_specs](gcs::AsyncGcsClient *client) {
-    // We have subscribed. Do the writes to the table.
-    for (const auto &task_spec : task_specs) {
-      auto data = std::make_shared<protocol::TaskT>();
-      data->task_specification = task_spec;
-      RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
-    }
-  };
-
-  // Subscribe to all task table notifications. Once we have successfully
-  // subscribed, we will write the key several times and check that we get
-  // notified for each.
-  RAY_CHECK_OK(client->raylet_task_table().Subscribe(
-      job_id, ClientID::nil(), notification_callback, failure_callback,
-      subscribe_callback));
-  // Run the event loop. The loop will only stop if the registered subscription
-  // callback is called (or an assertion failure).
-  test->Start();
-  // Check that we received one notification callback for each write.
-  ASSERT_EQ(test->NumCallbacks(), task_specs.size());
-}
-
-TEST_MACRO(TestGcsWithAe, TestTableSubscribeAll);
-TEST_MACRO(TestGcsWithAsio, TestTableSubscribeAll);
-#if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeAll);
-TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeAll);
-#endif
 
 void TestLogSubscribeAll(const JobID &job_id,
                          std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -471,11 +338,6 @@ void TestLogSubscribeAll(const JobID &job_id,
   test->Start();
   // Check that we received one notification callback for each write.
   ASSERT_EQ(test->NumCallbacks(), managers.size());
-}
-
-TEST_F(TestGcsWithAe, TestLogSubscribeAll) {
-  test = this;
-  TestLogSubscribeAll(job_id_, client_);
 }
 
 TEST_F(TestGcsWithAsio, TestLogSubscribeAll) {
@@ -554,10 +416,8 @@ void TestTableSubscribeId(const JobID &job_id,
   ASSERT_EQ(test->NumCallbacks(), task_specs2.size());
 }
 
-TEST_MACRO(TestGcsWithAe, TestTableSubscribeId);
 TEST_MACRO(TestGcsWithAsio, TestTableSubscribeId);
 #if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeId);
 TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 #endif
 
@@ -628,11 +488,6 @@ void TestLogSubscribeId(const JobID &job_id,
   // Check that we received one notification callback for each write to the
   // requested key.
   ASSERT_EQ(test->NumCallbacks(), managers2.size());
-}
-
-TEST_F(TestGcsWithAe, TestLogSubscribeId) {
-  test = this;
-  TestLogSubscribeId(job_id_, client_);
 }
 
 TEST_F(TestGcsWithAsio, TestLogSubscribeId) {
@@ -709,10 +564,8 @@ void TestTableSubscribeCancel(const JobID &job_id,
   ASSERT_EQ(test->NumCallbacks(), 2);
 }
 
-TEST_MACRO(TestGcsWithAe, TestTableSubscribeCancel);
 TEST_MACRO(TestGcsWithAsio, TestTableSubscribeCancel);
 #if RAY_USE_NEW_GCS
-TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeCancel);
 TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 #endif
 
@@ -780,11 +633,6 @@ void TestLogSubscribeCancel(const JobID &job_id,
   // key, then a notification for all of the appends, because we cancel
   // notifications in between.
   ASSERT_EQ(test->NumCallbacks(), managers.size() + 1);
-}
-
-TEST_F(TestGcsWithAe, TestLogSubscribeCancel) {
-  test = this;
-  TestLogSubscribeCancel(job_id_, client_);
 }
 
 TEST_F(TestGcsWithAsio, TestLogSubscribeCancel) {

@@ -1,5 +1,5 @@
 #include "ray/object_manager/object_manager.h"
-#include "common/common_protocol.h"
+#include "ray/common/common_protocol.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
@@ -36,7 +36,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
+      [this](const object_manager::protocol::ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -60,7 +60,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
+      [this](const object_manager::protocol::ObjectInfoT &object_info) { HandleObjectAdded(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -94,7 +94,7 @@ void ObjectManager::StopIOService() {
   }
 }
 
-void ObjectManager::HandleObjectAdded(const ObjectInfoT &object_info) {
+void ObjectManager::HandleObjectAdded(const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   RAY_CHECK(local_objects_.count(object_id) == 0);
@@ -130,7 +130,7 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const ObjectInfoT &)> callback) {
+    std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
   store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
@@ -347,7 +347,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   RAY_CHECK_OK(object_directory_->GetInformation(
       client_id,
       [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        const ObjectInfoT &object_info = local_objects_[object_id];
+        const object_manager::protocol::ObjectInfoT &object_info = local_objects_[object_id];
         uint64_t data_size =
             static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
         uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);

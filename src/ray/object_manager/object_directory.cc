@@ -71,7 +71,7 @@ void ObjectDirectory::RegisterBackend() {
 
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                const ClientID &client_id,
-                                               const ObjectInfoT &object_info) {
+                                               const object_manager::protocol::ObjectInfoT &object_info) {
   // Append the addition entry to the object table.
   JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();

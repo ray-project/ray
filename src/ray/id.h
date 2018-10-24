@@ -10,10 +10,6 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
-extern "C" {
-#include "sha256.h"
-}
-
 namespace ray {
 
 class RAY_EXPORT UniqueID {

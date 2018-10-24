@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import os
 
-from ray.local_scheduler import ObjectID
+from ray.raylet import ObjectID
 
 
 def env_integer(key, default):

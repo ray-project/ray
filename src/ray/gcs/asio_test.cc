@@ -4,6 +4,11 @@
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 
+extern "C" {
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
+}
+
 boost::asio::io_service io_service;
 
 void ConnectCallback(const redisAsyncContext *c, int status) {

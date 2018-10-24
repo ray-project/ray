@@ -6,9 +6,16 @@
 #include <mutex>
 #include <random>
 
-#include "common/common.h"
+//#include "common/common.h"
 #include "ray/constants.h"
 #include "ray/status.h"
+
+extern "C" {
+#include "thirdparty/sha256.h"
+}
+
+// Definitions for computing hash digests.
+#define DIGEST_SIZE SHA256_BLOCK_SIZE
 
 namespace ray {
 

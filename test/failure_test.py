@@ -494,9 +494,6 @@ def test_version_mismatch(shutdown_only):
     ray.__version__ = ray_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "0",
-    reason="This test only works with xray.")
 def test_warning_monitor_died(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -538,9 +535,6 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "0",
-    reason="This test only works with xray.")
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
 
@@ -561,9 +555,6 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself
@@ -591,9 +582,6 @@ def ray_start_two_nodes():
 
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "0",
-    reason="This test only works with xray.")
 def test_warning_for_dead_node(ray_start_two_nodes):
     # Wait for the raylet to appear in the client table.
     while len(ray.global_state.client_table()) < 2:

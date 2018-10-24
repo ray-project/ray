@@ -1,54 +1,18 @@
 #include "ray/raylet/node_manager.h"
 
-#include "common_protocol.h"
-// TODO: While removing "local_scheduler_generated.h", remove the dependency
-//       gen_local_scheduler_fbs from src/ray/CMakeLists.txt.
-#include "local_scheduler/format/local_scheduler_generated.h"
+#include "ray/id.h"
+#include "ray/common/common_protocol.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
 
-namespace local_scheduler_protocol = ray::local_scheduler::protocol;
-
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
-
-// Check consistency between client and server protocol.
-RAY_CHECK_ENUM(protocol::MessageType::SubmitTask,
-               local_scheduler_protocol::MessageType::SubmitTask);
-RAY_CHECK_ENUM(protocol::MessageType::TaskDone,
-               local_scheduler_protocol::MessageType::TaskDone);
-RAY_CHECK_ENUM(protocol::MessageType::EventLogMessage,
-               local_scheduler_protocol::MessageType::EventLogMessage);
-RAY_CHECK_ENUM(protocol::MessageType::RegisterClientRequest,
-               local_scheduler_protocol::MessageType::RegisterClientRequest);
-RAY_CHECK_ENUM(protocol::MessageType::RegisterClientReply,
-               local_scheduler_protocol::MessageType::RegisterClientReply);
-RAY_CHECK_ENUM(protocol::MessageType::DisconnectClient,
-               local_scheduler_protocol::MessageType::DisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType::IntentionalDisconnectClient,
-               local_scheduler_protocol::MessageType::IntentionalDisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType::GetTask,
-               local_scheduler_protocol::MessageType::GetTask);
-RAY_CHECK_ENUM(protocol::MessageType::ExecuteTask,
-               local_scheduler_protocol::MessageType::ExecuteTask);
-RAY_CHECK_ENUM(protocol::MessageType::ReconstructObjects,
-               local_scheduler_protocol::MessageType::ReconstructObjects);
-RAY_CHECK_ENUM(protocol::MessageType::NotifyUnblocked,
-               local_scheduler_protocol::MessageType::NotifyUnblocked);
-RAY_CHECK_ENUM(protocol::MessageType::PutObject,
-               local_scheduler_protocol::MessageType::PutObject);
-RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierRequest,
-               local_scheduler_protocol::MessageType::GetActorFrontierRequest);
-RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
-               local_scheduler_protocol::MessageType::GetActorFrontierReply);
-RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
-               local_scheduler_protocol::MessageType::SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ActorID, ray::raylet::ActorRegistration> &actor_registry,
+    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -115,7 +79,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
 
-  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const object_manager::protocol::ObjectInfoT &object_info) {
     ObjectID object_id = ObjectID::from_binary(object_info.object_id);
     HandleObjectLocal(object_id);
   }));
