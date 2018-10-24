@@ -20,15 +20,16 @@ def warmup():
     start = time.time()
     for _ in range(10):
         ray.put(zeros)
-    logger.info("Initial latency for 100MB put", (time.time() - start) / 10)
+    logger.info("Initial latency for 100MB put {}".format(
+        (time.time() - start) / 10))
     for _ in range(10):
         for _ in range(100):
             ray.put(zeros)
         start = time.time()
         for _ in range(10):
             ray.put(zeros)
-        logger.info("Warmed up latency for 100MB put",
-                    (time.time() - start) / 10)
+        logger.info("Warmed up latency for 100MB put {}".format(
+            (time.time() - start) / 10))
 
 
 def fetch(oids):
