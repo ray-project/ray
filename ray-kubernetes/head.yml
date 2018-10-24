@@ -24,7 +24,7 @@ metadata:
 spec:
   containers:
   - name: ray-head
-    image: gcr.io/tutorial-218804/kube-cluster-demo:latest
+    image: <PASTE-YOUR-IMAGE-URI-HERE>
     env:
     - name: MY_POD_IP
       valueFrom:
