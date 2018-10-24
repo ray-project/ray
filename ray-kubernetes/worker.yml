@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: ray-worker
-        image: gcr.io/tutorial-218804/kube-cluster-demo
+        image: <PASTE-YOUR-IMAGE-URI>
         ports:
         - containerPort: 12345
         env:
