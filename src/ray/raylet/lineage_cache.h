@@ -184,7 +184,14 @@ class Lineage {
 /// \class LineageCache
 ///
 /// A cache of the task table. This consists of all tasks that this node owns,
-/// as well as their lineage, that have not yet been added durably to the GCS.
+/// as well as their lineage, that have not yet been added durably
+/// ("committed") to the GCS.
+///
+/// The current policy is to flush each task as soon as it enters the
+/// UNCOMMITTED_READY state. For safety, we only evict tasks if they have been
+/// committed and if their parents have been all evicted. Thus, the invariant
+/// is that if g depends on f, and g has been evicted, then f must have been
+/// committed.
 class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
@@ -242,8 +249,8 @@ class LineageCache {
   /// includes the entry for the requested entry_id.
   Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
 
-  /// Handle the commit of a task entry in the GCS. This sets the task to
-  /// COMMITTED and cleans up any ancestor tasks that are in the cache.
+  /// Handle the commit of a task entry in the GCS. This attempts to evict the
+  /// task if possible.
   ///
   /// \param task_id The ID of the task entry that was committed.
   void HandleEntryCommitted(const TaskID &task_id);
@@ -266,15 +273,12 @@ class LineageCache {
   size_t NumEntries() const;
 
  private:
-  /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
-  /// parents that are not committed yet, then the child will be flushed once
-  /// the parents have been committed.
+  /// Flush a task that is in UNCOMMITTED_READY state.
   void FlushTask(const TaskID &task_id);
   /// Evict a single task. This should only be called if we are sure that the
-  /// task has been committed and will trigger an attempt to flush any of the
-  /// evicted task's children that are in UNCOMMITTED_READY state.  Returns an
-  /// optional reference to the evicted task that is empty if the task was not
-  /// in the lineage cache.
+  /// task has been committed. The task will only be evicted if all of its
+  /// parents have also been evicted. If successful, then we will also attempt
+  /// to evict the task's children.
   void EvictTask(const TaskID &task_id);
   /// Subscribe to notifications for a task. Returns whether the operation
   /// was successful (whether we were not already subscribed).

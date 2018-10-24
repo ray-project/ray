@@ -142,42 +142,6 @@ LineageCache::LineageCache(const ClientID &client_id,
     : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
 
 /// A helper function to merge one lineage into another, in DFS order.
-///
-/// \param task_id The current entry to merge from lineage_from into
-/// lineage_to.
-/// \param lineage_from The lineage to merge entries from. This lineage is
-/// traversed by following each entry's parent pointers in DFS order,
-/// until an entry is not found or the stopping condition is reached.
-/// \param lineage_to The lineage to merge entries into.
-/// \param stopping_condition A stopping condition for the DFS over
-/// lineage_from. This should return true if the merge should stop.
-void MergeLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
-                        Lineage &lineage_to,
-                        std::function<bool(const LineageEntry &)> stopping_condition) {
-  // If the entry is not found in the lineage to merge, then we stop since
-  // there is nothing to copy into the merged lineage.
-  auto entry = lineage_from.GetEntry(task_id);
-  if (!entry) {
-    return;
-  }
-  // Check whether we should stop at this entry in the DFS.
-  if (stopping_condition(entry.get())) {
-    return;
-  }
-
-  // Insert a copy of the entry into lineage_to.
-  const auto &parent_ids = entry->GetParentTaskIds();
-  // If the insert is successful, then continue the DFS. The insert will fail
-  // if the new entry has an equal or lower GCS status than the current entry
-  // in lineage_to. This also prevents us from traversing the same node twice.
-  if (lineage_to.SetEntry(entry->TaskData(), entry->GetStatus())) {
-    for (const auto &parent_id : parent_ids) {
-      MergeLineageHelper(parent_id, lineage_from, lineage_to, stopping_condition);
-    }
-  }
-}
-
-/// A helper function to merge one lineage into another, in DFS order.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage,
                                          std::unordered_set<TaskID> &subscribe_tasks) {
@@ -189,11 +153,11 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   }
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED_REMOTE);
 
-  // Insert a copy of the entry into lineage_to.
+  // Insert a copy of the entry into our cache.
   const auto &parent_ids = entry->GetParentTaskIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
-  // in lineage_to. This also prevents us from traversing the same node twice.
+  // in our cache. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
     subscribe_tasks.insert(task_id);
     for (const auto &parent_id : parent_ids) {
@@ -213,8 +177,12 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
   // stash.
   std::unordered_set<TaskID> subscribe_tasks;
   AddUncommittedLineage(task_id, uncommitted_lineage, subscribe_tasks);
+  // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
+  // should be marked as UNCOMMITTED_READY once the task starts execution.
+  auto added = lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
 
-  // Do not subscribe to the waiting task.
+  // Do not subscribe to the task itself. We just added it as
+  // UNCOMMITTED_WAITING, so the task is local.
   subscribe_tasks.erase(task_id);
   // Subscribe to all other tasks that were included in the uncommitted lineage
   // and that were not already in the local stash. These tasks haven't been
@@ -224,9 +192,8 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
     RAY_CHECK(SubscribeTask(task_id));
   }
 
-  // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
-  // should be marked as UNCOMMITTED_READY once the task starts execution.
-  auto added = lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
+  // For every task that the waiting task depends on, record the fact that the
+  // waiting task depends on it.
   auto entry = lineage_.GetEntry(task_id);
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     children_[parent_id].insert(task_id);
