@@ -39,7 +39,7 @@ RUN conda config --add channels conda-forge && \
 
 
 #Install ray and relevant python packages
-RUN pip install ray pssh cython pyarrow tensorflow gym scipy opencv-python bokeh jupyter lz4
+RUN pip install ray pssh tensorflow gym scipy opencv-python bokeh jupyter lz4
 
 
 #Conda4.4 or later requires the following
