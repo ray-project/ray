@@ -9,11 +9,11 @@ import collections
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
-
 logger = logging.getLogger(__name__)
 
 
-def collect_metrics(local_evaluator, remote_evaluators=[], timeout_seconds=180):
+def collect_metrics(local_evaluator, remote_evaluators=[],
+                    timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
     episodes, num_dropped = collect_episodes(
@@ -23,7 +23,9 @@ def collect_metrics(local_evaluator, remote_evaluators=[], timeout_seconds=180):
     return metrics
 
 
-def collect_episodes(local_evaluator, remote_evaluators=[], timeout_seconds=180):
+def collect_episodes(local_evaluator,
+                     remote_evaluators=[],
+                     timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     pending = [
@@ -34,8 +36,9 @@ def collect_episodes(local_evaluator, remote_evaluators=[], timeout_seconds=180)
         pending, num_returns=len(pending), timeout=timeout_seconds * 1000)
     num_metric_batches_dropped = len(pending) - len(collected)
     if num_metric_batches_dropped > 0:
-        logger.warn("WARNING: {}/{} workers returned metrics within {}s".format(
-            len(collected), len(pending), timeout_seconds))
+        logger.warn(
+            "WARNING: {}/{} workers returned metrics within {}s".format(
+                len(collected), len(pending), timeout_seconds))
     metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
