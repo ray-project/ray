@@ -363,7 +363,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   if (commit_it == committed_tasks_.end()) {
     return;
   }
-  // If the entry ahs already been evicted, exit.
+  // If the entry has already been evicted, exit.
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
     return;
