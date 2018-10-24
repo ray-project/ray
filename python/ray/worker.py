@@ -1934,7 +1934,6 @@ def connect(info,
             "driver_id": worker.worker_id,
             "start_time": time.time(),
             "plasma_store_socket": info["store_socket_name"],
-            "plasma_manager_socket": info.get("manager_socket_name"),
             "local_scheduler_socket": info.get("local_scheduler_socket_name"),
             "raylet_socket": info.get("raylet_socket_name")
         }
@@ -1949,7 +1948,6 @@ def connect(info,
         worker_dict = {
             "node_ip_address": worker.node_ip_address,
             "plasma_store_socket": info["store_socket_name"],
-            "plasma_manager_socket": info["manager_socket_name"],
             "local_scheduler_socket": info["local_scheduler_socket_name"]
         }
         if redirect_worker_output:

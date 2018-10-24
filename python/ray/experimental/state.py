@@ -1051,8 +1051,6 @@ class GlobalState(object):
                 "local_scheduler_socket": (decode(
                     worker_info[b"local_scheduler_socket"])),
                 "node_ip_address": decode(worker_info[b"node_ip_address"]),
-                "plasma_manager_socket": decode(
-                    worker_info[b"plasma_manager_socket"]),
                 "plasma_store_socket": decode(
                     worker_info[b"plasma_store_socket"])
             }

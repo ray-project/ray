@@ -278,8 +278,6 @@ def _test_component_failed(component_type):
     # Kill the component on all nodes except the head node as the tasks
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
-    # NOTE(swang): Legacy ray hangs on this test if the plasma manager
-    # is killed.
     time.sleep(0.1)
     components = ray.services.all_processes[component_type]
     for process in components[1:]:
@@ -326,8 +324,7 @@ def test_raylet_failed():
     # Kill all local schedulers on worker nodes.
     _test_component_failed(ray.services.PROCESS_TYPE_RAYLET)
 
-    # The plasma stores and plasma managers should still be alive on the
-    # worker nodes.
+    # The plasma stores should still be alive on the worker nodes.
     check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
 
     ray.shutdown()
@@ -342,7 +339,6 @@ def test_plasma_store_failed():
 
     # No processes should be left alive on the worker nodes.
     check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
-    check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER, False)
     check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
     check_components_alive(ray.services.PROCESS_TYPE_RAYLET, False)
 
@@ -356,7 +352,6 @@ def test_driver_lives_sequential():
     ray.worker.init()
     all_processes = ray.services.all_processes
     processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
                  all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_RAYLET])
@@ -379,7 +374,6 @@ def test_driver_lives_parallel():
     ray.worker.init()
     all_processes = ray.services.all_processes
     processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER] +
                  all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_RAYLET])

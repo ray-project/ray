@@ -174,17 +174,13 @@ def ray_start_reconstruction(request):
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
             ray.tempfile_services.new_plasma_store_log_file(i, True))
-        manager_stdout_file, manager_stderr_file = (
-            ray.tempfile_services.new_plasma_manager_log_file(i, True))
         plasma_addresses.append(
             ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
                 objstore_memory=objstore_memory,
                 store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
+                store_stderr_file=store_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {
