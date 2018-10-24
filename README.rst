@@ -9,7 +9,7 @@ Ray
 
 |
 
-Ray is a flexible, high-performance distributed execution framework.
+Ray is a very flexible, high-performance distributed execution framework.
 
 
 Ray is easy to install: ``pip install ray``
