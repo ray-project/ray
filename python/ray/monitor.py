@@ -20,27 +20,6 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
-from ray.worker import NIL_ACTOR_ID
-
-# These variables must be kept in sync with the C codebase.
-# common/common.h
-NIL_ID = b"\xff" * ray_constants.ID_SIZE
-
-# common/task.h
-TASK_STATUS_LOST = 32
-
-# common/redis_module/ray_redis_module.cc
-OBJECT_INFO_PREFIX = b"OI:"
-OBJECT_LOCATION_PREFIX = b"OL:"
-TASK_TABLE_PREFIX = b"TT:"
-DB_CLIENT_PREFIX = b"CL:"
-DB_CLIENT_TABLE_NAME = b"db_clients"
-
-# local_scheduler/local_scheduler.h
-LOCAL_SCHEDULER_CLIENT_TYPE = b"local_scheduler"
-
-# plasma/plasma_manager.cc
-PLASMA_MANAGER_CLIENT_TYPE = b"plasma_manager"
 
 # Set up logging.
 logger = logging.getLogger(__name__)
