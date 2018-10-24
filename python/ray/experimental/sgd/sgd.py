@@ -27,8 +27,7 @@ class DistributedSGD(object):
     Examples:
         >>> # Setup distributed SGD
         >>> model_creator = (
-        ...   lambda worker_idx, device_idx: TFBenchModel(
-        ...     batch=args.batch_size, use_cpus=True))
+        ...   lambda worker_idx, device_idx: YourModelClass(...))
         >>> sgd = DistributedSGD(
         ...   model_creator, num_workers=2,
         ...   devices_per_worker=4, gpu=True, strategy="ps")
