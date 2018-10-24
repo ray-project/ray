@@ -398,9 +398,7 @@ def wait_for_errors(error_check):
     return errors
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")

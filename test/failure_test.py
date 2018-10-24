@@ -394,9 +394,7 @@ def ray_start_object_store_memory():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_put_error1(ray_start_object_store_memory):
     num_objects = 3
     object_size = 4 * 10**5
@@ -438,9 +436,7 @@ def test_put_error1(ray_start_object_store_memory):
     wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3

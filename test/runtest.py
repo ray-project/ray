@@ -1982,8 +1982,7 @@ def test_blocking_tasks(shutdown_only):
         object_ids = [f.remote(i, j) for j in range(2)]
         return ray.wait(object_ids, num_returns=len(object_ids))
 
-    if os.environ.get("RAY_USE_XRAY") != "0":
-        ray.get([h.remote(i) for i in range(4)])
+    ray.get([h.remote(i) for i in range(4)])
 
     @ray.remote
     def _sleep(i):
@@ -2277,56 +2276,10 @@ def test_workers(shutdown_only):
         assert "stdout_file" in info
 
 
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
-def test_dump_trace_file(shutdown_only):
-    ray.init(num_cpus=1, redirect_output=True)
-
-    @ray.remote
-    def f(*xs):
-        return 1
-
-    @ray.remote
-    class Foo(object):
-        def __init__(self):
-            pass
-
-        def method(self):
-            pass
-
-    # We use a number of test objects because objects that are not JSON
-    # serializable caused problems in the past.
-    test_objects = [
-        0, 0.5, "hi", b"hi",
-        ray.put(0),
-        np.zeros(3), [0], (0, ), {
-            0: 0
-        }, True, False, None
-    ]
-    ray.get([f.remote(obj) for obj in test_objects])
-    actors = [Foo.remote() for _ in range(5)]
-    ray.get([actor.method.remote() for actor in actors])
-    ray.get([actor.method.remote() for actor in actors])
-
-    path = os.path.join("/tmp/ray_test_trace")
-    task_info = ray.global_state.task_profiles(100, start=0, end=time.time())
-    ray.global_state.dump_catapult_trace(path, task_info)
-
-    # TODO(rkn): This test is not perfect because it does not verify that
-    # the visualization actually renders (e.g., the context of the dumped
-    # trace could be malformed).
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
 def test_flush_api(shutdown_only):
     ray.init(num_cpus=1)
 

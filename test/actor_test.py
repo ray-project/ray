@@ -1275,9 +1275,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
     process.wait()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1325,9 +1323,7 @@ def test_local_scheduler_dying(shutdown_only):
     assert results == list(range(1, 1 + len(results)))
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1462,9 +1458,7 @@ def setup_counter_actor(test_checkpoint=False,
     return actor, ids
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1492,9 +1486,7 @@ def test_checkpointing(shutdown_only):
     assert num_inc_calls < x
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1523,9 +1515,7 @@ def test_remote_checkpoint(shutdown_only):
     assert x == 101
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1554,9 +1544,7 @@ def test_lost_checkpoint(shutdown_only):
     assert 5 < num_inc_calls
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1587,9 +1575,7 @@ def test_checkpoint_exception(shutdown_only):
         assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1659,9 +1645,7 @@ def test_distributed_handle(self):
     assert x == count + 1
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1818,9 +1802,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     assert queue == reconstructed_queue[:len(queue)]
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
@@ -1856,9 +1838,7 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1875,9 +1855,7 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 

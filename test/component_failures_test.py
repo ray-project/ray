@@ -322,9 +322,6 @@ def check_components_alive(component_type, check_component_alive):
             assert not component.poll() is None
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "0",
-    reason="This test only makes sense with xray.")
 def test_raylet_failed():
     # Kill all local schedulers on worker nodes.
     _test_component_failed(ray.services.PROCESS_TYPE_RAYLET)

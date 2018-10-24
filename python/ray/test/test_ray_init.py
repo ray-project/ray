@@ -28,9 +28,6 @@ class TestRedisPassword(object):
     @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")
-    @pytest.mark.skipif(
-        os.environ.get("RAY_USE_XRAY") == "0",
-        reason="Redis authentication is not supported in legacy Ray.")
     def test_redis_password(self, password, shutdown_only):
         # Workaround for https://github.com/ray-project/ray/issues/3045
         @ray.remote
