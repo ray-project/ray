@@ -238,9 +238,10 @@ class DQNAgent(Agent):
                 self.remote_evaluators[-len(self.remote_evaluators) // 3:],
                 timeout=self.config["collect_metrics_timeout"])
         else:
-            result = collect_metrics(self.local_evaluator,
-                                     self.remote_evaluators,
-                                     timeout=self.config["collect_metrics_timeout"])
+            result = collect_metrics(
+                self.local_evaluator,
+                self.remote_evaluators,
+                timeout=self.config["collect_metrics_timeout"])
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,

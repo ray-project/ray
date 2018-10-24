@@ -26,9 +26,8 @@ def collect_episodes(local_evaluator, remote_evaluators=[], timeout=180):
         a.apply.remote(lambda ev: ev.sampler.get_metrics())
         for a in remote_evaluators
     ]
-    collected, _ = ray.wait(pending,
-                            num_returns=len(pending),
-                            timeout=timeout*1000)
+    collected, _ = ray.wait(
+        pending, num_returns=len(pending), timeout=timeout * 1000)
     num_worker_still_sample = len(pending) - len(collected)
     if num_worker_still_sample > 0:
         print("{}/{} workers returned metrics within {}s".format(
