@@ -2141,33 +2141,32 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-@ray.remote(max_reconstructions=1)
-class ReconstructableActor(object):
-    """An actor that will be reconstructed at most once."""
-
-    def __init__(self):
-        self.value = 0
-
-    def increase(self):
-        self.value += 1
-        return self.value
-
-    def get_pid(self):
-        return os.getpid()
-
-
-def kill_actor(actor):
-    """Kill actor process."""
-    pid = ray.get(actor.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_XRAY") != "1",
     reason="This test only works for xray.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
+
+    @ray.remote(max_reconstructions=1)
+    class ReconstructableActor(object):
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get_pid(self):
+            return os.getpid()
+
+    def kill_actor(actor):
+        """Kill actor process."""
+        pid = ray.get(actor.get_pid.remote())
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+
     actor = ReconstructableActor.remote()
     # Call increase 3 times
     for _ in range(3):
@@ -2183,12 +2182,7 @@ def test_actor_reconstruction(ray_start_regular):
     with pytest.raises(ray.worker.RayGetError):
         ray.get(actor.increase.remote())
 
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works for xray.")
-def test_actor_not_reconstructed_on_intentional_exit(ray_start_regular):
-    """Test that actor won't be reconstructed, when it exited intentionlly."""
+    # Create another actor.
     actor = ReconstructableActor.remote()
     # Intentionlly exit the actor
     actor.__ray_terminate__.remote()
