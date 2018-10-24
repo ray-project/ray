@@ -101,6 +101,7 @@ def _configure_iam_role(config):
     logger.info("Role not specified for head node, using {}".format(
         profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
+    config["worker_nodes"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
