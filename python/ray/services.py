@@ -78,14 +78,6 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 
-# ObjectStoreAddress tuples contain all information necessary to connect to an
-# object store. The fields are:
-# - name: The socket name for the object store
-# - manager_name: The socket name for the object store manager
-# - manager_port: The Internet port that the object store manager listens on
-ObjectStoreAddress = namedtuple("ObjectStoreAddress",
-                                ["name", "manager_name", "manager_port"])
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
