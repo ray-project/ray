@@ -98,7 +98,7 @@ class build_ext(_build_ext.build_ext):
         for filename in optional_ray_files:
             try:
                 self.move_file(filename)
-            except Exception as e:
+            except Exception:
                 print("Failed to copy optional file {}. This is ok."
                       .format(filename))
 

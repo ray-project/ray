@@ -335,7 +335,7 @@ def wait_for_redis_to_start(redis_ip_address,
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
-        except redis.ConnectionError as e:
+        except redis.ConnectionError:
             # Wait a little bit.
             time.sleep(1)
             logger.info("Failed to connect to the redis server, retrying.")
