@@ -849,6 +849,8 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  resources=None,
+                 object_manager_port=None,
+                 node_manager_port=None,
                  num_workers=0,
                  use_valgrind=False,
                  use_profiler=False,
@@ -867,6 +869,13 @@ def start_raylet(redis_address,
         raylet_name (str): The name of the raylet socket to create.
         worker_path (str): The path of the script to use when the local
             scheduler starts up new workers.
+        resources: The resources that this raylet has.
+        object_manager_port (int): The port to use for the object manager. If
+            this is not provided, we will use 0 and the object manager will
+            choose its own port.
+        node_manager_port (int): The port to use for the node manager. If
+            this is not provided, we will use 0 and the node manager will
+            choose its own port.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -915,10 +924,21 @@ def start_raylet(redis_address,
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
+    # If the object manager port is None, then use 0 to cause the object
+    # manager to choose its own port.
+    if object_manager_port is None:
+        object_manager_port = 0
+    # If the node manager port is None, then use 0 to cause the node manager
+    # to choose its own port.
+    if node_manager_port is None:
+        node_manager_port = 0
+
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
         plasma_store_name,
+        str(object_manager_port),
+        str(node_manager_port),
         node_ip_address,
         gcs_ip_address,
         gcs_port,
@@ -1159,6 +1179,8 @@ def start_raylet_monitor(redis_address,
 
 
 def start_ray_processes(address_info=None,
+                        object_manager_ports=None,
+                        node_manager_ports=None,
                         node_ip_address="127.0.0.1",
                         redis_port=None,
                         redis_shard_ports=None,
@@ -1188,6 +1210,12 @@ def start_ray_processes(address_info=None,
         address_info (dict): A dictionary with address information for
             processes that have already been started. If provided, address_info
             will be modified to include processes that are newly started.
+        object_manager_ports (list): A list of the ports to use for the object
+            managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
+            this node (typically just one).
         node_ip_address (str): The IP address of this node.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen. If the key
@@ -1341,11 +1369,12 @@ def start_ray_processes(address_info=None,
     raylet_socket_names = address_info["raylet_socket_names"]
 
     # Get the ports to use for the object managers if any are provided.
-    object_manager_ports = (address_info["object_manager_ports"] if
-                            "object_manager_ports" in address_info else None)
     if not isinstance(object_manager_ports, list):
         object_manager_ports = num_local_schedulers * [object_manager_ports]
     assert len(object_manager_ports) == num_local_schedulers
+    if not isinstance(node_manager_ports, list):
+        node_manager_ports = num_local_schedulers * [node_manager_ports]
+    assert len(node_manager_ports) == num_local_schedulers
 
     # Start any object stores that do not yet exist.
     for i in range(num_local_schedulers - len(object_store_addresses)):
@@ -1378,6 +1407,8 @@ def start_ray_processes(address_info=None,
                 raylet_socket_name or get_raylet_socket_name(),
                 object_store_addresses[i],
                 worker_path,
+                object_manager_port=object_manager_ports[i],
+                node_manager_port=node_manager_ports[i],
                 resources=resources[i],
                 num_workers=workers_per_local_scheduler[i],
                 stdout_file=raylet_stdout_file,
@@ -1402,6 +1433,7 @@ def start_ray_processes(address_info=None,
 def start_ray_node(node_ip_address,
                    redis_address,
                    object_manager_ports=None,
+                   node_manager_ports=None,
                    num_workers=0,
                    num_local_schedulers=1,
                    object_store_memory=None,
@@ -1426,6 +1458,9 @@ def start_ray_node(node_ip_address,
         redis_address (str): The address of the Redis server.
         object_manager_ports (list): A list of the ports to use for the object
             managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
             this node (typically just one).
         num_workers (int): The number of workers to start.
         num_local_schedulers (int): The number of local schedulers to start.
@@ -1463,10 +1498,11 @@ def start_ray_node(node_ip_address,
     """
     address_info = {
         "redis_address": redis_address,
-        "object_manager_ports": object_manager_ports
     }
     return start_ray_processes(
         address_info=address_info,
+        object_manager_ports=object_manager_ports,
+        node_manager_ports=node_manager_ports,
         node_ip_address=node_ip_address,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
@@ -1486,6 +1522,8 @@ def start_ray_node(node_ip_address,
 
 
 def start_ray_head(address_info=None,
+                   object_manager_ports=None,
+                   node_manager_ports=None,
                    node_ip_address="127.0.0.1",
                    redis_port=None,
                    redis_shard_ports=None,
@@ -1514,6 +1552,12 @@ def start_ray_head(address_info=None,
         address_info (dict): A dictionary with address information for
             processes that have already been started. If provided, address_info
             will be modified to include processes that are newly started.
+        object_manager_ports (list): A list of the ports to use for the object
+            managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
+            this node (typically just one).
         node_ip_address (str): The IP address of this node.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen. If the key
@@ -1570,6 +1614,8 @@ def start_ray_head(address_info=None,
     num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
     return start_ray_processes(
         address_info=address_info,
+        object_manager_ports=object_manager_ports,
+        node_manager_ports=node_manager_ports,
         node_ip_address=node_ip_address,
         redis_port=redis_port,
         redis_shard_ports=redis_shard_ports,
