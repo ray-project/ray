@@ -7,7 +7,7 @@ Ray will read your configurations in the following order:
 
 * Java system properties: e.g., ``-Dray.home=/path/to/ray``.
 * A ``ray.conf`` file in the classpath: `example <https://github.com/ray-project/ray/blob/master/java/example.conf>`_.
-* Customise  your own ``ray.conf`` path using system property  ``-Dray.config=/path/to/ray.conf``
+* Customise your own ``ray.conf`` path using system property ``-Dray.config=/path/to/ray.conf``
 
 For all available config items and default values, see `this file <https://github.com/ray-project/ray/blob/master/java/runtime/src/main/resources/ray.default.conf>`_.
 

@@ -241,10 +241,10 @@ public class RayConfig {
     Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config");
     if (StringUtil.isNullOrEmpty(configPath)) {
-      RayLog.core.info("load custom config file which is ray.conf under classpath");
+      RayLog.core.info("Loading config from \"ray.conf\" file in classpath.");
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {
-      RayLog.core.info("load custom config file which is " + configPath);
+      RayLog.core.info("Loading config from " + configPath + ".");
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
