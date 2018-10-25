@@ -49,7 +49,8 @@ class DistributedSGD(object):
                  devices_per_worker,
                  gpu=True,
                  strategy="ps",
-                 grad_shard_bytes=10000000):
+                 grad_shard_bytes=10000000,
+                 all_reduce_alg="simple"):
         if strategy == "ps":
             use_plasma_op = True
         elif strategy == "simple":
@@ -75,7 +76,8 @@ class DistributedSGD(object):
                     num_devices=devices_per_worker,
                     plasma_op=use_plasma_op,
                     gpu=gpu,
-                    max_bytes=grad_shard_bytes))
+                    max_bytes=grad_shard_bytes,
+                    all_reduce_alg=all_reduce_alg))
 
         logger.info("Waiting for gradient configuration")
         shard_shapes = ray.get(self.workers[0].shard_shapes.remote())

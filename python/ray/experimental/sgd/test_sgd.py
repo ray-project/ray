@@ -19,6 +19,7 @@ parser.add_argument("--num-workers", default=2, type=int)
 parser.add_argument("--grad-shard-bytes", default=10000000, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
 parser.add_argument("--stats-interval", default=10, type=int)
+parser.add_argument("--all-reduce-alg", default="simple", type=str)
 parser.add_argument("--object-store-memory", default=None, type=int)
 parser.add_argument(
     "--warmup", action="store_true", help="Warm up object store before start.")
@@ -43,7 +44,8 @@ if __name__ == "__main__":
         devices_per_worker=args.devices_per_worker,
         gpu=args.gpu,
         strategy=args.strategy,
-        grad_shard_bytes=args.grad_shard_bytes)
+        grad_shard_bytes=args.grad_shard_bytes,
+        all_reduce_alg=args.all_reduce_alg)
 
     if args.warmup:
         sgd.warmup()
