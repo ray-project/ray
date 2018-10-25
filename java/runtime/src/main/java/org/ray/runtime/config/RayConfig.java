@@ -247,7 +247,7 @@ public class RayConfig {
       RayLog.core.info("load custom config file which is " + configPath);
       config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
     }
-    config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
+    config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config);
   }
 
