@@ -1280,9 +1280,6 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_local_scheduler_dying(shutdown_only):
@@ -1329,9 +1326,6 @@ def test_local_scheduler_dying(shutdown_only):
     assert results == list(range(1, 1 + len(results)))
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
