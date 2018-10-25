@@ -1,6 +1,6 @@
 #include <jni.h>
 
-#include "local_scheduler/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
+#include "ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
 #include "local_scheduler_client.h"
 #include "logging.h"
 #include "ray/id.h"

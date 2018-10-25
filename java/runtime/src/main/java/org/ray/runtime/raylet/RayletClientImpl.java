@@ -256,8 +256,8 @@ public class RayletClientImpl implements RayletClient {
   /// 1) pushd $Dir/java/runtime/target/classes
   /// 2) javah -classpath .:$Dir/java/api/target/classes org.ray.runtime.raylet.RayletClientImpl
   /// 3) clang-format -i org_ray_runtime_raylet_RayletClientImpl.h
-  /// 4) cp org_ray_runtime_raylet_RayletClientImpl.h $Dir/src/local_scheduler/lib/java/
-  /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
+  /// 4) cp org_ray_runtime_raylet_RayletClientImpl.h $Dir/src/ray/raylet/lib/java/
+  /// 5) vim $Dir/src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
   /// 6) popd
 
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
