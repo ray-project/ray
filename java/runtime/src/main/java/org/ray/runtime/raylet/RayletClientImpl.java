@@ -15,7 +15,7 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
-import org.ray.runtime.generated.TaskLanguage;
+import org.ray.runtime.generated.Language;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
@@ -229,7 +229,7 @@ public class RayletClientImpl implements RayletClient {
         actorIdOffset, actorHandleIdOffset, actorCounter,
         false, functionIdOffset,
         argsOffset, returnsOffset, requiredResourcesOffset,
-        requiredPlacementResourcesOffset, TaskLanguage.JAVA,
+        requiredPlacementResourcesOffset, Language.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();

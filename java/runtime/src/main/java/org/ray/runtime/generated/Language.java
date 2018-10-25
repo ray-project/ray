@@ -2,13 +2,13 @@
 
 package org.ray.runtime.generated;
 
-public final class TaskLanguage {
-  private TaskLanguage() { }
+public final class Language {
+  private Language() { }
   public static final int PYTHON = 0;
-  public static final int JAVA = 1;
+  public static final int CPP = 1;
+  public static final int JAVA = 2;
 
-  public static final String[] names = { "PYTHON", "JAVA", };
+  public static final String[] names = { "PYTHON", "CPP", "JAVA", };
 
   public static String name(int e) { return names[e]; }
 }
-
