@@ -23,7 +23,7 @@ public class RayConfigTest {
 
     Assert.assertEquals(System.getProperty("user.dir"), rayConfig.rayHome);
     Assert.assertEquals(System.getProperty("user.dir") +
-        "/build/src/common/thirdparty/redis/src/redis-server", rayConfig.redisServerExecutablePath);
+        "/build/src/ray/thirdparty/redis/src/redis-server", rayConfig.redisServerExecutablePath);
 
     Assert.assertEquals("path/to/ray/driver/resource/path", rayConfig.driverResourcePath);
 

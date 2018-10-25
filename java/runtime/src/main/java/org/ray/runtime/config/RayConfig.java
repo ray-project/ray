@@ -167,8 +167,8 @@ public class RayConfig {
     ).addAll(customLibraryPath).build();
 
     redisServerExecutablePath = rayHome +
-        "/build/src/common/thirdparty/redis/src/redis-server";
-    redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
+        "/build/src/ray/thirdparty/redis/src/redis-server";
+    redisModulePath = rayHome + "/build/src/ray/gcs/redis_module/libray_redis_module.so";
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
 

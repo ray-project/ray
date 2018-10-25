@@ -21,8 +21,8 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 CORE_DIR="$RAY_ROOT/build"
-REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
-REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
+REDIS_MODULE="$CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
+REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"

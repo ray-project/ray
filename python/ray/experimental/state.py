@@ -16,25 +16,6 @@ import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
-# This mapping from integer to task state string must be kept up-to-date with
-# the scheduling_state enum in task.h.
-TASK_STATUS_WAITING = 1
-TASK_STATUS_SCHEDULED = 2
-TASK_STATUS_QUEUED = 4
-TASK_STATUS_RUNNING = 8
-TASK_STATUS_DONE = 16
-TASK_STATUS_LOST = 32
-TASK_STATUS_RECONSTRUCTING = 64
-TASK_STATUS_MAPPING = {
-    TASK_STATUS_WAITING: "WAITING",
-    TASK_STATUS_SCHEDULED: "SCHEDULED",
-    TASK_STATUS_QUEUED: "QUEUED",
-    TASK_STATUS_RUNNING: "RUNNING",
-    TASK_STATUS_DONE: "DONE",
-    TASK_STATUS_LOST: "LOST",
-    TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
-}
-
 
 class GlobalState(object):
     """A class used to interface with the Ray control state.
@@ -236,8 +217,6 @@ class GlobalState(object):
 
         Returns:
             A dictionary with information about the task ID in question.
-                TASK_STATUS_MAPPING should be used to parse the "State" field
-                into a human-readable string.
         """
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
