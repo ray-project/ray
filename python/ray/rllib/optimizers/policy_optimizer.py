@@ -89,9 +89,10 @@ class PolicyOptimizer(object):
             res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
         """
-        episodes, num_dropped = collect_episodes(self.local_evaluator,
-                                                 self.remote_evaluators,
-                                                 timeout_seconds=self.config["collect_metrics_timeout"])
+        episodes, num_dropped = collect_episodes(
+            self.local_evaluator,
+            self.remote_evaluators,
+            timeout_seconds=self.config["collect_metrics_timeout"])
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
         if missing > 0:

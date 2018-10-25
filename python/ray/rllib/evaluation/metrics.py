@@ -34,7 +34,7 @@ def collect_episodes(local_evaluator,
     collected, _ = ray.wait(
         pending, num_returns=len(pending), timeout=timeout_seconds * 1000)
     num_metric_batches_dropped = len(pending) - len(collected)
-    
+
     metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
@@ -53,7 +53,8 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
     """
 
     if num_dropped > 0:
-        logger.warn("WARNING: {} workers have NOT returned metrics".format(num_dropped))
+        logger.warn("WARNING: {} workers have NOT returned metrics".format(
+            num_dropped))
 
     episode_rewards = []
     episode_lengths = []
