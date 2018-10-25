@@ -18,8 +18,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[],
 
     episodes, num_dropped = collect_episodes(
         local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)
-    metrics = summarize_episodes(episodes, episodes)
-    metrics.update(num_metric_batches_dropped=num_dropped)
+    metrics = summarize_episodes(episodes, episodes, num_dropped)
     return metrics
 
 
@@ -35,10 +34,7 @@ def collect_episodes(local_evaluator,
     collected, _ = ray.wait(
         pending, num_returns=len(pending), timeout=timeout_seconds * 1000)
     num_metric_batches_dropped = len(pending) - len(collected)
-    if num_metric_batches_dropped > 0:
-        logger.warn(
-            "WARNING: {}/{} workers returned metrics within {}s".format(
-                len(collected), len(pending), timeout_seconds))
+    
     metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
@@ -47,13 +43,17 @@ def collect_episodes(local_evaluator,
     return episodes, num_metric_batches_dropped
 
 
-def summarize_episodes(episodes, new_episodes):
+def summarize_episodes(episodes, new_episodes, num_dropped):
     """Summarizes a set of episode metrics tuples.
 
     Arguments:
         episodes: smoothed set of episodes including historical ones
         new_episodes: just the new episodes in this iteration
+        num_dropped: number of workers haven't returned their metrics
     """
+
+    if num_dropped > 0:
+        logger.warn("WARNING: {} workers have NOT returned metrics".format(num_dropped))
 
     episode_rewards = []
     episode_lengths = []
@@ -82,4 +82,5 @@ def summarize_episodes(episodes, new_episodes):
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episodes=len(new_episodes),
-        policy_reward_mean=dict(policy_rewards))
+        policy_reward_mean=dict(policy_rewards),
+        num_metric_batches_dropped=num_dropped)

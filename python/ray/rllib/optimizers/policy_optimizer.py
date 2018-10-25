@@ -90,7 +90,8 @@ class PolicyOptimizer(object):
                 `info` replaced with stats from self.
         """
         episodes, num_dropped = collect_episodes(self.local_evaluator,
-                                                 self.remote_evaluators)
+                                                 self.remote_evaluators,
+                                                 timeout_seconds=self.config["collect_metrics_timeout"])
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
         if missing > 0:
@@ -98,9 +99,8 @@ class PolicyOptimizer(object):
             assert len(episodes) <= min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-min_history:]
-        res = summarize_episodes(episodes, orig_episodes)
+        res = summarize_episodes(episodes, orig_episodes, num_dropped)
         res.update(info=self.stats())
-        res.update(num_metric_batches_dropped=num_dropped)
         return res
 
     def save(self):
