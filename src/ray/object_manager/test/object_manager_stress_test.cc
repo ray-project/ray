@@ -106,7 +106,7 @@ class TestObjectManagerBase : public ::testing::Test {
     return store_id;
   }
 
-  void StopStore(std::string store_id) {
+  void StopStore(const std::string &store_id) {
     std::string store_pid = store_id + ".pid";
     std::string kill_1 = "kill -9 `cat " + store_pid + "`";
     int s = system(kill_1.c_str());
