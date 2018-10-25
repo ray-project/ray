@@ -221,11 +221,10 @@ class SGDWorker(object):
         self.sess.run(self.apply_op, feed_dict=result)
         logger.debug("apply grad interior time {}".format(time.time() - start))
 
-    def compute_apply(self, write_timeline):
+    def compute_apply(self):
         fetches = run_timeline(
             self.sess,
             [self.models[0].loss, self.apply_op, self.nccl_control_out],
-            write_timeline=write_timeline,
             name="compute_apply")
         return fetches[0]
 
