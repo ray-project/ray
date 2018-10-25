@@ -21,9 +21,10 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 CORE_DIR="$RAY_ROOT/build"
+PYTHON_CORE_DIR="$RAY_ROOT/python/ray/core"
 REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
-REDIS_MODULE="$CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
-STORE_EXEC="$CORE_DIR/src/plasma/plasma_store_server"
+REDIS_MODULE="$PYTHON_CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
+STORE_EXEC="$PYTHON_CORE_DIR/src/plasma/plasma_store_server"
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then

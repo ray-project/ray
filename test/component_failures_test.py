@@ -339,7 +339,6 @@ def test_plasma_store_failed():
 
     # No processes should be left alive on the worker nodes.
     check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
-    check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER, False)
     check_components_alive(ray.services.PROCESS_TYPE_RAYLET, False)
 
     ray.shutdown()
@@ -352,8 +351,6 @@ def test_driver_lives_sequential():
     ray.worker.init()
     all_processes = ray.services.all_processes
     processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
-                 all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
     # Kill all the components sequentially.
@@ -374,8 +371,6 @@ def test_driver_lives_parallel():
     ray.worker.init()
     all_processes = ray.services.all_processes
     processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER] +
-                 all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER] +
                  all_processes[ray.services.PROCESS_TYPE_RAYLET])
 
     # Kill all the components in parallel.
