@@ -611,7 +611,9 @@ class FunctionActorManager(object):
 
             # If this is the first task to execute on the actor, try to resume
             # from a checkpoint.
-            if actor_imported and self._worker.actor_task_counter == 1:
+            # Current __init__ will be called by default. So the real function
+            # call will start from 2.
+            if actor_imported and self._worker.actor_task_counter == 2:
                 checkpoint_resumed = ray.actor.restore_and_log_checkpoint(
                     self._worker, actor)
                 if checkpoint_resumed:
