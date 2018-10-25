@@ -106,7 +106,7 @@ if __name__ == "__main__":
         # main_loop. If an exception is thrown here, then that means that
         # there is some error that we didn't anticipate.
         ray.worker.global_worker.main_loop()
-    except Exception as e:
+    except Exception:
         traceback_str = traceback.format_exc() + error_explanation
         ray.utils.push_error_to_driver(
             ray.worker.global_worker,

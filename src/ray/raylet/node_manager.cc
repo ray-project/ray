@@ -414,7 +414,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
-  auto it = this->cluster_resource_map_.find(client_id);
+  auto it = cluster_resource_map_.find(client_id);
   if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
@@ -1357,8 +1357,7 @@ void NodeManager::AssignTask(Task &task) {
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(
-      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+  RAY_CHECK(cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
     // Check that we are not placing an actor creation task on a node with 0 CPUs.
@@ -1467,8 +1466,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     local_available_resources_.Release(worker.GetTaskResourceIds());
     worker.ResetTaskResourceIds();
 
-    RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-                  .Release(task.GetTaskSpecification().GetRequiredResources()));
+    RAY_CHECK(
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+            task.GetTaskSpecification().GetRequiredResources()));
   }
 
   // If the finished task was an actor task, mark the returned dummy object as

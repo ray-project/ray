@@ -1233,7 +1233,7 @@ def test_blocking_actor_task(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
+    os.environ.get("RAY_USE_XRAY") == "0",
     reason="This test only works with xray.")
 def test_exception_raised_when_actor_node_dies(shutdown_only):
     ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
@@ -1461,7 +1461,7 @@ def setup_counter_actor(test_checkpoint=False,
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1491,7 +1491,7 @@ def test_checkpointing(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1522,7 +1522,7 @@ def test_remote_checkpoint(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1553,7 +1553,7 @@ def test_lost_checkpoint(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1586,7 +1586,7 @@ def test_checkpoint_exception(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1658,7 +1658,7 @@ def test_distributed_handle(self):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1817,7 +1817,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
@@ -1855,7 +1855,7 @@ def setup_queue_actor():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
@@ -1874,7 +1874,7 @@ def test_fork(setup_queue_actor):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
+    os.environ.get("RAY_USE_XRAY") != "0",
     reason="This test does not work with xray yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor

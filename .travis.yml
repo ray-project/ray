@@ -53,7 +53,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
         - .travis/format.sh --all
 
     - os: linux
@@ -69,14 +69,14 @@ matrix:
 
       script:
         - cd build
-        - bash ../src/common/test/run_valgrind.sh
-        - bash ../src/plasma/test/run_valgrind.sh
-        - bash ../src/local_scheduler/test/run_valgrind.sh
+        # - bash ../src/common/test/run_valgrind.sh
+        # - bash ../src/plasma/test/run_valgrind.sh
+        # - bash ../src/local_scheduler/test/run_valgrind.sh
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
 
-        - python ./python/ray/plasma/test/test.py valgrind
-        - python ./python/ray/local_scheduler/test/test.py valgrind
+        # - python ./python/ray/plasma/test/test.py valgrind
+        # - python ./python/ray/local_scheduler/test/test.py valgrind
         # - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
@@ -107,16 +107,23 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
-        - RAY_USE_XRAY=1
 
+    # Test legacy Ray.
     - os: linux
       dist: trusty
-      env: PYTHON=3.5 RAY_USE_XRAY=1
+      env: PYTHON=3.5 RAY_USE_XRAY=0
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
         - ./.travis/install-cython-examples.sh
+
+        - cd build
+        - bash ../src/common/test/run_tests.sh
+        - bash ../src/plasma/test/run_tests.sh
+        - bash ../src/local_scheduler/test/run_tests.sh
+        - cd ..
+
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
         # The following is needed so cloudpickle can find some of the
@@ -128,8 +135,8 @@ matrix:
         - python -m pytest -v python/ray/common/test/test.py
         - python -m pytest -v python/ray/common/redis_module/runtest.py
         - python -m pytest -v python/ray/plasma/test/test.py
-        # - python -m pytest -v python/ray/local_scheduler/test/test.py
-        # - python -m pytest -v python/ray/global_scheduler/test/test.py
+        - python -m pytest -v python/ray/local_scheduler/test/test.py
+        - python -m pytest -v python/ray/global_scheduler/test/test.py
 
         - python -m pytest -v python/ray/test/test_global_state.py
         - python -m pytest -v python/ray/test/test_queue.py
@@ -190,9 +197,6 @@ install:
   - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
   - ./src/ray/util/signal_test
 
-  - bash ../src/common/test/run_tests.sh
-  - bash ../src/plasma/test/run_tests.sh
-  - bash ../src/local_scheduler/test/run_tests.sh
   - cd ..
 
 script:
@@ -203,11 +207,11 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest -v python/ray/common/test/test.py
-  - python -m pytest -v python/ray/common/redis_module/runtest.py
-  - python -m pytest -v python/ray/plasma/test/test.py
-  - python -m pytest -v python/ray/local_scheduler/test/test.py
-  - python -m pytest -v python/ray/global_scheduler/test/test.py
+  # - python -m pytest -v python/ray/common/test/test.py
+  # - python -m pytest -v python/ray/common/redis_module/runtest.py
+  # - python -m pytest -v python/ray/plasma/test/test.py
+  # - python -m pytest -v python/ray/local_scheduler/test/test.py
+  # - python -m pytest -v python/ray/global_scheduler/test/test.py
 
   - python -m pytest -v python/ray/test/test_global_state.py
   - python -m pytest -v python/ray/test/test_queue.py

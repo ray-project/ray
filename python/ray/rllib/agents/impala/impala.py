@@ -23,6 +23,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "max_sample_requests_in_flight_per_worker",
 ]
 
+# yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace.py).
@@ -65,8 +66,8 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
 })
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class ImpalaAgent(Agent):

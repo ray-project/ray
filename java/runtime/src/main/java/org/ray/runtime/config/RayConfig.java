@@ -54,6 +54,7 @@ public class RayConfig {
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
   public final String driverResourcePath;
+  public final String pythonWorkerCommand;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -134,6 +135,12 @@ public class RayConfig {
       jvmParameters = config.getStringList("ray.worker.jvm-parameters");
     } else {
       jvmParameters = ImmutableList.of();
+    }
+
+    if (config.hasPath("ray.worker.python-command")) {
+      pythonWorkerCommand = config.getString("ray.worker.python-command");
+    } else {
+      pythonWorkerCommand = null;
     }
 
     // redis configurations

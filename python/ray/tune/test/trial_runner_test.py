@@ -20,7 +20,8 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
+                                         SuggestionAlgorithm)
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
 
 
@@ -1382,6 +1383,31 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[2].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
+        self.assertTrue(searcher.is_finished())
+        self.assertTrue(runner.is_finished())
+
+    def testSearchAlgFinishes(self):
+        """SearchAlg changing state in `next_trials` does not crash."""
+
+        class FinishFastAlg(SuggestionAlgorithm):
+            def next_trials(self):
+                self._finished = True
+                return []
+
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 3,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        searcher = FinishFastAlg()
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher.add_configurations(experiments)
+
+        runner = TrialRunner(search_alg=searcher)
+        runner.step()  # This should not fail
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
 
