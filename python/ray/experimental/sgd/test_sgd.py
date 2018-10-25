@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     model_creator = (
         lambda worker_idx, device_idx: TFBenchModel(
-            batch=args.batch_size, use_cpus=True))
+            batch=args.batch_size, use_cpus=not args.gpu))
 
     sgd = DistributedSGD(
         model_creator,
