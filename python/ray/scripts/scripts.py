@@ -362,8 +362,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
-    subprocess.call(["killall plasma_store_server raylet raylet_monitor"],
-                    shell=True)
+    subprocess.call(
+        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(

@@ -147,7 +147,7 @@ class SGDWorker(object):
                             self.plasma_out_grads_oids[j],
                             dtype=tf.float32,
                             plasma_store_socket_name=store_socket,
-                            plasma_manager_socket_name=manager_socket)
+                            plasma_manager_socket_name="")
                 grad_ph = tf.reshape(grad_ph,
                                      self.packed_grads_and_vars[0][j][0].shape)
                 logger.debug("Packed tensor {}".format(grad_ph))

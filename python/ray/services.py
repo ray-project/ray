@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 import redis
 
 import pyarrow
