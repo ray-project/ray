@@ -163,7 +163,7 @@ public class RayConfig {
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
         rayHome + "/build/src/plasma",
-        rayHome + "/build/src/local_scheduler"
+        rayHome + "/build/src/ray/raylet"
     ).addAll(customLibraryPath).build();
 
     redisServerExecutablePath = rayHome +

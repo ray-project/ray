@@ -1,8 +1,9 @@
+#include "ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
+
 #include <jni.h>
 
-#include "ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h"
-#include "local_scheduler_client.h"
-#include "logging.h"
+#include "ray/raylet/local_scheduler_client.h"
+#include "ray/util/logging.h"
 #include "ray/id.h"
 
 #ifdef __cplusplus
@@ -42,7 +43,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
   auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker,
-                                              *driver_id.PID, true, Language::JAVA);
+                                              *driver_id.PID, Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }
@@ -76,21 +77,25 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(
     JNIEnv *env, jclass, jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  int64_t task_size = 0;
 
   // TODO: handle actor failure later
-  TaskSpec *spec = local_scheduler_get_task_raylet(conn, &task_size);
+  ray::raylet::TaskSpecification *spec = local_scheduler_get_task_raylet(conn);
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = spec->ToFlatbuffer(fbb);
+  fbb.Finish(message);
 
   jbyteArray result;
-  result = env->NewByteArray(task_size);
+  result = env->NewByteArray(fbb.GetSize());
   if (result == nullptr) {
     return nullptr; /* out of memory error thrown */
   }
 
   // move from task spec structure to the java structure
-  env->SetByteArrayRegion(result, 0, task_size, reinterpret_cast<jbyte *>(spec));
+  env->SetByteArrayRegion(result, 0, fbb.GetSize(),
+			  reinterpret_cast<jbyte *>(fbb.GetBufferPointer()));
 
-  TaskSpec_free(spec);
+  delete spec;
   return result;
 }
 

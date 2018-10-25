@@ -40,7 +40,7 @@
             <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
           </environmentVariables>
           <argLine>-ea
-            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
+            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/ray/raylet
             -noverify
             -DlogOutput=console
           </argLine>
