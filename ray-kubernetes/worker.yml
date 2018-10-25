@@ -1,3 +1,4 @@
+#replace the image if you built your own from a modified Dockerfile
 ---
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -14,7 +15,7 @@ spec:
     spec:
       containers:
       - name: ray-worker
-        image: <PASTE-YOUR-IMAGE-URI>
+        image: peng00/ray-kubernetes
         ports:
         - containerPort: 12345
         env:
@@ -25,13 +26,10 @@ spec:
         command: [ "/bin/bash", "-c", "--" ]
         args:
           - "ray start --node-ip-address $MY_POD_IP --redis-address $(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head.default.svc.cluster.local\"));sys.stdout.flush()'):6379 --object-manager-port 12345;
-            mkdir /root/.ssh/;
-            touch /root/.ssh/authorized_keys;
-            echo '<PASTE-PUBKEY-HERE-ONELINE>' >> ~/.ssh/authorized_keys &&
             service ssh restart;
+            wait 3;
             service ssh restart;
             echo export PATH=/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin >> ~/.bashrc &&
-            echo conda activate ray-kubernetes >> ~/.bashrc;
             echo This worker IP $MY_POD_IP &&
             while true; do sleep 30; done;"
 

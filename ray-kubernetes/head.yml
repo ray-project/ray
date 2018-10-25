@@ -1,3 +1,4 @@
+#replace the image if you built your own from a modified Dockerfile
 ---
 apiVersion: v1
 kind: Service
@@ -24,7 +25,7 @@ metadata:
 spec:
   containers:
   - name: ray-head
-    image: <PASTE-YOUR-IMAGE-URI-HERE>
+    image: peng00/ray-kubernetes
     env:
     - name: MY_POD_IP
       valueFrom:
@@ -39,5 +40,5 @@ spec:
         echo id_rsa.pub is - &&
         more ~/.ssh/id_rsa.pub &&
         echo export PATH=/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin >> ~/.bashrc &&
-        echo conda activate ray-kubernetes >> ~/.bashrc &&
         while true; do sleep 30; done;"
+#`&&` chains the commands so everything will be dependent on other lines succeeding. use `;` instead if a command is likely to cause an error.
