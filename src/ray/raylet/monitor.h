@@ -50,7 +50,8 @@ class Monitor {
   /// The Raylets that have been marked as dead in the client table.
   std::unordered_set<ClientID> dead_clients_;
   /// A buffer containing heartbeats received from node managers in the last tick.
-  std::unordered_map<ClientID, HeartbeatTableDataT> heartbeat_buffer_;
+  /// This may include multiple heartbeats from the same node.
+  std::vector<HeartbeatTableDataT> heartbeat_buffer_;
 };
 
 }  // namespace raylet

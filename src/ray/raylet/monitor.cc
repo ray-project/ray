@@ -26,7 +26,8 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
 void Monitor::HandleHeartbeat(const ClientID &client_id,
                               const HeartbeatTableDataT &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
-  heartbeat_buffer_[client_id] = heartbeat_data;
+  // Buffer the heartbeat in time-order to maintain randomness at the receiving raylets.
+  heartbeat_buffer_.push_back(heartbeat_data);
 }
 
 void Monitor::Start() {
@@ -73,7 +74,7 @@ void Monitor::Tick() {
     auto batch = std::make_shared<HeartbeatBatchTableDataT>();
     for (const auto &heartbeat : heartbeat_buffer_) {
       batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
-          new HeartbeatTableDataT(heartbeat.second)));
+          new HeartbeatTableDataT(heartbeat)));
     }
     RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(UniqueID::nil(), UniqueID::nil(),
                                                          batch, nullptr));
