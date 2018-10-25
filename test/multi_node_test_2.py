@@ -81,7 +81,8 @@ def test_actor_reconstruction(start_connected_cluster):
     # Add a few nodes to the cluster.
     # Use custom resource to make sure the actor is only created on worker
     # nodes, not on the head node.
-    nodes = [cluster.add_node(resources={'a': 1}) for _ in range(4)]
+    for _ in range(4):
+        cluster.add_node(resources={'a': 1})
 
     # This actor will be reconstructed at most once.
     @ray.remote(max_reconstructions=1, resources={'a': 1})

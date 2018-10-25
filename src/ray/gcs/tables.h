@@ -373,7 +373,6 @@ using ClassTable = Table<ClassID, ClassTableData>;
 /// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
 /// These may be followed by a DEAD entry, which means that the actor has failed and will
 /// not be reconstructed.
-// TODO(swang): Set the pubsub channel for the actor table.
 class ActorTable : public Log<ActorID, ActorTableData> {
  public:
   ActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
