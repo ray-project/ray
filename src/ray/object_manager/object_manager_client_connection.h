@@ -10,9 +10,9 @@
 #include <boost/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
-#include "common/state/ray_config.h"
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
+#include "ray/ray_config.h"
 
 namespace ray {
 

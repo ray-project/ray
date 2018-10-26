@@ -88,7 +88,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// already exist in the local store.
   /// \param callback The callback to invoke when objects are added to the local store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(std::function<void(const ObjectInfoT &)> callback);
+  ray::Status SubscribeObjAdded(
+      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -235,7 +236,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handle an object being added to this node. This adds the object to the
   /// directory, pushes the object to other nodes if necessary, and cancels any
   /// outstanding Pull requests for the object.
-  void HandleObjectAdded(const ObjectInfoT &object_info);
+  void HandleObjectAdded(const object_manager::protocol::ObjectInfoT &object_info);
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
@@ -328,7 +329,7 @@ class ObjectManager : public ObjectManagerInterface {
   ConnectionPool connection_pool_;
 
   /// Cache of locally available objects.
-  std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
+  std::unordered_map<ObjectID, object_manager::protocol::ObjectInfoT> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to

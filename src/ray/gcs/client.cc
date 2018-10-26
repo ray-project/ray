@@ -1,6 +1,7 @@
 #include "ray/gcs/client.h"
 
 #include "ray/gcs/redis_context.h"
+#include "ray/ray_config.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -111,7 +112,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
-  task_table_.reset(new TaskTable(shard_contexts_, this, command_type));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
@@ -180,8 +180,6 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
 }
 
 ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
-
-TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
 raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
 

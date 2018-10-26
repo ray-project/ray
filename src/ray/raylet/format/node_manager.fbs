@@ -42,8 +42,6 @@ enum MessageType:int {
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
   NotifyUnblocked,
-  // Add a result table entry for an object put.
-  PutObject,
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   GetActorFrontierRequest,
@@ -105,6 +103,10 @@ table ResourceIdSetInfo {
   // that the length of this list must be the same as the length of
   // resource_ids.
   resource_fractions: [double];
+}
+
+// This message is sent from a worker to the node manager.
+table DisconnectClient {
 }
 
 // This message is sent from the local scheduler to a worker.

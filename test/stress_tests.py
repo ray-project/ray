@@ -162,9 +162,7 @@ def ray_start_reconstruction(request):
 
     # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    use_raylet = os.environ.get("RAY_USE_XRAY") != "0"
-    redis_address, redis_shards = ray.services.start_redis(
-        node_ip_address, use_raylet=use_raylet)
+    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
     redis_ip_address = ray.services.get_ip_address(redis_address)
     redis_port = ray.services.get_port(redis_address)
     time.sleep(0.1)
@@ -176,18 +174,13 @@ def ray_start_reconstruction(request):
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
             ray.tempfile_services.new_plasma_store_log_file(i, True))
-        manager_stdout_file, manager_stderr_file = (
-            ray.tempfile_services.new_plasma_manager_log_file(i, True))
         plasma_addresses.append(
             ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
                 objstore_memory=objstore_memory,
                 store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file,
-                use_raylet=use_raylet))
+                store_stderr_file=store_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {
@@ -401,9 +394,7 @@ def wait_for_errors(error_check):
     return errors
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "0",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")

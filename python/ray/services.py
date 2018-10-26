@@ -14,32 +14,25 @@ import subprocess
 import sys
 import threading
 import time
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 import redis
 
 import pyarrow
 # Ray modules
 import ray.ray_constants
-import ray.global_scheduler as global_scheduler
-import ray.local_scheduler
 import ray.plasma
 
 from ray.tempfile_services import (
     get_ipython_notebook_path, get_logs_dir_path, get_raylet_socket_name,
-    get_temp_root, new_global_scheduler_log_file, new_local_scheduler_log_file,
-    new_log_monitor_log_file, new_monitor_log_file,
-    new_plasma_manager_log_file, new_plasma_store_log_file,
-    new_raylet_log_file, new_redis_log_file, new_webui_log_file,
-    new_worker_log_file, set_temp_root)
+    get_temp_root, new_log_monitor_log_file, new_monitor_log_file,
+    new_plasma_store_log_file, new_raylet_log_file, new_redis_log_file,
+    new_webui_log_file, set_temp_root)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
-PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
-PROCESS_TYPE_GLOBAL_SCHEDULER = "global_scheduler"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
@@ -51,23 +44,20 @@ PROCESS_TYPE_WEB_UI = "web_ui"
 all_processes = OrderedDict(
     [(PROCESS_TYPE_MONITOR, []), (PROCESS_TYPE_LOG_MONITOR, []),
      (PROCESS_TYPE_WORKER, []), (PROCESS_TYPE_RAYLET, []),
-     (PROCESS_TYPE_LOCAL_SCHEDULER, []), (PROCESS_TYPE_PLASMA_MANAGER, []),
-     (PROCESS_TYPE_PLASMA_STORE, []), (PROCESS_TYPE_GLOBAL_SCHEDULER, []),
-     (PROCESS_TYPE_REDIS_SERVER, []), (PROCESS_TYPE_WEB_UI, [])], )
+     (PROCESS_TYPE_PLASMA_STORE, []), (PROCESS_TYPE_REDIS_SERVER, []),
+     (PROCESS_TYPE_WEB_UI, [])], )
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
-RUN_LOCAL_SCHEDULER_PROFILER = False
-RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/common/thirdparty/redis/src/redis-server")
+    "core/src/ray/thirdparty/redis/src/redis-server")
 REDIS_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/common/redis_module/libray_redis_module.so")
+    "core/src/ray/gcs/redis_module/libray_redis_module.so")
 
 # Location of the credis server and modules.
 # credis will be enabled if the environment variable RAY_USE_NEW_GCS is set.
@@ -87,14 +77,6 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
     "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
-
-# ObjectStoreAddress tuples contain all information necessary to connect to an
-# object store. The fields are:
-# - name: The socket name for the object store
-# - manager_name: The socket name for the object store manager
-# - manager_port: The Internet port that the object store manager listens on
-ObjectStoreAddress = namedtuple("ObjectStoreAddress",
-                                ["name", "manager_name", "manager_port"])
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -136,10 +118,7 @@ def kill_process(p):
     if p.poll() is not None:
         # The process has already terminated.
         return True
-    if any([
-            RUN_RAYLET_PROFILER, RUN_LOCAL_SCHEDULER_PROFILER,
-            RUN_PLASMA_MANAGER_PROFILER, RUN_PLASMA_STORE_PROFILER
-    ]):
+    if any([RUN_RAYLET_PROFILER, RUN_PLASMA_STORE_PROFILER]):
         # Give process signal to write profiler data.
         os.kill(p.pid, signal.SIGINT)
         # Wait for profiling data to be written.
@@ -430,7 +409,6 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
-                use_raylet=True,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
@@ -450,7 +428,6 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        use_raylet: True if the new raylet code path should be used.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -514,12 +491,6 @@ def start_redis(node_ip_address,
         assert assigned_port == port
     port = assigned_port
     redis_address = address(node_ip_address, port)
-
-    redis_client = redis.StrictRedis(
-        host=node_ip_address, port=port, password=password)
-
-    # Store whether we're using the raylet code path or not.
-    redis_client.set("UseRaylet", 1 if use_raylet else 0)
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
@@ -762,40 +733,6 @@ def start_log_monitor(redis_address,
         password=redis_password)
 
 
-def start_global_scheduler(redis_address,
-                           node_ip_address,
-                           stdout_file=None,
-                           stderr_file=None,
-                           cleanup=True,
-                           redis_password=None):
-    """Start a global scheduler process.
-
-    Args:
-        redis_address (str): The address of the Redis instance.
-        node_ip_address: The IP address of the node that this scheduler will
-            run on.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        cleanup (bool): True if using Ray in local mode. If cleanup is true,
-            then this process will be killed by services.cleanup() when the
-            Python process that imported services exits.
-        redis_password (str): The password of the redis server.
-    """
-    p = global_scheduler.start_global_scheduler(
-        redis_address,
-        node_ip_address,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file)
-    if cleanup:
-        all_processes[PROCESS_TYPE_GLOBAL_SCHEDULER].append(p)
-    record_log_files_in_redis(
-        redis_address,
-        node_ip_address, [stdout_file, stderr_file],
-        password=redis_password)
-
-
 def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     """Start a UI process.
 
@@ -856,13 +793,11 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         return webui_url
 
 
-def check_and_update_resources(resources, use_raylet):
+def check_and_update_resources(resources):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
         resources: A dictionary mapping resource names to resource quantities.
-        use_raylet: True if we are using the raylet code path and false
-            otherwise.
 
     Returns:
         A new resource dictionary.
@@ -901,77 +836,11 @@ def check_and_update_resources(resources, use_raylet):
                 and not resource_quantity.is_integer()):
             raise ValueError("Resource quantities must all be whole numbers.")
 
-        if (use_raylet and
-                resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY):
+        if resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY:
             raise ValueError("Resource quantities must be at most {}.".format(
                 ray.ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
-
-
-def start_local_scheduler(redis_address,
-                          node_ip_address,
-                          plasma_store_name,
-                          plasma_manager_name,
-                          worker_path,
-                          plasma_address=None,
-                          stdout_file=None,
-                          stderr_file=None,
-                          cleanup=True,
-                          resources=None,
-                          num_workers=0,
-                          redis_password=None):
-    """Start a local scheduler process.
-
-    Args:
-        redis_address (str): The address of the Redis instance.
-        node_ip_address (str): The IP address of the node that this local
-            scheduler is running on.
-        plasma_store_name (str): The name of the plasma store socket to connect
-            to.
-        plasma_manager_name (str): The name of the plasma manager socket to
-            connect to.
-        worker_path (str): The path of the script to use when the local
-            scheduler starts up new workers.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        cleanup (bool): True if using Ray in local mode. If cleanup is true,
-            then this process will be killed by serices.cleanup() when the
-            Python process that imported services exits.
-        resources: A dictionary mapping the name of a resource to the available
-            quantity of that resource.
-        num_workers (int): The number of workers that the local scheduler
-            should start.
-        redis_password (str): The password of the redis server.
-
-    Return:
-        The name of the local scheduler socket.
-    """
-    resources = check_and_update_resources(resources, False)
-
-    logger.info("Starting local scheduler with the following resources: {}."
-                .format(resources))
-    local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
-        plasma_store_name,
-        plasma_manager_name,
-        worker_path=worker_path,
-        node_ip_address=node_ip_address,
-        redis_address=redis_address,
-        plasma_address=plasma_address,
-        use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        static_resources=resources,
-        num_workers=num_workers)
-    if cleanup:
-        all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
-    record_log_files_in_redis(
-        redis_address,
-        node_ip_address, [stdout_file, stderr_file],
-        password=redis_password)
-    return local_scheduler_name
 
 
 def start_raylet(redis_address,
@@ -1017,7 +886,7 @@ def start_raylet(redis_address,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    static_resources = check_and_update_resources(resources, True)
+    static_resources = check_and_update_resources(resources)
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -1093,13 +962,10 @@ def start_plasma_store(node_ip_address,
                        object_manager_port=None,
                        store_stdout_file=None,
                        store_stderr_file=None,
-                       manager_stdout_file=None,
-                       manager_stderr_file=None,
                        objstore_memory=None,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
-                       use_raylet=True,
                        plasma_store_socket_name=None,
                        redis_password=None):
     """This method starts an object store process.
@@ -1114,12 +980,6 @@ def start_plasma_store(node_ip_address,
             to. If no redirection should happen, then this should be None.
         store_stderr_file: A file handle opened for writing to redirect stderr
             to. If no redirection should happen, then this should be None.
-        manager_stdout_file: A file handle opened for writing to redirect
-            stdout to. If no redirection should happen, then this should be
-            None.
-        manager_stderr_file: A file handle opened for writing to redirect
-            stderr to. If no redirection should happen, then this should be
-            None.
         objstore_memory: The amount of memory (in bytes) to start the object
             store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
@@ -1129,12 +989,10 @@ def start_plasma_store(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used.
         redis_password (str): The password of the redis server.
 
     Return:
-        A tuple of the Plasma store socket name, the Plasma manager socket
-            name, and the plasma manager port.
+        The Plasma store socket name.
     """
     if objstore_memory is None:
         # Compute a fraction of the system memory for the Plasma store to use.
@@ -1177,32 +1035,6 @@ def start_plasma_store(node_ip_address,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         socket_name=plasma_store_socket_name)
-    # Start the plasma manager.
-    if not use_raylet:
-        if object_manager_port is not None:
-            (plasma_manager_name, p2,
-             plasma_manager_port) = ray.plasma.start_plasma_manager(
-                 plasma_store_name,
-                 redis_address,
-                 plasma_manager_port=object_manager_port,
-                 node_ip_address=node_ip_address,
-                 num_retries=1,
-                 run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-                 stdout_file=manager_stdout_file,
-                 stderr_file=manager_stderr_file)
-            assert plasma_manager_port == object_manager_port
-        else:
-            (plasma_manager_name, p2,
-             plasma_manager_port) = ray.plasma.start_plasma_manager(
-                 plasma_store_name,
-                 redis_address,
-                 node_ip_address=node_ip_address,
-                 run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-                 stdout_file=manager_stdout_file,
-                 stderr_file=manager_stderr_file)
-    else:
-        plasma_manager_port = None
-        plasma_manager_name = None
 
     if cleanup:
         all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
@@ -1210,19 +1042,12 @@ def start_plasma_store(node_ip_address,
         redis_address,
         node_ip_address, [store_stdout_file, store_stderr_file],
         password=redis_password)
-    if not use_raylet:
-        if cleanup:
-            all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
-        record_log_files_in_redis(redis_address, node_ip_address,
-                                  [manager_stdout_file, manager_stderr_file])
 
-    return ObjectStoreAddress(plasma_store_name, plasma_manager_name,
-                              plasma_manager_port)
+    return plasma_store_name
 
 
 def start_worker(node_ip_address,
                  object_store_name,
-                 object_store_manager_name,
                  local_scheduler_name,
                  redis_address,
                  worker_path,
@@ -1235,7 +1060,6 @@ def start_worker(node_ip_address,
         node_ip_address (str): The IP address of the node that this worker is
             running on.
         object_store_name (str): The name of the object store.
-        object_store_manager_name (str): The name of the object store manager.
         local_scheduler_name (str): The name of the local scheduler.
         redis_address (str): The address that the Redis server is listening on.
         worker_path (str): The path of the source code which the worker process
@@ -1253,7 +1077,6 @@ def start_worker(node_ip_address,
         sys.executable, "-u", worker_path,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
-        "--object-store-manager-name=" + object_store_manager_name,
         "--local-scheduler-name=" + local_scheduler_name,
         "--redis-address=" + str(redis_address),
         "--temp-dir=" + get_temp_root()
@@ -1349,7 +1172,6 @@ def start_ray_processes(address_info=None,
                         cleanup=True,
                         redirect_worker_output=False,
                         redirect_output=False,
-                        include_global_scheduler=False,
                         include_log_monitor=False,
                         include_webui=False,
                         start_workers_from_local_scheduler=True,
@@ -1357,7 +1179,6 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=True,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
                         temp_dir=None):
@@ -1398,8 +1219,6 @@ def start_ray_processes(address_info=None,
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
-        include_global_scheduler (bool): If include_global_scheduler is True,
-            then start a global scheduler process.
         include_log_monitor (bool): If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
@@ -1415,7 +1234,6 @@ def start_ray_processes(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1469,7 +1287,6 @@ def start_ray_processes(address_info=None,
             redis_shard_ports=redis_shard_ports,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            use_raylet=use_raylet,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup,
@@ -1488,13 +1305,12 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup,
             autoscaling_config=autoscaling_config,
             redis_password=redis_password)
-        if use_raylet:
-            start_raylet_monitor(
-                redis_address,
-                stdout_file=monitor_stdout_file,
-                stderr_file=monitor_stderr_file,
-                cleanup=cleanup,
-                redis_password=redis_password)
+        start_raylet_monitor(
+            redis_address,
+            stdout_file=monitor_stdout_file,
+            stderr_file=monitor_stderr_file,
+            cleanup=cleanup,
+            redis_password=redis_password)
     if redis_shards == []:
         # Get redis shards from primary redis instance.
         redis_ip_address, redis_port = redis_address.split(":")
@@ -1516,25 +1332,10 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup,
             redis_password=redis_password)
 
-    # Start the global scheduler, if necessary.
-    if include_global_scheduler and not use_raylet:
-        global_scheduler_stdout_file, global_scheduler_stderr_file = (
-            new_global_scheduler_log_file(redirect_output))
-        start_global_scheduler(
-            redis_address,
-            node_ip_address,
-            stdout_file=global_scheduler_stdout_file,
-            stderr_file=global_scheduler_stderr_file,
-            cleanup=cleanup,
-            redis_password=redis_password)
-
     # Initialize with existing services.
     if "object_store_addresses" not in address_info:
         address_info["object_store_addresses"] = []
     object_store_addresses = address_info["object_store_addresses"]
-    if "local_scheduler_socket_names" not in address_info:
-        address_info["local_scheduler_socket_names"] = []
-    local_scheduler_socket_names = address_info["local_scheduler_socket_names"]
     if "raylet_socket_names" not in address_info:
         address_info["raylet_socket_names"] = []
     raylet_socket_names = address_info["raylet_socket_names"]
@@ -1552,114 +1353,37 @@ def start_ray_processes(address_info=None,
         plasma_store_stdout_file, plasma_store_stderr_file = (
             new_plasma_store_log_file(i, redirect_output))
 
-        # If we use raylet, plasma manager won't be started and we don't need
-        # to create temp files for them.
-        plasma_manager_stdout_file, plasma_manager_stderr_file = (
-            new_plasma_manager_log_file(i, redirect_output and not use_raylet))
-
         object_store_address = start_plasma_store(
             node_ip_address,
             redis_address,
-            object_manager_port=object_manager_ports[i],
             store_stdout_file=plasma_store_stdout_file,
             store_stderr_file=plasma_store_stderr_file,
-            manager_stdout_file=plasma_manager_stdout_file,
-            manager_stderr_file=plasma_manager_stderr_file,
             objstore_memory=object_store_memory,
             cleanup=cleanup,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
             redis_password=redis_password)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
-    if not use_raylet:
-        # Start any local schedulers that do not yet exist.
-        for i in range(
-                len(local_scheduler_socket_names), num_local_schedulers):
-            # Connect the local scheduler to the object store at the same
-            # index.
-            object_store_address = object_store_addresses[i]
-            plasma_address = "{}:{}".format(node_ip_address,
-                                            object_store_address.manager_port)
-            # Determine how many workers this local scheduler should start.
-            if start_workers_from_local_scheduler:
-                num_local_scheduler_workers = workers_per_local_scheduler[i]
-                workers_per_local_scheduler[i] = 0
-            else:
-                # If we're starting the workers from Python, the local
-                # scheduler should not start any workers.
-                num_local_scheduler_workers = 0
-            # Start the local scheduler. Note that if we do not wish to
-            # redirect the worker output, then we cannot redirect the local
-            # scheduler output.
-            local_scheduler_stdout_file, local_scheduler_stderr_file = (
-                new_local_scheduler_log_file(
-                    i, redirect_output=redirect_worker_output))
-            local_scheduler_name = start_local_scheduler(
+    # Start any raylets that do not exist yet.
+    for i in range(len(raylet_socket_names), num_local_schedulers):
+        raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
+            i, redirect_output=redirect_worker_output)
+        address_info["raylet_socket_names"].append(
+            start_raylet(
                 redis_address,
                 node_ip_address,
-                object_store_address.name,
-                object_store_address.manager_name,
+                raylet_socket_name or get_raylet_socket_name(),
+                object_store_addresses[i],
                 worker_path,
-                plasma_address=plasma_address,
-                stdout_file=local_scheduler_stdout_file,
-                stderr_file=local_scheduler_stderr_file,
-                cleanup=cleanup,
                 resources=resources[i],
-                num_workers=num_local_scheduler_workers,
-                redis_password=redis_password)
-            local_scheduler_socket_names.append(local_scheduler_name)
-
-        # Make sure that we have exactly num_local_schedulers instances of
-        # object stores and local schedulers.
-        assert len(object_store_addresses) == num_local_schedulers
-        assert len(local_scheduler_socket_names) == num_local_schedulers
-
-    else:
-        # Start any raylets that do not exist yet.
-        for i in range(len(raylet_socket_names), num_local_schedulers):
-            raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
-                i, redirect_output=redirect_worker_output)
-            address_info["raylet_socket_names"].append(
-                start_raylet(
-                    redis_address,
-                    node_ip_address,
-                    raylet_socket_name or get_raylet_socket_name(),
-                    object_store_addresses[i].name,
-                    worker_path,
-                    resources=resources[i],
-                    num_workers=workers_per_local_scheduler[i],
-                    stdout_file=raylet_stdout_file,
-                    stderr_file=raylet_stderr_file,
-                    cleanup=cleanup,
-                    redis_password=redis_password))
-
-    if not use_raylet:
-        # Start any workers that the local scheduler has not already started.
-        for i, num_local_scheduler_workers in enumerate(
-                workers_per_local_scheduler):
-            object_store_address = object_store_addresses[i]
-            local_scheduler_name = local_scheduler_socket_names[i]
-            for j in range(num_local_scheduler_workers):
-                worker_stdout_file, worker_stderr_file = new_worker_log_file(
-                    i, j, redirect_output)
-                start_worker(
-                    node_ip_address,
-                    object_store_address.name,
-                    object_store_address.manager_name,
-                    local_scheduler_name,
-                    redis_address,
-                    worker_path,
-                    stdout_file=worker_stdout_file,
-                    stderr_file=worker_stderr_file,
-                    cleanup=cleanup)
-                workers_per_local_scheduler[i] -= 1
-
-        # Make sure that we've started all the workers.
-        assert (sum(workers_per_local_scheduler) == 0)
+                num_workers=workers_per_local_scheduler[i],
+                stdout_file=raylet_stdout_file,
+                stderr_file=raylet_stderr_file,
+                cleanup=cleanup,
+                redis_password=redis_password))
 
     # Try to start the web UI.
     if include_webui:
@@ -1689,7 +1413,6 @@ def start_ray_node(node_ip_address,
                    resources=None,
                    plasma_directory=None,
                    huge_pages=False,
-                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1727,7 +1450,6 @@ def start_ray_node(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1758,7 +1480,6 @@ def start_ray_node(node_ip_address,
         resources=resources,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        use_raylet=use_raylet,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)
@@ -1784,7 +1505,6 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=True,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None):
@@ -1836,7 +1556,6 @@ def start_ray_head(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: True if the new raylet code path should be used.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1861,7 +1580,6 @@ def start_ray_head(address_info=None,
         cleanup=cleanup,
         redirect_worker_output=redirect_worker_output,
         redirect_output=redirect_output,
-        include_global_scheduler=True,
         include_log_monitor=True,
         include_webui=include_webui,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
@@ -1872,7 +1590,6 @@ def start_ray_head(address_info=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
-        use_raylet=use_raylet,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)

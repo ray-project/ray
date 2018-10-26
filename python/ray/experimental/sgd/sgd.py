@@ -108,8 +108,6 @@ class SGDWorker(object):
         if plasma_op:
             store_socket = (
                 ray.worker.global_worker.plasma_client.store_socket_name)
-            manager_socket = (
-                ray.worker.global_worker.plasma_client.manager_socket_name)
             if not plasma.tf_plasma_op:
                 plasma.build_plasma_tensorflow_op()
 
@@ -130,7 +128,7 @@ class SGDWorker(object):
                         [grad],
                         self.plasma_in_grads_oids[j],
                         plasma_store_socket_name=store_socket,
-                        plasma_manager_socket_name=manager_socket)
+                        plasma_manager_socket_name="")
                 self.plasma_in_grads.append(plasma_grad)
 
             # For applying grads <- plasma
@@ -149,7 +147,7 @@ class SGDWorker(object):
                             self.plasma_out_grads_oids[j],
                             dtype=tf.float32,
                             plasma_store_socket_name=store_socket,
-                            plasma_manager_socket_name=manager_socket)
+                            plasma_manager_socket_name="")
                 grad_ph = tf.reshape(grad_ph,
                                      self.packed_grads_and_vars[0][j][0].shape)
                 logger.debug("Packed tensor {}".format(grad_ph))

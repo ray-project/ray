@@ -10,7 +10,6 @@ def test_conn_cluster():
     # plasma_store_socket_name
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            use_raylet=True,
             redis_address="127.0.0.1:6379",
             plasma_store_socket_name="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
@@ -20,7 +19,6 @@ def test_conn_cluster():
     # raylet_socket_name
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            use_raylet=True,
             redis_address="127.0.0.1:6379",
             raylet_socket_name="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
@@ -30,16 +28,14 @@ def test_conn_cluster():
     # temp_dir
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            use_raylet=True,
-            redis_address="127.0.0.1:6379",
-            temp_dir="/tmp/this_should_fail")
+            redis_address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
         "temp_dir must not be provided.")
 
 
 def test_tempdir():
-    ray.init(use_raylet=True, temp_dir="/tmp/i_am_a_temp_dir")
+    ray.init(temp_dir="/tmp/i_am_a_temp_dir")
     assert os.path.exists(
         "/tmp/i_am_a_temp_dir"), "Specified temp dir not found."
     ray.shutdown()
@@ -47,7 +43,7 @@ def test_tempdir():
 
 
 def test_raylet_socket_name():
-    ray.init(use_raylet=True, raylet_socket_name="/tmp/i_am_a_temp_socket")
+    ray.init(raylet_socket_name="/tmp/i_am_a_temp_socket")
     assert os.path.exists(
         "/tmp/i_am_a_temp_socket"), "Specified socket path not found."
     ray.shutdown()
@@ -58,8 +54,7 @@ def test_raylet_socket_name():
 
 
 def test_temp_plasma_store_socket():
-    ray.init(
-        use_raylet=True, plasma_store_socket_name="/tmp/i_am_a_temp_socket")
+    ray.init(plasma_store_socket_name="/tmp/i_am_a_temp_socket")
     assert os.path.exists(
         "/tmp/i_am_a_temp_socket"), "Specified socket path not found."
     ray.shutdown()
@@ -70,7 +65,7 @@ def test_temp_plasma_store_socket():
 
 
 def test_raylet_tempfiles():
-    ray.init(use_raylet=True, redirect_worker_output=False)
+    ray.init(redirect_worker_output=False)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
@@ -84,7 +79,7 @@ def test_raylet_tempfiles():
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
-    ray.init(use_raylet=True, redirect_worker_output=True, num_workers=0)
+    ray.init(redirect_worker_output=True, num_workers=0)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
@@ -98,7 +93,7 @@ def test_raylet_tempfiles():
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
-    ray.init(use_raylet=True, redirect_worker_output=True, num_workers=2)
+    ray.init(redirect_worker_output=True, num_workers=2)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     time.sleep(3)  # wait workers to start
