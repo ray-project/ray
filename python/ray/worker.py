@@ -1907,7 +1907,7 @@ def connect(info,
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
                 info["redis_address"], info["node_ip_address"],
-                [log_stdout_file, log_stderr_file])
+                [log_stdout_file, log_stderr_file], password=redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
