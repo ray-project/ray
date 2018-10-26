@@ -141,7 +141,7 @@ LineageCache::LineageCache(const ClientID &client_id,
                            uint64_t max_lineage_size)
     : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
 
-/// A helper function to merge one lineage into another, in DFS order.
+/// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage,
                                          std::unordered_set<TaskID> &subscribe_tasks) {
@@ -250,17 +250,37 @@ void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &no
   lineage_.GetEntryMutable(task_id)->MarkExplicitlyForwarded(node_id);
 }
 
+/// A helper function to get the uncommitted lineage of a task.
+void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
+                                 Lineage &lineage_to, const ClientID &node_id) {
+  // If the entry is not found in the lineage to merge, then we stop since
+  // there is nothing to copy into the merged lineage.
+  auto entry = lineage_from.GetEntry(task_id);
+  if (!entry) {
+    return;
+  }
+  // If this task has already been forwarded to this node, then we can stop.
+  if (entry->WasExplicitlyForwarded(node_id)) {
+    return;
+  }
+
+  // Insert a copy of the entry into lineage_to.  If the insert is successful,
+  // then continue the DFS. The insert will fail if the new entry has an equal
+  // or lower GCS status than the current entry in lineage_to. This also
+  // prevents us from traversing the same node twice.
+  if (lineage_to.SetEntry(entry->TaskData(), entry->GetStatus())) {
+    for (const auto &parent_id : entry->GetParentTaskIds()) {
+      GetUncommittedLineageHelper(parent_id, lineage_from, lineage_to, node_id);
+    }
+  }
+}
+
 Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
                                             const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
-  MergeLineageHelper(
-      task_id, lineage_, uncommitted_lineage, [&](const LineageEntry &entry) {
-        // The stopping condition for recursion is that the entry has
-        // been committed to the GCS or has already been forwarded.
-        return entry.WasExplicitlyForwarded(node_id);
-      });
+  GetUncommittedLineageHelper(task_id, lineage_, uncommitted_lineage, node_id);
   // The lineage always includes the requested task id, so add the task if it
   // wasn't already added. The requested task may not have been added if it was
   // already explicitly forwarded to this node before.

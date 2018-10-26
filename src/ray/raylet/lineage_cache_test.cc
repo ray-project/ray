@@ -258,7 +258,7 @@ TEST_F(LineageCacheTest, TestWritebackOrder) {
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
-TEST_F(LineageCacheTest, TestEvictUncommittedLineage) {
+TEST_F(LineageCacheTest, TestEvictChain) {
   // Create a chain of 3 tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
