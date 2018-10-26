@@ -310,6 +310,57 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   ASSERT_EQ(lineage_cache_.NumEntries(), 0);
 }
 
+TEST_F(LineageCacheTest, TestEvictManyParents) {
+  // Create some independent tasks.
+  std::vector<Task> parent_tasks;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < 10; i++) {
+    auto task = ExampleTask({}, 1);
+    parent_tasks.push_back(task);
+    arguments.push_back(task.GetTaskSpecification().ReturnId(0));
+    ASSERT_TRUE(lineage_cache_.AddWaitingTask(task, Lineage()));
+  }
+  // Create a child task that is dependent on all of the previous tasks.
+  auto child_task = ExampleTask(arguments, 1);
+  ASSERT_TRUE(lineage_cache_.AddWaitingTask(child_task, Lineage()));
+
+  // Flush the child task. Make sure that it remains in the cache, since none
+  // of its parents have been committed yet, and that the uncommitted lineage
+  // still includes all of the parent tasks.
+  size_t total_tasks = parent_tasks.size() + 1;
+  lineage_cache_.AddReadyTask(child_task);
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.NumEntries(), total_tasks);
+  ASSERT_EQ(lineage_cache_
+                .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                       ClientID::nil())
+                .GetEntries()
+                .size(),
+            total_tasks);
+
+  // Flush each parent task and check for eviction safety.
+  for (const auto &parent_task : parent_tasks) {
+    lineage_cache_.AddReadyTask(parent_task);
+    mock_gcs_.Flush();
+    total_tasks--;
+    if (total_tasks > 1) {
+      // Each task should be evicted as soon as its commit is acknowledged,
+      // since the parent tasks have no dependencies.
+      ASSERT_EQ(lineage_cache_.NumEntries(), total_tasks);
+      ASSERT_EQ(lineage_cache_
+                    .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                           ClientID::nil())
+                    .GetEntries()
+                    .size(),
+                total_tasks);
+    } else {
+      // After the last task has been committed, then the child task should
+      // also be evicted. The lineage cache should now be empty.
+      ASSERT_EQ(lineage_cache_.NumEntries(), 0);
+    }
+  }
+}
+
 TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
   // Insert a chain of dependent tasks.
   uint64_t lineage_size = max_lineage_size_ + 1;
