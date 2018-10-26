@@ -584,7 +584,8 @@ def pack_small_tensors(tower_grads, max_bytes=0):
     if len(small_ranges):
         new_tower_grads = []
         for dev_idx, gv_list in enumerate(tower_grads):
-            assert len(gv_list) == num_gv, ("Possible cause: "
+            assert len(gv_list) == num_gv, (
+                "Possible cause: "
                 "Networks constructed on different workers "
                 "don't have the same number of variables. "
                 "If you use tf.GraphKeys or tf.global_variables() "
