@@ -107,7 +107,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("B", B)
 
@@ -440,7 +440,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 self.state = {"hi": 1}
 
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
                 return self.state
@@ -471,7 +471,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
             def _train(self):
                 self.state["iter"] += 1
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
                 return self.state
@@ -604,7 +604,7 @@ class RunExperimentTest(unittest.TestCase):
 
         class B(Trainable):
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("f1", train)
         trials = run_experiments({
@@ -624,7 +624,7 @@ class RunExperimentTest(unittest.TestCase):
     def testCheckpointAtEnd(self):
         class train(Trainable):
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
                 return path
@@ -887,7 +887,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.PENDING)
 
     def testFractionalGpus(self):
-        ray.init(num_cpus=4, num_gpus=1, use_raylet=True)
+        ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "resources": Resources(cpu=1, gpu=0.5),

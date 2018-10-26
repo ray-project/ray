@@ -44,7 +44,6 @@ class Cluster(object):
 
         All nodes are by default started with the following settings:
             cleanup=True,
-            use_raylet=True,
             resources={"CPU": 1},
             object_store_memory=100 * (2**20) # 100 MB
 
@@ -55,12 +54,13 @@ class Cluster(object):
         Returns:
             Node object of the added Ray node.
         """
-        node_kwargs = dict(
-            cleanup=True,
-            use_raylet=True,
-            resources={"CPU": 1},
-            object_store_memory=100 * (2**20)  # 100 MB
-        )
+        node_kwargs = {
+            "cleanup": True,
+            "resources": {
+                "CPU": 1
+            },
+            "object_store_memory": 100 * (2**20)  # 100 MB
+        }
         node_kwargs.update(override_kwargs)
 
         if self.head_node is None:
@@ -179,7 +179,9 @@ class Node(object):
         for process_name, process_list in self.process_dict.items():
             logger.info("Killing all {}(s)".format(process_name))
             for process in process_list:
-                process.kill()
+                # Kill the process if it is still alive.
+                if process.poll() is None:
+                    process.kill()
 
         for process_name, process_list in self.process_dict.items():
             logger.info("Waiting all {}(s)".format(process_name))

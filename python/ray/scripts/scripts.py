@@ -5,7 +5,6 @@ from __future__ import print_function
 import click
 import json
 import logging
-import os
 import subprocess
 
 import ray.services as services
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
     # The client table prefix must be kept in sync with the file
-    # "src/common/redis_module/ray_redis_module.cc" where it is defined.
+    # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
     REDIS_CLIENT_TABLE_PREFIX = "CL:"
     client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
     # Filter to clients on the same node and do some basic checking.
@@ -168,11 +167,6 @@ def cli(logging_level, logging_format):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--use-raylet",
-    default=None,
-    type=bool,
-    help="use the raylet code path, this defaults to false")
-@click.option(
     "--no-redirect-worker-output",
     is_flag=True,
     default=False,
@@ -198,30 +192,14 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, object_store_memory, num_workers, num_cpus,
           num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages, autoscaling_config, use_raylet,
-          no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir):
+          huge_pages, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
-
-    if use_raylet is None:
-        if os.environ.get("RAY_USE_XRAY") == "0":
-            # This environment variable is used in our testing setup.
-            logger.info("Detected environment variable 'RAY_USE_XRAY' with "
-                        "value {}. This turns OFF xray.".format(
-                            os.environ.get("RAY_USE_XRAY")))
-            use_raylet = False
-        else:
-            use_raylet = True
-
-    if not use_raylet and redis_password is not None:
-        raise Exception("Setting the 'redis-password' argument is not "
-                        "supported in legacy Ray. To run Ray with "
-                        "password-protected Redis ports, pass "
-                        "the '--use-raylet' flag.")
 
     try:
         resources = json.loads(resources)
@@ -290,7 +268,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)
@@ -369,7 +346,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)
@@ -387,11 +363,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 @cli.command()
 def stop():
     subprocess.call(
-        [
-            "killall global_scheduler plasma_store_server plasma_manager "
-            "local_scheduler raylet raylet_monitor"
-        ],
-        shell=True)
+        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(

@@ -65,8 +65,7 @@ When ``a1.increment.remote()`` is called, the following events happens.
 
 1. A task is created.
 2. The task is assigned directly to the local scheduler responsible for the
-   actor by the driver's local scheduler. Thus, this scheduling procedure
-   bypasses the global scheduler.
+   actor by the driver's local scheduler.
 3. An object ID is returned.
 
 We can then call ``ray.get`` on the object ID to retrieve the actual value.

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray.local_scheduler
+import ray.raylet
 import ray.worker
 from ray import profiling
 
@@ -42,7 +42,4 @@ def free(object_ids, local_only=False, worker=None):
         if len(object_ids) == 0:
             return
 
-        if worker.use_raylet:
-            worker.local_scheduler_client.free(object_ids, local_only)
-        else:
-            raise Exception("Free is not supported in legacy backend.")
+        worker.local_scheduler_client.free(object_ids, local_only)
