@@ -28,6 +28,16 @@ COMMON_CONFIG = {
     "monitor": False,
     # Set the RLlib log level for the agent process and its remote evaluators
     "log_level": "INFO",
+    # Callbacks that will be run during various phases of training. These all
+    # take a single "info" dict as an argument. For episode callbacks, custom
+    # metrics can be attached to the episode by updating the episode object's
+    # `custom_metrics` dict (see also: evaluation/episode.py).
+    "callbacks": {
+        "on_episode_start": None,
+        "on_episode_step": None,
+        "on_episode_end": None,
+        "on_sample_end": None,
+    },
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -182,7 +192,8 @@ class Agent(Trainable):
             policy_config=config,
             worker_index=worker_index,
             monitor_path=self.logdir if config["monitor"] else None,
-            log_level=config["log_level"])
+            log_level=config["log_level"],
+            callbacks=config["callbacks"])
 
     @classmethod
     def resource_help(cls, config):

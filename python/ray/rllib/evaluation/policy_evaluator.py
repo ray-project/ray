@@ -101,7 +101,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  policy_config=None,
                  worker_index=0,
                  monitor_path=None,
-                 log_level=None):
+                 log_level=None,
+                 callbacks=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -161,6 +162,7 @@ class PolicyEvaluator(EvaluatorInterface):
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
             log_level (str): Set the root log level on creation.
+            callbacks (dict): Dict of custom debug callbacks.
         """
 
         if log_level:
@@ -169,6 +171,7 @@ class PolicyEvaluator(EvaluatorInterface):
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
+        self.callbacks = callbacks or {}
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
@@ -279,6 +282,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -291,6 +295,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -341,6 +346,12 @@ class PolicyEvaluator(EvaluatorInterface):
             batches.append(batch)
         batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
+
+        if self.callbacks.get("on_sample_end"):
+            self.callbacks["on_sample_end"]({
+                "evaluator": self,
+                "samples": batch
+            })
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):

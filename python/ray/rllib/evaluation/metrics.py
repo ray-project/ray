@@ -41,9 +41,12 @@ def summarize_episodes(episodes, new_episodes):
     episode_rewards = []
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)
+    custom_metrics = collections.defaultdict(list)
     for episode in episodes:
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
+        for k, v in episode.custom_metrics.items():
+            custom_metrics[k].append(v)
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
@@ -59,10 +62,14 @@ def summarize_episodes(episodes, new_episodes):
     for policy_id, rewards in policy_rewards.copy().items():
         policy_rewards[policy_id] = np.mean(rewards)
 
+    for k, v_list in custom_metrics.items():
+        custom_metrics[k] = np.mean(v_list)
+
     return dict(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episodes_this_iter=len(new_episodes),
-        policy_reward_mean=dict(policy_rewards))
+        policy_reward_mean=dict(policy_rewards),
+        custom_metrics=dict(custom_metrics))
