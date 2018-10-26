@@ -59,14 +59,6 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativePutObject
- * Signature: (J[B[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(
-    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
  * Signature: (J[[BIIZ)[Z
  */

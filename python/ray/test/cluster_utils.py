@@ -179,7 +179,9 @@ class Node(object):
         for process_name, process_list in self.process_dict.items():
             logger.info("Killing all {}(s)".format(process_name))
             for process in process_list:
-                process.kill()
+                # Kill the process if it is still alive.
+                if process.poll() is None:
+                    process.kill()
 
         for process_name, process_list in self.process_dict.items():
             logger.info("Waiting all {}(s)".format(process_name))
