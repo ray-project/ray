@@ -106,7 +106,6 @@ class SGDWorker(object):
         # You must fetch this otherwise the NCCL allreduce will hang
         self.nccl_control_out = tf.group(*nccl_noops)
 
-        round_robin_devices = False
         if plasma_op:
             store_socket = (
                 ray.worker.global_worker.plasma_client.store_socket_name)
@@ -121,12 +120,8 @@ class SGDWorker(object):
                 tf.placeholder(shape=[], dtype=tf.string, name="in_grad_oids")
                 for _ in range(num_grads)
             ]
-            ix = 0
             for j in range(num_grads):
-                grad = self.per_device_grads[ix][j]
-                if round_robin_devices:
-                    ix += 1  # round robin assignment
-                ix %= num_devices
+                grad = self.per_device_grads[0][j]
                 with tf.device(self.models[ix].loss.device):
                     plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
@@ -143,7 +138,6 @@ class SGDWorker(object):
                 for _ in range(num_grads)
             ]
             packed_plasma_grads = []
-            ix = 0
             for j in range(num_grads):
                 with tf.device(self.plasma_in_grads[j].device):
                     with tf.control_dependencies([self.plasma_in_grads[j]]):
