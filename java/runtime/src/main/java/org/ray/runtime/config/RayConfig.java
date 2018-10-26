@@ -7,11 +7,13 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -242,9 +244,16 @@ public class RayConfig {
   */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.systemProperties()
-        .withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE))
-        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
+    Config config = ConfigFactory.systemProperties();
+    String configPath = System.getProperty("ray.config");
+    if (StringUtil.isNullOrEmpty(configPath)) {
+      LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
+      config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
+    } else {
+      LOGGER.info("Loading config from " + configPath + ".");
+      config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
+    }
+    config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config);
   }
 
