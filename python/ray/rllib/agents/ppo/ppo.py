@@ -126,7 +126,8 @@ class PPOAgent(Agent):
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(
                 lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        res = self.optimizer.collect_metrics(self.config["collect_metrics_timeout"])
+        res = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))
