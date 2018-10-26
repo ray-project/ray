@@ -155,35 +155,6 @@ static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
   return resource_ids;
 }
 
-// static PyObject *PyLocalSchedulerClient_get_actor_frontier(PyObject *self,
-//                                                            PyObject *args) {
-//   ActorID actor_id;
-//   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &actor_id)) {
-//     return NULL;
-//   }
-//
-//   auto frontier = local_scheduler_get_actor_frontier(
-//       ((PyLocalSchedulerClient *) self)->local_scheduler_connection, actor_id);
-//   return PyBytes_FromStringAndSize(
-//       reinterpret_cast<const char *>(frontier.data()), frontier.size());
-// }
-
-// static PyObject *PyLocalSchedulerClient_set_actor_frontier(PyObject *self,
-//                                                            PyObject *args) {
-//   PyObject *py_frontier;
-//   if (!PyArg_ParseTuple(args, "O", &py_frontier)) {
-//     return NULL;
-//   }
-//
-//   std::vector<uint8_t> frontier;
-//   Py_ssize_t length = PyBytes_Size(py_frontier);
-//   char *frontier_data = PyBytes_AsString(py_frontier);
-//   frontier.assign(frontier_data, frontier_data + length);
-//   local_scheduler_set_actor_frontier(
-//       ((PyLocalSchedulerClient *) self)->local_scheduler_connection, frontier);
-//   Py_RETURN_NONE;
-// }
-
 static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   int num_returns;
@@ -403,10 +374,6 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Get the IDs of the GPUs that are reserved for this client."},
     {"resource_ids", (PyCFunction)PyLocalSchedulerClient_resource_ids, METH_NOARGS,
      "Get the IDs of the resources that are reserved for this client."},
-    // {"get_actor_frontier",
-    //  (PyCFunction) PyLocalSchedulerClient_get_actor_frontier, METH_VARARGS, ""},
-    // {"set_actor_frontier",
-    //  (PyCFunction) PyLocalSchedulerClient_set_actor_frontier, METH_VARARGS, ""},
     {"wait", (PyCFunction)PyLocalSchedulerClient_wait, METH_VARARGS,
      "Wait for a list of objects to be created."},
     {"push_error", (PyCFunction)PyLocalSchedulerClient_push_error, METH_VARARGS,

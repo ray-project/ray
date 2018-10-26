@@ -319,40 +319,6 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
                 &conn->write_mutex);
 }
 
-// const std::vector<uint8_t> local_scheduler_get_actor_frontier(
-//     LocalSchedulerConnection *conn,
-//     ActorID actor_id) {
-//   flatbuffers::FlatBufferBuilder fbb;
-//   auto message = MessageType::CreateGetActorFrontierRequest(
-//       fbb, to_flatbuf(fbb, actor_id));
-//   fbb.Finish(message);
-//   int64_t type;
-//   std::vector<uint8_t> reply;
-//   {
-//     std::unique_lock<std::mutex> guard(conn->mutex);
-//     write_message(conn->conn,
-//                   static_cast<int64_t>(MessageType::GetActorFrontierRequest),
-//                   fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
-//
-//     read_vector(conn->conn, &type, reply);
-//   }
-//   if (static_cast<CommonMessageType>(type) ==
-//       CommonMessageType::DISCONNECT_CLIENT) {
-//     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
-//     exit(1);
-//   }
-//   RAY_CHECK(static_cast<MessageType>(type) ==
-//             MessageType::GetActorFrontierReply);
-//   return reply;
-// }
-
-// void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
-//                                         const std::vector<uint8_t> &frontier) {
-//   write_message(conn->conn, static_cast<int64_t>(MessageType::SetActorFrontier),
-//                 frontier.size(), const_cast<uint8_t *>(frontier.data()),
-//                 &conn->write_mutex);
-// }
-
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
     int num_returns, int64_t timeout_milliseconds, bool wait_local) {
