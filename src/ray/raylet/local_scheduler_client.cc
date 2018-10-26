@@ -292,6 +292,7 @@ ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
   // Free the original message from the local scheduler.
   free(reply);
 
+  // Return the copy of the task spec and pass ownership to the caller.
   return task_spec;
 }
 

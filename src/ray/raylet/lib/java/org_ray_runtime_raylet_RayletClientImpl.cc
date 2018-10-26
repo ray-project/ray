@@ -81,19 +81,24 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   // TODO: handle actor failure later
   ray::raylet::TaskSpecification *spec = local_scheduler_get_task_raylet(conn);
 
+  // We serialize the task specification using flatbuffers and then parse the
+  // resulting string. This awkwardness is due to the fact that the Java
+  // implementation does not use the underlying C++ TaskSpecification class.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = spec->ToFlatbuffer(fbb);
   fbb.Finish(message);
+  auto task_message = flatbuffers::GetRoot<flatbuffers::String>(fbb.GetBufferPointer());
 
   jbyteArray result;
-  result = env->NewByteArray(fbb.GetSize());
+  result = env->NewByteArray(task_message->size());
   if (result == nullptr) {
     return nullptr; /* out of memory error thrown */
   }
 
   // move from task spec structure to the java structure
-  env->SetByteArrayRegion(result, 0, fbb.GetSize(),
-                          reinterpret_cast<jbyte *>(fbb.GetBufferPointer()));
+  env->SetByteArrayRegion(
+      result, 0, task_message->size(),
+      reinterpret_cast<jbyte *>(const_cast<char *>(task_message->data())));
 
   delete spec;
   return result;
