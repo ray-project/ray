@@ -1125,17 +1125,23 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // actor creation because this node joined the cluster after the actor
         // was already created. Look up the actor's registered location in case
         // we missed the creation notification.
-        // NOTE(swang): This codepath needs to be tested in a cluster setting.
         auto lookup_callback = [this, spec](gcs::AsyncGcsClient *client,
                                             const ActorID &actor_id,
                                             const std::vector<ActorTableDataT> &data) {
+          // If we now have information about the actor, then we received a
+          // notification about the most recent update to the actor table.
+          // Then, we don't need to process the lookup results.
+          if (actor_registry_.find(actor_id) != actor_registry_.end()) {
+            return;
+          }
           if (!data.empty()) {
             // The actor has been created.
-            if (actor_registry_.find(actor_id) == actor_registry_.end()) {
-              HandleActorNotification(actor_id, data);
-            }
+            HandleActorNotification(actor_id, data);
           } else {
-            // The actor has not yet been created. Try to reconstruct it.
+            // The actor has not yet been created on any node. This means the
+            // actor creation task may have failed, so try to reconstruct it.
+            RAY_LOG(WARNING) << "No location found for actor " << actor_id
+                             << ". The actor may have died before initialization.";
             reconstruction_policy_.ListenAndMaybeReconstruct(
                 spec.ActorCreationDummyObjectId());
           }
@@ -1523,13 +1529,18 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 void NodeManager::ResubmitTask(const Task &task) {
   RAY_LOG(DEBUG) << "Resubmitting task " << task.GetTaskSpecification().TaskId();
 
+  // Actors should only be recreated if the first initialization failed or if
+  // the most recent instance of the actor failed.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
-    // If the resubmitted task is an actor creation task, the actor state must be
-    // RECONSTRUCTING.
     const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
     const auto it = actor_registry_.find(actor_id);
-    RAY_CHECK(it != actor_registry_.end() &&
-              it->second.GetState() == ActorState::RECONSTRUCTING);
+    if (it != actor_registry_.end()) {
+      // The actor has been created before. Check that the most recent instance
+      // failed.
+      RAY_CHECK(it->second.GetState() == ActorState::RECONSTRUCTING);
+    }
+    // Else, the actor has never been created, so this means the first
+    // initialization failed.
   }
 
   // Driver tasks cannot be reconstructed. If this is a driver task, push an
