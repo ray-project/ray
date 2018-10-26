@@ -341,7 +341,6 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
     --num-redis-shards=10 \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
@@ -359,7 +358,6 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --num-redis-shards=2 \
     --num-gpus=0,0,5,6,50 \
     --num-drivers=100 \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
@@ -367,5 +365,4 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --num-nodes=1 \
     --mem-size=60G \
     --shm-size=60G \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
