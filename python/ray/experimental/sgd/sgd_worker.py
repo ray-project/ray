@@ -203,7 +203,7 @@ class SGDWorker(object):
             ],
             feed_dict=feed_dict)
         logger.debug(
-            "compute grad interior time {}".format(time.time() - start))
+            "Compute grad interior time {}".format(time.time() - start))
         return fetches
 
     def apply_gradients(self, avg_grads):
@@ -213,7 +213,7 @@ class SGDWorker(object):
             for (i, g) in enumerate(self.per_device_grads[0])
         }
         self.sess.run(self.apply_op, feed_dict=result)
-        logger.debug("apply grad interior time {}".format(time.time() - start))
+        logger.debug("Apply grad interior time {}".format(time.time() - start))
 
     def compute_apply(self):
         fetches = run_timeline(
