@@ -106,7 +106,6 @@ class SGDWorker(object):
         # You must fetch this otherwise the NCCL allreduce will hang
         self.nccl_control_out = tf.group(*nccl_noops)
 
-        round_robin_devices = False
         if plasma_op:
             store_socket = (
                 ray.worker.global_worker.plasma_client.store_socket_name)
@@ -121,13 +120,9 @@ class SGDWorker(object):
                 tf.placeholder(shape=[], dtype=tf.string, name="in_grad_oids")
                 for _ in range(num_grads)
             ]
-            ix = 0
             for j in range(num_grads):
-                grad = self.per_device_grads[ix][j]
-                if round_robin_devices:
-                    ix += 1  # round robin assignment
-                ix %= num_devices
-                with tf.device(self.models[ix].loss.device):
+                grad = self.per_device_grads[0][j]
+                with tf.device(self.models[0].loss.device):
                     plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
                         self.plasma_in_grads_oids[j],
@@ -143,7 +138,6 @@ class SGDWorker(object):
                 for _ in range(num_grads)
             ]
             packed_plasma_grads = []
-            ix = 0
             for j in range(num_grads):
                 with tf.device(self.plasma_in_grads[j].device):
                     with tf.control_dependencies([self.plasma_in_grads[j]]):
@@ -209,7 +203,7 @@ class SGDWorker(object):
             ],
             feed_dict=feed_dict)
         logger.debug(
-            "compute grad interior time {}".format(time.time() - start))
+            "Compute grad interior time {}".format(time.time() - start))
         return fetches
 
     def apply_gradients(self, avg_grads):
@@ -219,7 +213,7 @@ class SGDWorker(object):
             for (i, g) in enumerate(self.per_device_grads[0])
         }
         self.sess.run(self.apply_op, feed_dict=result)
-        logger.debug("apply grad interior time {}".format(time.time() - start))
+        logger.debug("Apply grad interior time {}".format(time.time() - start))
 
     def compute_apply(self):
         fetches = run_timeline(
