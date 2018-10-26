@@ -30,6 +30,7 @@ class Cluster(object):
         self.head_node = None
         self.worker_nodes = {}
         self.redis_address = None
+        self.connected = False
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -37,7 +38,13 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                ray.init(redis_address=self.redis_address)
+                self.connect()
+
+    def connect(self):
+        assert self.redis_address is not None
+        assert not self.connected
+        ray.init(redis_address=self.redis_address)
+        self.connected = True
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -200,3 +207,11 @@ class Node(object):
 
     def all_processes_alive(self):
         return not any(self.dead_processes())
+
+    def get_plasma_store_name(self):
+        """Return the plasma store name.
+
+        Assuming one plasma store per raylet, this may be used as a unique
+        identifier for a node.
+        """
+        return self.address_info['object_store_addresses'][0].name

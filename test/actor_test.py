@@ -14,6 +14,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
+import ray.test.cluster_utils
 
 
 @pytest.fixture
@@ -30,6 +31,15 @@ def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def head_node_cluster():
+    cluster = ray.test.cluster_utils.Cluster(initialize_head=True,
+                                             connect=True)
+    yield cluster
+    # The code after the yield will run as teardown code.
+    cluster.shutdown()
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -1282,14 +1292,10 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_local_scheduler_dying(shutdown_only):
-    ray.worker._init(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_workers=0,
-        redirect_output=True)
+def test_local_scheduler_dying(head_node_cluster):
+    remote_node = head_node_cluster.add_node()
 
-    @ray.remote
+    @ray.remote(max_reconstructions=1)
     class Counter(object):
         def __init__(self):
             self.x = 0
@@ -1301,11 +1307,10 @@ def test_local_scheduler_dying(shutdown_only):
             self.x += 1
             return self.x
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
     # Create an actor that is not on the local scheduler.
     actor = Counter.remote()
-    while ray.get(actor.local_plasma.remote()) == local_plasma:
+    while (ray.get(actor.local_plasma.remote()) !=
+           remote_node.get_plasma_store_name()):
         actor = Counter.remote()
 
     ids = [actor.inc.remote() for _ in range(100)]
@@ -1313,12 +1318,8 @@ def test_local_scheduler_dying(shutdown_only):
     # Wait for the last task to finish running.
     ray.get(ids[-1])
 
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding local scheduler to exit.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    # Kill the second node.
+    head_node_cluster.remove_node(remote_node)
 
     # Get all of the results
     results = ray.get(ids)
@@ -1329,7 +1330,7 @@ def test_local_scheduler_dying(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_many_local_schedulers_dying(shutdown_only):
+def test_many_local_schedulers_dying(head_node_cluster):
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be
     # num_actors_at_a_time * num_local_schedulers.
@@ -1337,13 +1338,10 @@ def test_many_local_schedulers_dying(shutdown_only):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    ray.worker._init(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=3,
-        redirect_output=True)
+    worker_nodes = [head_node_cluster.add_node(resources={"CPU": 3}) for _ in
+                    range(num_local_schedulers)]
 
-    @ray.remote
+    @ray.remote(max_reconstructions=1)
     class SlowCounter(object):
         def __init__(self):
             self.x = 0
@@ -1365,7 +1363,7 @@ def test_many_local_schedulers_dying(shutdown_only):
 
     # In a loop we are going to create some actors, run some methods, kill
     # a local scheduler, and run some more methods.
-    for i in range(num_local_schedulers - 1):
+    for node in worker_nodes:
         # Create some actors.
         actors.extend(
             [SlowCounter.remote() for _ in range(num_actors_at_a_time)])
@@ -1374,14 +1372,8 @@ def test_many_local_schedulers_dying(shutdown_only):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
                 result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-        # Kill a plasma store to get rid of the cached objects and trigger
-        # exit of the corresponding local scheduler. Don't kill the first
-        # local scheduler since that is the one that the driver is
-        # connected to.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][i + 1]
-        process.kill()
-        process.wait()
+        # Kill a node.
+        head_node_cluster.remove_node(node)
 
         # Run some more methods.
         for j in range(len(actors)):
