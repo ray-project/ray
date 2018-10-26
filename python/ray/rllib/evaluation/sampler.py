@@ -326,6 +326,7 @@ def _env_runner(async_vector_env,
                         new_obs=filtered_obs,
                         **episode.last_pi_info_for(agent_id))
 
+            # Invoke the step callback after the step is logged to the episode
             if callbacks.get("on_episode_step"):
                 callbacks["on_episode_step"]({
                     "env": async_vector_env,
