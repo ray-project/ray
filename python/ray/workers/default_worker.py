@@ -88,10 +88,7 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info,
-        mode=ray.WORKER_MODE,
-        use_raylet=(args.raylet_name is not None),
-        redis_password=args.redis_password)
+        info, mode=ray.WORKER_MODE, redis_password=args.redis_password)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
@@ -106,7 +103,7 @@ if __name__ == "__main__":
         # main_loop. If an exception is thrown here, then that means that
         # there is some error that we didn't anticipate.
         ray.worker.global_worker.main_loop()
-    except Exception as e:
+    except Exception:
         traceback_str = traceback.format_exc() + error_explanation
         ray.utils.push_error_to_driver(
             ray.worker.global_worker,

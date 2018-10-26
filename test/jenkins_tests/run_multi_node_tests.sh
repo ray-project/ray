@@ -328,16 +328,14 @@ docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=ps
 
-# No Xray for PyTorch
-docker run -e RAY_USE_XRAY=0 --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
 
-# No Xray for PyTorch
-docker run -e RAY_USE_XRAY=0 --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v1 \
     --run A3C \
@@ -348,7 +346,6 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
     --num-redis-shards=10 \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
@@ -366,7 +363,6 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --num-redis-shards=2 \
     --num-gpus=0,0,5,6,50 \
     --num-drivers=100 \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
@@ -374,5 +370,4 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --num-nodes=1 \
     --mem-size=60G \
     --shm-size=60G \
-    --use-raylet \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py

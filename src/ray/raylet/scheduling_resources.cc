@@ -60,6 +60,7 @@ bool ResourceSet::IsSubset(const ResourceSet &other) const {
 bool ResourceSet::IsSuperset(const ResourceSet &other) const {
   return other.IsSubset(*this);
 }
+
 /// Test whether this ResourceSet is precisely equal to the other ResourceSet.
 bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
   return (this->IsSubset(rhs) && rhs.IsSubset(*this));
@@ -69,9 +70,11 @@ bool ResourceSet::AddResource(const std::string &resource_name, double capacity)
   resource_capacity_[resource_name] = capacity;
   return true;
 }
+
 bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
+
 bool ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
   // Subtract the resources and track whether a resource goes below zero.
   bool oversubscribed = false;
