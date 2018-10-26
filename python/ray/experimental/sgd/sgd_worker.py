@@ -122,7 +122,7 @@ class SGDWorker(object):
             ]
             for j in range(num_grads):
                 grad = self.per_device_grads[0][j]
-                with tf.device(self.models[ix].loss.device):
+                with tf.device(self.models[0].loss.device):
                     plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
                         self.plasma_in_grads_oids[j],
