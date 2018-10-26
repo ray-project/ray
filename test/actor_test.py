@@ -1387,6 +1387,33 @@ def test_many_local_schedulers_dying(head_node_cluster):
         assert ray.get(result_id_list) == results
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Hanging with new GCS API.")
+def test_actor_init_fails(head_node_cluster):
+    remote_node = head_node_cluster.add_node()
+
+    @ray.remote(max_reconstructions=1)
+    class Counter(object):
+        def __init__(self):
+            self.x = 0
+
+        def inc(self):
+            self.x += 1
+            return self.x
+
+    # Create many actors. It should take a while to finish initializing them.
+    actors = [Counter.remote() for _ in range(100)]
+    # Allow some time to forward the actor creation tasks to the other node.
+    time.sleep(0.1)
+    # Kill the second node.
+    head_node_cluster.remove_node(remote_node)
+
+    # Get all of the results
+    results = ray.get([actor.inc.remote() for actor in actors])
+    assert results == [1 for actor in actors]
+
+
 def setup_counter_actor(test_checkpoint=False,
                         save_exception=False,
                         resume_exception=False):
