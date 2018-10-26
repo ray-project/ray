@@ -2,9 +2,9 @@
 
 #include <jni.h>
 
+#include "ray/id.h"
 #include "ray/raylet/local_scheduler_client.h"
 #include "ray/util/logging.h"
-#include "ray/id.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,7 +93,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 
   // move from task spec structure to the java structure
   env->SetByteArrayRegion(result, 0, fbb.GetSize(),
-			  reinterpret_cast<jbyte *>(fbb.GetBufferPointer()));
+                          reinterpret_cast<jbyte *>(fbb.GetBufferPointer()));
 
   delete spec;
   return result;
