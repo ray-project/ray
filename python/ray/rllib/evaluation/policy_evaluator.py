@@ -432,6 +432,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
         else:
@@ -472,6 +474,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].compute_apply(batch))
             return info_out
