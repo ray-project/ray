@@ -106,7 +106,7 @@ class TestObjectManagerBase : public ::testing::Test {
     return store_id;
   }
 
-  void StopStore(std::string store_id) {
+  void StopStore(const std::string &store_id) {
     std::string store_pid = store_id + ".pid";
     std::string kill_1 = "kill -9 `cat " + store_pid + "`";
     int s = system(kill_1.c_str());
@@ -257,7 +257,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -265,7 +265,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_2(ObjectID::from_binary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();

@@ -18,44 +18,38 @@ import shlex
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
-MOCK_MODULES = ["gym",
-                "gym.spaces",
-                "scipy",
-                "scipy.signal",
-                "tensorflow",
-                "tensorflow.contrib",
-                "tensorflow.contrib.layers",
-                "tensorflow.contrib.slim",
-                "tensorflow.contrib.rnn",
-                "tensorflow.core",
-                "tensorflow.core.util",
-                "tensorflow.python",
-                "tensorflow.python.client",
-                "tensorflow.python.util",
-                "ray.local_scheduler",
-                "ray.plasma",
-                "ray.core",
-                "ray.core.generated",
-                "ray.core.generated.DriverTableMessage",
-                "ray.core.generated.LocalSchedulerInfoMessage",
-                "ray.core.generated.ResultTableReply",
-                "ray.core.generated.SubscribeToDBClientTableReply",
-                "ray.core.generated.SubscribeToNotificationsReply",
-                "ray.core.generated.TaskInfo",
-                "ray.core.generated.TaskReply",
-                "ray.core.generated.TaskExecutionDependencies",
-                "ray.core.generated.ClientTableData",
-                "ray.core.generated.GcsTableEntry",
-                "ray.core.generated.HeartbeatTableData",
-                "ray.core.generated.DriverTableData",
-                "ray.core.generated.ErrorTableData",
-                "ray.core.generated.ProfileTableData",
-                "ray.core.generated.ObjectTableData",
-                "ray.core.generated.ray.protocol.Task",
-                "ray.core.generated.TablePrefix",
-                "ray.core.generated.TablePubsub",]
+MOCK_MODULES = [
+    "gym",
+    "gym.spaces",
+    "scipy",
+    "scipy.signal",
+    "tensorflow",
+    "tensorflow.contrib",
+    "tensorflow.contrib.layers",
+    "tensorflow.contrib.slim",
+    "tensorflow.contrib.rnn",
+    "tensorflow.core",
+    "tensorflow.core.util",
+    "tensorflow.python",
+    "tensorflow.python.client",
+    "tensorflow.python.util",
+    "ray.raylet",
+    "ray.plasma",
+    "ray.core",
+    "ray.core.generated",
+    "ray.core.generated.ClientTableData",
+    "ray.core.generated.GcsTableEntry",
+    "ray.core.generated.HeartbeatTableData",
+    "ray.core.generated.DriverTableData",
+    "ray.core.generated.ErrorTableData",
+    "ray.core.generated.ProfileTableData",
+    "ray.core.generated.ObjectTableData",
+    "ray.core.generated.ray.protocol.Task",
+    "ray.core.generated.TablePrefix",
+    "ray.core.generated.TablePubsub",
+]
 for mod_name in MOCK_MODULES:
-  sys.modules[mod_name] = mock.Mock()
+    sys.modules[mod_name] = mock.Mock()
 # ray.rllib.models.action_dist.py and
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
@@ -89,7 +83,7 @@ from recommonmark.parser import CommonMarkParser
 source_suffix = ['.rst', '.md']
 
 source_parsers = {
-   '.md': CommonMarkParser,
+    '.md': CommonMarkParser,
 }
 
 # The encoding of source files.
@@ -259,25 +253,24 @@ htmlhelp_basename = 'Raydoc'
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
-# The paper size ('letterpaper' or 'a4paper').
-#'papersize': 'letterpaper',
+    # The paper size ('letterpaper' or 'a4paper').
+    #'papersize': 'letterpaper',
 
-# The font size ('10pt', '11pt' or '12pt').
-#'pointsize': '10pt',
+    # The font size ('10pt', '11pt' or '12pt').
+    #'pointsize': '10pt',
 
-# Additional stuff for the LaTeX preamble.
-#'preamble': '',
+    # Additional stuff for the LaTeX preamble.
+    #'preamble': '',
 
-# Latex figure (float) alignment
-#'figure_align': 'htbp',
+    # Latex figure (float) alignment
+    #'figure_align': 'htbp',
 }
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  (master_doc, 'Ray.tex', u'Ray Documentation',
-   u'The Ray Team', 'manual'),
+    (master_doc, 'Ray.tex', u'Ray Documentation', u'The Ray Team', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -300,19 +293,14 @@ latex_documents = [
 # If false, no module index is generated.
 #latex_domain_indices = True
 
-
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'ray', u'Ray Documentation',
-     [author], 1)
-]
+man_pages = [(master_doc, 'ray', u'Ray Documentation', [author], 1)]
 
 # If true, show URL addresses after external links.
 #man_show_urls = False
-
 
 # -- Options for Texinfo output -------------------------------------------
 
@@ -320,9 +308,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  (master_doc, 'Ray', u'Ray Documentation',
-   author, 'Ray', 'One line description of project.',
-   'Miscellaneous'),
+    (master_doc, 'Ray', u'Ray Documentation', author, 'Ray',
+     'One line description of project.', 'Miscellaneous'),
 ]
 
 # Documents to append as an appendix to all manuals.

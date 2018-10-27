@@ -6,12 +6,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "format/common_generated.h"
+#include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
 
 extern "C" {
-#include "sha256.h"
+#include "ray/thirdparty/sha256.h"
 }
 
 namespace ray {

@@ -1,7 +1,8 @@
 #include "task_spec.h"
 
-#include "common.h"
-#include "common_protocol.h"
+#include "ray/common/common_protocol.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -80,20 +81,6 @@ TaskSpecification::TaskSpecification(
     returns.push_back(to_flatbuf(fbb, return_id));
   }
 
-  // convert Language to TaskLanguage
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  TaskLanguage task_language = TaskLanguage::PYTHON;
-  switch (language) {
-  case Language::PYTHON:
-    task_language = TaskLanguage::PYTHON;
-    break;
-  case Language::JAVA:
-    task_language = TaskLanguage::JAVA;
-    break;
-  default:
-    RAY_LOG(FATAL) << "Unknown language: " << static_cast<int32_t>(language);
-  }
-
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
@@ -102,7 +89,7 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
       fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
-      map_to_flatbuf(fbb, required_placement_resources), task_language);
+      map_to_flatbuf(fbb, required_placement_resources), language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -128,10 +115,12 @@ UniqueID TaskSpecification::DriverId() const {
   return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->parent_counter();
 }
 FunctionID TaskSpecification::FunctionId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
@@ -167,15 +156,26 @@ ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
+
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return reinterpret_cast<const uint8_t *>(
+      message->args()->Get(arg_index)->data()->c_str());
 }
+
 size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->Get(arg_index)->data()->size();
 }
+
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  auto it = required_resources.find(resource_name);
+  RAY_CHECK(it != required_resources.end());
+  return it->second;
 }
+
 const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
@@ -202,18 +202,7 @@ bool TaskSpecification::IsDriverTask() const {
 
 Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  auto language = message->language();
-  switch (language) {
-  case TaskLanguage::PYTHON:
-    return Language::PYTHON;
-  case TaskLanguage::JAVA:
-    return Language::JAVA;
-  default:
-    // This shouldn't be reachable.
-    RAY_LOG(FATAL) << "Unknown task language: " << static_cast<int32_t>(language);
-    return Language::PYTHON;
-  }
+  return message->language();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {

@@ -154,7 +154,6 @@ Now you have started all of the Ray processes on each node. These include:
 - An object store on each machine.
 - A local scheduler on each machine.
 - Multiple Redis servers (on the head node).
-- One global scheduler (on the head node).
 
 To confirm that the Ray cluster setup is working, start up Python on one of the
 nodes in the cluster and enter the following commands to connect to the Ray

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import os
 import pytest
 
 import ray
@@ -23,9 +22,6 @@ def start_connected_cluster():
     g.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_cluster():
     """Basic test for adding and removing nodes in cluster."""
     g = Cluster(initialize_head=False)
@@ -38,9 +34,6 @@ def test_cluster():
     assert not any(node.any_processes_alive() for node in g.list_all_nodes())
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_wait_for_nodes(start_connected_cluster):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -58,9 +51,6 @@ def test_wait_for_nodes(start_connected_cluster):
     cluster.wait_for_nodes()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_worker_plasma_store_failure(start_connected_cluster):
     cluster = start_connected_cluster
     worker = cluster.add_node()

@@ -5,13 +5,13 @@
 #include <sstream>
 
 extern "C" {
-#include "hiredis/adapters/ae.h"
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
+#include "ray/thirdparty/hiredis/adapters/ae.h"
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
 }
 
 // TODO(pcm): Integrate into the C++ tree.
-#include "state/ray_config.h"
+#include "ray/ray_config.h"
 
 namespace {
 
