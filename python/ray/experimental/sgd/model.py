@@ -18,5 +18,9 @@ class Model(object):
     """
 
     def get_feed_dict(self):
-        """Extra values to pass in when computing gradients for the loss."""
+        """Extra values to pass in when computing gradients for the loss.
+
+        Returns:
+            TensorFlow feed_dict to add to the gradient operation.
+        """
         return {}

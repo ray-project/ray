@@ -227,16 +227,9 @@ class SGDWorker(object):
                          agg_grad_shard_oids,
                          tl_name="ps_compute_apply",
                          write_timeline=False):
-        feed_dict = {
-            ph: oid
-            for (ph,
-                 oid) in zip(self.plasma_in_grads_oids, out_grad_shard_oids)
-        }
-        feed_dict.update({
-            ph: oid
-            for (ph,
-                 oid) in zip(self.plasma_out_grads_oids, agg_grad_shard_oids)
-        })
+        feed_dict = dict(zip(self.plasma_in_grads_oids, out_grad_shard_oids))
+        feed_dict.update(
+            dict(zip(self.plasma_out_grads_oids, agg_grad_shard_oids)))
         fetch(agg_grad_shard_oids)
         fetches = run_timeline(
             self.sess, [

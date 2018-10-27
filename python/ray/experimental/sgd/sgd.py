@@ -108,22 +108,33 @@ class DistributedSGD(object):
             self.ps_list = []
 
     def foreach_worker(self, fn):
+        """Apply the given function to each remote worker.
+        
+        Returns:
+            List of results from applying the function.
+        """
         results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])
         return results
 
     def foreach_model(self, fn):
+        """Apply the given function to each model replica in each worker.
+
+        Returns:
+            List of results from applying the function.
+        """
         results = ray.get([w.foreach_model.remote(fn) for w in self.workers])
         out = []
         for r in results:
             out.extend(r)
         return r
 
-    def warmup(self):
-        logger.info("Warming up object store of worker actors")
-        ray.get([w.warmup.remote() for w in self.workers])
-        logger.info("Warmup complete")
-
     def step(self, fetch_stats=False):
+        """Run a single SGD step.
+
+        Arguments:
+            fetch_stats (bool): Whether to return stats from the step. This can
+                slow down the computation by acting as a global barrier.
+        """
         if self.strategy == "ps":
             return _distributed_sgd_step(
                 self.workers,
@@ -132,6 +143,11 @@ class DistributedSGD(object):
                 fetch_stats=fetch_stats)
         else:
             return _simple_sgd_step(self.workers)
+
+    def warmup(self):
+        logger.info("Warming up object store of worker actors")
+        ray.get([w.warmup.remote() for w in self.workers])
+        logger.info("Warmup complete")
 
 
 def _average_gradients(grads):
