@@ -18,7 +18,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
@@ -42,11 +42,11 @@ if __name__ == "__main__":
     def gen_policy():
         config = {
             "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-            "n_step": random.choice([1, 2, 3, 4, 5]),
         }
-        return (PGPolicyGraph, obs_space, act_space, config)
 
-    # Setup PG with an ensemble of `num_policies` different policy graphs
+        return (PPOPolicyGraph, obs_space, act_space, config)
+
+    # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
         "policy_{}".format(i): gen_policy()
         for i in range(args.num_policies)
@@ -55,12 +55,13 @@ if __name__ == "__main__":
 
     run_experiments({
         "test": {
-            "run": "PG",
+            "run": "PPO",
             "env": "multi_cartpole",
             "stop": {
                 "training_iteration": args.num_iters
             },
             "config": {
+                "simple_optimizer": True,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(

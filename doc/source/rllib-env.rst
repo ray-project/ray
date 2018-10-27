@@ -5,6 +5,23 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
+**Compatibility matrix**:
+
+=============  ================  ==================  ===========  ==================
+Algorithm      Discrete Actions  Continuous Actions  Multi-Agent  Recurrent Policies
+=============  ================  ==================  ===========  ==================
+A2C, A3C        **Yes**           **Yes**             **Yes**      **Yes**
+PPO             **Yes**           **Yes**             **Yes**      **Yes**
+PG              **Yes**           **Yes**             **Yes**      **Yes**
+IMPALA          **Yes**           No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes**           No                  **Yes**      No
+DDPG            No                **Yes**             **Yes**      No
+APEX-DQN        **Yes**           No                  No           No
+APEX-DDPG       No                **Yes**             No           No
+ES              **Yes**           **Yes**             No           No
+ARS             **Yes**           **Yes**             No           No
+=============  ================  ==================  ===========  ==================
+
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 
 .. code-block:: python
@@ -132,7 +149,35 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__.
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+
+.. code-block:: bash
+   :emphasize-lines: 6,14,22
+
+    Result for PPO_multi_cartpole_0:
+      episode_len_mean: 34.025862068965516
+      episode_reward_max: 159.0
+      episode_reward_mean: 86.06896551724138
+      info:
+        policy_0:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6833480000495911
+          kl: 0.010264254175126553
+          policy_loss: -11.95590591430664
+          total_loss: 197.7039794921875
+          vf_explained_var: 0.0010995268821716309
+          vf_loss: 209.6578826904297
+        policy_1:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6827034950256348
+          kl: 0.01119876280426979
+          policy_loss: -8.787769317626953
+          total_loss: 88.26161193847656
+          vf_explained_var: 0.0005457401275634766
+          vf_loss: 97.0471420288086
+      policy_reward_mean:
+        policy_0: 21.194444444444443
+        policy_1: 21.798387096774192
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
 
