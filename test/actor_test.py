@@ -1413,6 +1413,36 @@ def test_actor_init_fails(head_node_cluster):
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 
+def test_reconstruction_suppression(head_node_cluster):
+    # This test can be made more stressful by increasing the numbers below.
+    # The total number of actors created will be
+    # num_actors_at_a_time * num_local_schedulers.
+    num_local_schedulers = 10
+    worker_nodes = [head_node_cluster.add_node() for _ in
+                    range(num_local_schedulers)]
+
+    @ray.remote(max_reconstructions=1)
+    class Counter(object):
+        def __init__(self):
+            self.x = 0
+
+        def inc(self):
+            self.x += 1
+            return self.x
+
+    @ray.remote
+    def inc(actor_handle):
+        return ray.get(actor_handle.inc.remote())
+
+    actors = [Counter.remote() for _ in range(100)]
+    ray.get([actor.inc.remote() for actor in actors])
+
+    head_node_cluster.remove_node(worker_nodes[0])
+    results = []
+    for _ in range(10):
+        results += [inc.remote(actor) for actor in actors]
+    results = ray.get(results)
+
 
 def setup_counter_actor(test_checkpoint=False,
                         save_exception=False,

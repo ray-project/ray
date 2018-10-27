@@ -1140,8 +1140,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           } else {
             // The actor has not yet been created on any node. This means the
             // actor creation task may have failed, so try to reconstruct it.
-            RAY_LOG(WARNING) << "No location found for actor " << actor_id
-                             << ". The actor may have died before initialization.";
             reconstruction_policy_.ListenAndMaybeReconstruct(
                 spec.ActorCreationDummyObjectId());
           }
@@ -1535,8 +1533,15 @@ void NodeManager::ResubmitTask(const Task &task) {
     const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
     const auto it = actor_registry_.find(actor_id);
     if (it != actor_registry_.end()) {
-      // The actor has been created before. Check that the most recent instance
-      // failed.
+      // The actor has been created before. If the actor is still alive, then
+      // do not resubmit the task. If the actor really is dead and a result is
+      // needed, then reconstruction for this task will be triggered again.
+      if (it->second.GetState() == ActorState::ALIVE) {
+        RAY_LOG(WARNING)
+            << "Actor creation task resubmitted, but the actor is still alive.";
+        return;
+      }
+      // Check that the most recent instance of the actor failed.
       RAY_CHECK(it->second.GetState() == ActorState::RECONSTRUCTING);
     }
     // Else, the actor has never been created, so this means the first
