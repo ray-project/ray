@@ -957,12 +957,72 @@ def start_raylet(redis_address,
     return raylet_name
 
 
+def determine_plasma_store_config(object_store_memory=None,
+                                  plasma_directory=None,
+                                  huge_pages=False):
+    """Figure out how to configure the plasma object store.
+
+    Args:
+        object_store_memory: The user-specified object store memory parameter.
+        plasma_directory: The user-specified plasma directory parameter.
+        huge_pages: The user-specified huge pages parameter.
+
+    Returns:
+        A tuple of the object store memory to use and the plasma directory to
+            use. If either of these values is specified by the user, then that
+            value will be preserved.
+    """
+    system_memory = ray.utils.get_system_memory()
+
+    # Choose a default object store size.
+    if object_store_memory is None:
+        object_store_memory = int(system_memory * 0.4)
+
+    if plasma_directory is not None:
+        plasma_directory = os.path.abspath(plasma_directory)
+
+    # Determine which directory to use. By default, use /tmp on MacOS and
+    # /dev/shm on Linux, unless the shared-memory file system is too small,
+    # in which case we default to /tmp on Linux.
+    if plasma_directory is None:
+        if sys.platform == "linux" or sys.platform == "linux2":
+            shm_avail = ray.utils.get_shared_memory_bytes()
+            # Compare the requested memory size to the memory available in
+            # /dev/shm.
+            if shm_avail > object_store_memory:
+                plasma_directory = "/dev/shm"
+            else:
+                plasma_directory = "/tmp"
+                logger.warning(
+                    "WARNING: The object store is using /tmp instead of "
+                    "/dev/shm because /dev/shm has only {} bytes available. "
+                    "This may slow down performance! You may be able to free "
+                    "up space by deleting files in /dev/shm or terminating "
+                    "any running plasma_store_server processes. If you are "
+                    "inside a Docker container, you may need to pass an "
+                    "argument with the flag '--shm-size' to 'docker run'."
+                    .format(shm_avail))
+        else:
+            plasma_directory = "/tmp"
+
+    # Do some sanity checks.
+    if object_store_memory > system_memory:
+        raise Exception("The requested object store memory size is greater "
+                        "than the total available memory.")
+
+    if not os.path.isdir(plasma_directory):
+        raise Exception("The file {} does not exist or is not a directory."
+                        .format(plasma_directory))
+
+    return object_store_memory, plasma_directory
+
+
 def start_plasma_store(node_ip_address,
                        redis_address,
                        object_manager_port=None,
                        store_stdout_file=None,
                        store_stderr_file=None,
-                       objstore_memory=None,
+                       object_store_memory=None,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
@@ -980,8 +1040,8 @@ def start_plasma_store(node_ip_address,
             to. If no redirection should happen, then this should be None.
         store_stderr_file: A file handle opened for writing to redirect stderr
             to. If no redirection should happen, then this should be None.
-        objstore_memory: The amount of memory (in bytes) to start the object
-            store with.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
@@ -994,41 +1054,14 @@ def start_plasma_store(node_ip_address,
     Return:
         The Plasma store socket name.
     """
-    if objstore_memory is None:
-        # Compute a fraction of the system memory for the Plasma store to use.
-        system_memory = ray.utils.get_system_memory()
-        if sys.platform == "linux" or sys.platform == "linux2":
-            # On linux we use /dev/shm, its size is half the size of the
-            # physical memory. To not overflow it, we set the plasma memory
-            # limit to 0.4 times the size of the physical memory.
-            objstore_memory = int(system_memory * 0.4)
-            # Compare the requested memory size to the memory available in
-            # /dev/shm.
-            shm_fd = os.open("/dev/shm", os.O_RDONLY)
-            try:
-                shm_fs_stats = os.fstatvfs(shm_fd)
-                # The value shm_fs_stats.f_bsize is the block size and the
-                # value shm_fs_stats.f_bavail is the number of available
-                # blocks.
-                shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
-                if objstore_memory > shm_avail:
-                    logger.warning(
-                        "Warning: Reducing object store memory because "
-                        "/dev/shm has only {} bytes available. You may be "
-                        "able to free up space by deleting files in "
-                        "/dev/shm. If you are inside a Docker container, "
-                        "you may need to pass an argument with the flag "
-                        "'--shm-size' to 'docker run'.".format(shm_avail))
-                    objstore_memory = int(shm_avail * 0.8)
-            finally:
-                os.close(shm_fd)
-        else:
-            objstore_memory = int(system_memory * 0.8)
+    object_store_memory, plasma_directory = determine_plasma_store_config(
+        object_store_memory, plasma_directory, huge_pages)
+
     # Start the Plasma store.
     logger.info("Starting the Plasma object store with {0:.2f} GB memory."
-                .format(objstore_memory / 10**9))
+                .format(object_store_memory / 10**9))
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
-        plasma_store_memory=objstore_memory,
+        plasma_store_memory=object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=store_stdout_file,
         stderr_file=store_stderr_file,
@@ -1358,7 +1391,7 @@ def start_ray_processes(address_info=None,
             redis_address,
             store_stdout_file=plasma_store_stdout_file,
             store_stderr_file=plasma_store_stderr_file,
-            objstore_memory=object_store_memory,
+            object_store_memory=object_store_memory,
             cleanup=cleanup,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
