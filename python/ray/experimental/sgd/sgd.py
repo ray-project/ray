@@ -62,6 +62,7 @@ class DistributedSGD(object):
             use_plasma_op = True
         elif strategy == "simple":
             use_plasma_op = False
+            grad_shard_bytes = 0  # tensor fusion doesn't make sense
         else:
             raise ValueError("strategy must be one of 'ps', 'simple'")
         self.strategy = strategy
