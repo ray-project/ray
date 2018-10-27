@@ -33,6 +33,7 @@ class DistributedSGD(object):
             worker. One model replica will be created per device.
         gpu (bool): Whether to use GPU devices.
         strategy (str): Strategy to use for distributed gradient aggregation.
+            This only applies if num_workers > 1.
         grad_shard_bytes (int): Fuse gradient tensors into chunks of at most
             this size (if applicable).
         all_reduce_alg (str): TensorFlow strategy to use for gradient
