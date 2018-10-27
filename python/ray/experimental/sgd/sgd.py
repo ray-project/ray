@@ -24,6 +24,21 @@ class DistributedSGD(object):
 
     To use this class, you'll have to implement model.py:Model.
 
+    Arguments:
+        model_creator (func): Function that returns a model given worker and
+            device indexes as arguments. Each model replica will be created
+            within its own variable scope.
+        num_workers (int): Number of Ray actors to use for SGD.
+        devices_per_worker (int): Number of GPU or CPU devices to use per
+            worker. One model replica will be created per device.
+        gpu (bool): Whether to use GPU devices.
+        strategy (str): Strategy to use for distributed gradient aggregation.
+        grad_shard_bytes (int): Fuse gradient tensors into chunks of at most
+            this size (if applicable).
+        all_reduce_alg (str): TensorFlow strategy to use for gradient
+            synchronization within the same worker (if applicable).
+            See modified_allreduce.py for options.
+
     Examples:
         >>> # Setup distributed SGD
         >>> model_creator = (
