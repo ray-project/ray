@@ -1414,9 +1414,6 @@ def test_actor_init_fails(head_node_cluster):
     assert results == [1 for actor in actors]
 
 def test_reconstruction_suppression(head_node_cluster):
-    # This test can be made more stressful by increasing the numbers below.
-    # The total number of actors created will be
-    # num_actors_at_a_time * num_local_schedulers.
     num_local_schedulers = 10
     worker_nodes = [head_node_cluster.add_node() for _ in
                     range(num_local_schedulers)]
@@ -1434,13 +1431,20 @@ def test_reconstruction_suppression(head_node_cluster):
     def inc(actor_handle):
         return ray.get(actor_handle.inc.remote())
 
+    # Make sure all of the actors have started.
     actors = [Counter.remote() for _ in range(100)]
     ray.get([actor.inc.remote() for actor in actors])
 
+    # Kill a node.
     head_node_cluster.remove_node(worker_nodes[0])
+
+    # Submit several tasks per actor. These should be randomly scheduled to the
+    # nodes, so that multiple nodes will detect and try to reconstruct the
+    # actor that died, but only one should succeed.
     results = []
     for _ in range(10):
         results += [inc.remote(actor) for actor in actors]
+    # Make sure that we can get the results from the reconstructed actor.
     results = ray.get(results)
 
 
