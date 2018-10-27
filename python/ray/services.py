@@ -1370,9 +1370,11 @@ def start_ray_processes(address_info=None,
 
     # Get the ports to use for the object managers if any are provided.
     if not isinstance(object_manager_ports, list):
+        assert object_manager_ports is None or num_local_schedulers == 1
         object_manager_ports = num_local_schedulers * [object_manager_ports]
     assert len(object_manager_ports) == num_local_schedulers
     if not isinstance(node_manager_ports, list):
+        assert node_manager_ports is None or num_local_schedulers == 1
         node_manager_ports = num_local_schedulers * [node_manager_ports]
     assert len(node_manager_ports) == num_local_schedulers
 
