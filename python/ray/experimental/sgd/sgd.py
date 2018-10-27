@@ -51,6 +51,13 @@ class DistributedSGD(object):
                  strategy="ps",
                  grad_shard_bytes=10000000,
                  all_reduce_alg="simple"):
+
+        if num_workers == 1 and strategy == "ps":
+            logger.warn(
+                "The parameter server strategy does not make sense for single "
+                "worker operation, falling back to simple mode.")
+            strategy = "simple"
+
         if strategy == "ps":
             use_plasma_op = True
         elif strategy == "simple":
