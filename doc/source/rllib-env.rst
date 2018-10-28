@@ -156,10 +156,27 @@ Implementing a Centralized Critic
 
 Implementing a shared critic between multiple policies requires the definition of custom policy graphs. It can be done as follows:
 
-1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. This assumes you use variable sharing to access the critic network from multiple policies. The critic predictions can then be added to the postprocessed trajectory.
+1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. This assumes you use variable sharing to access the critic network from multiple policies. The critic predictions can then be added to the postprocessed trajectory. Here's an example:
+
+.. code-block:: python
+
+    def postprocess_trajectory(sample_batch, other_agent_batches, episode):
+        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
+        global_obs_batch = np.stack(
+            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
+            axis=1)
+        # add the global obs and global critic value
+        sample_batch["global_obs"] = global_obs_batch
+        sample_batch["global_vf"] = self.sess.run(
+            self.global_critic_network, feed_dict={"obs": global_obs_batch})
+        # metrics like "global reward" can be retrieved from the info return of the environment
+        sample_batch["global_rewards"] = [
+            info["global_reward"] for info in sample_batch["infos"]]
+        return sample_batch
+
 2. Updating the critic: the centralized critic loss can be added to the loss of some arbitrary policy graph. The policy graph that is chosen must add the inputs for the critic loss to its postprocessed trajectory batches.
 
-For an example of defining postprocessing and loss, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
 
 Agent-Driven
 ------------
