@@ -160,7 +160,7 @@ Implementing a shared critic between multiple policies requires the definition o
 
 .. code-block:: python
 
-    def postprocess_trajectory(sample_batch, other_agent_batches, episode):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches, episode):
         agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
         global_obs_batch = np.stack(
             [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
