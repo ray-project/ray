@@ -98,31 +98,37 @@ class TrialRunner(object):
         # TODO(rliaw): we should not need an executor checkpoint -
         # restoration should automatically repopulate the executor.
         # executor_checkpoint = self.trial_executor.save(checkpoint_dir)
+        assert isinstance(self._search_alg, BasicVariantGenerator)
+        assert isinstance(self._scheduler_alg, FIFOScheduler)
+        if force:
+            # TODO: Technically, all of these paused trials should
+            # have some handling of the in-flight
+            temp_paused_trials = []
+            for trial in self.trial_executor:
+                if trial.status == Trial.RUNNING:
+                    self.trial_executor.pause_trial(trial)
+                    temp_paused_trials += [trial]
         runner_state = {
             "trials": pickle.dumps(self._trials),
             "total_time": self._total_time,
             "stop_queue": self._stop_queue
         }
-        with open(os.path.join(checkpoint_dir, "TEMP.p"), "wb") as f:
-            pickle.dump([runner_state,
-                         # search_alg_checkpoint,
-                         # scheduler_alg_checkpoint
-                         ],
-                         f)
+        with open(os.path.join(checkpoint_dir, "experiment.state"), "wb") as f:
+            pickle.dump([runner_state], f)
+        if force:
+            for trial in temp_paused_trials:
+                self.trial_executor.unpause_trial(trial)
 
 
     def restore(self, checkpoint_dir):
-        with open(os.path.join(checkpoint_dir, "TEMP.p"), "rb") as f:
+        assert isinstance(self._search_alg, BasicVariantGenerator)
+        assert isinstance(self._scheduler_alg, FIFOScheduler)
+        with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             state = pickle.load(f)
 
         runner_state = state[0]
-        # search_alg_checkpoint = state[1]
-        # scheduler_alg_checkpoint = state[2]
-
         self._trials = pickle.loads(runner_state["trials"])
-        # somehow need to populate executor, scheduler.
         # The number of resources can be resized to _anything_
-        # Perhaps all states for RUNNING -> PAUSED
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]
 

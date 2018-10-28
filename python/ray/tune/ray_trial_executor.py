@@ -64,11 +64,12 @@ class RayTrialExecutor(TrialExecutor):
         prior_status = trial.status
         trial.status = Trial.RUNNING
         trial.runner = self._setup_runner(trial)
-        if not self.restore(trial, checkpoint):
+        if not self.restore_trial(trial, checkpoint):
             return
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
+            logger.info("Restoring result from in-flight trial.")
             # If Trial was in flight when paused, self._paused stores result.
             self._paused.pop(previous_run[0])
             self._running[previous_run[0]] = trial

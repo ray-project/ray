@@ -92,7 +92,7 @@ class TrialExecutor(object):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save_trial(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:

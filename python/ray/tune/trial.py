@@ -305,6 +305,8 @@ class Trial(object):
 
     def __getstate__(self):
         state = self.__dict__.copy()
+        if state["status"] == Trial.RUNNING:
+            state["status"] = Trial.PAUSED
         # Remove the unpicklable entries.
         state["result_logger"].flush()
         state["_logger_started"] = bool(state["result_logger"])
