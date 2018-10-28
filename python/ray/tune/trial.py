@@ -307,13 +307,13 @@ class Trial(object):
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
         state["result_logger"].flush()
-        state["_result_logger"] = bool(state["result_logger"])
+        state["_logger_started"] = bool(state["result_logger"])
         state["result_logger"] = None
 
         return state
 
     def __setstate__(self, state):
-        logger_started = state.pop("_result_logger")
+        logger_started = state.pop("_logger_started")
         self.__dict__.update(state)
         if logger_started:
             self.init_logger()

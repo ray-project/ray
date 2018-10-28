@@ -92,21 +92,22 @@ class TrialRunner(object):
         self._queue_trials = queue_trials
 
 
-    def save(self, checkpoint_dir):
-        search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
-        scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
+    def save(self, checkpoint_dir, force=False):
+        # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
+        # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         # TODO(rliaw): we should not need an executor checkpoint -
         # restoration should automatically repopulate the executor.
         # executor_checkpoint = self.trial_executor.save(checkpoint_dir)
         runner_state = {
-            "trials": [pickle.dumps(t) for t in self._trials],
+            "trials": pickle.dumps(self._trials),
             "total_time": self._total_time,
             "stop_queue": self._stop_queue
         }
         with open(os.path.join(checkpoint_dir, "TEMP.p"), "wb") as f:
             pickle.dump([runner_state,
-                         search_alg_checkpoint,
-                         scheduler_alg_checkpoint],
+                         # search_alg_checkpoint,
+                         # scheduler_alg_checkpoint
+                         ],
                          f)
 
 
@@ -115,18 +116,18 @@ class TrialRunner(object):
             state = pickle.load(f)
 
         runner_state = state[0]
-        search_alg_checkpoint = state[1]
-        scheduler_alg_checkpoint = state[2]
+        # search_alg_checkpoint = state[1]
+        # scheduler_alg_checkpoint = state[2]
 
-        self._trials = [pickle.loads(t) for t in runner_state["trials"]]
+        self._trials = pickle.loads(runner_state["trials"])
         # somehow need to populate executor, scheduler.
         # The number of resources can be resized to _anything_
         # Perhaps all states for RUNNING -> PAUSED
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]
 
-        self._search_alg.restore(search_alg_checkpoint)
-        self._scheduler_alg.restore(scheduler_alg_checkpoint)
+        # self._search_alg.restore(search_alg_checkpoint)
+        # self._scheduler_alg.restore(scheduler_alg_checkpoint)
 
 
     def is_finished(self):
