@@ -106,7 +106,7 @@ class MultiAgentSampleBatchBuilder(object):
         builders, clearing per-agent state.
 
         Arguments:
-            episode (list): current MultiAgentEpisode object
+            episode: current MultiAgentEpisode object or None
         """
 
         # Materialize the batches so far
@@ -147,7 +147,7 @@ class MultiAgentSampleBatchBuilder(object):
         postprocessor. The internal state of this builder will be reset.
 
         Arguments:
-            episode (list): current MultiAgentEpisode object
+            episode: current MultiAgentEpisode object or None
         """
 
         self.postprocess_batch_so_far(episode)
