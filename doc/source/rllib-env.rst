@@ -139,7 +139,7 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib will create each policy's model in separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
+RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
 
 .. code-block:: python
 
