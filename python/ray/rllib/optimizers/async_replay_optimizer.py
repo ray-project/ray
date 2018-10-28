@@ -150,7 +150,9 @@ class LearnerThread(threading.Thread):
                     prio_dict[pid] = (
                         replay.policy_batches[pid]["batch_indexes"],
                         info["td_error"])
-            self.outqueue.put((ra, prio_dict, replay.count))
+            # send `replay` back also so that it gets released by the original
+            # thread: https://github.com/ray-project/ray/issues/2610
+            self.outqueue.put((ra, replay, prio_dict, replay.count))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True
 
@@ -288,7 +290,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
-                ra, prio_dict, count = self.learner.outqueue.get()
+                ra, _, prio_dict, count = self.learner.outqueue.get()
                 ra.update_priorities.remote(prio_dict)
                 train_timesteps += count
 
