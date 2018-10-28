@@ -201,9 +201,6 @@ def ray_start_head_with_resources():
     subprocess.Popen(["ray", "stop"]).wait()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_drivers_release_resources(ray_start_head_with_resources):
     redis_address = ray_start_head_with_resources
 

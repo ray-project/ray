@@ -6,6 +6,7 @@ from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# yapf: disable
 # __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,  # see also the options in dqn.py, which are also supported
@@ -31,8 +32,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "min_iter_time_s": 30,
     },
 )
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 class ApexAgent(DQNAgent):

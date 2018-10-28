@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import os
+import logging
 import pickle
 import tempfile
 from datetime import datetime
@@ -19,12 +20,38 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# yapf: disable
 # __sphinx_doc_begin__
 COMMON_CONFIG = {
+    # === Debugging ===
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
+    # Set the RLlib log level for the agent process and its remote evaluators
+    "log_level": "INFO",
+
+    # === Policy ===
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
+    "optimizer": {},
+
+    # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
     # Number of steps after which the episode is forced to terminate
     "horizon": None,
+    # Arguments to pass to the env creator
+    "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
+    # Whether to use rllib or deepmind preprocessors by default
+    "preprocessor_pref": "deepmind",
+
+    # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
     # Number of actors used for parallelism
@@ -42,20 +69,6 @@ COMMON_CONFIG = {
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
-    "clip_rewards": None,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
-    # Arguments to pass to the env creator
-    "env_config": {},
-    # Environment name can also be passed via config
-    "env": None,
-    # Arguments to pass to model. See models/catalog.py for a full list of the
-    # available model options.
-    "model": MODEL_DEFAULTS,
-    # Arguments to pass to the policy optimizer. These vary by optimizer.
-    "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
         # note: parallelism_threads is set to auto for the local evaluator
@@ -72,8 +85,6 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Whether to write episode stats and videos to the agent log dir
-    "monitor": False,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
 
@@ -88,8 +99,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
-
 # __sphinx_doc_end__
+# yapf: enable
 
 
 def with_common_config(extra_config):
@@ -170,7 +181,8 @@ class Agent(Trainable):
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            monitor_path=self.logdir if config["monitor"] else None)
+            monitor_path=self.logdir if config["monitor"] else None,
+            log_level=config["log_level"])
 
     @classmethod
     def resource_help(cls, config):
@@ -197,13 +209,12 @@ class Agent(Trainable):
 
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
-        if not self._env_id:
-            raise ValueError("Must specify env (str) when creating agent")
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = '_'.join([self._agent_name, self._env_id, timestr])
+            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
+                                              timestr)
 
             def default_logger_creator(config):
                 """Creates a Unified logger with a default logdir prefix
@@ -256,6 +267,8 @@ class Agent(Trainable):
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():

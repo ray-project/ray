@@ -11,7 +11,7 @@ test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
 @pytest.fixture
 def ray_start():
     # Start the Ray processes.
-    ray.init(num_cpus=1, use_raylet=True)
+    ray.init(num_cpus=1)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()

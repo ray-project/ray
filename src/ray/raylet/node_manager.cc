@@ -1,54 +1,19 @@
 #include "ray/raylet/node_manager.h"
 
-#include "common_protocol.h"
-// TODO: While removing "local_scheduler_generated.h", remove the dependency
-//       gen_local_scheduler_fbs from src/ray/CMakeLists.txt.
-#include "local_scheduler/format/local_scheduler_generated.h"
+#include "ray/common/common_protocol.h"
+#include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
 
-namespace local_scheduler_protocol = ray::local_scheduler::protocol;
-
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
-
-// Check consistency between client and server protocol.
-RAY_CHECK_ENUM(protocol::MessageType::SubmitTask,
-               local_scheduler_protocol::MessageType::SubmitTask);
-RAY_CHECK_ENUM(protocol::MessageType::TaskDone,
-               local_scheduler_protocol::MessageType::TaskDone);
-RAY_CHECK_ENUM(protocol::MessageType::EventLogMessage,
-               local_scheduler_protocol::MessageType::EventLogMessage);
-RAY_CHECK_ENUM(protocol::MessageType::RegisterClientRequest,
-               local_scheduler_protocol::MessageType::RegisterClientRequest);
-RAY_CHECK_ENUM(protocol::MessageType::RegisterClientReply,
-               local_scheduler_protocol::MessageType::RegisterClientReply);
-RAY_CHECK_ENUM(protocol::MessageType::DisconnectClient,
-               local_scheduler_protocol::MessageType::DisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType::IntentionalDisconnectClient,
-               local_scheduler_protocol::MessageType::IntentionalDisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType::GetTask,
-               local_scheduler_protocol::MessageType::GetTask);
-RAY_CHECK_ENUM(protocol::MessageType::ExecuteTask,
-               local_scheduler_protocol::MessageType::ExecuteTask);
-RAY_CHECK_ENUM(protocol::MessageType::ReconstructObjects,
-               local_scheduler_protocol::MessageType::ReconstructObjects);
-RAY_CHECK_ENUM(protocol::MessageType::NotifyUnblocked,
-               local_scheduler_protocol::MessageType::NotifyUnblocked);
-RAY_CHECK_ENUM(protocol::MessageType::PutObject,
-               local_scheduler_protocol::MessageType::PutObject);
-RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierRequest,
-               local_scheduler_protocol::MessageType::GetActorFrontierRequest);
-RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
-               local_scheduler_protocol::MessageType::GetActorFrontierReply);
-RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
-               local_scheduler_protocol::MessageType::SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ActorID, ray::raylet::ActorRegistration> &actor_registry,
+    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
+        &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -115,10 +80,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
 
-  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
-    ObjectID object_id = ObjectID::from_binary(object_info.object_id);
-    HandleObjectLocal(object_id);
-  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
+      [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+        HandleObjectLocal(object_id);
+      }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
@@ -401,7 +367,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
-  auto it = this->cluster_resource_map_.find(client_id);
+  auto it = cluster_resource_map_.find(client_id);
   if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
@@ -1286,8 +1252,7 @@ void NodeManager::AssignTask(Task &task) {
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(
-      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+  RAY_CHECK(cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
     // Check that we are not placing an actor creation task on a node with 0 CPUs.
@@ -1394,8 +1359,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     local_available_resources_.Release(worker.GetTaskResourceIds());
     worker.ResetTaskResourceIds();
 
-    RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-                  .Release(task.GetTaskSpecification().GetRequiredResources()));
+    RAY_CHECK(
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+            task.GetTaskSpecification().GetRequiredResources()));
   }
 
   // If the finished task was an actor task, mark the returned dummy object as

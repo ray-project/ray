@@ -1,12 +1,16 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import cv2
+import logging
 import numpy as np
 import gym
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
+
+logger = logging.getLogger(__name__)
 
 
 class Preprocessor(object):
@@ -128,7 +132,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         self.preprocessors = []
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
-            print("Creating sub-preprocessor for", space)
+            logger.info("Creating sub-preprocessor for {}".format(space))
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size
@@ -153,7 +157,7 @@ class DictFlatteningPreprocessor(Preprocessor):
         size = 0
         self.preprocessors = []
         for space in self._obs_space.spaces.values():
-            print("Creating sub-preprocessor for", space)
+            logger.info("Creating sub-preprocessor for {}".format(space))
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size

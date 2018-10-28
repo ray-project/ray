@@ -101,6 +101,7 @@ def _configure_iam_role(config):
     logger.info("Role not specified for head node, using {}".format(
         profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
+    config["worker_nodes"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
@@ -114,7 +115,8 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    for i in range(10):
+    MAX_NUM_KEYS = 20
+    for i in range(MAX_NUM_KEYS):
         key_name, key_path = key_pair(i, config["provider"]["region"])
         key = _get_key(key_name, config)
 
@@ -131,7 +133,12 @@ def _configure_key_pair(config):
             os.chmod(key_path, 0o600)
             break
 
-    assert key, "AWS keypair {} not found for {}".format(key_name, key_path)
+    if not key:
+        raise ValueError(
+            "No matching local key file for any of the key pairs in this "
+            "account with ids from 0..{}. ".format(key_name) +
+            "Consider deleting some unused keys pairs from your account.")
+
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 

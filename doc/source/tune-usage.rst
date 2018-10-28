@@ -223,7 +223,7 @@ For TensorFlow model training, this would look something like this `(full tensor
 .. code-block:: python
 
     class MyClass(Trainable):
-        def _setup(self):
+        def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
             self.iteration = 0

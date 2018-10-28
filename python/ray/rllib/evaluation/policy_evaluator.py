@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import logging
 import pickle
 import tensorflow as tf
 
@@ -99,7 +100,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
-                 monitor_path=None):
+                 monitor_path=None,
+                 log_level=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -158,7 +160,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_level (str): Set the root log level on creation.
         """
+
+        if log_level:
+            logging.getLogger("ray.rllib").setLevel(log_level)
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
@@ -426,6 +432,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
         else:
@@ -466,6 +474,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].compute_apply(batch))
             return info_out
