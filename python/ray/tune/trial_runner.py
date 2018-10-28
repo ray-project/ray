@@ -13,7 +13,7 @@ import pickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
@@ -105,7 +105,7 @@ class TrialRunner(object):
             temp_paused_trials = []
             for trial in self._trials:
                 if trial.status == Trial.RUNNING:
-                    self.trial_executor.pause_trial(trial)
+                    self.trial_executor.pause_trial(trial, storage=Checkpoint.DISK)
                     temp_paused_trials += [trial]
         runner_state = {
             "trials": pickle.dumps(self._trials),

@@ -238,8 +238,9 @@ class Trainable(object):
         return checkpoint_path
 
     def save_to_object(self):
-        """Saves the current model state to a Python object. It also
-        saves to disk but does not return the checkpoint path.
+        """Saves the current model state to a Python object.
+
+        It also saves to disk but does not return the checkpoint path.
 
         Returns:
             Object holding checkpoint data.
@@ -249,10 +250,13 @@ class Trainable(object):
         checkpoint_prefix = self.save(tmpdir)
 
         data = {}
+        logger.debug("Saving starting from", checkpoint_prefix)
         base_dir = os.path.dirname(checkpoint_prefix)
         for path in os.listdir(base_dir):
             path = os.path.join(base_dir, path)
-            if path.startswith(checkpoint_prefix):
+            # This is likely not the right thing to do here
+            if path.startswith(checkpoint_prefix) and not os.path.isdir(path):
+                logger.debug("Checking", path)
                 data[os.path.basename(path)] = open(path, "rb").read()
 
         out = io.BytesIO()

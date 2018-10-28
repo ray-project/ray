@@ -84,7 +84,7 @@ class TrialExecutor(object):
         """Continues the training of this trial."""
         pass
 
-    def pause_trial(self, trial):
+    def pause_trial(self, trial, storage=Checkpoint.MEMORY):
         """Pauses the trial.
 
         We want to release resources (specifically GPUs) when pausing an
@@ -92,7 +92,7 @@ class TrialExecutor(object):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save_trial(trial, Checkpoint.MEMORY)
+            self.save_trial(trial, storage)
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:

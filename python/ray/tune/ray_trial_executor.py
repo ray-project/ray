@@ -36,8 +36,9 @@ class RayTrialExecutor(TrialExecutor):
         self._resources_initialized = False
 
     def _setup_runner(self, trial):
-        cls = ray.remote(**trial.get_resources_dict())(
-            trial._get_trainable_cls())
+        cls = ray.remote(
+            num_cpus=trial.resources.cpu,
+            num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
 
         trial.init_logger()
         remote_logdir = trial.logdir
@@ -153,7 +154,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._train(trial)
 
-    def pause_trial(self, trial):
+    def pause_trial(self, trial, storage=Checkpoint.MEMORY):
         """Pauses the trial.
 
         If trial is in-flight, preserves return value in separate queue
@@ -163,7 +164,7 @@ class RayTrialExecutor(TrialExecutor):
         trial_future = self._find_item(self._running, trial)
         if trial_future:
             self._paused[trial_future[0]] = trial
-        super(RayTrialExecutor, self).pause_trial(trial)
+        super(RayTrialExecutor, self).pause_trial(trial, storage=storage)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.

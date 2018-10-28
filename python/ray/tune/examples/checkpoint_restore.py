@@ -1,8 +1,10 @@
 # Test for runner.save and runner.restore
+import logging
+logging.basicConfig(level="DEBUG")
 import ray
 import time
-import logging
 import os
+import argparse
 
 from ray.tune import Trainable
 from ray.tune.error import TuneError
@@ -40,7 +42,8 @@ search_alg = BasicVariantGenerator()
 search_alg.add_configurations(
     {"test":
         {"run": TestTrain,
-         "stop": {"training_iteration": 20}}})
+         "stop": {"training_iteration": 20},
+         "num_samples": 10}})
 runner = TrialRunner(
     search_alg,
     scheduler=scheduler,
@@ -53,6 +56,11 @@ for i in range(10):
     runner.step()
 
 runner.save(logdir, force=True)
+
+for i in range(10):
+    runner.step()
+
+runner.restore(logdir)
 
 for i in range(10):
     runner.step()
