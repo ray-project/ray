@@ -13,7 +13,6 @@ from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
-from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
 
 
@@ -57,9 +56,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "prev_rewards": prev_rewards
         }, observation_space, logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)
-        self.vf = tf.reshape(
-            linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
-            [-1])
+        self.vf = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
