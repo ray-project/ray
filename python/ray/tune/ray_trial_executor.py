@@ -27,10 +27,6 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self, queue_trials=False):
         super(RayTrialExecutor, self).__init__(queue_trials)
         self._running = {}
-        # Since trial resume after paused should not run
-        # trial.train.remote(), thus no more new remote object id generated.
-        # We use self._paused to store paused trials here.
-        self._paused = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
@@ -68,12 +64,13 @@ class RayTrialExecutor(TrialExecutor):
         if not self.restore_trial(trial, checkpoint):
             return
 
-        previous_run = self._find_item(self._paused, trial)
-        if (prior_status == Trial.PAUSED and previous_run):
+        # Trial resumed after paused should not run trial.train.remote()
+        # because there may have been in-flight result that was not processed.
+        if (prior_status == Trial.PAUSED and trial.next_result is not None):
             logger.info("Restoring result from in-flight trial.")
-            # If Trial was in flight when paused, self._paused stores result.
-            self._paused.pop(previous_run[0])
-            self._running[previous_run[0]] = trial
+            # If Trial was in flight when paused, we restore result.
+            self._running[ray.put(trial.next_result)] = trial
+            trial.next_result = None
         else:
             self._train(trial)
 
@@ -161,10 +158,10 @@ class RayTrialExecutor(TrialExecutor):
         before pausing, which is restored when Trial is resumed.
         """
 
+        super(RayTrialExecutor, self).pause_trial(trial, storage=storage)
         trial_future = self._find_item(self._running, trial)
         if trial_future:
-            self._paused[trial_future[0]] = trial
-        super(RayTrialExecutor, self).pause_trial(trial, storage=storage)
+            trial.next_result = ray.get(trial_future)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
