@@ -104,6 +104,9 @@ class MultiAgentSampleBatchBuilder(object):
 
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
+
+        Arguments:
+            episode (list): current MultiAgentEpisode object
         """
 
         # Materialize the batches so far
@@ -142,6 +145,9 @@ class MultiAgentSampleBatchBuilder(object):
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
+
+        Arguments:
+            episode (list): current MultiAgentEpisode object
         """
 
         self.postprocess_batch_so_far(episode)
