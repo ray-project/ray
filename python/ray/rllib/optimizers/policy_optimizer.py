@@ -83,7 +83,7 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self, min_history=100):
+    def collect_metrics(self, timeout_seconds, min_history=100):
         """Returns evaluator and optimizer stats.
 
         Arguments:
@@ -93,8 +93,10 @@ class PolicyOptimizer(object):
             res (dict): A training result dict from evaluator metrics with
                 `info` replaced with stats from self.
         """
-        episodes = collect_episodes(self.local_evaluator,
-                                    self.remote_evaluators)
+        episodes, num_dropped = collect_episodes(
+            self.local_evaluator,
+            self.remote_evaluators,
+            timeout_seconds=timeout_seconds)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
         if missing > 0:
@@ -102,7 +104,7 @@ class PolicyOptimizer(object):
             assert len(episodes) <= min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-min_history:]
-        res = summarize_episodes(episodes, orig_episodes)
+        res = summarize_episodes(episodes, orig_episodes, num_dropped)
         res.update(info=self.stats())
         return res
 
