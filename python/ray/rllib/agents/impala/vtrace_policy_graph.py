@@ -248,7 +248,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth
         return sample_batch
 
