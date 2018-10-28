@@ -962,10 +962,18 @@ def determine_plasma_store_config(object_store_memory=None,
                                   huge_pages=False):
     """Figure out how to configure the plasma object store.
 
+    This will determine which directory to use for the plasma store (e.g.,
+    /tmp or /dev/shm) and how much memory to start the store with. On Linux,
+    we will try to use /dev/shm unless the shared memory file system is too
+    small, in which case we will fall back to /tmp. If any of the object store
+    memory or plasma directory parameters are specified by the user, then those
+    values will be preserved.
+
     Args:
-        object_store_memory: The user-specified object store memory parameter.
-        plasma_directory: The user-specified plasma directory parameter.
-        huge_pages: The user-specified huge pages parameter.
+        object_store_memory (int): The user-specified object store memory
+            parameter.
+        plasma_directory (str): The user-specified plasma directory parameter.
+        huge_pages (bool): The user-specified huge pages parameter.
 
     Returns:
         A tuple of the object store memory to use and the plasma directory to
@@ -1058,8 +1066,9 @@ def start_plasma_store(node_ip_address,
         object_store_memory, plasma_directory, huge_pages)
 
     # Start the Plasma store.
-    logger.info("Starting the Plasma object store with {0:.2f} GB memory."
-                .format(object_store_memory / 10**9))
+    logger.info("Starting the Plasma object store with {0:.2f} GB memory "
+                "using {}.".format(object_store_memory / 10**9,
+                                   plasma_directory))
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
         plasma_store_memory=object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
