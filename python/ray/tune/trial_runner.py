@@ -8,6 +8,7 @@ import os
 import re
 import time
 import traceback
+import pickle
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -98,13 +99,11 @@ class TrialRunner(object):
         # TODO(rliaw): we should not need an executor checkpoint -
         # restoration should automatically repopulate the executor.
         # executor_checkpoint = self.trial_executor.save(checkpoint_dir)
-        assert isinstance(self._search_alg, BasicVariantGenerator)
-        assert isinstance(self._scheduler_alg, FIFOScheduler)
         if force:
             # TODO: Technically, all of these paused trials should
             # have some handling of the in-flight
             temp_paused_trials = []
-            for trial in self.trial_executor:
+            for trial in self._trials:
                 if trial.status == Trial.RUNNING:
                     self.trial_executor.pause_trial(trial)
                     temp_paused_trials += [trial]
@@ -121,8 +120,6 @@ class TrialRunner(object):
 
 
     def restore(self, checkpoint_dir):
-        assert isinstance(self._search_alg, BasicVariantGenerator)
-        assert isinstance(self._scheduler_alg, FIFOScheduler)
         with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             state = pickle.load(f)
 

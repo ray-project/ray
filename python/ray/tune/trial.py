@@ -308,7 +308,8 @@ class Trial(object):
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PAUSED
         # Remove the unpicklable entries.
-        state["result_logger"].flush()
+        if state["result_logger"]:
+            state["result_logger"].flush()
         state["_logger_started"] = bool(state["result_logger"])
         state["result_logger"] = None
 

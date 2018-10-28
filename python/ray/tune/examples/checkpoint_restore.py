@@ -2,6 +2,7 @@
 import ray
 import time
 import logging
+import os
 
 from ray.tune import Trainable
 from ray.tune.error import TuneError
@@ -13,6 +14,9 @@ from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
 
 logger = logging.getLogger(__name__)
 ray.init()
+logdir = os.path.join(os.environ["TMPDIR"], "checkpoint_testing")
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
 
 class TestTrain(Trainable):
     def _setup(self, config):
@@ -45,8 +49,10 @@ runner = TrialRunner(
 logger.info(runner.debug_string(max_debug=99999))
 
 last_debug = 0
-while not runner.is_finished():
+for i in range(10):
     runner.step()
-    if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-        logger.info(runner.debug_string())
-        last_debug = time.time()
+
+runner.save(logdir, force=True)
+
+for i in range(10):
+    runner.step()
