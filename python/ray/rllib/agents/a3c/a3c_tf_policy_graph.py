@@ -141,7 +141,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def get_initial_state(self):
         return self.model.state_init
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

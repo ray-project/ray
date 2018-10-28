@@ -66,7 +66,7 @@ class PGPolicyGraph(TFPolicyGraph):
             max_seq_len=config["model"]["max_seq_len"])
         sess.run(tf.global_variables_initializer())
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
 

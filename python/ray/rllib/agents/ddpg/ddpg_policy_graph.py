@@ -332,7 +332,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             "td_error": self.loss.td_error,
         }
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
         return _postprocess_dqn(self, sample_batch)
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,

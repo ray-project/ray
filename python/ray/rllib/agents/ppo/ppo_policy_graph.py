@@ -283,7 +283,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         vf = self.sess.run(self.value_function, feed_dict)
         return vf[0]
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None, episode=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

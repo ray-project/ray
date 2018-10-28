@@ -99,7 +99,7 @@ class MultiAgentSampleBatchBuilder(object):
         builder = self.agent_builders[agent_id]
         builder.add_values(**values)
 
-    def postprocess_batch_so_far(self):
+    def postprocess_batch_so_far(self, episode):
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
@@ -128,7 +128,7 @@ class MultiAgentSampleBatchBuilder(object):
                     "Batches sent to postprocessing must only contain steps "
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
-                pre_batch, other_batches)
+                pre_batch, other_batches, episode)
 
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
@@ -137,14 +137,14 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 
-    def build_and_reset(self):
+    def build_and_reset(self, episode):
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
         """
 
-        self.postprocess_batch_so_far()
+        self.postprocess_batch_so_far(episode)
         policy_batches = {}
         for policy_id, builder in self.policy_builders.items():
             if builder.count > 0:
