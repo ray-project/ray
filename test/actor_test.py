@@ -2028,7 +2028,7 @@ def test_custom_label_placement(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_cpus=1,
+        num_cpus=2,
         resources=[{
             "CustomResource1": 2
         }, {
