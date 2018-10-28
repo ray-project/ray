@@ -64,4 +64,4 @@ if __name__ == "__main__":
         if fetch_stats:
             print("Current loss", stats)
 
-    print("Peak throughput", max([sum(t[i:i + 5]) / 5 for i in range(len(t))]))
+    print("Peak throughput", max(sum(t[i:i + 5]) / 5 for i in range(len(t))))
