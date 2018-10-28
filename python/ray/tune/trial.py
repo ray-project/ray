@@ -150,6 +150,9 @@ class Trial(object):
 
         # Local trial state that is updated during the run
         self.last_result = None
+        # Saves an in-flight result that hasn't been processed.
+        # Used in pausing and unpausing of trials.
+        self.next_result = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
