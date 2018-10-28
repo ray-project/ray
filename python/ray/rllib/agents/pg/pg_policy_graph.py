@@ -11,21 +11,27 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 
 class PGLoss(object):
+    """Simple policy gradient loss."""
+
     def __init__(self, action_dist, actions, advantages):
         self.loss = -tf.reduce_mean(action_dist.logp(actions) * advantages)
 
 
 class PGPolicyGraph(TFPolicyGraph):
+    """Simple policy gradient example of defining a policy graph."""
+
     def __init__(self, obs_space, action_space, config):
         config = dict(ray.rllib.agents.pg.pg.DEFAULT_CONFIG, **config)
         self.config = config
 
-        # Setup policy
+        # Setup placeholders
         obs = tf.placeholder(tf.float32, shape=[None] + list(obs_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
+
+        # Create the model network and action outputs
         self.model = ModelCatalog.get_model({
             "obs": obs,
             "prev_actions": prev_actions,
@@ -38,9 +44,9 @@ class PGPolicyGraph(TFPolicyGraph):
         advantages = tf.placeholder(tf.float32, [None], name="adv")
         loss = PGLoss(action_dist, actions, advantages).loss
 
-        # Initialize TFPolicyGraph
-        sess = tf.get_default_session()
-        # Mapping from sample batch keys to placeholders
+        # Mapping from sample batch keys to placeholders. These keys will be
+        # read from postprocessed sample batches and fed into the specified
+        # placeholders during loss computation.
         loss_in = [
             ("obs", obs),
             ("actions", actions),
@@ -49,6 +55,8 @@ class PGPolicyGraph(TFPolicyGraph):
             ("advantages", advantages),
         ]
 
+        # Initialize TFPolicyGraph
+        sess = tf.get_default_session()
         TFPolicyGraph.__init__(
             self,
             obs_space,
@@ -70,6 +78,7 @@ class PGPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
+        # This ads the "advantages" column to the sample batch
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
 

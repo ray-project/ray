@@ -159,6 +159,8 @@ Implementing a shared critic between multiple policies requires the definition o
 1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. This assumes you use variable sharing to access the critic network from multiple policies. The critic predictions can then be added to the postprocessed trajectory.
 2. Updating the critic: the centralized critic loss can be added to the loss of some arbitrary policy graph. The policy graph that is chosen must add the inputs for the critic loss to its postprocessed trajectory batches.
 
+For an example of defining postprocessing and loss, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+
 Agent-Driven
 ------------
 
