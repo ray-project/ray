@@ -126,7 +126,7 @@ class DistributedSGD(object):
 
     def foreach_worker(self, fn):
         """Apply the given function to each remote worker.
-        
+
         Returns:
             List of results from applying the function.
         """
