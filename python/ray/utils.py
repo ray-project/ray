@@ -5,18 +5,18 @@ from __future__ import print_function
 import binascii
 import functools
 import hashlib
+import inspect
 import numpy as np
 import os
+import subprocess
 import sys
 import threading
 import time
 import uuid
 
 import ray.gcs_utils
-import ray.local_scheduler
+import ray.raylet
 import ray.ray_constants as ray_constants
-
-ERROR_KEY_PREFIX = b"Error:"
 
 
 def _random_string():
@@ -68,22 +68,12 @@ def push_error_to_driver(worker,
     """
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    if not worker.use_raylet:
-        worker.redis_client.hmset(error_key, {
-            "type": error_type,
-            "message": message,
-            "data": data
-        })
-        worker.redis_client.rpush("ErrorKeys", error_key)
-    else:
-        worker.local_scheduler_client.push_error(
-            ray.ObjectID(driver_id), error_type, message, time.time())
+    worker.local_scheduler_client.push_error(
+        ray.ObjectID(driver_id), error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
-                                       use_raylet,
                                        error_type,
                                        message,
                                        driver_id=None,
@@ -97,8 +87,6 @@ def push_error_to_driver_through_redis(redis_client,
 
     Args:
         redis_client: The redis client to use.
-        use_raylet: True if we are using the Raylet code path and false
-            otherwise.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
@@ -109,23 +97,14 @@ def push_error_to_driver_through_redis(redis_client,
     """
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    if not use_raylet:
-        redis_client.hmset(error_key, {
-            "type": error_type,
-            "message": message,
-            "data": data
-        })
-        redis_client.rpush("ErrorKeys", error_key)
-    else:
-        # Do everything in Python and through the Python Redis client instead
-        # of through the raylet.
-        error_data = ray.gcs_utils.construct_error_message(
-            error_type, message, time.time())
-        redis_client.execute_command(
-            "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-            ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+    # Do everything in Python and through the Python Redis client instead
+    # of through the raylet.
+    error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
+                                                       message, time.time())
+    redis_client.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
+        ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
 
 
 def is_cython(obj):
@@ -141,6 +120,23 @@ def is_cython(obj):
     # Check if function or method, respectively
     return check_cython(obj) or \
         (hasattr(obj, "__func__") and check_cython(obj.__func__))
+
+
+def is_function_or_method(obj):
+    """Check if an object is a function or method.
+
+    Args:
+        obj: The Python object in question.
+
+    Returns:
+        True if the object is an function or method.
+    """
+    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+
+
+def is_class_method(f):
+    """Returns whether the given method is a class_method."""
+    return hasattr(f, "__self__") and f.__self__ is not None
 
 
 def random_string():
@@ -264,6 +260,68 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = default_num_gpus
 
     return resources
+
+
+# This function is copied and modified from
+# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
+def vmstat(stat):
+    """Run vmstat and get a particular statistic.
+
+    Args:
+        stat: The statistic that we are interested in retrieving.
+
+    Returns:
+        The parsed output.
+    """
+    out = subprocess.check_output(["vmstat", "-s"])
+    stat = stat.encode("ascii")
+    for line in out.split(b"\n"):
+        line = line.strip()
+        if stat in line:
+            return int(line.split(b" ")[0])
+    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
+
+
+# This function is copied and modified from
+# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
+def sysctl(command):
+    """Run a sysctl command and parse the output.
+
+    Args:
+        command: A sysctl command with an argument, for example,
+            ["sysctl", "hw.memsize"].
+
+    Returns:
+        The parsed output.
+    """
+    out = subprocess.check_output(command)
+    result = out.split(b" ")[1]
+    try:
+        return int(result)
+    except ValueError:
+        return result
+
+
+def get_system_memory():
+    """Return the total amount of system memory in bytes.
+
+    Returns:
+        The total amount of system memory in bytes.
+    """
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().total
+    except ImportError:
+        pass
+
+    if sys.platform == "linux" or sys.platform == "linux2":
+        # Handle Linux.
+        bytes_in_kilobyte = 1024
+        return vmstat("total memory") * bytes_in_kilobyte
+    else:
+        # Handle MacOS.
+        return sysctl(["sysctl", "hw.memsize"])
 
 
 def check_oversized_pickle(pickled, name, obj_type, worker):

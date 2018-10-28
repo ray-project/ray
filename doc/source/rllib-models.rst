@@ -13,15 +13,24 @@ Built-in Models and Preprocessors
 
 RLlib picks default models based on a simple heuristic: a `vision network <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/visionnet.py>`__ for image observations, and a `fully connected network <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/fcnet.py>`__ for everything else. These models can be configured via the ``model`` config key, documented in the model `catalog <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/catalog.py>`__. Note that you'll probably have to configure ``conv_filters`` if your environment observations have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 
-In addition, if you set ``"model": {"use_lstm": true}``, then the model output will be further processed by a `LSTM cell <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__. More generally, RLlib supports the use of recurrent models for its algorithms (A3C, PG out of the box), and RNN support is built into its policy evaluation utilities.
+In addition, if you set ``"model": {"use_lstm": true}``, then the model output will be further processed by a `LSTM cell <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__. More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into its policy evaluation utilities.
 
-For preprocessors, RLlib tries to pick one of its built-in preprocessor based on the environment's observation space. Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple observations flattened (there isn't native tuple support yet, but you can reshape the flattened observation in a custom model). Note that for Atari, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
+For preprocessors, RLlib tries to pick one of its built-in preprocessor based on the environment's observation space. Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple and Dict observations flattened (these are unflattened and accessible via the ``input_dict`` parameter in custom models). Note that for Atari, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
 
+Built-in Model Parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following is a list of the built-in model hyperparameters:
+
+.. literalinclude:: ../../python/ray/rllib/models/catalog.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers`` method. This method takes in a tensor input (observation), and returns a feature layer and float vector of the specified output size. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -30,9 +39,38 @@ Custom models should subclass the common RLlib `model class <https://github.com/
     from ray.rllib.models import ModelCatalog, Model
 
     class MyModelClass(Model):
-        def _build_layers(self, inputs, num_outputs, options):
-            layer1 = slim.fully_connected(inputs, 64, ...)
-            layer2 = slim.fully_connected(inputs, 64, ...)
+        def _build_layers_v2(self, input_dict, num_outputs, options):
+            """Define the layers of a custom model.
+
+            Arguments:
+                input_dict (dict): Dictionary of input tensors, including "obs",
+                    "prev_action", "prev_reward".
+                num_outputs (int): Output tensor must be of size
+                    [BATCH_SIZE, num_outputs].
+                options (dict): Model options.
+
+            Returns:
+                (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
+                    and [BATCH_SIZE, desired_feature_size].
+
+            When using dict or tuple observation spaces, you can access
+            the nested sub-observation batches here as well:
+
+            Examples:
+                >>> print(input_dict)
+                {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
+                 'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+                 'obs': OrderedDict([
+                    ('sensors', OrderedDict([
+                        ('front_cam', [
+                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
+                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
+                        ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
+                        ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
+            """
+
+            layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
+            layer2 = slim.fully_connected(layer1, 64, ...)
             ...
             return layerN, layerN_minus_1
 
@@ -46,12 +84,12 @@ Custom models should subclass the common RLlib `model class <https://github.com/
         },
     })
 
-For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/examples/carla>`__. The ``CarlaModel`` class defined there operates over a composite (Tuple) observation space including both images and scalar measurements.
+For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
 Custom Preprocessors
 --------------------
 
-Similarly, custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
+Similarly, custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
 
 .. code-block:: python
 
@@ -60,8 +98,8 @@ Similarly, custom preprocessors should subclass the RLlib `preprocessor class <h
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyPreprocessorClass(Preprocessor):
-        def _init(self):
-            self.shape = ...  # perhaps varies depending on self._options 
+        def _init_shape(self, obs_space, options):
+            return new_shape  # can vary depending on inputs
 
         def transform(self, observation):
             return ...  # return the preprocessed observation
@@ -124,7 +162,7 @@ Then, you can create an agent with your custom policy graph by:
     DDPGAgent._policy_graph = CustomDDPGPolicyGraph
     agent = DDPGAgent(...)
 
-That's it. In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
+In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 
 Model-Based Rollouts
 --------------------

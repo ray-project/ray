@@ -2,13 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 import threading
-import traceback
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TIMESTEPS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 
 class StatusReporter(object):
@@ -74,7 +76,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter._error = e
-            print("Runner thread raised: {}".format(traceback.format_exc()))
+            logger.exception("Runner Thread raised error.")
             raise e
         finally:
             self._status_reporter._done = True
@@ -88,10 +90,10 @@ class FunctionRunner(Trainable):
     _name = "func"
     _default_config = DEFAULT_CONFIG
 
-    def _setup(self):
+    def _setup(self, config):
         entrypoint = self._trainable_func()
         self._status_reporter = StatusReporter()
-        scrubbed_config = self.config.copy()
+        scrubbed_config = config.copy()
         for k in self._default_config:
             if k in scrubbed_config:
                 del scrubbed_config[k]

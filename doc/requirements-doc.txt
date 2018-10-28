@@ -7,7 +7,6 @@ numpy
 opencv-python
 pyarrow
 pyyaml
-psutil
 recommonmark
 redis
 sphinx

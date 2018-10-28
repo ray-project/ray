@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 
 from ray.tune.error import TuneError
@@ -12,6 +13,8 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
+
+logger = logging.getLogger(__name__)
 
 _SCHEDULERS = {
     "FIFO": FIFOScheduler,
@@ -36,7 +39,8 @@ def run_experiments(experiments=None,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
                     queue_trials=False,
-                    trial_executor=None):
+                    trial_executor=None,
+                    raise_on_failed_trial=True):
     """Runs and blocks until all trials finish.
 
     Args:
@@ -56,6 +60,8 @@ def run_experiments(experiments=None,
             be set to True when running on an autoscaling cluster to enable
             automatic scale-up.
         trial_executor (TrialExecutor): Manage the execution of trials.
+        raise_on_failed_trial (bool): Raise TuneError if there exists failed
+            trial (of ERROR state) when the experiments complete.
 
     Examples:
         >>> experiment_spec = Experiment("experiment", my_func)
@@ -95,16 +101,18 @@ def run_experiments(experiments=None,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    print(runner.debug_string(max_debug=99999))
+    logger.info(runner.debug_string(max_debug=99999))
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            print(runner.debug_string())
+            logger.info(runner.debug_string())
             last_debug = time.time()
 
-    print(runner.debug_string(max_debug=99999))
+    logger.info(runner.debug_string(max_debug=99999))
+
+    wait_for_log_sync()
 
     errored_trials = []
     for trial in runner.get_trials():
@@ -112,7 +120,9 @@ def run_experiments(experiments=None,
             errored_trials += [trial]
 
     if errored_trials:
-        raise TuneError("Trials did not complete", errored_trials)
+        if raise_on_failed_trial:
+            raise TuneError("Trials did not complete", errored_trials)
+        else:
+            logger.error("Trials did not complete: %s", errored_trials)
 
-    wait_for_log_sync()
     return runner.get_trials()

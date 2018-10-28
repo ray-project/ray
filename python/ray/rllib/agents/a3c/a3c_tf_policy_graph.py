@@ -49,8 +49,13 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             tf.float32, [None] + list(observation_space.shape))
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_model(self.observations, logit_dim,
-                                            self.config["model"])
+        prev_actions = ModelCatalog.get_action_placeholder(action_space)
+        prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
+        self.model = ModelCatalog.get_model({
+            "obs": self.observations,
+            "prev_actions": prev_actions,
+            "prev_rewards": prev_rewards
+        }, observation_space, logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)
         self.vf = tf.reshape(
             linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
@@ -78,6 +83,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         loss_in = [
             ("obs", self.observations),
             ("actions", actions),
+            ("prev_actions", prev_actions),
+            ("prev_rewards", prev_rewards),
             ("advantages", advantages),
             ("value_targets", self.v_target),
         ]
@@ -94,6 +101,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
+            prev_action_input=prev_actions,
+            prev_reward_input=prev_rewards,
             seq_lens=self.model.seq_lens,
             max_seq_len=self.config["model"]["max_seq_len"])
 

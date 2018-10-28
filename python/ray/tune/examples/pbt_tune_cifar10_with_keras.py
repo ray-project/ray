@@ -105,12 +105,13 @@ class Cifar10Model(Trainable):
         model = Model(inputs=x, outputs=y, name="model1")
         return model
 
-    def _setup(self):
+    def _setup(self, config):
         self.train_data, self.test_data = self._read_data()
         x_train = self.train_data[0]
         model = self._build_model(x_train.shape[1:])
 
-        opt = tf.keras.optimizers.Adadelta()
+        opt = tf.keras.optimizers.Adadelta(
+            lr=self.config["lr"], decay=self.config["decay"])
         model.compile(
             loss="categorical_crossentropy",
             optimizer=opt,

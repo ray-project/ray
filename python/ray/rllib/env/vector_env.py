@@ -69,6 +69,8 @@ class _VectorizedGymEnv(VectorEnv):
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
+        self.action_space = self.envs[0].action_space
+        self.observation_space = self.envs[0].observation_space
 
     def vector_reset(self):
         return [e.reset() for e in self.envs]

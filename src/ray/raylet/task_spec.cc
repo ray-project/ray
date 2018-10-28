@@ -1,7 +1,8 @@
 #include "task_spec.h"
 
-#include "common.h"
-#include "common_protocol.h"
+#include "ray/common/common_protocol.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -50,7 +51,7 @@ TaskSpecification::TaskSpecification(
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
                         function_id, task_arguments, num_returns, required_resources,
-                        language) {}
+                        std::unordered_map<std::string, double>(), language) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
@@ -59,6 +60,7 @@ TaskSpecification::TaskSpecification(
     const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
     const Language &language)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
@@ -78,20 +80,6 @@ TaskSpecification::TaskSpecification(
     returns.push_back(to_flatbuf(fbb, return_id));
   }
 
-  // convert Language to TaskLanguage
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  TaskLanguage task_language = TaskLanguage::PYTHON;
-  switch (language) {
-  case Language::PYTHON:
-    task_language = TaskLanguage::PYTHON;
-    break;
-  case Language::JAVA:
-    task_language = TaskLanguage::JAVA;
-    break;
-  default:
-    RAY_LOG(FATAL) << "Unknown language: " << static_cast<int32_t>(language);
-  }
-
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
@@ -99,7 +87,8 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
       to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), task_language);
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
+      map_to_flatbuf(fbb, required_placement_resources), language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -125,10 +114,12 @@ UniqueID TaskSpecification::DriverId() const {
   return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->parent_counter();
 }
 FunctionID TaskSpecification::FunctionId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
@@ -164,19 +155,43 @@ ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
+
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return reinterpret_cast<const uint8_t *>(
+      message->args()->Get(arg_index)->data()->c_str());
 }
+
 size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->Get(arg_index)->data()->size();
 }
+
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  auto it = required_resources.find(resource_name);
+  RAY_CHECK(it != required_resources.end());
+  return it->second;
 }
+
 const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
   return ResourceSet(required_resources);
+}
+
+const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_placement_resources =
+      map_from_flatbuf(*message->required_placement_resources());
+  // If the required_placement_resources field is empty, then the placement
+  // resources default to the required resources.
+  if (required_placement_resources.size() == 0) {
+    required_placement_resources = map_from_flatbuf(*message->required_resources());
+  }
+
+  return ResourceSet(required_placement_resources);
 }
 
 bool TaskSpecification::IsDriverTask() const {
@@ -186,18 +201,7 @@ bool TaskSpecification::IsDriverTask() const {
 
 Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  auto language = message->language();
-  switch (language) {
-  case TaskLanguage::PYTHON:
-    return Language::PYTHON;
-  case TaskLanguage::JAVA:
-    return Language::JAVA;
-  default:
-    // This shouldn't be reachable.
-    RAY_LOG(FATAL) << "Unknown task language: " << static_cast<int32_t>(language);
-    return Language::PYTHON;
-  }
+  return message->language();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {

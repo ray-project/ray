@@ -47,7 +47,7 @@ Process Failures
 ~~~~~~~~~~~~~~~~
 
 1. Ray does not recover from the failure of any of the following processes:
-   a Redis server, the global scheduler, the monitor process.
+   a Redis server and the monitor process.
 2. If a driver fails, that driver will not be restarted and the job will not
    complete.
 

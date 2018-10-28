@@ -2,16 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import pickle
+import logging
 
-import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
@@ -40,6 +42,9 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": 0.0,
     # PPO clip parameter
     "clip_param": 0.3,
+    # Clip param for the value function. Note that this is sensitive to the
+    # scale of the rewards. If your expected V is large, increase this.
+    "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
     # Number of GPUs to use for SGD
@@ -49,19 +54,14 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
-    "batch_mode": "complete_episodes",
+    "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
-    # Override model config
-    "model": {
-        # Whether to use LSTM model
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -81,17 +81,7 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        waste_ratio = (
-            self.config["sample_batch_size"] * self.config["num_workers"] /
-            self.config["train_batch_size"])
-        if waste_ratio > 1:
-            msg = ("sample_batch_size * num_workers >> train_batch_size. "
-                   "This means that many steps will be discarded. Consider "
-                   "reducing sample_batch_size, or increase train_batch_size.")
-            if waste_ratio > 1.5:
-                raise ValueError(msg)
-            else:
-                print("Warning: " + msg)
+        self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
@@ -103,7 +93,7 @@ class PPOAgent(Agent):
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"]
+                    "train_batch_size": self.config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
@@ -114,6 +104,28 @@ class PPOAgent(Agent):
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
                 })
+
+    def _validate_config(self):
+        waste_ratio = (
+            self.config["sample_batch_size"] * self.config["num_workers"] /
+            self.config["train_batch_size"])
+        if waste_ratio > 1:
+            msg = ("sample_batch_size * num_workers >> train_batch_size. "
+                   "This means that many steps will be discarded. Consider "
+                   "reducing sample_batch_size, or increase train_batch_size.")
+            if waste_ratio > 1.5:
+                raise ValueError(msg)
+            else:
+                logger.warn(msg)
+        if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
+            raise ValueError(
+                "Minibatch size {} must be <= train batch size {}.".format(
+                    self.config["sgd_minibatch_size"],
+                    self.config["train_batch_size"]))
+        if (self.config["batch_mode"] == "truncate_episodes"
+                and not self.config["use_gae"]):
+            raise ValueError(
+                "Episode truncation is not supported without a value function")
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
@@ -132,25 +144,3 @@ class PPOAgent(Agent):
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))
         return res
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = [self.local_evaluator.save(), agent_state]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            a.restore.remote(o)
-            for (a, o) in zip(self.remote_evaluators, extra_data[1])
-        ])

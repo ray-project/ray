@@ -69,9 +69,9 @@ void ObjectDirectory::RegisterBackend() {
       object_notification_callback, nullptr));
 }
 
-ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
-                                               const ClientID &client_id,
-                                               const ObjectInfoT &object_info) {
+ray::Status ObjectDirectory::ReportObjectAdded(
+    const ObjectID &object_id, const ClientID &client_id,
+    const object_manager::protocol::ObjectInfoT &object_info) {
   // Append the addition entry to the object table.
   JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();
@@ -110,8 +110,9 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   if (result_client_id == ClientID::nil() || !data.is_insertion) {
     fail_callback();
   } else {
-    const auto &info = RemoteConnectionInfo(client_id, data.node_manager_address,
-                                            (uint16_t)data.object_manager_port);
+    const auto &info =
+        RemoteConnectionInfo(client_id, data.node_manager_address,
+                             static_cast<uint16_t>(data.object_manager_port));
     success_callback(info);
   }
   return ray::Status::OK();

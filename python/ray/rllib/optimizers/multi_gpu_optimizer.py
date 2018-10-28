@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 from collections import defaultdict
-import os
 import tensorflow as tf
 
 import ray
@@ -12,6 +12,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
+
+logger = logging.getLogger(__name__)
 
 
 class LocalMultiGPUOptimizer(PolicyOptimizer):
@@ -54,7 +56,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.update_weights_timer = TimerStat()
         self.standardize_fields = standardize_fields
 
-        print("LocalMultiGPUOptimizer devices", self.devices)
+        logger.info("LocalMultiGPUOptimizer devices {}".format(self.devices))
 
         if set(self.local_evaluator.policy_map.keys()) != {"default"}:
             raise ValueError(
@@ -81,8 +83,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     self.par_opt = LocalSyncParallelOptimizer(
                         self.policy.optimizer(), self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
-                        self.per_device_batch_size, self.policy.copy,
-                        os.getcwd())
+                        self.per_device_batch_size, self.policy.copy)
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
@@ -108,7 +109,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             value = samples[field]
             standardized = (value - value.mean()) / max(1e-4, value.std())
             samples[field] = standardized
-        samples.shuffle()
+
+        # Important: don't shuffle RNN sequence elements
+        if not self.policy._state_inputs:
+            samples.shuffle()
 
         with self.load_timer:
             tuples = self.policy._get_loss_inputs_dict(samples)
@@ -125,7 +129,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.grad_timer:
             num_batches = (
                 int(tuples_per_device) // int(self.per_device_batch_size))
-            print("== sgd epochs ==")
+            logger.debug("== sgd epochs ==")
             for i in range(self.num_sgd_iter):
                 iter_extra_fetches = defaultdict(list)
                 permutation = np.random.permutation(num_batches)
@@ -135,7 +139,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         permutation[batch_index] * self.per_device_batch_size)
                     for k, v in batch_fetches.items():
                         iter_extra_fetches[k].append(v)
-                print(i, _averaged(iter_extra_fetches))
+                logger.debug("{} {}".format(i, _averaged(iter_extra_fetches)))
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count

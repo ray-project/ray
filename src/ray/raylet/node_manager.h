@@ -59,10 +59,10 @@ class NodeManager {
   ///
   /// \param client The client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message data.
+  /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message);
+                            int64_t message_type, const uint8_t *message_data);
 
   /// Handle a new node manager connection.
   ///
@@ -174,10 +174,10 @@ class NodeManager {
   ///
   /// \param task The task to forward.
   /// \param node_id The ID of the node to forward the task to.
-  /// \return A status indicating whether the forward succeeded or not. Note
-  /// that a status of OK is not a reliable indicator that the forward succeeded
-  /// or even that the remote node is still alive.
-  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
+  /// \param on_error Callback on run on non-ok status.
+  void ForwardTask(const Task &task, const ClientID &node_id,
+                   const std::function<void(const ray::Status &)> &on_error);
+
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();
@@ -192,6 +192,29 @@ class NodeManager {
   /// \return Void.
   void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
+  /// Handle a client that is blocked. This could be a worker or a driver. This
+  /// can be triggered when a client starts a get call or a wait call.
+  ///
+  /// \param client The client that is blocked.
+  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \return Void.
+  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const std::vector<ObjectID> &required_object_ids);
+
+  /// Handle a client that is unblocked. This could be a worker or a driver.
+  /// This can be triggered when a client is finished with a get call or a wait
+  /// call. It is ok to call this even if the client is not actually blocked.
+  ///
+  /// \param client The client that is unblocked.
+  /// \return Void.
+  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+
+  /// Kill a worker.
+  ///
+  /// \param worker The worker to kill.
+  /// \return Void.
+  void KillWorker(std::shared_ptr<Worker> worker);
+
   /// Methods for actor scheduling.
   /// Handler for the creation of an actor, possibly on a remote node.
   ///
@@ -201,27 +224,19 @@ class NodeManager {
   void HandleActorCreation(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
 
-  /// TODO(rkn): This should probably be removed when we improve the
-  /// SchedulingQueue API. This is a helper function for
-  /// CleanUpTasksForDeadActor.
-  ///
-  /// This essentially loops over all of the tasks in the provided list and
-  /// finds The IDs of the tasks that belong to the given actor.
-  ///
-  /// \param actor_id The actor to get the tasks for.
-  /// \param tasks A list of tasks to extract from.
-  /// \param tasks_to_remove The task IDs of the extracted tasks are inserted in
-  /// this vector.
-  /// \return Void.
-  void GetActorTasksFromList(const ActorID &actor_id, const std::list<Task> &tasks,
-                             std::unordered_set<TaskID> &tasks_to_remove);
-
   /// When an actor dies, loop over all of the queued tasks for that actor and
   /// treat them as failed.
   ///
   /// \param actor_id The actor that died.
   /// \return Void.
   void CleanUpTasksForDeadActor(const ActorID &actor_id);
+
+  /// When a driver dies, loop over all of the queued tasks for that driver and
+  /// treat them as failed.
+  ///
+  /// \param driver_id The driver that died.
+  /// \return Void.
+  void CleanUpTasksForDeadDriver(const DriverID &driver_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
@@ -250,6 +265,59 @@ class NodeManager {
   ///
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
+
+  /// Process client message of RegisterClientRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessRegisterClientRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of GetTask
+  ///
+  /// \param client The client that sent the message.
+  /// \return Void.
+  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+
+  /// Handle a client that has disconnected. This can be called multiple times
+  /// on the same client because this is triggered both when a client
+  /// disconnects and when the node manager fails to write a message to the
+  /// client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param push_warning Propogate error message if true.
+  /// \return Void.
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
+
+  /// Process client message of SubmitTask
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of ReconstructObjects
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessReconstructObjectsMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of WaitRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
+                                 const uint8_t *message_data);
+
+  /// Process client message of PushErrorRequest
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
@@ -284,7 +352,8 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
+  std::unordered_map<ClientID, std::shared_ptr<TcpServerConnection>>
+      remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;

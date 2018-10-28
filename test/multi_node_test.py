@@ -5,49 +5,11 @@ from __future__ import print_function
 import os
 import pytest
 import subprocess
-import sys
-import tempfile
 import time
 
 import ray
-from ray.test.test_utils import run_and_get_output
-
-
-def run_string_as_driver(driver_script):
-    """Run a driver as a separate process.
-
-    Args:
-        driver_script: A string to run as a Python script.
-
-    Returns:
-        The script's output.
-    """
-    # Save the driver script as a file so we can call it using subprocess.
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        out = ray.utils.decode(
-            subprocess.check_output([sys.executable, f.name]))
-    return out
-
-
-def run_string_as_driver_nonblocking(driver_script):
-    """Start a driver as a separate process and return immediately.
-
-    Args:
-        driver_script: A string to run as a Python script.
-
-    Returns:
-        A handle to the driver process.
-    """
-    # Save the driver script as a file so we can call it using subprocess. We
-    # do not delete this file because if we do then it may get removed before
-    # the Python process tries to run it.
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        return subprocess.Popen(
-            [sys.executable, f.name], stdout=subprocess.PIPE)
+from ray.test.test_utils import (run_and_get_output, run_string_as_driver,
+                                 run_string_as_driver_nonblocking)
 
 
 @pytest.fixture
@@ -239,7 +201,6 @@ def ray_start_head_with_resources():
     subprocess.Popen(["ray", "stop"]).wait()
 
 
-@pytest.mark.skip(reason="This test does not work yet.")
 def test_drivers_release_resources(ray_start_head_with_resources):
     redis_address = ray_start_head_with_resources
 
@@ -278,7 +239,7 @@ print("success")
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
 
-    def wait_for_success_output(process_handle, timeout=100):
+    def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:

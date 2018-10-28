@@ -70,6 +70,9 @@ You can use ``ray exec`` to conveniently run commands on clusters. Note that scr
     $ ray exec cluster.yaml 'echo "hello world"' \
         --start --stop --cluster-name experiment-1
 
+    # Run a command in a detached tmux session
+    $ ray exec cluster.yaml 'echo "hello world"' --tmux
+
     # Run a command in a screen (experimental)
     $ ray exec cluster.yaml 'echo "hello world"' --screen
 
@@ -85,6 +88,10 @@ You can use ``ray attach`` to attach to an interactive console on the cluster.
 
     # Open a screen on a new cluster called 'session-1'
     $ ray attach cluster.yaml --start --cluster-name=session-1
+
+    # Attach to tmux session on cluster (creates a new one if none available)
+    $ ray attach cluster.yaml --tmux
+
 
 Port-forwarding applications
 ----------------------------

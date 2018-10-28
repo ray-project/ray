@@ -9,6 +9,10 @@ the LSTM cell, we reshape the input to add the expected time dimension. During
 postprocessing, we dynamically pad the experience batches so that this
 reshaping is possible.
 
+Note that this padding strategy only works out if we assume zero inputs don't
+meaningfully affect the loss function. This happens to be true for all the
+current algorithms: https://github.com/ray-project/ray/issues/2992
+
 See the add_time_dimension() and chop_into_sequences() functions below for
 more info.
 """
@@ -134,9 +138,24 @@ class LSTM(Model):
         self.seq_lens. See add_time_dimension() for more information.
     """
 
-    def _build_layers(self, inputs, num_outputs, options):
-        cell_size = options.get("lstm_cell_size", 256)
-        last_layer = add_time_dimension(inputs, self.seq_lens)
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        cell_size = options.get("lstm_cell_size")
+        if options.get("lstm_use_prev_action_reward"):
+            action_dim = int(
+                np.product(
+                    input_dict["prev_actions"].get_shape().as_list()[1:]))
+            features = tf.concat(
+                [
+                    input_dict["obs"],
+                    tf.reshape(
+                        tf.cast(input_dict["prev_actions"], tf.float32),
+                        [-1, action_dim]),
+                    tf.reshape(input_dict["prev_rewards"], [-1, 1]),
+                ],
+                axis=1)
+        else:
+            features = input_dict["obs"]
+        last_layer = add_time_dimension(features, self.seq_lens)
 
         # Setup the LSTM cell
         lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
@@ -156,9 +175,11 @@ class LSTM(Model):
             self.state_in = [c_in, h_in]
 
         # Setup LSTM outputs
+        state_in = rnn.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(
             lstm,
             last_layer,
+            initial_state=state_in,
             sequence_length=self.seq_lens,
             time_major=False,
             dtype=tf.float32)

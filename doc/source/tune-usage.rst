@@ -134,6 +134,9 @@ Tune Search Space (Default)
 
 You can use ``tune.grid_search`` to specify an axis of a grid search. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used independently or in combination with grid search.
 
+.. note::
+    If you specify an explicit Search Algorithm such as any SuggestionAlgorithm, you may not be able to specify lambdas or grid search with this interface, as the search algorithm may require a different search space declaration.
+
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
 .. code-block:: python
@@ -156,9 +159,6 @@ The following shows grid search over two nested parameters combined with random 
 
 .. note::
     Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
-
-.. warning::
-    If you specify a Search Algorithm, you may not be able to use this feature, as the algorithm may require a different search space declaration.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
@@ -223,7 +223,7 @@ For TensorFlow model training, this would look something like this `(full tensor
 .. code-block:: python
 
     class MyClass(Trainable):
-        def _setup(self):
+        def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
             self.iteration = 0

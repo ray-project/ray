@@ -1,8 +1,9 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import jdk.nashorn.internal.ir.annotations.Immutable;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
@@ -10,8 +11,8 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.annotation.ResourceItem;
-import org.ray.core.AbstractRayRuntime;
+import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.CallOptions;
 
 /**
  * Resources Management Test.
@@ -19,29 +20,13 @@ import org.ray.core.AbstractRayRuntime;
 @RunWith(MyRunner.class)
 public class ResourcesManagementTest {
 
-  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 4),
-      @ResourceItem(name = "GPU", value = 0)})
-  public static Integer echo1(Integer number) {
+  @RayRemote
+  public static Integer echo(Integer number) {
     return number;
   }
 
-  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 4),
-      @ResourceItem(name = "GPU", value = 2)})
-  public static Integer echo2(Integer number) {
-    return number;
-  }
-
-  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 2),
-      @ResourceItem(name = "GPU", value = 0)})
-  public static class Echo1 {
-    public Integer echo(Integer number) {
-      return number;
-    }
-  }
-
-  @RayRemote(resources = {@ResourceItem(name = "CPU", value = 8),
-      @ResourceItem(name = "GPU", value = 0)})
-  public static class Echo2 {
+  @RayRemote
+  public static class Echo {
     public Integer echo(Integer number) {
       return number;
     }
@@ -49,13 +34,18 @@ public class ResourcesManagementTest {
 
   @Test
   public void testMethods() {
-    Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
+    CallOptions callOptions1 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 0.0));
+
     // This is a case that can satisfy required resources.
-    RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo1, 100);
+    // The static resources for test are "CPU:4,RES-A:4".
+    RayObject<Integer> result1 = Ray.call(ResourcesManagementTest::echo, 100, callOptions1);
     Assert.assertEquals(100, (int) result1.get());
 
+    CallOptions callOptions2 = new CallOptions(ImmutableMap.of("CPU", 4.0, "GPU", 2.0));
+
     // This is a case that can't satisfy required resources.
-    final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo2, 200);
+    // The static resources for test are "CPU:4,RES-A:4".
+    final RayObject<Integer> result2 = Ray.call(ResourcesManagementTest::echo, 200, callOptions2);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReady().size());
@@ -64,15 +54,24 @@ public class ResourcesManagementTest {
 
   @Test
   public void testActors() {
-    Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
+
+    ActorCreationOptions actorCreationOptions1 =
+        new ActorCreationOptions(ImmutableMap.of("CPU", 2.0, "GPU", 0.0));
+
     // This is a case that can satisfy required resources.
-    RayActor<ResourcesManagementTest.Echo1> echo1 = Ray.createActor(Echo1::new);
-    final RayObject<Integer> result1 = Ray.call(Echo1::echo, echo1, 100);
+    // The static resources for test are "CPU:4,RES-A:4".
+    RayActor<Echo> echo1 = Ray.createActor(Echo::new, actorCreationOptions1);
+    final RayObject<Integer> result1 = Ray.call(Echo::echo, echo1, 100);
     Assert.assertEquals(100, (int) result1.get());
 
     // This is a case that can't satisfy required resources.
-    RayActor<ResourcesManagementTest.Echo2> echo2 = Ray.createActor(Echo2::new);
-    final RayObject<Integer> result2 = Ray.call(Echo2::echo, echo2, 100);
+    // The static resources for test are "CPU:4,RES-A:4".
+    ActorCreationOptions actorCreationOptions2 =
+        new ActorCreationOptions(ImmutableMap.of("CPU", 8.0, "GPU", 0.0));
+
+    RayActor<ResourcesManagementTest.Echo> echo2 =
+        Ray.createActor(Echo::new, actorCreationOptions2);
+    final RayObject<Integer> result2 = Ray.call(Echo::echo, echo2, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReady().size());

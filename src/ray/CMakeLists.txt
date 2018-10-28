@@ -1,31 +1,25 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
-include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
-
 add_subdirectory(util)
 add_subdirectory(gcs)
 add_subdirectory(object_manager)
 add_subdirectory(raylet)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
-
-set(AE_SRCS
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae/ae.c
-)
+include_directories(thirdparty/ae)
 
 set(HIREDIS_SRCS
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/async.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/dict.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/hiredis.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/net.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/read.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/sds.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/async.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/dict.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/hiredis.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/net.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/read.c
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/sds.c
 )
 
 set(UTIL_SRCS
-  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/sha256.c
-  ${CMAKE_CURRENT_LIST_DIR}/../common/common_protocol.cc
+  ${CMAKE_CURRENT_LIST_DIR}/thirdparty/sha256.c
+  ${CMAKE_CURRENT_LIST_DIR}/common/common_protocol.cc
 )
 
 set(RAY_SRCS
@@ -33,11 +27,11 @@ set(RAY_SRCS
   status.cc
   gcs/client.cc
   gcs/tables.cc
-  gcs/task_table.cc
   gcs/redis_context.cc
   gcs/asio.cc
   util/logging.cc
   common/client_connection.cc
+  common/common_protocol.cc
   object_manager/object_manager_client_connection.cc
   object_manager/connection_pool.cc
   object_manager/object_buffer_pool.cc
@@ -63,11 +57,15 @@ set(RAY_SRCS
 )
 
 set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
-set(RAY_LIB_DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs gen_local_scheduler_fbs ${COMMON_FBS_OUTPUT_FILES})
+set(RAY_LIB_DEPENDENCIES
+    arrow_ep
+    gen_gcs_fbs
+    gen_object_manager_fbs
+    gen_node_manager_fbs)
 
 if(RAY_USE_GLOG)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRAY_USE_GLOG")
-  set(RAY_LIB_STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS} ${GLOG_STATIC_LIB})
+  add_definitions(-DRAY_USE_GLOG)
+  set(RAY_LIB_STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS} glog)
   set(RAY_LIB_DEPENDENCIES ${RAY_LIB_DEPENDENCIES} glog)
 endif()
 
@@ -86,9 +84,15 @@ install(
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig/")
 
 ADD_RAY_LIB(ray
-  SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
-    # TODO: When raylet replaces the old backend, please remove the dependency gen_local_scheduler_fbs.
-    # TODO: When remove the included Task.h from table.h, please remove the dependency gen_common_python_fbs.
+  SOURCES ${RAY_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
     DEPENDENCIES ${RAY_LIB_DEPENDENCIES}
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
+
+add_custom_target(copy_redis ALL)
+foreach(file "redis-cli" "redis-server")
+add_custom_command(TARGET copy_redis POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E
+                      copy ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/redis/src/${file}
+                           ${CMAKE_BINARY_DIR}/src/ray/thirdparty/redis/src/${file})
+endforeach()

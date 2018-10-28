@@ -2,13 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tempfile
 from collections import namedtuple
 from datetime import datetime
+import logging
 import time
-import ray
+import tempfile
 import os
+from numbers import Number
 
+import ray
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -21,6 +23,7 @@ from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
+logger = logging.getLogger(__name__)
 
 
 def date_str():
@@ -31,12 +34,14 @@ class Resources(
         namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
+    TODO: Custom resources.
+
     Attributes:
-        cpu (int): Number of CPUs to allocate to the trial.
-        gpu (int): Number of GPUs to allocate to the trial.
-        extra_cpu (int): Extra CPUs to reserve in case the trial needs to
+        cpu (float): Number of CPUs to allocate to the trial.
+        gpu (float): Number of GPUs to allocate to the trial.
+        extra_cpu (float): Extra CPUs to reserve in case the trial needs to
             launch additional Ray actors that use CPUs.
-        extra_gpu (int): Extra GPUs to reserve in case the trial needs to
+        extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
 
     """
@@ -44,6 +49,9 @@ class Resources(
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
+        for entry in [cpu, gpu, extra_cpu, extra_gpu]:
+            assert isinstance(entry, Number), "Improper resource value."
+            assert entry >= 0, "Resource cannot be negative."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
                                              extra_gpu)
 
@@ -274,8 +282,9 @@ class Trial(object):
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            logger.info("Result for {}:".format(self))
+            logger.info("  {}".format(
+                pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)

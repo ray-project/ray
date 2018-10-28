@@ -168,6 +168,9 @@ class _MockTrialExecutor(TrialExecutor):
     def save(self, trial, type=Checkpoint.DISK):
         return trial.trainable_name
 
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        return False
+
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
@@ -216,7 +219,7 @@ class HyperbandSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def schedulerSetup(self, num_trials):
+    def schedulerSetup(self, num_trials, max_t=81):
         """Setup a scheduler and Runner with max Iter = 9.
 
         Bracketing is placed as follows:
@@ -225,7 +228,7 @@ class HyperbandSuite(unittest.TestCase):
         (15, 9) -> (5, 27) -> (2, 45);
         (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
-        sched = HyperBandScheduler()
+        sched = HyperBandScheduler(max_t=max_t)
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
@@ -552,6 +555,18 @@ class HyperbandSuite(unittest.TestCase):
         self.assertTrue(trial in bracket._live_trials)
         sched.on_trial_remove(runner, trial)  # where trial is not running
         self.assertFalse(trial in bracket._live_trials)
+
+    def testFilterNoneBracket(self):
+        sched, runner = self.schedulerSetup(100, 20)
+        # `sched' should contains None brackets
+        non_brackets = [
+            b for hyperband in sched._hyperbands for b in hyperband
+            if b is None
+        ]
+        self.assertTrue(non_brackets)
+        # Make sure `choose_trial_to_run' still works
+        trial = sched.choose_trial_to_run(runner)
+        self.assertIsNotNone(trial)
 
 
 class _MockTrial(Trial):

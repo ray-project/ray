@@ -2,17 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
-import os
 import time
 
-import ray
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils import merge_dicts
 from ray.tune.trial import Resources
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
@@ -37,30 +36,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Model and preprocessor options
-    "model": {
-        # Use LSTM model. Requires TF.
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-        # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
-        # (Image statespace) - Each pixel
-        "zero_mean": False,
-        # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 84,
-        # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
-    },
-    # Configure TF for single-process operation
-    "tf_session_args": {
-        "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 1,
-        "gpu_options": {
-            "allow_growth": True,
-        },
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class A3CAgent(Agent):
@@ -109,28 +87,3 @@ class A3CAgent(Agent):
         result.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
         return result
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()
-        }
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get([
-            a.restore.remote(o)
-            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
-        ])
-        self.local_evaluator.restore(extra_data["local_state"])

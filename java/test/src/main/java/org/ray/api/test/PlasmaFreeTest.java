@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ray.api.Ray;
@@ -12,7 +11,6 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
-import org.ray.core.AbstractRayRuntime;
 
 
 @RunWith(MyRunner.class)
@@ -25,7 +23,6 @@ public class PlasmaFreeTest {
 
   @Test
   public void test() {
-    Assume.assumeTrue(AbstractRayRuntime.getParams().use_raylet);
     RayObject<String> helloId = Ray.call(PlasmaFreeTest::hello);
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
@@ -44,7 +41,9 @@ public class PlasmaFreeTest {
       Ray.call(PlasmaFreeTest::hello).get();
     }
 
-    waitResult = Ray.wait(waitFor, 1, 2 * 1000);
+    // Check if the object has been evicted. Don't give ray.wait enough
+    // time to reconstruct the object.
+    waitResult = Ray.wait(waitFor, 1, 0);
     readyOnes = waitResult.getReady();
     unreadyOnes = waitResult.getUnready();
     Assert.assertEquals(0, readyOnes.size());

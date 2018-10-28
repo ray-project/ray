@@ -4,9 +4,12 @@ from __future__ import print_function
 
 import collections
 import numpy as np
+import logging
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
+
+logger = logging.getLogger(__name__)
 
 
 # Implementation notes:
@@ -47,7 +50,10 @@ class HyperBandScheduler(FIFOScheduler):
     For example, to limit trials to 10 minutes and early stop based on the
     `episode_mean_reward` attr, construct:
 
-    ``HyperBand('time_total_s', 'episode_reward_mean', 600)``
+    ``HyperBand('time_total_s', 'episode_reward_mean', max_t=600)``
+
+    Note that Tune's stopping criteria will be applied in conjunction with
+    HyperBand's early stopping mechanisms.
 
     See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 
@@ -112,7 +118,7 @@ class HyperBandScheduler(FIFOScheduler):
                 s = len(cur_band)
                 assert s < self._s_max_1, "Current band is filled!"
                 if self._get_r0(s) == 0:
-                    print("Bracket too small - Retrying...")
+                    logger.info("Bracket too small - Retrying...")
                     cur_bracket = None
                 else:
                     retry = False
@@ -217,8 +223,11 @@ class HyperBandScheduler(FIFOScheduler):
         """
 
         for hyperband in self._hyperbands:
+            # band will have None entries if no resources
+            # are to be allocated to that bracket.
+            scrubbed = [b for b in hyperband if b is not None]
             for bracket in sorted(
-                    hyperband, key=lambda b: b.completion_percentage()):
+                    scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
                             and trial_runner.has_resources(trial.resources)):
