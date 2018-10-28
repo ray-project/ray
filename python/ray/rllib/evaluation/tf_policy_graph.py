@@ -46,6 +46,8 @@ class TFPolicyGraph(PolicyGraph):
                  loss_inputs,
                  state_inputs=None,
                  state_outputs=None,
+                 prev_action_input=None,
+                 prev_reward_input=None,
                  seq_lens=None,
                  max_seq_len=20):
         """Initialize the policy graph.
@@ -65,6 +67,8 @@ class TFPolicyGraph(PolicyGraph):
                 and has shape [BATCH_SIZE, data...].
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
+            prev_action_input (Tensor): placeholder for previous actions
+            prev_reward_input (Tensor): placeholder for previous rewards
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 models/lstm.py for more information.
@@ -75,6 +79,8 @@ class TFPolicyGraph(PolicyGraph):
         self.action_space = action_space
         self._sess = sess
         self._obs_input = obs_input
+        self._prev_action_input = prev_action_input
+        self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
         self._loss = loss
         self._loss_inputs = loss_inputs
@@ -95,16 +101,25 @@ class TFPolicyGraph(PolicyGraph):
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
-        assert len(self._state_inputs) == len(self._state_outputs) == \
-            len(self.get_initial_state()), \
-            (self._state_inputs, self._state_outputs, self.get_initial_state())
-        if self._state_inputs:
-            assert self._seq_lens is not None
+        if len(self._state_inputs) != len(self._state_outputs):
+            raise ValueError(
+                "Number of state input and output tensors must match, got: "
+                "{} vs {}".format(self._state_inputs, self._state_outputs))
+        if len(self.get_initial_state()) != len(self._state_inputs):
+            raise ValueError(
+                "Length of initial state must match number of state inputs, "
+                "got: {} vs {}".format(self.get_initial_state(),
+                                       self._state_inputs))
+        if self._state_inputs and self._seq_lens is None:
+            raise ValueError(
+                "seq_lens tensor must be given if state inputs are defined")
 
     def build_compute_actions(self,
                               builder,
                               obs_batch,
                               state_batches=None,
+                              prev_action_batch=None,
+                              prev_reward_batch=None,
                               is_training=False,
                               episodes=None):
         state_batches = state_batches or []
@@ -114,6 +129,10 @@ class TFPolicyGraph(PolicyGraph):
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
+        if self._prev_action_input is not None and prev_action_batch:
+            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
+        if self._prev_reward_input is not None and prev_reward_batch:
+            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: is_training})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         fetches = builder.add_fetches([self._sampler] + self._state_outputs +
@@ -123,11 +142,14 @@ class TFPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
-                                             is_training)
+                                             prev_action_batch,
+                                             prev_reward_batch, is_training)
         return builder.get(fetches)
 
     def _get_loss_inputs_dict(self, batch):

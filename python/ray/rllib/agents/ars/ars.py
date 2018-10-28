@@ -7,9 +7,8 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
 import numpy as np
-import os
-import pickle
 import time
 
 import ray
@@ -18,30 +17,32 @@ from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
-from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.ars import utils
 from ray.rllib.utils import FilterManager
+
+logger = logging.getLogger(__name__)
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
-    'noise_stdev': 0.02,  # std deviation of parameter noise
-    'num_rollouts': 32,  # number of perturbs to try
-    'rollouts_used': 32,  # number of perturbs to keep in gradient estimate
-    'num_workers': 2,
-    'sgd_stepsize': 0.01,  # sgd step-size
-    'observation_filter': "MeanStdFilter",
-    'noise_size': 250000000,
-    'eval_prob': 0.03,  # probability of evaluating the parameter rewards
-    'report_length': 10,  # how many of the last rewards we average over
-    'env_config': {},
-    'offset': 0,
-    'policy_type': "LinearPolicy",  # ["LinearPolicy", "MLPPolicy"]
-    "fcnet_hiddens": [32, 32],  # fcnet structure of MLPPolicy
+    "noise_stdev": 0.02,  # std deviation of parameter noise
+    "num_rollouts": 32,  # number of perturbs to try
+    "rollouts_used": 32,  # number of perturbs to keep in gradient estimate
+    "num_workers": 2,
+    "sgd_stepsize": 0.01,  # sgd step-size
+    "observation_filter": "MeanStdFilter",
+    "noise_size": 250000000,
+    "eval_prob": 0.03,  # probability of evaluating the parameter rewards
+    "report_length": 10,  # how many of the last rewards we average over
+    "offset": 0,
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 @ray.remote
@@ -70,15 +71,9 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self,
-                 config,
-                 policy_params,
-                 env_creator,
-                 noise,
-                 min_task_runtime=0.2):
+    def __init__(self, config, env_creator, noise, min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator(config["env_config"])
@@ -86,15 +81,9 @@ class Worker(object):
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        if config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, self.env.action_space, self.preprocessor,
-                config["observation_filter"], config["fcnet_hiddens"],
-                **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, self.env.action_space, self.env.observation_space,
+            self.preprocessor, config["observation_filter"], config["model"])
 
     @property
     def filters(self):
@@ -179,25 +168,14 @@ class ARSAgent(Agent):
         return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
-        policy_params = {"action_noise_std": 0.0}
-
-        # register the linear network
-        utils.register_linear_network()
-
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        if self.config["policy_type"] == "LinearPolicy":
-            self.policy = policies.LinearPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"], **policy_params)
-        else:
-            self.policy = policies.MLPPolicy(
-                self.sess, env.action_space, preprocessor,
-                self.config["observation_filter"],
-                self.config["fcnet_hiddens"], **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, env.action_space, env.observation_space, preprocessor,
+            self.config["observation_filter"], self.config["model"])
         self.optimizer = optimizers.SGD(self.policy,
                                         self.config["sgd_stepsize"])
 
@@ -206,19 +184,18 @@ class ARSAgent(Agent):
         self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
-        print("Creating shared noise table.")
+        logger.info("Creating shared noise table.")
         noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
-        print("Creating actors.")
+        logger.info("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, policy_params, self.env_creator,
-                          noise_id) for _ in range(self.config["num_workers"])
+            Worker.remote(self.config, self.env_creator, noise_id)
+            for _ in range(self.config["num_workers"])
         ]
 
         self.episodes_so_far = 0
-        self.timesteps_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
 
@@ -226,8 +203,9 @@ class ARSAgent(Agent):
         num_episodes, num_timesteps = 0, 0
         results = []
         while num_episodes < min_episodes:
-            print("Collected {} episodes {} timesteps so far this iter".format(
-                num_episodes, num_timesteps))
+            logger.info(
+                "Collected {} episodes {} timesteps so far this iter".format(
+                    num_episodes, num_timesteps))
             rollout_ids = [
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
@@ -246,7 +224,6 @@ class ARSAgent(Agent):
     def _train(self):
         config = self.config
 
-        step_tstart = time.time()
         theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
@@ -277,7 +254,6 @@ class ARSAgent(Agent):
                 len(all_training_lengths))
 
         self.episodes_so_far += num_episodes
-        self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
         eval_returns = np.array(all_eval_returns)
@@ -310,7 +286,6 @@ class ARSAgent(Agent):
             g /= np.std(noisy_returns)
         assert (g.shape == (self.policy.num_params, )
                 and g.dtype == np.float32)
-        print('the number of policy params is, ', self.policy.num_params)
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
         # Set the new weights in the local copy of the policy.
@@ -324,27 +299,13 @@ class ARSAgent(Agent):
             "default": self.policy.get_filter()
         }, self.workers)
 
-        step_tend = time.time()
-
-        tlogger.record_tabular("NoisyEpRewMean", noisy_returns.mean())
-        tlogger.record_tabular("NoisyEpRewStd", noisy_returns.std())
-        tlogger.record_tabular("NoisyEpLenMean", noisy_lengths.mean())
-
-        tlogger.record_tabular("WeightsNorm", float(np.square(theta).sum()))
-        tlogger.record_tabular("WeightsStd", float(np.std(theta)))
-        tlogger.record_tabular("Grad2Norm", float(np.sqrt(np.square(g).sum())))
-        tlogger.record_tabular("UpdateRatio", float(update_ratio))
-        tlogger.dump_tabular()
-
         info = {
             "weights_norm": np.square(theta).sum(),
+            "weights_std": np.std(theta),
             "grad_norm": np.square(g).sum(),
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
-            "timesteps_so_far": self.timesteps_so_far,
-            "time_elapsed_this_iter": step_tend - step_tstart,
-            "time_elapsed": step_tend - self.tstart
         }
         result = dict(
             episode_reward_mean=np.mean(
@@ -360,23 +321,17 @@ class ARSAgent(Agent):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        weights = self.policy.get_weights()
-        filter = self.policy.get_filter()
-        objects = [
-            weights, self.episodes_so_far, self.timesteps_so_far, filter
-        ]
-        pickle.dump(objects, open(checkpoint_path, "wb"))
-        return checkpoint_path
+    def __getstate__(self):
+        return {
+            "weights": self.policy.get_weights(),
+            "filter": self.policy.get_filter(),
+            "episodes_so_far": self.episodes_so_far,
+        }
 
-    def _restore(self, checkpoint_path):
-        objects = pickle.load(open(checkpoint_path, "rb"))
-        self.policy.set_weights(objects[0])
-        self.episodes_so_far = objects[1]
-        self.timesteps_so_far = objects[2]
-        self.policy.set_filter(objects[3])
+    def __setstate__(self, state):
+        self.episodes_so_far = state["episodes_so_far"]
+        self.policy.set_weights(state["weights"])
+        self.policy.set_filter(state["filter"])
         FilterManager.synchronize({
             "default": self.policy.get_filter()
         }, self.workers)

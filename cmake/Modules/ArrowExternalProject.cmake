@@ -9,21 +9,20 @@
 #  - ARROW_INCLUDE_DIR
 #  - ARROW_SHARED_LIB
 #  - ARROW_STATIC_LIB
+#  - ARROW_LIBRARY_DIR
 #  - PLASMA_INCLUDE_DIR
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/apache/arrow.git)
-set(arrow_TAG 927bd34aaad875e82beca2584d5d777839fa8bb0)
+# The PR for this commit is https://github.com/apache/arrow/pull/2826. We
+# include the link here to make it easier to find the right commit because
+# Arrow often rewrites git history and invalidates certain commits.
+set(arrow_TAG b4f7ed6d6ed5cdb6dd136bac3181a438f35c8ea0)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
 set(ARROW_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep)
-
-# The following is needed because in CentOS, the lib directory is named lib64
-if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(LIB_SUFFIX 64)
-endif()
 
 set(ARROW_INCLUDE_DIR ${ARROW_HOME}/include)
 set(ARROW_LIBRARY_DIR ${ARROW_HOME}/lib${LIB_SUFFIX})
@@ -53,10 +52,27 @@ set(ARROW_CMAKE_ARGS
   -DARROW_JEMALLOC=off
   -DARROW_WITH_BROTLI=off
   -DARROW_WITH_LZ4=off
-  -DARROW_WITH_ZLIB=off
   -DARROW_WITH_ZSTD=off
   -DFLATBUFFERS_HOME=${FLATBUFFERS_HOME}
-  -DBOOST_ROOT=${BOOST_ROOT})
+  -DBOOST_ROOT=${BOOST_ROOT}
+  -DGLOG_HOME=${GLOG_HOME})
+
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # PyArrow needs following settings.
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DARROW_WITH_THRIFT=ON
+    -DARROW_PARQUET=ON
+    -DARROW_WITH_ZLIB=ON)
+else()
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DARROW_WITH_THRIFT=OFF
+    -DARROW_PARQUET=OFF
+    -DARROW_WITH_ZLIB=OFF)
+endif ()
+if (APPLE)
+  set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS}
+    -DBISON_EXECUTABLE=/usr/local/opt/bison/bin/bison)
+endif()
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   set(ARROW_CMAKE_ARGS ${ARROW_CMAKE_ARGS} -DARROW_PLASMA_JAVA_CLIENT=ON)
@@ -73,19 +89,23 @@ endif()
 
 ExternalProject_Add(arrow_ep
   PREFIX external/arrow
-  DEPENDS flatbuffers_ep boost_ep
+  DEPENDS flatbuffers boost glog
   GIT_REPOSITORY ${arrow_URL}
   GIT_TAG ${arrow_TAG}
   ${ARROW_CONFIGURE}
   BUILD_BYPRODUCTS "${ARROW_SHARED_LIB}" "${ARROW_STATIC_LIB}")
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-  ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
-    COMMAND bash -c "cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip > /dev/null"
-    DEPENDEES build)
+  set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES "${ARROW_SOURCE_DIR}/java/target/")
+
+  if(NOT EXISTS ${ARROW_SOURCE_DIR}/java/target/)
+    ExternalProject_Add_Step(arrow_ep arrow_ep_install_java_lib
+      COMMAND bash -c "cd ${ARROW_SOURCE_DIR}/java && mvn clean install -pl plasma -am -Dmaven.test.skip > /dev/null"
+      DEPENDEES build)
+  endif()
 
   # add install of library plasma_java, it is not configured in plasma CMakeLists.txt
   ExternalProject_Add_Step(arrow_ep arrow_ep_install_plasma_java
-    COMMAND bash -c "cp ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
+    COMMAND bash -c "cp -rf ${CMAKE_CURRENT_BINARY_DIR}/external/arrow/src/arrow_ep-build/release/libplasma_java.* ${ARROW_LIBRARY_DIR}/"
     DEPENDEES install)
 endif ()

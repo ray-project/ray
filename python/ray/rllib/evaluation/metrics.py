@@ -2,41 +2,59 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import collections
 
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 
+logger = logging.getLogger(__name__)
 
-def collect_metrics(local_evaluator, remote_evaluators=[]):
+
+def collect_metrics(local_evaluator, remote_evaluators=[],
+                    timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
 
-    episodes = collect_episodes(local_evaluator, remote_evaluators)
-    return summarize_episodes(episodes, episodes)
+    episodes, num_dropped = collect_episodes(
+        local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)
+    metrics = summarize_episodes(episodes, episodes, num_dropped)
+    return metrics
 
 
-def collect_episodes(local_evaluator, remote_evaluators=[]):
+def collect_episodes(local_evaluator,
+                     remote_evaluators=[],
+                     timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
-    metric_lists = ray.get([
+    pending = [
         a.apply.remote(lambda ev: ev.sampler.get_metrics())
         for a in remote_evaluators
-    ])
+    ]
+    collected, _ = ray.wait(
+        pending, num_returns=len(pending), timeout=timeout_seconds * 1000)
+    num_metric_batches_dropped = len(pending) - len(collected)
+
+    metric_lists = ray.get(collected)
     metric_lists.append(local_evaluator.sampler.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
-    return episodes
+    return episodes, num_metric_batches_dropped
 
 
-def summarize_episodes(episodes, new_episodes):
+def summarize_episodes(episodes, new_episodes, num_dropped):
     """Summarizes a set of episode metrics tuples.
 
     Arguments:
         episodes: smoothed set of episodes including historical ones
         new_episodes: just the new episodes in this iteration
+        num_dropped: number of workers haven't returned their metrics
     """
+
+    if num_dropped > 0:
+        logger.warn("WARNING: {} workers have NOT returned metrics".format(
+            num_dropped))
 
     episode_rewards = []
     episode_lengths = []
@@ -64,5 +82,6 @@ def summarize_episodes(episodes, new_episodes):
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
-        episodes=len(new_episodes),
-        policy_reward_mean=dict(policy_rewards))
+        episodes_this_iter=len(new_episodes),
+        policy_reward_mean=dict(policy_rewards),
+        num_metric_batches_dropped=num_dropped)

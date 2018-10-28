@@ -5,8 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "common/common.h"
-#include "common/common_protocol.h"
+#include "ray/common/common_protocol.h"
 
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/util/util.h"
@@ -51,19 +50,21 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
     RAY_LOG(FATAL) << boost_to_ray_status(error).ToString();
   }
 
-  const auto &object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());
+  const auto &object_info =
+      flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
   const auto &object_id = from_flatbuf(*object_info->object_id());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {
-    ObjectInfoT result;
+    object_manager::protocol::ObjectInfoT result;
     object_info->UnPackTo(&result);
     ProcessStoreAdd(result);
   }
   NotificationWait();
 }
 
-void ObjectStoreNotificationManager::ProcessStoreAdd(const ObjectInfoT &object_info) {
+void ObjectStoreNotificationManager::ProcessStoreAdd(
+    const object_manager::protocol::ObjectInfoT &object_info) {
   for (auto &handler : add_handlers_) {
     handler(object_info);
   }
@@ -76,7 +77,7 @@ void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_i
 }
 
 void ObjectStoreNotificationManager::SubscribeObjAdded(
-    std::function<void(const ObjectInfoT &)> callback) {
+    std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
   add_handlers_.push_back(std::move(callback));
 }
 

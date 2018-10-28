@@ -275,7 +275,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values, q_logits, q_dist = self._build_q_network(
-                self.cur_observations)
+                self.cur_observations, observation_space)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -294,12 +294,13 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t, q_logits_t, q_dist_t = self._build_q_network(self.obs_t)
+            q_t, q_logits_t, q_dist_t = self._build_q_network(
+                self.obs_t, observation_space)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, q_logits_tp1, q_dist_tp1 = self._build_q_network(
-                self.obs_tp1)
+                self.obs_tp1, observation_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -313,7 +314,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
                     q_dist_tp1_using_online_net = self._build_q_network(
-                        self.obs_tp1)
+                        self.obs_tp1, observation_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -362,10 +363,12 @@ class DQNPolicyGraph(TFPolicyGraph):
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_q_network(self, obs):
+    def _build_q_network(self, obs, space):
         qnet = QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]),
-            self.num_actions, self.config["dueling"], self.config["hiddens"],
+            ModelCatalog.get_model({
+                "obs": obs
+            }, space, 1, self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
             self.config["v_min"], self.config["v_max"], self.config["sigma0"])
         return qnet.value, qnet.logits, qnet.dist
@@ -453,21 +456,18 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
     The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
 
-    If the episode finishes, the reward will be truncated. After this rewrite,
-    all the arrays will be shortened by (n_step - 1).
+    At the end of the trajectory, n is truncated to fit in the traj length.
     """
-    for i in range(len(rewards) - n_step + 1):
-        if dones[i]:
-            continue  # episode end
+
+    assert not any(dones[:-1]), "Unexpected done in middle of trajectory"
+
+    traj_length = len(rewards)
+    for i in range(traj_length):
         for j in range(1, n_step):
-            new_obs[i] = new_obs[i + j]
-            rewards[i] += gamma**j * rewards[i + j]
-            if dones[i + j]:
-                break  # episode end
-    # truncate ends of the trajectory
-    new_len = len(obs) - n_step + 1
-    for arr in [obs, actions, rewards, new_obs, dones]:
-        del arr[new_len:]
+            if i + j < traj_length:
+                new_obs[i] = new_obs[i + j]
+                dones[i] = dones[i + j]
+                rewards[i] += gamma**j * rewards[i + j]
 
 
 def _postprocess_dqn(policy_graph, sample_batch):

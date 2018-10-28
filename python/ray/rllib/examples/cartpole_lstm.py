@@ -14,6 +14,8 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--use-prev-action-reward", action="store_true")
+parser.add_argument("--run", type=str, default="PPO")
 
 
 class CartPoleStatelessEnv(gym.Env):
@@ -163,17 +165,32 @@ if __name__ == "__main__":
     tune.register_env("cartpole_stateless", lambda _: CartPoleStatelessEnv())
 
     ray.init()
+
+    configs = {
+        "PPO": {
+            "num_sgd_iter": 5,
+        },
+        "IMPALA": {
+            "num_workers": 2,
+            "num_gpus": 0,
+            "vf_loss_coeff": 0.01,
+        },
+    }
+
     tune.run_experiments({
         "test": {
             "env": "cartpole_stateless",
-            "run": "PG",
+            "run": args.run,
             "stop": {
                 "episode_reward_mean": args.stop
             },
-            "config": {
-                "model": {
-                    "use_lstm": True,
-                },
-            },
+            "config": dict(
+                configs[args.run], **{
+                    "model": {
+                        "use_lstm": True,
+                        "lstm_use_prev_action_reward": args.
+                        use_prev_action_reward,
+                    },
+                }),
         }
     })

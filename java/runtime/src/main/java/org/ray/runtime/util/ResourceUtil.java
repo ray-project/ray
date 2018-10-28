@@ -2,54 +2,10 @@ package org.ray.runtime.util;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.api.annotation.RayRemote;
-import org.ray.api.annotation.ResourceItem;
 
 public class ResourceUtil {
   public static final String CPU_LITERAL = "CPU";
   public static final String GPU_LITERAL = "GPU";
-
-  /**
-   * Convert the array that contains resource items to a map.
-   *
-   * @param remoteAnnotation The RayRemote annotation that contains the resource items.
-   * @return The map whose key represents the resource name
-   *     and the value represents the resource quantity.
-   */
-  public static Map<String, Double> getResourcesMapFromArray(RayRemote remoteAnnotation) {
-    Map<String, Double> resourceMap = new HashMap<>();
-    if (remoteAnnotation == null) {
-      return resourceMap;
-    }
-    for (ResourceItem item : remoteAnnotation.resources()) {
-      if (!item.name().isEmpty()) {
-        resourceMap.put(item.name(), item.value());
-      }
-    }
-
-    return resourceMap;
-  }
-
-  /**
-   * Convert the resources map to a format string.
-   *
-   * @param resources The resource map to be Converted.
-   * @return The format resources string, like "{CPU:4, GPU:0}".
-   */
-  public static String getResourcesFromatStringFromMap(Map<String, Double> resources) {
-    StringBuilder builder = new StringBuilder();
-    builder.append("{");
-    int count = 1;
-    for (Map.Entry<String, Double> entry : resources.entrySet()) {
-      builder.append(entry.getKey()).append(":").append(entry.getValue());
-      count++;
-      if (count != resources.size()) {
-        builder.append(", ");
-      }
-    }
-    builder.append("}");
-    return builder.toString();
-  }
 
   /**
    * Convert resources map to a string that is used
@@ -89,10 +45,13 @@ public class ResourceUtil {
       String[] items = resources.split(",");
       for (String item : items) {
         String trimItem = item.trim();
+        if (trimItem.isEmpty()) {
+          continue;
+        }
         String[] resourcePair = trimItem.split(":");
 
         if (resourcePair.length != 2) {
-          throw new IllegalArgumentException("Format of static resurces configure is invalid.");
+          throw new IllegalArgumentException("Format of static resources configure is invalid.");
         }
 
         final String resourceName = resourcePair[0].trim();

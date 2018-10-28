@@ -9,8 +9,9 @@ swimmer-ars:
         num_workers: 1
         sgd_stepsize: 0.02
         noise_size: 250000000
-        policy_type: LinearPolicy
         eval_prob: 0.2
         offset: 0
         observation_filter: NoFilter
         report_length: 3
+        model:
+            fcnet_hiddens: []  # a linear policy

@@ -10,7 +10,7 @@ Learn more about RLlib's design by reading the `ICML paper <https://arxiv.org/ab
 Installation
 ------------
 
-RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the Ray RLlib module:
+RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the RLlib module:
 
 .. code-block:: bash
 
@@ -27,6 +27,7 @@ You might also want to clone the Ray repo for convenient access to RLlib helper 
 Training APIs
 -------------
 * `Command-line <rllib-training.html>`__
+* `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
 * `REST API <rllib-training.html#rest-api>`__
 

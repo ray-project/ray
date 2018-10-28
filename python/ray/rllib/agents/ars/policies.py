@@ -10,8 +10,8 @@ import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.models import ModelCatalog
 
 
@@ -57,16 +57,11 @@ class GenericPolicy(object):
     def __init__(self,
                  sess,
                  action_space,
+                 obs_space,
                  preprocessor,
                  observation_filter,
-                 action_noise_std,
-                 options={}):
-
-        if len(preprocessor.shape) > 1:
-            raise UnsupportedSpaceException(
-                "Observation space {} is not supported with ARS.".format(
-                    preprocessor.shape))
-
+                 model_config,
+                 action_noise_std=0.0):
         self.sess = sess
         self.action_space = action_space
         self.action_noise_std = action_noise_std
@@ -78,9 +73,11 @@ class GenericPolicy(object):
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            action_space, dist_type="deterministic")
+            action_space, model_config, dist_type="deterministic")
 
-        model = ModelCatalog.get_model(self.inputs, dist_dim, options=options)
+        model = ModelCatalog.get_model({
+            "obs": self.inputs
+        }, obs_space, dist_dim, model_config)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
@@ -97,6 +94,7 @@ class GenericPolicy(object):
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(
             self.sampler, feed_dict={self.inputs: observation})
+        action = _unbatch_tuple_actions(action)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
@@ -112,31 +110,3 @@ class GenericPolicy(object):
 
     def get_weights(self):
         return self.variables.get_flat()
-
-
-class LinearPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 action_noise_std):
-        options = {"custom_model": "LinearNetwork"}
-        GenericPolicy.__init__(
-            self,
-            sess,
-            action_space,
-            preprocessor,
-            observation_filter,
-            action_noise_std,
-            options=options)
-
-
-class MLPPolicy(GenericPolicy):
-    def __init__(self, sess, action_space, preprocessor, observation_filter,
-                 fcnet_hiddens, action_noise_std):
-        options = {"fcnet_hiddens": fcnet_hiddens}
-        GenericPolicy.__init__(
-            self,
-            sess,
-            action_space,
-            preprocessor,
-            observation_filter,
-            action_noise_std,
-            options=options)

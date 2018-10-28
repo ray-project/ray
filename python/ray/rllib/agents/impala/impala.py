@@ -2,11 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
-import os
 import time
 
-import ray
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
@@ -14,10 +11,20 @@ from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_envs_per_worker",
+    "num_gpus",
     "sample_batch_size",
     "train_batch_size",
+    "replay_buffer_num_slots",
+    "replay_proportion",
+    "num_parallel_data_loaders",
+    "grad_clip",
+    "max_sample_requests_in_flight_per_worker",
 ]
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace.py).
     "vtrace": True,
@@ -28,10 +35,22 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "gpu": True,
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
+    # number of GPUs the learner should use.
+    "num_gpus": 1,
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
+    # proportionally with the number of loaders.
+    "num_parallel_data_loaders": 1,
+    # level of queuing for sampling.
+    "max_sample_requests_in_flight_per_worker": 2,
+    # set >0 to enable experience replay. Saved samples will be replayed with
+    # a p:1 proportion to new data samples.
+    "replay_proportion": 0.0,
+    # number of sample batches to store for replay. The number of transitions
+    # saved total will be (replay_buffer_num_slots * sample_batch_size).
+    "replay_buffer_num_slots": 100,
 
     # Learning params.
     "grad_clip": 40.0,
@@ -46,14 +65,9 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
-
-    # Model and preprocessor options.
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-        "dim": 84,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class ImpalaAgent(Agent):
@@ -68,7 +82,7 @@ class ImpalaAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
+            gpu=cf["num_gpus"] and cf["num_gpus"] * cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
@@ -95,32 +109,8 @@ class ImpalaAgent(Agent):
         self.optimizer.step()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-        result = self.optimizer.collect_metrics()
-        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
-                      prev_steps)
+        result = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
+        result.update(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
         return result
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()
-        }
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get([
-            a.restore.remote(o)
-            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
-        ])
-        self.local_evaluator.restore(extra_data["local_state"])

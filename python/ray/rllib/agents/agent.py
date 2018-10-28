@@ -3,14 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
-import numpy as np
 import os
+import logging
 import pickle
 import tempfile
 from datetime import datetime
-
 import tensorflow as tf
+
+import ray
+from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -19,11 +20,38 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# yapf: disable
+# __sphinx_doc_begin__
 COMMON_CONFIG = {
+    # === Debugging ===
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
+    # Set the RLlib log level for the agent process and its remote evaluators
+    "log_level": "INFO",
+
+    # === Policy ===
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
+    "optimizer": {},
+
+    # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
+    # Number of steps after which the episode is forced to terminate
     "horizon": None,
+    # Arguments to pass to the env creator
+    "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
+    # Whether to use rllib or deepmind preprocessors by default
+    "preprocessor_pref": "deepmind",
+
+    # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
     # Number of actors used for parallelism
@@ -37,27 +65,13 @@ COMMON_CONFIG = {
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
-    # Which observation filter to apply to the observation
+    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
-    # Whether to clip rewards prior to experience postprocessing
-    "clip_rewards": False,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
-    # Arguments to pass to the env creator
-    "env_config": {},
-    # Environment name can also be passed via config
-    "env": None,
-    # Arguments to pass to model
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
+        # note: parallelism_threads is set to auto for the local evaluator
         "intra_op_parallelism_threads": 1,
         "inter_op_parallelism_threads": 1,
         "gpu_options": {
@@ -71,10 +85,10 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Whether to write episode stats and videos to the agent log dir
-    "monitor": False,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
+    # Drop metric batches from unresponsive workers after this timeout (seconds)
+    "collect_metrics_timeout": 180,
 
     # === Multiagent ===
     "multiagent": {
@@ -87,6 +101,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
+# __sphinx_doc_end__
+# yapf: enable
 
 
 def with_common_config(extra_config):
@@ -167,14 +183,15 @@ class Agent(Trainable):
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            monitor_path=self.logdir if config["monitor"] else None)
+            monitor_path=self.logdir if config["monitor"] else None,
+            log_level=config["log_level"])
 
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers` and other configs. See the "
                 "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: " + json.dumps(config))
+                "The config of this agent is: {}".format(config))
 
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
@@ -198,7 +215,8 @@ class Agent(Trainable):
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = '_'.join([self._agent_name, self._env_id, timestr])
+            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
+                                              timestr)
 
             def default_logger_creator(config):
                 """Creates a Unified logger with a default logdir prefix
@@ -233,10 +251,10 @@ class Agent(Trainable):
 
         return Trainable.train(self)
 
-    def _setup(self):
+    def _setup(self, config):
         env = self._env_id
         if env:
-            self.config["env"] = env
+            config["env"] = env
             if _global_registry.contains(ENV_CREATOR, env):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
@@ -247,10 +265,12 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = deep_update(merged_config, self.config,
+        merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
@@ -323,95 +343,39 @@ class Agent(Trainable):
         """
         self.local_evaluator.set_weights(weights)
 
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        if hasattr(self, "remote_evaluators"):
+            for ev in self.remote_evaluators:
+                ev.__ray_terminate__.remote()
 
-class _MockAgent(Agent):
-    """Mock agent for use in tests"""
+    def __getstate__(self):
+        state = {}
+        if hasattr(self, "local_evaluator"):
+            state["evaluator"] = self.local_evaluator.save()
+        if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
+            state["optimizer"] = self.optimizer.save()
+        return state
 
-    _agent_name = "MockAgent"
-    _default_config = {
-        "mock_error": False,
-        "persistent_error": False,
-        "test_variable": 1
-    }
-
-    def _init(self):
-        self.info = None
-        self.restored = False
-
-    def _train(self):
-        if self.config["mock_error"] and self.iteration == 1 \
-                and (self.config["persistent_error"] or not self.restored):
-            raise Exception("mock error")
-        return dict(
-            episode_reward_mean=10,
-            episode_len_mean=10,
-            timesteps_this_iter=10,
-            info={})
+    def __setstate__(self, state):
+        if "evaluator" in state:
+            self.local_evaluator.restore(state["evaluator"])
+            remote_state = ray.put(state["evaluator"])
+            for r in self.remote_evaluators:
+                r.restore.remote(remote_state)
+        if "optimizer" in state:
+            self.optimizer.restore(state["optimizer"])
 
     def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
-        with open(path, 'wb') as f:
-            pickle.dump(self.info, f)
-        return path
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        pickle.dump(self.__getstate__(),
+                    open(checkpoint_path + ".agent_state", "wb"))
+        return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        with open(checkpoint_path, 'rb') as f:
-            info = pickle.load(f)
-        self.info = info
-        self.restored = True
-
-    def set_info(self, info):
-        self.info = info
-        return info
-
-    def get_info(self):
-        return self.info
-
-
-class _SigmoidFakeData(_MockAgent):
-    """Agent that returns sigmoid learning curves.
-
-    This can be helpful for evaluating early stopping algorithms."""
-
-    _agent_name = "SigmoidFakeData"
-    _default_config = {
-        "width": 100,
-        "height": 100,
-        "offset": 0,
-        "iter_time": 10,
-        "iter_timesteps": 1,
-    }
-
-    def _train(self):
-        i = max(0, self.iteration - self.config["offset"])
-        v = np.tanh(float(i) / self.config["width"])
-        v *= self.config["height"]
-        return dict(
-            episode_reward_mean=v,
-            episode_len_mean=v,
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
-            info={})
-
-
-class _ParameterTuningAgent(_MockAgent):
-
-    _agent_name = "ParameterTuningAgent"
-    _default_config = {
-        "reward_amt": 10,
-        "dummy_param": 10,
-        "dummy_param2": 15,
-        "iter_time": 10,
-        "iter_timesteps": 1
-    }
-
-    def _train(self):
-        return dict(
-            episode_reward_mean=self.config["reward_amt"] * self.iteration,
-            episode_len_mean=self.config["reward_amt"],
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"],
-            info={})
+        extra_data = pickle.load(open(checkpoint_path + ".agent_state", "rb"))
+        self.__setstate__(extra_data)
 
 
 def get_agent_class(alg):
@@ -457,10 +421,13 @@ def get_agent_class(alg):
         from ray.tune import script_runner
         return script_runner.ScriptRunner
     elif alg == "__fake":
+        from ray.rllib.agents.mock import _MockAgent
         return _MockAgent
     elif alg == "__sigmoid_fake_data":
+        from ray.rllib.agents.mock import _SigmoidFakeData
         return _SigmoidFakeData
     elif alg == "__parameter_tuning":
+        from ray.rllib.agents.mock import _ParameterTuningAgent
         return _ParameterTuningAgent
     else:
         raise Exception(("Unknown algorithm {}.").format(alg))

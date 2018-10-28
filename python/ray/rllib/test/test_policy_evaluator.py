@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import numpy as np
 import time
 import unittest
 
@@ -21,6 +22,8 @@ class MockPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         return [0] * len(obs_batch), [], {}
@@ -33,6 +36,8 @@ class BadPolicyGraph(PolicyGraph):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         raise Exception("intentional error")
@@ -107,8 +112,23 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_graph=MockPolicyGraph)
         batch = ev.sample()
-        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+        for key in [
+                "obs", "actions", "rewards", "dones", "advantages",
+                "prev_rewards", "prev_actions"
+        ]:
             self.assertIn(key, batch)
+
+        def to_prev(vec):
+            out = np.zeros_like(vec)
+            for i, v in enumerate(vec):
+                if i + 1 < len(out) and not batch["dones"][i]:
+                    out[i + 1] = v
+            return out.tolist()
+
+        self.assertEqual(batch["prev_rewards"].tolist(),
+                         to_prev(batch["rewards"]))
+        self.assertEqual(batch["prev_actions"].tolist(),
+                         to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
 
     def testGlobalVarsUpdate(self):
@@ -129,9 +149,10 @@ class TestPolicyEvaluator(unittest.TestCase):
                 "num_workers": 2,
                 "sample_batch_size": 5
             })
-        results = pg.optimizer.foreach_evaluator(lambda ev: ev.batch_steps)
+        results = pg.optimizer.foreach_evaluator(
+            lambda ev: ev.sample_batch_size)
         results2 = pg.optimizer.foreach_evaluator_with_index(
-            lambda ev, i: (i, ev.batch_steps))
+            lambda ev, i: (i, ev.sample_batch_size))
         self.assertEqual(results, [5, 5, 5])
         self.assertEqual(results2, [(0, 5), (1, 5), (2, 5)])
 
@@ -168,7 +189,7 @@ class TestPolicyEvaluator(unittest.TestCase):
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ev, [remote_ev])
-        self.assertEqual(result["episodes"], 20)
+        self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
 
     def testAsync(self):
@@ -198,47 +219,38 @@ class TestPolicyEvaluator(unittest.TestCase):
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16,
+            batch_steps=2,
             num_envs=8)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 8)
+        self.assertEqual(result["episodes_this_iter"], 8)
         indices = []
         for env in ev.async_env.vector_env.envs:
             self.assertEqual(env.unwrapped.config.worker_index, 0)
             indices.append(env.unwrapped.config.vector_index)
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
 
-    def testBatchDivisibilityCheck(self):
-        self.assertRaises(
-            ValueError,
-            lambda: PolicyEvaluator(
-                env_creator=lambda _: MockEnv(episode_length=8),
-                policy_graph=MockPolicyGraph,
-                batch_mode="truncate_episodes",
-                batch_steps=15, num_envs=4))
-
-    def testBatchesSmallerWhenVectorized(self):
+    def testBatchesLargerWhenVectorized(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: MockEnv(episode_length=8),
             policy_graph=MockPolicyGraph,
             batch_mode="truncate_episodes",
-            batch_steps=16,
+            batch_steps=4,
             num_envs=4)
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         batch = ev.sample()
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 4)
+        self.assertEqual(result["episodes_this_iter"], 4)
 
     def testVectorEnvSupport(self):
         ev = PolicyEvaluator(
@@ -250,12 +262,12 @@ class TestPolicyEvaluator(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 0)
+        self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertEqual(result["episodes"], 8)
+        self.assertEqual(result["episodes_this_iter"], 8)
 
     def testTruncateEpisodes(self):
         ev = PolicyEvaluator(

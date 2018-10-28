@@ -40,6 +40,8 @@ class PolicyGraph(object):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
                         is_training=False,
                         episodes=None):
         """Compute actions for the current policy.
@@ -47,6 +49,8 @@ class PolicyGraph(object):
         Arguments:
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
+            prev_action_batch (np.ndarray): batch of previous action values
+            prev_reward_batch (np.ndarray): batch of previous rewards
             is_training (bool): whether we are training the policy
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
@@ -65,6 +69,8 @@ class PolicyGraph(object):
     def compute_single_action(self,
                               obs,
                               state,
+                              prev_action_batch=None,
+                              prev_reward_batch=None,
                               is_training=False,
                               episode=None):
         """Unbatched version of compute_actions.
@@ -72,6 +78,8 @@ class PolicyGraph(object):
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
+            prev_action_batch (np.ndarray): batch of previous action values
+            prev_reward_batch (np.ndarray): batch of previous rewards
             is_training (bool): whether we are training the policy
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or

@@ -174,10 +174,10 @@ class NodeManager {
   ///
   /// \param task The task to forward.
   /// \param node_id The ID of the node to forward the task to.
-  /// \return A status indicating whether the forward succeeded or not. Note
-  /// that a status of OK is not a reliable indicator that the forward succeeded
-  /// or even that the remote node is still alive.
-  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
+  /// \param on_error Callback on run on non-ok status.
+  void ForwardTask(const Task &task, const ClientID &node_id,
+                   const std::function<void(const ray::Status &)> &on_error);
+
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();
@@ -267,7 +267,7 @@ class NodeManager {
   bool CheckDependencyManagerInvariant() const;
 
   /// Process client message of RegisterClientRequest
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -275,26 +275,30 @@ class NodeManager {
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of GetTask
-  //
+  ///
   /// \param client The client that sent the message.
   /// \return Void.
   void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
 
-  /// Process client message of DisconnectClient
-  //
+  /// Handle a client that has disconnected. This can be called multiple times
+  /// on the same client because this is triggered both when a client
+  /// disconnects and when the node manager fails to write a message to the
+  /// client.
+  ///
   /// \param client The client that sent the message.
+  /// \param push_warning Propogate error message if true.
   /// \return Void.
   void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client);
+      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
 
   /// Process client message of SubmitTask
-  //
+  ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
   /// Process client message of ReconstructObjects
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -302,7 +306,7 @@ class NodeManager {
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
-  //
+  ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
@@ -310,7 +314,7 @@ class NodeManager {
                                  const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
-  //
+  ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
@@ -348,7 +352,8 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
+  std::unordered_map<ClientID, std::shared_ptr<TcpServerConnection>>
+      remote_server_connections_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;

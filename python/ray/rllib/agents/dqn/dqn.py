@@ -2,11 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pickle
-import os
 import time
 
-import ray
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
@@ -23,6 +20,8 @@ OPTIMIZER_SHARED_CONFIGS = [
     "learning_starts"
 ]
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Number of atoms for representing the distribution of return. When
@@ -118,6 +117,8 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class DQNAgent(Agent):
@@ -138,8 +139,8 @@ class DQNAgent(Agent):
 
     def _init(self):
         # Update effective batch size to include n-step
-        adjusted_batch_size = (
-            self.config["sample_batch_size"] + self.config["n_step"] - 1)
+        adjusted_batch_size = max(self.config["sample_batch_size"],
+                                  self.config["n_step"])
         self.config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(0)
@@ -235,10 +236,13 @@ class DQNAgent(Agent):
             # Only collect metrics from the third of workers with lowest eps
             result = collect_metrics(
                 self.local_evaluator,
-                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:],
+                timeout_seconds=self.config["collect_metrics_timeout"])
         else:
-            result = collect_metrics(self.local_evaluator,
-                                     self.remote_evaluators)
+            result = collect_metrics(
+                self.local_evaluator,
+                self.remote_evaluators,
+                timeout_seconds=self.config["collect_metrics_timeout"])
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
@@ -249,30 +253,15 @@ class DQNAgent(Agent):
             }, **self.optimizer.stats()))
         return result
 
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
+    def __getstate__(self):
+        state = Agent.__getstate__(self)
+        state.update({
+            "num_target_updates": self.num_target_updates,
+            "last_target_update_ts": self.last_target_update_ts,
+        })
+        return state
 
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        extra_data = [
-            self.local_evaluator.save(),
-            ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.optimizer.save(), self.num_target_updates,
-            self.last_target_update_ts
-        ]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            e.restore.remote(d)
-            for (d, e) in zip(extra_data[1], self.remote_evaluators)
-        ])
-        self.optimizer.restore(extra_data[2])
-        self.num_target_updates = extra_data[3]
-        self.last_target_update_ts = extra_data[4]
+    def __setstate__(self, state):
+        Agent.__setstate__(self, state)
+        self.num_target_updates = state["num_target_updates"]
+        self.last_target_update_ts = state["last_target_update_ts"]
