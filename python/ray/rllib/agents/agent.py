@@ -87,6 +87,8 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
+    # Drop metric batches from unresponsive workers after this timeout (seconds)
+    "collect_metrics_timeout": 180,
 
     # === Multiagent ===
     "multiagent": {
