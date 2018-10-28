@@ -16,8 +16,8 @@ PG              **Yes**           **Yes**             **Yes**      **Yes**
 IMPALA          **Yes**           No                  **Yes**      **Yes**
 DQN, Rainbow    **Yes**           No                  **Yes**      No
 DDPG            No                **Yes**             **Yes**      No
-APEX-DQN        **Yes**           No                  No           No
-APEX-DDPG       No                **Yes**             No           No
+APEX-DQN        **Yes**           No                  **Yes**      No
+APEX-DDPG       No                **Yes**             **Yes**      No
 ES              **Yes**           **Yes**             No           No
 ARS             **Yes**           **Yes**             No           No
 =============  ================  ==================  ===========  ==================
