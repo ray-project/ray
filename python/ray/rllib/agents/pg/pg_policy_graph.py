@@ -52,7 +52,7 @@ class PGPolicyGraph(TFPolicyGraph):
             ("actions", actions),
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
-            ("advantages", advantages),
+            ("advantages", advantages),  # added during postprocessing
         ]
 
         # Initialize TFPolicyGraph
