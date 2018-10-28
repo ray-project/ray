@@ -25,6 +25,10 @@ class ServingEnv(threading.Thread):
 
     This env is thread-safe, but individual episodes must be executed serially.
 
+    Attributes:
+        action_space (gym.Space): Action space.
+        observation_space (gym.Space): Observation space.
+
     Examples:
         >>> register_env("my_env", lambda config: YourServingEnv(config))
         >>> agent = DQNAgent(env="my_env")
@@ -57,10 +61,12 @@ class ServingEnv(threading.Thread):
         """Override this to implement the run loop.
 
         Your loop should continuously:
-            1. Call self.start_episode()
-            2. Call self.get_action() or self.log_action()
-            3. Call self.log_returns()
-            4. Call self.end_episode()
+            1. Call self.start_episode(episode_id)
+            2. Call self.get_action(episode_id, obs)
+                    -or-
+                    self.log_action(episode_id, obs, action)
+            3. Call self.log_returns(episode_id, reward)
+            4. Call self.end_episode(episode_id, obs)
             5. Wait if nothing to do.
 
         Multiple episodes may be started at the same time.

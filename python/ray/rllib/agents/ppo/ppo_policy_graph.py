@@ -24,6 +24,7 @@ class PPOLoss(object):
                  curr_action_dist,
                  value_fn,
                  cur_kl_coeff,
+                 valid_mask,
                  entropy_coeff=0,
                  clip_param=0.1,
                  vf_clip_param=0.1,
@@ -48,28 +49,33 @@ class PPOLoss(object):
             value_fn (Tensor): Current value function output Tensor.
             cur_kl_coeff (Variable): Variable holding the current PPO KL
                 coefficient.
+            valid_mask (Tensor): A bool mask of valid input elements (#2992).
             entropy_coeff (float): Coefficient of the entropy regularizer.
             clip_param (float): Clip parameter
             vf_clip_param (float): Clip parameter for the value function
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
         dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
         prev_dist = dist_cls(logits)
         # Make loss functions.
         logp_ratio = tf.exp(
             curr_action_dist.logp(actions) - prev_dist.logp(actions))
         action_kl = prev_dist.kl(curr_action_dist)
-        self.mean_kl = tf.reduce_mean(action_kl)
+        self.mean_kl = reduce_mean_valid(action_kl)
 
         curr_entropy = curr_action_dist.entropy()
-        self.mean_entropy = tf.reduce_mean(curr_entropy)
+        self.mean_entropy = reduce_mean_valid(curr_entropy)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
             advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
-        self.mean_policy_loss = tf.reduce_mean(-surrogate_loss)
+        self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
             vf_loss1 = tf.square(value_fn - value_targets)
@@ -77,14 +83,15 @@ class PPOLoss(object):
                 value_fn - vf_preds, -vf_clip_param, vf_clip_param)
             vf_loss2 = tf.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
-            self.mean_vf_loss = tf.reduce_mean(vf_loss)
-            loss = tf.reduce_mean(-surrogate_loss + cur_kl_coeff * action_kl +
-                                  vf_loss_coeff * vf_loss -
-                                  entropy_coeff * curr_entropy)
+            self.mean_vf_loss = reduce_mean_valid(vf_loss)
+            loss = reduce_mean_valid(
+                -surrogate_loss + cur_kl_coeff * action_kl +
+                vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            loss = tf.reduce_mean(-surrogate_loss + cur_kl_coeff * action_kl -
-                                  entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(-surrogate_loss +
+                                     cur_kl_coeff * action_kl -
+                                     entropy_coeff * curr_entropy)
         self.loss = loss
 
 
@@ -113,8 +120,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         if existing_inputs:
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph = existing_inputs[:6]
-            existing_state_in = existing_inputs[6:-1]
+                logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
+                existing_inputs[:8]
+            existing_state_in = existing_inputs[8:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
             obs_ph = tf.placeholder(
@@ -130,6 +138,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None, ))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None, ))
+            prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
+            prev_rewards_ph = tf.placeholder(
+                tf.float32, [None], name="prev_reward")
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
@@ -141,9 +152,16 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("actions", act_ph),
             ("logits", logits_ph),
             ("vf_preds", vf_preds_ph),
+            ("prev_actions", prev_actions_ph),
+            ("prev_rewards", prev_rewards_ph),
         ]
         self.model = ModelCatalog.get_model(
-            obs_ph,
+            {
+                "obs": obs_ph,
+                "prev_actions": prev_actions_ph,
+                "prev_rewards": prev_rewards_ph
+            },
+            observation_space,
             logit_dim,
             self.config["model"],
             state_in=existing_state_in,
@@ -173,11 +191,21 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 vf_config["free_log_std"] = False
                 vf_config["use_lstm"] = False
                 with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model(
-                        obs_ph, 1, vf_config).outputs
+                    self.value_function = ModelCatalog.get_model({
+                        "obs": obs_ph,
+                        "prev_actions": prev_actions_ph,
+                        "prev_rewards": prev_rewards_ph
+                    }, observation_space, 1, vf_config).outputs
                     self.value_function = tf.reshape(self.value_function, [-1])
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
+
+        if self.model.state_in:
+            max_seq_len = tf.reduce_max(self.model.seq_lens)
+            mask = tf.sequence_mask(self.model.seq_lens, max_seq_len)
+            mask = tf.reshape(mask, [-1])
+        else:
+            mask = tf.ones_like(adv_ph)
 
         self.loss_obj = PPOLoss(
             action_space,
@@ -189,6 +217,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             curr_action_dist,
             self.value_function,
             self.kl_coeff,
+            mask,
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
             vf_clip_param=self.config["vf_clip_param"],
@@ -208,6 +237,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
+            prev_action_input=prev_actions_ph,
+            prev_reward_input=prev_rewards_ph,
             seq_lens=self.model.seq_lens,
             max_seq_len=config["model"]["max_seq_len"])
 
@@ -227,7 +258,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
         return PPOPolicyGraph(
-            None,
+            self.observation_space,
             self.action_space,
             self.config,
             existing_inputs=existing_inputs)

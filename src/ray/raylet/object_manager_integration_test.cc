@@ -60,7 +60,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
     server1.reset(new ray::raylet::Raylet(
-        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379,
+        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
@@ -70,7 +70,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
     server2.reset(new ray::raylet::Raylet(
-        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379,
+        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -155,7 +155,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           v1.push_back(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
@@ -163,7 +163,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           v2.push_back(ObjectID::from_binary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();

@@ -11,10 +11,20 @@ from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_envs_per_worker",
+    "num_gpus",
     "sample_batch_size",
     "train_batch_size",
+    "replay_buffer_num_slots",
+    "replay_proportion",
+    "num_parallel_data_loaders",
+    "grad_clip",
+    "max_sample_requests_in_flight_per_worker",
 ]
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace.py).
     "vtrace": True,
@@ -25,10 +35,22 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "gpu": True,
     "num_workers": 2,
     "num_cpus_per_worker": 1,
     "num_gpus_per_worker": 0,
+    # number of GPUs the learner should use.
+    "num_gpus": 1,
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
+    # proportionally with the number of loaders.
+    "num_parallel_data_loaders": 1,
+    # level of queuing for sampling.
+    "max_sample_requests_in_flight_per_worker": 2,
+    # set >0 to enable experience replay. Saved samples will be replayed with
+    # a p:1 proportion to new data samples.
+    "replay_proportion": 0.0,
+    # number of sample batches to store for replay. The number of transitions
+    # saved total will be (replay_buffer_num_slots * sample_batch_size).
+    "replay_buffer_num_slots": 100,
 
     # Learning params.
     "grad_clip": 40.0,
@@ -43,14 +65,9 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
-
-    # Model and preprocessor options.
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-        "dim": 84,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class ImpalaAgent(Agent):
@@ -65,7 +82,7 @@ class ImpalaAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
+            gpu=cf["num_gpus"] and cf["num_gpus"] * cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 

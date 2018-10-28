@@ -5,7 +5,6 @@ from __future__ import print_function
 import click
 import json
 import logging
-import os
 import subprocess
 
 import ray.services as services
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
     # The client table prefix must be kept in sync with the file
-    # "src/common/redis_module/ray_redis_module.cc" where it is defined.
+    # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
     REDIS_CLIENT_TABLE_PREFIX = "CL:"
     client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
     # Filter to clients on the same node and do some basic checking.
@@ -89,6 +88,11 @@ def cli(logging_level, logging_format):
     type=int,
     help=("If provided, attempt to configure Redis with this "
           "maximum number of clients."))
+@click.option(
+    "--redis-password",
+    required=False,
+    type=str,
+    help="If provided, secure Redis ports with this password")
 @click.option(
     "--redis-shard-ports",
     required=False,
@@ -163,11 +167,6 @@ def cli(logging_level, logging_format):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--use-raylet",
-    is_flag=True,
-    default=None,
-    help="use the raylet code path")
-@click.option(
     "--no-redirect-worker-output",
     is_flag=True,
     default=False,
@@ -190,25 +189,21 @@ def cli(logging_level, logging_format):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, redis_shard_ports, object_manager_port,
-          object_store_memory, num_workers, num_cpus, num_gpus, resources,
-          head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir):
+          redis_max_clients, redis_password, redis_shard_ports,
+          object_manager_port, object_store_memory, num_workers, num_cpus,
+          num_gpus, resources, head, no_ui, block, plasma_directory,
+          huge_pages, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
-
     try:
         resources = json.loads(resources)
-    except Exception as e:
+    except Exception:
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "
@@ -268,12 +263,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            redis_protected_mode=False,
+            redis_password=redis_password,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)
@@ -281,16 +275,20 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
-            "    ray start --redis-address {}\n\n"
+            "    ray start --redis-address {}{}{}\n\n"
             "from the node you wish to add. You can connect a driver to the "
             "cluster from Python by running\n\n"
             "    import ray\n"
-            "    ray.init(redis_address=\"{}\")\n\n"
+            "    ray.init(redis_address=\"{}{}{}\")\n\n"
             "If you have trouble connecting from a different machine, check "
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(address_info["redis_address"],
-                                  address_info["redis_address"]))
+            "    ray stop".format(
+                address_info["redis_address"], " --redis-password "
+                if redis_password else "", redis_password if redis_password
+                else "", address_info["redis_address"], "\", redis_password=\""
+                if redis_password else "", redis_password
+                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
@@ -315,10 +313,12 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
-        services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
+        services.wait_for_redis_to_start(
+            redis_ip_address, int(redis_port), password=redis_password)
 
         # Create a Redis client.
-        redis_client = services.create_redis_client(redis_address)
+        redis_client = services.create_redis_client(
+            redis_address, password=redis_password)
 
         # Check that the verion information on this node matches the version
         # information that the cluster was started with.
@@ -339,13 +339,13 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             object_manager_ports=[object_manager_port],
             num_workers=num_workers,
             object_store_memory=object_store_memory,
+            redis_password=redis_password,
             cleanup=False,
             redirect_worker_output=not no_redirect_worker_output,
             redirect_output=not no_redirect_output,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir)
@@ -363,11 +363,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 @cli.command()
 def stop():
     subprocess.call(
-        [
-            "killall global_scheduler plasma_store_server plasma_manager "
-            "local_scheduler raylet raylet_monitor"
-        ],
-        shell=True)
+        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(

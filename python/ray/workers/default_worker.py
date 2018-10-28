@@ -25,6 +25,12 @@ parser.add_argument(
     type=str,
     help="the address to use for Redis")
 parser.add_argument(
+    "--redis-password",
+    required=False,
+    type=str,
+    default=None,
+    help="the password to use for Redis")
+parser.add_argument(
     "--object-store-name",
     required=True,
     type=str,
@@ -67,6 +73,7 @@ if __name__ == "__main__":
     info = {
         "node_ip_address": args.node_ip_address,
         "redis_address": args.redis_address,
+        "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
         "manager_socket_name": args.object_store_manager_name,
         "local_scheduler_socket_name": args.local_scheduler_name,
@@ -81,7 +88,7 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))
+        info, mode=ray.WORKER_MODE, redis_password=args.redis_password)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
@@ -96,7 +103,7 @@ if __name__ == "__main__":
         # main_loop. If an exception is thrown here, then that means that
         # there is some error that we didn't anticipate.
         ray.worker.global_worker.main_loop()
-    except Exception as e:
+    except Exception:
         traceback_str = traceback.format_exc() + error_explanation
         ray.utils.push_error_to_driver(
             ray.worker.global_worker,

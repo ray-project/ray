@@ -9,7 +9,7 @@ import traceback
 
 import ray.cloudpickle as pickle
 from ray.function_manager import FunctionActorManager
-import ray.local_scheduler
+import ray.raylet
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
@@ -501,6 +501,7 @@ class ActorHandle(object):
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
         self._ray_previous_actor_handle_id = previous_actor_handle_id
+        self._ray_previously_generated_actor_handle_id = None
 
     def _actor_method_call(self,
                            method_name,
@@ -554,10 +555,22 @@ class ActorHandle(object):
 
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
+        # Right now, if the actor handle has been pickled, we create a
+        # temporary actor handle id for invocations.
+        # TODO(pcm): This still leads to a lot of actor handles being
+        # created, there should be a better way to handle pickled
+        # actor handles.
         if self._ray_actor_handle_id is None:
             actor_handle_id = compute_actor_handle_id_non_forked(
                 self._ray_actor_id, self._ray_previous_actor_handle_id,
                 worker.current_task_id)
+            # Each new task creates a new actor handle id, so we need to
+            # reset the actor counter to 0
+            if (actor_handle_id !=
+                    self._ray_previously_generated_actor_handle_id):
+                self._ray_actor_counter = 0
+                self._ray_previously_generated_actor_handle_id = (
+                    actor_handle_id)
         else:
             actor_handle_id = self._ray_actor_handle_id
 

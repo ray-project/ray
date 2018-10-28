@@ -21,7 +21,17 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("");
     newLine("package org.ray.api;");
     newLine("");
-    newLine("import org.ray.api.function.*;");
+    newLine("import org.ray.api.function.RayFunc;");
+    newLine("import org.ray.api.function.RayFunc0;");
+    newLine("import org.ray.api.function.RayFunc1;");
+    newLine("import org.ray.api.function.RayFunc2;");
+    newLine("import org.ray.api.function.RayFunc3;");
+    newLine("import org.ray.api.function.RayFunc4;");
+    newLine("import org.ray.api.function.RayFunc5;");
+    newLine("import org.ray.api.function.RayFunc6;");
+    newLine("import org.ray.api.options.ActorCreationOptions;");
+    newLine("import org.ray.api.options.BaseTaskOptions;");
+    newLine("import org.ray.api.options.CallOptions;");
     newLine("");
 
     newLine("/**");
@@ -33,19 +43,21 @@ public class RayCallGenerator extends BaseGenerator {
     newLine(1, "// Methods for remote function invocation.");
     newLine(1, "// =======================================");
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
-      buildCalls(i, false, false);
+      buildCalls(i, false, false, false);
+      buildCalls(i, false, false, true);
     }
     newLine(1, "// ===========================================");
     newLine(1, "// Methods for remote actor method invocation.");
     newLine(1, "// ===========================================");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
-      buildCalls(i, true, false);
+      buildCalls(i, true, false, false);
     }
     newLine(1, "// ===========================");
     newLine(1, "// Methods for actor creation.");
     newLine(1, "// ===========================");
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
-      buildCalls(i, false, true);
+      buildCalls(i, false, true, false);
+      buildCalls(i, false, true, true);
     }
     newLine("}");
     return sb.toString();
@@ -57,7 +69,8 @@ public class RayCallGenerator extends BaseGenerator {
    * @param forActor build actor api when true, otherwise build task api.
    * @param forActorCreation build `Ray.createActor` when true, otherwise build `Ray.call`.
    */
-  private void buildCalls(int numParameters, boolean forActor, boolean forActorCreation) {
+  private void buildCalls(int numParameters, boolean forActor,
+      boolean forActorCreation, boolean hasOptionsParam) {
     String genericTypes = "";
     String argList = "";
     for (int i = 0; i < numParameters; i++) {
@@ -82,18 +95,36 @@ public class RayCallGenerator extends BaseGenerator {
       paramPrefix += ", ";
     }
 
+    String optionsParam;
+    if (hasOptionsParam) {
+      optionsParam = forActorCreation ? ", ActorCreationOptions options" : ", CallOptions options";
+    } else {
+      optionsParam = "";
+    }
+
+    String optionsArg;
+    if (forActor) {
+      optionsArg = "";
+    } else {
+      if (hasOptionsParam) {
+        optionsArg = ", options";
+      } else {
+        optionsArg = ", null";
+      }
+    }
+
     String returnType = !forActorCreation ? "RayObject<R>" : "RayActor<A>";
     String funcName = !forActorCreation ? "call" : "createActor";
     String funcArgs = !forActor ? "f, args" : "f, actor, args";
     for (String param : generateParameters(0, numParameters)) {
       // method signature
       newLine(1, String.format(
-          "public static <%s> %s %s(%s) {",
-          genericTypes, returnType, funcName, paramPrefix + param
+          "public static <%s> %s %s(%s%s) {",
+          genericTypes, returnType, funcName, paramPrefix + param, optionsParam
       ));
       // method body
       newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
-      newLine(2, String.format("return Ray.internal().%s(%s);", funcName, funcArgs));
+      newLine(2, String.format("return Ray.internal().%s(%s%s);", funcName, funcArgs, optionsArg));
       newLine(1, "}");
     }
   }

@@ -53,8 +53,8 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504
-        - .travis/yapf.sh --all
+        - flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+        - .travis/format.sh --all
 
     - os: linux
       dist: trusty
@@ -69,15 +69,8 @@ matrix:
 
       script:
         - cd build
-        - bash ../src/common/test/run_valgrind.sh
-        - bash ../src/plasma/test/run_valgrind.sh
-        - bash ../src/local_scheduler/test/run_valgrind.sh
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
-
-        - python ./python/ray/plasma/test/test.py valgrind
-        - python ./python/ray/local_scheduler/test/test.py valgrind
-        # - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
     - os: linux
@@ -107,66 +100,6 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
-        - RAY_USE_XRAY=1
-
-    - os: linux
-      dist: trusty
-      env: PYTHON=3.5 RAY_USE_XRAY=1
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./.travis/install-ray.sh
-        - ./.travis/install-cython-examples.sh
-      script:
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        # The following is needed so cloudpickle can find some of the
-        # class definitions: The main module of tests that are run
-        # with pytest have the same name as the test file -- and this
-        # module is only found if the test directory is in the PYTHONPATH.
-        - export PYTHONPATH="$PYTHONPATH:./test/"
-
-        - python -m pytest -v python/ray/common/test/test.py
-        - python -m pytest -v python/ray/common/redis_module/runtest.py
-        - python -m pytest -v python/ray/plasma/test/test.py
-        # - python -m pytest -v python/ray/local_scheduler/test/test.py
-        # - python -m pytest -v python/ray/global_scheduler/test/test.py
-
-        - python -m pytest -v python/ray/test/test_global_state.py
-        - python -m pytest -v python/ray/test/test_queue.py
-        - python -m pytest -v test/xray_test.py
-
-        - python -m pytest -v test/runtest.py
-        - python -m pytest -v test/array_test.py
-        - python -m pytest -v test/actor_test.py
-        - python -m pytest -v test/autoscaler_test.py
-        - python -m pytest -v test/tensorflow_test.py
-        - python -m pytest -v test/failure_test.py
-        - python -m pytest -v test/microbenchmarks.py
-        - python -m pytest -v test/stress_tests.py
-        - pytest test/component_failures_test.py
-        - python test/multi_node_test.py
-        - python -m pytest -v test/recursion_test.py
-        - pytest test/monitor_test.py
-        - python -m pytest -v test/cython_test.py
-        - python -m pytest -v test/credis_test.py
-
-        # ray tune tests
-        - python python/ray/tune/test/dependency_test.py
-        - python -m pytest -v python/ray/tune/test/trial_runner_test.py
-        - python -m pytest -v python/ray/tune/test/trial_scheduler_test.py
-        - python -m pytest -v python/ray/tune/test/experiment_test.py
-        - python -m pytest -v python/ray/tune/test/tune_server_test.py
-        - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
-        - python -m pytest -v python/ray/tune/test/automl_searcher_test.py
-
-        # ray rllib tests
-        - python -m pytest -v python/ray/rllib/test/test_catalog.py
-        - python -m pytest -v python/ray/rllib/test/test_filters.py
-        - python -m pytest -v python/ray/rllib/test/test_optimizers.py
-        - python -m pytest -v python/ray/rllib/test/test_evaluators.py
-
-        # ray temp file tests
-        - python -m pytest -v test/tempfile_test.py
 
 
 install:
@@ -184,12 +117,10 @@ install:
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
   - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/raylet/client_connection_test
   - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
   - ./src/ray/util/signal_test
 
-  - bash ../src/common/test/run_tests.sh
-  - bash ../src/plasma/test/run_tests.sh
-  - bash ../src/local_scheduler/test/run_tests.sh
   - cd ..
 
 script:
@@ -200,14 +131,9 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest -v python/ray/common/test/test.py
-  - python -m pytest -v python/ray/common/redis_module/runtest.py
-  - python -m pytest -v python/ray/plasma/test/test.py
-  - python -m pytest -v python/ray/local_scheduler/test/test.py
-  - python -m pytest -v python/ray/global_scheduler/test/test.py
-
   - python -m pytest -v python/ray/test/test_global_state.py
   - python -m pytest -v python/ray/test/test_queue.py
+  - python -m pytest -v python/ray/test/test_ray_init.py
   - python -m pytest -v test/xray_test.py
 
   - python -m pytest -v test/runtest.py
@@ -219,7 +145,8 @@ script:
   - python -m pytest -v test/microbenchmarks.py
   - python -m pytest -v test/stress_tests.py
   - python -m pytest -v test/component_failures_test.py
-  - python test/multi_node_test.py
+  - python -m pytest -v test/multi_node_test.py
+  - python -m pytest -v test/multi_node_test_2.py
   - python -m pytest -v test/recursion_test.py
   - python -m pytest -v test/monitor_test.py
   - python -m pytest -v test/cython_test.py

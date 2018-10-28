@@ -13,9 +13,9 @@ import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.generated.Arg;
+import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
-import org.ray.runtime.generated.TaskLanguage;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
@@ -229,7 +229,7 @@ public class RayletClientImpl implements RayletClient {
         actorIdOffset, actorHandleIdOffset, actorCounter,
         false, functionIdOffset,
         argsOffset, returnsOffset, requiredResourcesOffset,
-        requiredPlacementResourcesOffset, TaskLanguage.JAVA,
+        requiredPlacementResourcesOffset, Language.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
@@ -256,8 +256,8 @@ public class RayletClientImpl implements RayletClient {
   /// 1) pushd $Dir/java/runtime/target/classes
   /// 2) javah -classpath .:$Dir/java/api/target/classes org.ray.runtime.raylet.RayletClientImpl
   /// 3) clang-format -i org_ray_runtime_raylet_RayletClientImpl.h
-  /// 4) cp org_ray_runtime_raylet_RayletClientImpl.h $Dir/src/local_scheduler/lib/java/
-  /// 5) vim $Dir/src/local_scheduler/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
+  /// 4) cp org_ray_runtime_raylet_RayletClientImpl.h $Dir/src/ray/raylet/lib/java/
+  /// 5) vim $Dir/src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
   /// 6) popd
 
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,

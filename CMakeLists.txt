@@ -82,18 +82,15 @@ include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
 include_directories("${CMAKE_CURRENT_LIST_DIR}/src/")
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/ray/)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/common/)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/plasma/)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/local_scheduler/)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
 
 # final target copy_ray
 add_custom_target(copy_ray ALL)
 
 # copy plasma_store_server
 add_custom_command(TARGET copy_ray POST_BUILD
+  COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/src/plasma
   COMMAND ${CMAKE_COMMAND} -E
-    copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_CURRENT_BINARY_DIR}/src/plasma)
+    copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_CURRENT_BINARY_DIR}/src/plasma/)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # add pyarrow as the dependency
@@ -102,12 +99,9 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   # NOTE: The lists below must be kept in sync with ray/python/setup.py.
 
   set(ray_file_list
-        "src/common/thirdparty/redis/src/redis-server"
-        "src/common/redis_module/libray_redis_module.so"
-        "src/plasma/plasma_manager"
-        "src/local_scheduler/local_scheduler"
-        "src/local_scheduler/liblocal_scheduler_library_python.so"
-        "src/global_scheduler/global_scheduler"
+        "src/ray/thirdparty/redis/src/redis-server"
+        "src/ray/gcs/redis_module/libray_redis_module.so"
+        "src/ray/raylet/liblocal_scheduler_library_python.so"
         "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
 
@@ -154,5 +148,6 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
 
   # copy libplasma_java files
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND bash -c "cp ${ARROW_LIBRARY_DIR}/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma")
+    COMMAND bash -c "mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/src/plasma"
+    COMMAND bash -c "cp ${ARROW_LIBRARY_DIR}/libplasma_java.* ${CMAKE_CURRENT_BINARY_DIR}/src/plasma/")
 endif()
