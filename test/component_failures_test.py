@@ -216,7 +216,6 @@ def ray_start_workers_separate_multinode(request):
     num_initial_workers = request.param[1]
     # Start the Ray processes.
     ray.worker._init(
-        num_workers=(num_initial_workers * num_local_schedulers),
         num_local_schedulers=num_local_schedulers,
         start_workers_from_local_scheduler=False,
         start_ray_local=True,
@@ -260,7 +259,6 @@ def _test_component_failed(component_type):
     num_local_schedulers = 4
     num_workers_per_scheduler = 8
     ray.worker._init(
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         start_ray_local=True,
         num_cpus=[num_workers_per_scheduler] * num_local_schedulers,

@@ -849,6 +849,8 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  resources=None,
+                 object_manager_port=None,
+                 node_manager_port=None,
                  num_workers=0,
                  use_valgrind=False,
                  use_profiler=False,
@@ -867,6 +869,13 @@ def start_raylet(redis_address,
         raylet_name (str): The name of the raylet socket to create.
         worker_path (str): The path of the script to use when the local
             scheduler starts up new workers.
+        resources: The resources that this raylet has.
+        object_manager_port (int): The port to use for the object manager. If
+            this is not provided, we will use 0 and the object manager will
+            choose its own port.
+        node_manager_port (int): The port to use for the node manager. If
+            this is not provided, we will use 0 and the node manager will
+            choose its own port.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -915,10 +924,21 @@ def start_raylet(redis_address,
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
+    # If the object manager port is None, then use 0 to cause the object
+    # manager to choose its own port.
+    if object_manager_port is None:
+        object_manager_port = 0
+    # If the node manager port is None, then use 0 to cause the node manager
+    # to choose its own port.
+    if node_manager_port is None:
+        node_manager_port = 0
+
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
         plasma_store_name,
+        str(object_manager_port),
+        str(node_manager_port),
         node_ip_address,
         gcs_ip_address,
         gcs_port,
@@ -957,12 +977,80 @@ def start_raylet(redis_address,
     return raylet_name
 
 
+def determine_plasma_store_config(object_store_memory=None,
+                                  plasma_directory=None,
+                                  huge_pages=False):
+    """Figure out how to configure the plasma object store.
+
+    This will determine which directory to use for the plasma store (e.g.,
+    /tmp or /dev/shm) and how much memory to start the store with. On Linux,
+    we will try to use /dev/shm unless the shared memory file system is too
+    small, in which case we will fall back to /tmp. If any of the object store
+    memory or plasma directory parameters are specified by the user, then those
+    values will be preserved.
+
+    Args:
+        object_store_memory (int): The user-specified object store memory
+            parameter.
+        plasma_directory (str): The user-specified plasma directory parameter.
+        huge_pages (bool): The user-specified huge pages parameter.
+
+    Returns:
+        A tuple of the object store memory to use and the plasma directory to
+            use. If either of these values is specified by the user, then that
+            value will be preserved.
+    """
+    system_memory = ray.utils.get_system_memory()
+
+    # Choose a default object store size.
+    if object_store_memory is None:
+        object_store_memory = int(system_memory * 0.4)
+
+    if plasma_directory is not None:
+        plasma_directory = os.path.abspath(plasma_directory)
+
+    # Determine which directory to use. By default, use /tmp on MacOS and
+    # /dev/shm on Linux, unless the shared-memory file system is too small,
+    # in which case we default to /tmp on Linux.
+    if plasma_directory is None:
+        if sys.platform == "linux" or sys.platform == "linux2":
+            shm_avail = ray.utils.get_shared_memory_bytes()
+            # Compare the requested memory size to the memory available in
+            # /dev/shm.
+            if shm_avail > object_store_memory:
+                plasma_directory = "/dev/shm"
+            else:
+                plasma_directory = "/tmp"
+                logger.warning(
+                    "WARNING: The object store is using /tmp instead of "
+                    "/dev/shm because /dev/shm has only {} bytes available. "
+                    "This may slow down performance! You may be able to free "
+                    "up space by deleting files in /dev/shm or terminating "
+                    "any running plasma_store_server processes. If you are "
+                    "inside a Docker container, you may need to pass an "
+                    "argument with the flag '--shm-size' to 'docker run'."
+                    .format(shm_avail))
+        else:
+            plasma_directory = "/tmp"
+
+    # Do some sanity checks.
+    if object_store_memory > system_memory:
+        raise Exception("The requested object store memory size is greater "
+                        "than the total available memory.")
+
+    if not os.path.isdir(plasma_directory):
+        raise Exception("The file {} does not exist or is not a directory."
+                        .format(plasma_directory))
+
+    return object_store_memory, plasma_directory
+
+
 def start_plasma_store(node_ip_address,
                        redis_address,
                        object_manager_port=None,
                        store_stdout_file=None,
                        store_stderr_file=None,
-                       objstore_memory=None,
+                       object_store_memory=None,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
@@ -980,8 +1068,8 @@ def start_plasma_store(node_ip_address,
             to. If no redirection should happen, then this should be None.
         store_stderr_file: A file handle opened for writing to redirect stderr
             to. If no redirection should happen, then this should be None.
-        objstore_memory: The amount of memory (in bytes) to start the object
-            store with.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
@@ -994,41 +1082,16 @@ def start_plasma_store(node_ip_address,
     Return:
         The Plasma store socket name.
     """
-    if objstore_memory is None:
-        # Compute a fraction of the system memory for the Plasma store to use.
-        system_memory = ray.utils.get_system_memory()
-        if sys.platform == "linux" or sys.platform == "linux2":
-            # On linux we use /dev/shm, its size is half the size of the
-            # physical memory. To not overflow it, we set the plasma memory
-            # limit to 0.4 times the size of the physical memory.
-            objstore_memory = int(system_memory * 0.4)
-            # Compare the requested memory size to the memory available in
-            # /dev/shm.
-            shm_fd = os.open("/dev/shm", os.O_RDONLY)
-            try:
-                shm_fs_stats = os.fstatvfs(shm_fd)
-                # The value shm_fs_stats.f_bsize is the block size and the
-                # value shm_fs_stats.f_bavail is the number of available
-                # blocks.
-                shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
-                if objstore_memory > shm_avail:
-                    logger.warning(
-                        "Warning: Reducing object store memory because "
-                        "/dev/shm has only {} bytes available. You may be "
-                        "able to free up space by deleting files in "
-                        "/dev/shm. If you are inside a Docker container, "
-                        "you may need to pass an argument with the flag "
-                        "'--shm-size' to 'docker run'.".format(shm_avail))
-                    objstore_memory = int(shm_avail * 0.8)
-            finally:
-                os.close(shm_fd)
-        else:
-            objstore_memory = int(system_memory * 0.8)
+    object_store_memory, plasma_directory = determine_plasma_store_config(
+        object_store_memory, plasma_directory, huge_pages)
+
+    # Print the object store memory using two decimal places.
+    object_store_memory_str = (object_store_memory / 10**7) / 10**2
+    logger.info("Starting the Plasma object store with {} GB memory "
+                "using {}.".format(object_store_memory_str, plasma_directory))
     # Start the Plasma store.
-    logger.info("Starting the Plasma object store with {0:.2f} GB memory."
-                .format(objstore_memory / 10**9))
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
-        plasma_store_memory=objstore_memory,
+        plasma_store_memory=object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=store_stdout_file,
         stderr_file=store_stderr_file,
@@ -1159,6 +1222,8 @@ def start_raylet_monitor(redis_address,
 
 
 def start_ray_processes(address_info=None,
+                        object_manager_ports=None,
+                        node_manager_ports=None,
                         node_ip_address="127.0.0.1",
                         redis_port=None,
                         redis_shard_ports=None,
@@ -1188,6 +1253,12 @@ def start_ray_processes(address_info=None,
         address_info (dict): A dictionary with address information for
             processes that have already been started. If provided, address_info
             will be modified to include processes that are newly started.
+        object_manager_ports (list): A list of the ports to use for the object
+            managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
+            this node (typically just one).
         node_ip_address (str): The IP address of this node.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen. If the key
@@ -1257,7 +1328,8 @@ def start_ray_processes(address_info=None,
         resources = num_local_schedulers * [resources]
 
     if num_workers is not None:
-        workers_per_local_scheduler = num_local_schedulers * [num_workers]
+        raise Exception("The 'num_workers' argument is deprecated. Please use "
+                        "'num_cpus' instead.")
     else:
         workers_per_local_scheduler = []
         for resource_dict in resources:
@@ -1341,11 +1413,14 @@ def start_ray_processes(address_info=None,
     raylet_socket_names = address_info["raylet_socket_names"]
 
     # Get the ports to use for the object managers if any are provided.
-    object_manager_ports = (address_info["object_manager_ports"] if
-                            "object_manager_ports" in address_info else None)
     if not isinstance(object_manager_ports, list):
+        assert object_manager_ports is None or num_local_schedulers == 1
         object_manager_ports = num_local_schedulers * [object_manager_ports]
     assert len(object_manager_ports) == num_local_schedulers
+    if not isinstance(node_manager_ports, list):
+        assert node_manager_ports is None or num_local_schedulers == 1
+        node_manager_ports = num_local_schedulers * [node_manager_ports]
+    assert len(node_manager_ports) == num_local_schedulers
 
     # Start any object stores that do not yet exist.
     for i in range(num_local_schedulers - len(object_store_addresses)):
@@ -1358,7 +1433,7 @@ def start_ray_processes(address_info=None,
             redis_address,
             store_stdout_file=plasma_store_stdout_file,
             store_stderr_file=plasma_store_stderr_file,
-            objstore_memory=object_store_memory,
+            object_store_memory=object_store_memory,
             cleanup=cleanup,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
@@ -1378,6 +1453,8 @@ def start_ray_processes(address_info=None,
                 raylet_socket_name or get_raylet_socket_name(),
                 object_store_addresses[i],
                 worker_path,
+                object_manager_port=object_manager_ports[i],
+                node_manager_port=node_manager_ports[i],
                 resources=resources[i],
                 num_workers=workers_per_local_scheduler[i],
                 stdout_file=raylet_stdout_file,
@@ -1402,7 +1479,8 @@ def start_ray_processes(address_info=None,
 def start_ray_node(node_ip_address,
                    redis_address,
                    object_manager_ports=None,
-                   num_workers=0,
+                   node_manager_ports=None,
+                   num_workers=None,
                    num_local_schedulers=1,
                    object_store_memory=None,
                    redis_password=None,
@@ -1426,6 +1504,9 @@ def start_ray_node(node_ip_address,
         redis_address (str): The address of the Redis server.
         object_manager_ports (list): A list of the ports to use for the object
             managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
             this node (typically just one).
         num_workers (int): The number of workers to start.
         num_local_schedulers (int): The number of local schedulers to start.
@@ -1463,10 +1544,11 @@ def start_ray_node(node_ip_address,
     """
     address_info = {
         "redis_address": redis_address,
-        "object_manager_ports": object_manager_ports
     }
     return start_ray_processes(
         address_info=address_info,
+        object_manager_ports=object_manager_ports,
+        node_manager_ports=node_manager_ports,
         node_ip_address=node_ip_address,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
@@ -1486,10 +1568,12 @@ def start_ray_node(node_ip_address,
 
 
 def start_ray_head(address_info=None,
+                   object_manager_ports=None,
+                   node_manager_ports=None,
                    node_ip_address="127.0.0.1",
                    redis_port=None,
                    redis_shard_ports=None,
-                   num_workers=0,
+                   num_workers=None,
                    num_local_schedulers=1,
                    object_store_memory=None,
                    worker_path=None,
@@ -1514,6 +1598,12 @@ def start_ray_head(address_info=None,
         address_info (dict): A dictionary with address information for
             processes that have already been started. If provided, address_info
             will be modified to include processes that are newly started.
+        object_manager_ports (list): A list of the ports to use for the object
+            managers. There should be one per object manager being started on
+            this node (typically just one).
+        node_manager_ports (list): A list of the ports to use for the node
+            managers. There should be one per node manager being started on
+            this node (typically just one).
         node_ip_address (str): The IP address of this node.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen. If the key
@@ -1570,6 +1660,8 @@ def start_ray_head(address_info=None,
     num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
     return start_ray_processes(
         address_info=address_info,
+        object_manager_ports=object_manager_ports,
+        node_manager_ports=node_manager_ports,
         node_ip_address=node_ip_address,
         redis_port=redis_port,
         redis_shard_ports=redis_shard_ports,

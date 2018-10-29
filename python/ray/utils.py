@@ -324,6 +324,28 @@ def get_system_memory():
         return sysctl(["sysctl", "hw.memsize"])
 
 
+def get_shared_memory_bytes():
+    """Get the size of the shared memory file system.
+
+    Returns:
+        The size of the shared memory file system in bytes.
+    """
+    # Make sure this is only called on Linux.
+    assert sys.platform == "linux" or sys.platform == "linux2"
+
+    shm_fd = os.open("/dev/shm", os.O_RDONLY)
+    try:
+        shm_fs_stats = os.fstatvfs(shm_fd)
+        # The value shm_fs_stats.f_bsize is the block size and the
+        # value shm_fs_stats.f_bavail is the number of available
+        # blocks.
+        shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
+    finally:
+        os.close(shm_fd)
+
+    return shm_avail
+
+
 def check_oversized_pickle(pickled, name, obj_type, worker):
     """Send a warning message if the pickled object is too large.
 

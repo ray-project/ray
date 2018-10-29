@@ -23,15 +23,23 @@ namespace ray {
 namespace raylet {
 
 struct NodeManagerConfig {
+  /// The node's resource configuration.
   ResourceSet resource_config;
+  /// The port to use for listening to incoming connections. If this is 0 then
+  /// the node manager will choose its own port.
+  int node_manager_port;
+  /// The initial number of workers to create.
   int num_initial_workers;
+  /// The number of workers per process.
   int num_workers_per_process;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   std::unordered_map<Language, std::vector<std::string>> worker_commands;
+  /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
+  /// the maximum lineage size.
   uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
