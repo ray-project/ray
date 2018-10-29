@@ -179,6 +179,8 @@ public class RunManager {
         rayConfig.rayletExecutablePath,
         rayConfig.rayletSocketName,
         rayConfig.objectStoreSocketName,
+        "0",  // The object manager port.
+        "0",  // The node manager port.
         rayConfig.nodeIp,
         rayConfig.getRedisIp(),
         rayConfig.getRedisPort().toString(),

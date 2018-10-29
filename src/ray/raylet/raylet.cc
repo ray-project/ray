@@ -24,10 +24,13 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
       object_manager_acceptor_(
-          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+          main_service,
+          boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(),
+                                         object_manager_config.object_manager_port)),
       object_manager_socket_(main_service),
-      node_manager_acceptor_(
-          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+      node_manager_acceptor_(main_service, boost::asio::ip::tcp::endpoint(
+                                               boost::asio::ip::tcp::v4(),
+                                               node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
   // Start listening for clients.
   DoAccept();
