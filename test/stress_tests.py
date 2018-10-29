@@ -170,7 +170,7 @@ def ray_start_reconstruction(request):
     # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
     plasma_addresses = []
-    objstore_memory = plasma_store_memory // num_local_schedulers
+    object_store_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
             ray.tempfile_services.new_plasma_store_log_file(i, True))
@@ -178,7 +178,7 @@ def ray_start_reconstruction(request):
             ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
-                objstore_memory=objstore_memory,
+                object_store_memory=object_store_memory,
                 store_stdout_file=store_stdout_file,
                 store_stderr_file=store_stderr_file))
 
