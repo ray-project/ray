@@ -79,7 +79,7 @@ def test_raylet_tempfiles():
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
-    ray.init(redirect_worker_output=True, num_workers=0)
+    ray.init(redirect_worker_output=True, num_cpus=0)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
@@ -93,7 +93,7 @@ def test_raylet_tempfiles():
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
-    ray.init(redirect_worker_output=True, num_workers=2)
+    ray.init(redirect_worker_output=True, num_cpus=2)
     top_levels = set(os.listdir(tempfile_services.get_temp_root()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     time.sleep(3)  # wait workers to start

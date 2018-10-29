@@ -122,6 +122,12 @@ setup(
     name="ray",
     # The version string is also in __init__.py. TODO(pcm): Fix this.
     version="0.5.3",
+    description=("A system for parallel and distributed Python that unifies "
+                 "the ML ecosystem."),
+    long_description=open("../README.rst").read(),
+    url="https://github.com/ray-project/ray",
+    keywords=("ray distributed parallel machine-learning "
+              "reinforcement-learning deep-learning python"),
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
