@@ -2159,8 +2159,8 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works for xray.")
+    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    reason="Hanging with new GCS API.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 

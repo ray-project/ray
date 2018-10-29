@@ -216,4 +216,4 @@ class Node(object):
         Assuming one plasma store per raylet, this may be used as a unique
         identifier for a node.
         """
-        return self.address_info['object_store_addresses'][0].name
+        return self.address_info['object_store_addresses'][0]

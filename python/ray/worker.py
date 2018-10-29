@@ -1979,12 +1979,15 @@ def connect(info,
         # rerun the driver.
         nil_actor_counter = 0
 
-        driver_task = ray.raylet.Task(
-            worker.task_driver_id, ray.ObjectID(NIL_FUNCTION_ID), [], 0,
-            worker.current_task_id, worker.task_index,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID), 0,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            nil_actor_counter, [], {"CPU": 0}, {})
+        driver_task = ray.raylet.Task(worker.task_driver_id,
+                                      ray.ObjectID(NIL_FUNCTION_ID), [], 0,
+                                      worker.current_task_id,
+                                      worker.task_index,
+                                      ray.ObjectID(NIL_ACTOR_ID),
+                                      ray.ObjectID(NIL_ACTOR_ID), 0,
+                                      ray.ObjectID(NIL_ACTOR_ID),
+                                      ray.ObjectID(NIL_ACTOR_ID),
+                                      nil_actor_counter, [], {"CPU": 0}, {})
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
