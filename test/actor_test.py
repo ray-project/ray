@@ -35,8 +35,8 @@ def shutdown_only():
 
 @pytest.fixture
 def head_node_cluster():
-    cluster = ray.test.cluster_utils.Cluster(initialize_head=True,
-                                             connect=True)
+    cluster = ray.test.cluster_utils.Cluster(
+        initialize_head=True, connect=True)
     yield cluster
     # The code after the yield will run as teardown code.
     cluster.shutdown()
@@ -1335,8 +1335,10 @@ def test_many_local_schedulers_dying(head_node_cluster):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    worker_nodes = [head_node_cluster.add_node(resources={"CPU": 3}) for _ in
-                    range(num_local_schedulers)]
+    worker_nodes = [
+        head_node_cluster.add_node(resources={"CPU": 3})
+        for _ in range(num_local_schedulers)
+    ]
 
     @ray.remote(max_reconstructions=1)
     class SlowCounter(object):
@@ -1410,10 +1412,12 @@ def test_actor_init_fails(head_node_cluster):
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 
+
 def test_reconstruction_suppression(head_node_cluster):
     num_local_schedulers = 10
-    worker_nodes = [head_node_cluster.add_node() for _ in
-                    range(num_local_schedulers)]
+    worker_nodes = [
+        head_node_cluster.add_node() for _ in range(num_local_schedulers)
+    ]
 
     @ray.remote(max_reconstructions=1)
     class Counter(object):
@@ -2167,9 +2171,6 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works for xray.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
