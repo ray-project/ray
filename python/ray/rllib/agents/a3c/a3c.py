@@ -84,6 +84,6 @@ class A3CAgent(Agent):
             self.optimizer.step()
         result = self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"])
-        result.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
+                      prev_steps)
         return result
