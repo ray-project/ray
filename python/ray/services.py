@@ -1328,7 +1328,8 @@ def start_ray_processes(address_info=None,
         resources = num_local_schedulers * [resources]
 
     if num_workers is not None:
-        workers_per_local_scheduler = num_local_schedulers * [num_workers]
+        raise Exception("The 'num_workers' argument is deprecated. Please use "
+                        "'num_cpus' instead.")
     else:
         workers_per_local_scheduler = []
         for resource_dict in resources:
@@ -1479,7 +1480,7 @@ def start_ray_node(node_ip_address,
                    redis_address,
                    object_manager_ports=None,
                    node_manager_ports=None,
-                   num_workers=0,
+                   num_workers=None,
                    num_local_schedulers=1,
                    object_store_memory=None,
                    redis_password=None,
@@ -1572,7 +1573,7 @@ def start_ray_head(address_info=None,
                    node_ip_address="127.0.0.1",
                    redis_port=None,
                    redis_shard_ports=None,
-                   num_workers=0,
+                   num_workers=None,
                    num_local_schedulers=1,
                    object_store_memory=None,
                    worker_path=None,
