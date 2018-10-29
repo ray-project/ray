@@ -152,10 +152,8 @@ class Monitor(object):
         task_table_objects = self.state.task_table()
         driver_id_hex = binary_to_hex(driver_id)
         driver_task_id_bins = set()
-        for task_id_hex in task_table_objects:
-            if len(task_table_objects[task_id_hex]) == 0:
-                continue
-            task_table_object = task_table_objects[task_id_hex][0]["TaskSpec"]
+        for task_id_hex, task_info in task_table_objects:
+            task_table_object = task_info["TaskSpec"]
             task_driver_id_hex = task_table_object["DriverID"]
             if driver_id_hex != task_driver_id_hex:
                 # Ignore tasks that aren't from this driver.
@@ -165,8 +163,7 @@ class Monitor(object):
         # Get objects associated with the driver.
         object_table_objects = self.state.object_table()
         driver_object_id_bins = set()
-        for object_id, object_table_object in object_table_objects.items():
-            assert len(object_table_object) > 0
+        for object_id, _ in object_table_objects.items():
             task_id_bin = ray.raylet.compute_task_id(object_id).id()
             if task_id_bin in driver_task_id_bins:
                 driver_object_id_bins.add(object_id.id())
