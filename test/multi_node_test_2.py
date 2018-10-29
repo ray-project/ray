@@ -62,9 +62,6 @@ def test_worker_plasma_store_failure(start_connected_cluster):
     assert not worker.any_processes_alive(), worker.live_processes()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_actor_reconstruction(start_connected_cluster):
     """Test actor reconstruction when node dies unexpectedly."""
     cluster = start_connected_cluster
@@ -72,10 +69,10 @@ def test_actor_reconstruction(start_connected_cluster):
     # Use custom resource to make sure the actor is only created on worker
     # nodes, not on the head node.
     for _ in range(4):
-        cluster.add_node(resources={'a': 1})
+        cluster.add_node(resources={"a": 1})
 
     # This actor will be reconstructed at most once.
-    @ray.remote(max_reconstructions=1, resources={'a': 1})
+    @ray.remote(max_reconstructions=1, resources={"a": 1})
     class MyActor(object):
         def __init__(self):
             self.value = 0
@@ -87,7 +84,6 @@ def test_actor_reconstruction(start_connected_cluster):
         def get_object_store_socket(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-    # This actor will be created on the only node in the cluster.
     actor = MyActor.remote()
 
     def kill_node():
@@ -98,27 +94,27 @@ def test_actor_reconstruction(start_connected_cluster):
         for node in cluster.worker_nodes:
             object_store_sockets = [
                 address.name
-                for address in node.address_info['object_store_addresses']
+                for address in node.address_info["object_store_addresses"]
             ]
             if object_store_socket in object_store_sockets:
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
         return object_store_socket
 
-    # Call increase 3 times
+    # Call increase 3 times.
     for _ in range(3):
         ray.get(actor.increase.remote())
 
-    # Kill actor's node and the actor should be reconstructed on another node
+    # Kill actor's node and the actor should be reconstructed on another node.
     object_store_socket1 = kill_node()
 
     # Call increase again.
-    # Check that actor is reconstructed and value is 4.
+    # Check that the actor is reconstructed and value is 4.
     assert ray.get(actor.increase.remote()) == 4
 
     # Kill the node again.
     object_store_socket2 = kill_node()
-    # Check the actor was created on a different node.
+    # Check that the actor was created on a different node.
     assert object_store_socket1 != object_store_socket2
 
     # The actor has exceeded max reconstructions, and this task should fail.
