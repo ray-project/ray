@@ -120,9 +120,14 @@ class TrialRunner(object):
 
 
     def restore(self, checkpoint_dir):
+        logger.debug("Stopping all trials.")
+        for trial in self._trials:
+            self.stop_trial(trial)
+
         with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             state = pickle.load(f)
 
+        logger.debug("Replacing all trials with checkpoint state.")
         runner_state = state[0]
         self._trials = pickle.loads(runner_state["trials"])
         # The number of resources can be resized to _anything_

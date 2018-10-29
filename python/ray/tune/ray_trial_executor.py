@@ -16,11 +16,6 @@ from ray.tune.trial_executor import TrialExecutor
 logger = logging.getLogger(__name__)
 
 
-class _RayTrialState():
-    def __init__(self, trial):
-        self.trial = trial
-
-
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
@@ -61,12 +56,17 @@ class RayTrialExecutor(TrialExecutor):
         prior_status = trial.status
         trial.status = Trial.RUNNING
         trial.runner = self._setup_runner(trial)
+        logger.debug("Prior status was {}".format(prior_status))
         if not self.restore_trial(trial, checkpoint):
+            logger.debug("No checkpoint detected!")
             return
 
-        # Trial resumed after paused should not run trial.train.remote()
+        # Trial resumed or unpaused after paused should
+        # not run trial.train.remote()
         # because there may have been in-flight result that was not processed.
-        if (prior_status == Trial.PAUSED and trial.next_result is not None):
+        # TODO(rliaw): add test for this
+        if (prior_status in [Trial.PENDING, Trial.PAUSED]
+                and trial.next_result is not None):
             logger.info("Restoring result from in-flight trial.")
             # If Trial was in flight when paused, we restore result.
             self._running[ray.put(trial.next_result)] = trial
@@ -137,6 +137,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
         """Only returns resources if resources allocated."""
+        logger.debug("Stopping trial %s", trial)
         prior_status = trial.status
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
@@ -157,7 +158,6 @@ class RayTrialExecutor(TrialExecutor):
         If trial is in-flight, preserves return value in separate queue
         before pausing, which is restored when Trial is resumed.
         """
-
         super(RayTrialExecutor, self).pause_trial(trial, storage=storage)
         trial_future = self._find_item(self._running, trial)
         if trial_future:
