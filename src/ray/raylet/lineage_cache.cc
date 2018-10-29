@@ -374,7 +374,6 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "evicting task " << task_id << " on " << client_id_;
   lineage_.PopEntry(task_id);
   committed_tasks_.erase(commit_it);
-  UnsubscribeTask(task_id);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
   auto children_entry = children_.find(task_id);
@@ -402,6 +401,9 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   // Record the commit acknowledgement and attempt to evict the task.
   committed_tasks_.insert(task_id);
   EvictTask(task_id);
+  // We got the notification about the task's commit, so no longer need any
+  // more notifications.
+  UnsubscribeTask(task_id);
 }
 
 const Task &LineageCache::GetTask(const TaskID &task_id) const {
