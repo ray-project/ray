@@ -181,9 +181,12 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
   // should be marked as UNCOMMITTED_READY once the task starts execution.
   auto added = lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_WAITING);
 
-  // Do not subscribe to the task itself. We just added it as
+  // Do not subscribe to the waiting task itself. We just added it as
   // UNCOMMITTED_WAITING, so the task is local.
   subscribe_tasks.erase(task_id);
+  // Unsubscribe to the waiting task since we may have previously been
+  // subscribed to it.
+  UnsubscribeTask(task_id);
   // Subscribe to all other tasks that were included in the uncommitted lineage
   // and that were not already in the local stash. These tasks haven't been
   // committed yet and will be committed by a different node, so we will not
