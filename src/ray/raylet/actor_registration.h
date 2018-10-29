@@ -49,7 +49,7 @@ class ActorRegistration {
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
 
-  /// Get actor's driver id.
+  /// Get actor's driver ID.
   const DriverID GetDriverId() const;
 
   /// Get the max number of times this actor should be reconstructed.
@@ -106,7 +106,7 @@ class ActorRegistration {
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
 
-  /// Dummy object ids of this actor's tasks.
+  /// All of the dummy object IDs from this actor's tasks.
   std::vector<ObjectID> dummy_objects_;
 };
 
