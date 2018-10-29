@@ -53,13 +53,21 @@ class RayTrialExecutor(TrialExecutor):
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
+        logger.debug("Prior status was {}".format(prior_status))
         prior_status = trial.status
         trial.status = Trial.RUNNING
-        trial.runner = self._setup_runner(trial)
-        logger.debug("Prior status was {}".format(prior_status))
-        if not self.restore_trial(trial, checkpoint):
-            logger.debug("No checkpoint detected!")
-            return
+
+        valid_checkpoint = not(checkpoint is None or checkpoint.value is None)
+        if valid_checkpoint:
+            if self.restore_trial(trial, checkpoint):
+                logger.debug("Successful restoration of checkpoint.")
+        else:
+            assert trial.runner is None, "Duplicated setup of runner?"
+            trial.runner = self._setup_runner(trial)
+
+        if trial.runner is None:
+            logger.error("Unable to restore - no runner.")
+            trial.status = Trial.ERROR
 
         # Trial resumed or unpaused after paused should
         # not run trial.train.remote()
@@ -115,6 +123,7 @@ class RayTrialExecutor(TrialExecutor):
         """Starts the trial."""
 
         self._commit_resources(trial.resources)
+        checkpoint_obj = checkpoint_obj or trial._checkpoint
         try:
             self._start_trial(trial, checkpoint_obj)
         except Exception:
@@ -152,16 +161,16 @@ class RayTrialExecutor(TrialExecutor):
 
         self._train(trial)
 
-    def pause_trial(self, trial, storage=Checkpoint.MEMORY):
+    def pause_trial(self, trial):
         """Pauses the trial.
 
         If trial is in-flight, preserves return value in separate queue
         before pausing, which is restored when Trial is resumed.
         """
-        super(RayTrialExecutor, self).pause_trial(trial, storage=storage)
         trial_future = self._find_item(self._running, trial)
         if trial_future:
             trial.next_result = ray.get(trial_future)
+        super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
@@ -269,24 +278,22 @@ class RayTrialExecutor(TrialExecutor):
 
     def save_trial(self, trial, storage=Checkpoint.DISK):
         """Saves the trial's state to a checkpoint."""
-        trial._checkpoint.storage = storage
+        trial_state = None
         if storage == Checkpoint.MEMORY:
-            trial._checkpoint.value = trial.runner.save_to_object.remote()
+            value = trial.runner.save_to_object.remote()
         else:
-            trial._checkpoint.value = ray.get(trial.runner.save.remote())
-        return trial._checkpoint.value
+            value = ray.get(trial.runner.save.remote())
+            trial_state = os.path.join(value, "trial.ckpt")
+            with open(trial_state, "wb") as f:
+                pickle.dump(trial, f)
+        ckpt = Checkpoint(storage, value)
+        trial._checkpoint = ckpt
+        return ckpt
 
-    def restore_trial(self, trial, checkpoint=None):
+    def restore_trial(self, trial, checkpoint):
         """Restores training state from a given model checkpoint."""
-        if checkpoint is None or checkpoint.value is None:
-            checkpoint = trial._checkpoint
-        if checkpoint is None or checkpoint.value is None:
-            return True
-        if trial.runner is None:
-            logger.error("Unable to restore - no runner.")
-            trial.status = Trial.ERROR
-            return False
         try:
+            trial.runner = self._setup_runner(trial)
             value = checkpoint.value
             if checkpoint.storage == Checkpoint.MEMORY:
                 assert type(value) != Checkpoint, type(value)
@@ -298,3 +305,10 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception("Error restoring runner.")
             trial.status = Trial.ERROR
             return False
+
+    def recreate_from_checkpoint(self, checkpoint):
+        assert checkpoint.storage == Checkpoint.DISK
+        with open(os.path.join(checkpoint.value, "trial.ckpt"), "rb") as f:
+            trial = pickle.load(f)
+        trial._checkpoint = checkpoint
+        return trial

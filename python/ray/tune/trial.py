@@ -72,7 +72,7 @@ def has_trainable(trainable_name):
 
 
 class Checkpoint(object):
-    """Describes a checkpoint of trial state.
+    """Memento of trial state.
 
     Checkpoint may be saved in different storage.
 
@@ -153,6 +153,8 @@ class Trial(object):
         # Saves an in-flight result that hasn't been processed.
         # Used in pausing and unpausing of trials.
         self.next_result = None
+        # (Ray-specific) Handle to running process for trial
+        self.runner = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
@@ -309,13 +311,17 @@ class Trial(object):
     def __getstate__(self):
         state = self.__dict__.copy()
         if state["status"] == Trial.RUNNING:
-            state["status"] = Trial.PAUSED
+            # This state is PENDING because PAUSED assumes
+            # the checkpoint is in memory.
+            state["status"] = Trial.PENDING
+
         # Remove the unpicklable entries.
         if state["result_logger"]:
             state["result_logger"].flush()
         state["_logger_started"] = bool(state["result_logger"])
         state["result_logger"] = None
-
+        state["_checkpoint"] = None  # Verify that this is fine
+        state["runner"] = None
         return state
 
     def __setstate__(self, state):

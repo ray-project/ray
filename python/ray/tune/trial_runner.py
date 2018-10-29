@@ -91,33 +91,19 @@ class TrialRunner(object):
         self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
+        self._checkpoints = {}
 
 
     def save(self, checkpoint_dir, force=False):
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
-        # TODO(rliaw): we should not need an executor checkpoint -
-        # restoration should automatically repopulate the executor.
-        # executor_checkpoint = self.trial_executor.save(checkpoint_dir)
-        if force:
-            # TODO: Technically, all of these paused trials should
-            # have some handling of the in-flight
-            temp_paused_trials = []
-            for trial in self._trials:
-                if trial.status == Trial.RUNNING:
-                    self.trial_executor.pause_trial(trial, storage=Checkpoint.DISK)
-                    temp_paused_trials += [trial]
         runner_state = {
-            "trials": pickle.dumps(self._trials),
+            "checkpoints": pickle.dumps(list(self._checkpoints.values())),
             "total_time": self._total_time,
             "stop_queue": self._stop_queue
         }
         with open(os.path.join(checkpoint_dir, "experiment.state"), "wb") as f:
-            pickle.dump([runner_state], f)
-        if force:
-            for trial in temp_paused_trials:
-                self.trial_executor.unpause_trial(trial)
-
+            pickle.dump(runner_state, f)
 
     def restore(self, checkpoint_dir):
         logger.debug("Stopping all trials.")
@@ -127,15 +113,15 @@ class TrialRunner(object):
         with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             state = pickle.load(f)
 
-        logger.debug("Replacing all trials with checkpoint state.")
+        logger.info("Replacing all trials with checkpoint state.")
         runner_state = state[0]
-        self._trials = pickle.loads(runner_state["trials"])
-        # The number of resources can be resized to _anything_
+        checkpoints = pickle.loads(runner_state["checkpoints"])
+
+        for ckpt in checkpoints:
+            self.add_trial(self.trial_executor.recreate_from_checkpoint(ckpt))
+
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]
-
-        # self._search_alg.restore(search_alg_checkpoint)
-        # self._scheduler_alg.restore(scheduler_alg_checkpoint)
 
 
     def is_finished(self):
@@ -308,17 +294,14 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                if trial.should_checkpoint(result):
-                    # TODO(rliaw): This is a blocking call
-                    self.trial_executor.save_trial(trial)
+                self._checkpoint_if_needed(trial, result)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                if trial.should_checkpoint(result):
-                    self.trial_executor.save_trial(trial)
+                self._checkpoint_if_needed(trial, result)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -335,6 +318,12 @@ class TrialRunner(object):
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
                     self.trial_executor.stop_trial(trial, True, error_msg)
+
+    def _checkpoint_if_needed(self, trial, result):
+        if trial.should_checkpoint(result):
+            # TODO(rliaw): This is a blocking call
+            checkpoint = self.trial_executor.save_trial(trial)
+            self._checkpoints[trial] = checkpoint
 
     def _try_recover(self, trial, error_msg):
         try:
