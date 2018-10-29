@@ -721,7 +721,7 @@ class Worker(object):
             arguments.append(argument)
         return arguments
 
-    def _store_outputs_in_objstore(self, object_ids, outputs):
+    def _store_outputs_in_object_store(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
 
         This stores the values that were returned by a remote function in the
@@ -819,7 +819,7 @@ class Worker(object):
                 num_returns = len(return_object_ids)
                 if num_returns == 1:
                     outputs = (outputs, )
-                self._store_outputs_in_objstore(return_object_ids, outputs)
+                self._store_outputs_in_object_store(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -831,7 +831,7 @@ class Worker(object):
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
-        self._store_outputs_in_objstore(return_object_ids, failure_objects)
+        self._store_outputs_in_object_store(return_object_ids, failure_objects)
         # Log the error message.
         ray.utils.push_error_to_driver(
             self,
