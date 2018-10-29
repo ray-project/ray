@@ -37,7 +37,6 @@ def ray_start_combination(request):
     # Start the Ray processes.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         num_cpus=10)
     yield num_local_schedulers, num_workers_per_scheduler
@@ -170,7 +169,7 @@ def ray_start_reconstruction(request):
     # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
     plasma_addresses = []
-    objstore_memory = plasma_store_memory // num_local_schedulers
+    object_store_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
             ray.tempfile_services.new_plasma_store_log_file(i, True))
@@ -178,7 +177,7 @@ def ray_start_reconstruction(request):
             ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
-                objstore_memory=objstore_memory,
+                object_store_memory=object_store_memory,
                 store_stdout_file=store_stdout_file,
                 store_stderr_file=store_stderr_file))
 
@@ -191,7 +190,6 @@ def ray_start_reconstruction(request):
     ray.worker._init(
         address_info=address_info,
         start_ray_local=True,
-        num_workers=1,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
         redirect_output=True)

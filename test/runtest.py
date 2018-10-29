@@ -302,7 +302,7 @@ def test_python_workers(shutdown_only):
     # purposes only.
     num_workers = 4
     ray.worker._init(
-        num_workers=num_workers,
+        num_cpus=num_workers,
         start_workers_from_local_scheduler=False,
         start_ray_local=True)
 
@@ -315,7 +315,7 @@ def test_python_workers(shutdown_only):
 
 
 def test_put_get(shutdown_only):
-    ray.init(num_workers=0)
+    ray.init(num_cpus=0)
 
     for i in range(100):
         value_before = i * 10**6
@@ -1150,7 +1150,6 @@ def test_free_objects_multi_node(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=3,
-        num_workers=1,
         num_cpus=[1, 1, 1],
         resources=[{
             "Custom0": 1
@@ -1303,7 +1302,7 @@ def test_local_mode(shutdown_only):
 
 def test_resource_constraints(shutdown_only):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
+    ray.init(num_cpus=10, num_gpus=2)
 
     @ray.remote(num_cpus=0)
     def get_worker_id():
@@ -1379,7 +1378,7 @@ def test_resource_constraints(shutdown_only):
 
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
+    ray.init(num_cpus=10, num_gpus=10)
 
     @ray.remote(num_cpus=0)
     def get_worker_id():
@@ -1668,8 +1667,7 @@ def test_multiple_local_schedulers(shutdown_only):
     address_info = ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=3,
-        num_workers=1,
-        num_cpus=[100, 5, 10],
+        num_cpus=[11, 5, 10],
         num_gpus=[0, 5, 1])
 
     # Define a bunch of remote functions that all return the socket name of
@@ -1944,20 +1942,6 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     ray.get([g.remote() for _ in range(100)])
 
 
-def test_no_workers(shutdown_only):
-    ray.init(num_cpus=1, num_workers=0)
-
-    @ray.remote
-    def f():
-        return 1
-
-    # Make sure we can call a remote function. This will require starting a
-    # new worker.
-    ray.get(f.remote())
-
-    ray.get([f.remote() for _ in range(100)])
-
-
 def test_blocking_tasks(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -2058,11 +2042,9 @@ def test_load_balancing_with_dependencies(shutdown_only):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
-    num_workers = 3
     num_local_schedulers = 3
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
         num_cpus=1)
 
@@ -2248,10 +2230,7 @@ def test_log_file_api(shutdown_only):
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
-    ray.init(
-        redirect_worker_output=True,
-        num_cpus=num_workers,
-        num_workers=num_workers)
+    ray.init(redirect_worker_output=True, num_cpus=num_workers)
 
     @ray.remote
     def f():

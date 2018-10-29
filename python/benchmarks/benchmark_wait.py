@@ -9,7 +9,7 @@ import ray
 
 def setup(*args):
     if not hasattr(setup, "is_initialized"):
-        ray.init(num_workers=4, num_cpus=4)
+        ray.init(num_cpus=4)
         setup.is_initialized = True
 
 
