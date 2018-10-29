@@ -63,7 +63,7 @@ class RayTrialExecutor(TrialExecutor):
         # because there may have been in-flight result that was not processed.
         if (prior_status == Trial.PAUSED and trial.next_result is not None):
             # If Trial was in flight when paused, we restore result.
-            self._running[ray.put(trial.next_result)] = trial
+            self._running[trial.next_result] = trial
             trial.next_result = None
         else:
             self._train(trial)
@@ -159,7 +159,7 @@ class RayTrialExecutor(TrialExecutor):
 
         trial_future = self._find_item(self._running, trial)
         if trial_future:
-            trial.next_result = ray.get(trial_future)
+            trial.next_result = trial_future
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
