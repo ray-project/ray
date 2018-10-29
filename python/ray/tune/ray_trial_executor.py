@@ -93,9 +93,10 @@ class RayTrialExecutor(TrialExecutor):
                 stop_tasks = []
                 stop_tasks.append(trial.runner.stop.remote())
                 stop_tasks.append(trial.runner.__ray_terminate__.remote())
-                # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
+                if unfinished:
+                    logger.warning("Trial not fully stopped but moving on.")
         except Exception:
             logger.exception("Error stopping runner.")
             trial.status = Trial.ERROR
@@ -130,7 +131,11 @@ class RayTrialExecutor(TrialExecutor):
         return out
 
     def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
-        """Only returns resources if resources allocated."""
+        """Only returns resources if resources allocated.
+
+        If trial is running, the next result future will be removed from
+        the waiting queue.
+        """
         prior_status = trial.status
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
@@ -152,10 +157,10 @@ class RayTrialExecutor(TrialExecutor):
         before pausing, which is restored when Trial is resumed.
         """
 
-        super(RayTrialExecutor, self).pause_trial(trial)
         trial_future = self._find_item(self._running, trial)
         if trial_future:
             trial.next_result = ray.get(trial_future)
+        super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.

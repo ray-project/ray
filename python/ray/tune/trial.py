@@ -149,9 +149,10 @@ class Trial(object):
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
+
+        # The last result processed for this trial.
         self.last_result = None
-        # Saves an in-flight result that hasn't been processed.
-        # Used in pausing and unpausing of trials.
+        # An un-processed in-flight result used in pausing/unpausing of trials.
         self.next_result = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end

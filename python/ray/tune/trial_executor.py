@@ -85,7 +85,7 @@ class TrialExecutor(object):
         pass
 
     def pause_trial(self, trial):
-        """Pauses the trial.
+        """Pauses the trial by checkpointing and then stopping the actor.
 
         We want to release resources (specifically GPUs) when pausing an
         experiment. This results in PAUSED state that similar to TERMINATED.
