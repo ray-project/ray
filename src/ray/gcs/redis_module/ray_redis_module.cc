@@ -544,6 +544,10 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
   if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
     RAY_CHECK(RedisModule_ZsetRem(notification_key, client_channel, NULL) ==
               REDISMODULE_OK);
+    size_t size = RedisModule_ValueLength(notification_key);
+    if (size == 0) {
+      CHECK_ERROR(RedisModule_DeleteKey(notification_key), "Unable to delete zset key.");
+    }
   }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");

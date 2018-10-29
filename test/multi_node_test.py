@@ -281,9 +281,12 @@ def test_calling_start_ray_head():
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
     subprocess.Popen(["ray", "stop"]).wait()
 
-    # Test starting Ray with an object manager port specified.
-    run_and_get_output(
-        ["ray", "start", "--head", "--object-manager-port", "12345"])
+    # Test starting Ray with the object manager and node manager ports
+    # specified.
+    run_and_get_output([
+        "ray", "start", "--head", "--object-manager-port", "12345",
+        "--node-manager-port", "54321"
+    ])
     subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with the number of CPUs specified.

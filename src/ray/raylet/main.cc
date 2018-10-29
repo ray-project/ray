@@ -20,19 +20,21 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 11 || argc == 12);
+  RAY_CHECK(argc == 13 || argc == 14);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
-  const std::string node_ip_address = std::string(argv[3]);
-  const std::string redis_address = std::string(argv[4]);
-  int redis_port = std::stoi(argv[5]);
-  int num_initial_workers = std::stoi(argv[6]);
-  int maximum_startup_concurrency = std::stoi(argv[7]);
-  const std::string static_resource_list = std::string(argv[8]);
-  const std::string python_worker_command = std::string(argv[9]);
-  const std::string java_worker_command = std::string(argv[10]);
-  const std::string redis_password = (argc == 12 ? std::string(argv[11]) : "");
+  int object_manager_port = std::stoi(argv[3]);
+  int node_manager_port = std::stoi(argv[4]);
+  const std::string node_ip_address = std::string(argv[5]);
+  const std::string redis_address = std::string(argv[6]);
+  int redis_port = std::stoi(argv[7]);
+  int num_initial_workers = std::stoi(argv[8]);
+  int maximum_startup_concurrency = std::stoi(argv[9]);
+  const std::string static_resource_list = std::string(argv[10]);
+  const std::string python_worker_command = std::string(argv[11]);
+  const std::string java_worker_command = std::string(argv[12]);
+  const std::string redis_password = (argc == 14 ? std::string(argv[13]) : "");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -51,6 +53,7 @@ int main(int argc, char *argv[]) {
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
+  node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
@@ -76,6 +79,7 @@ int main(int argc, char *argv[]) {
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
+  object_manager_config.object_manager_port = object_manager_port;
   object_manager_config.store_socket_name = store_socket_name;
   object_manager_config.pull_timeout_ms =
       RayConfig::instance().object_manager_pull_timeout_ms();
