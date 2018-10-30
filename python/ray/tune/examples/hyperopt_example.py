@@ -48,7 +48,7 @@ if __name__ == '__main__':
             "run": "exp",
             "num_samples": 10 if args.smoke_test else 1000,
             "stop": {
-                "training_iteration": 100
+                "timesteps_total": 100
             },
         }
     }
