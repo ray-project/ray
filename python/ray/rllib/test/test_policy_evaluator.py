@@ -28,7 +28,11 @@ class MockPolicyGraph(PolicyGraph):
                         episodes=None):
         return [0] * len(obs_batch), [], {}
 
-    def postprocess_trajectory(self, batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               batch,
+                               other_agent_batches=None,
+                               episode=None):
+        assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -42,7 +46,11 @@ class BadPolicyGraph(PolicyGraph):
                         episodes=None):
         raise Exception("intentional error")
 
-    def postprocess_trajectory(self, batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               batch,
+                               other_agent_batches=None,
+                               episode=None):
+        assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
