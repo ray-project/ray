@@ -17,10 +17,11 @@ from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.compression import pack
-from ray.rllib.utils.filter import get_filter
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.compression import pack
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
@@ -299,8 +300,7 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_map = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
-            merged_conf = policy_config.copy()
-            merged_conf.update(conf)
+            merged_conf = merge_dicts(policy_config, conf)
             with tf.variable_scope(name):
                 if isinstance(obs_space, gym.spaces.Dict):
                     raise ValueError(
