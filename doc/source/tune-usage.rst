@@ -193,8 +193,11 @@ Using GPUs (Resource Allocation)
 
 Tune will allocate the specified GPU and CPU ``trial_resources`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
+Fractional values are also supported, (i.e., `"gpu": 0.2`). You can find an example of this in the `Keras MNIST example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_keras.py>`__.
+
 If GPU resources are not requested, the ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 Otherwise, it will be set to the GPUs in the list (this is managed by Ray).
+
 
 If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots for the actors you will create. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
 
