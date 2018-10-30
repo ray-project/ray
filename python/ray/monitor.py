@@ -152,7 +152,7 @@ class Monitor(object):
         task_table_objects = self.state.task_table()
         driver_id_hex = binary_to_hex(driver_id)
         driver_task_id_bins = set()
-        for task_id_hex, task_info in task_table_objects:
+        for task_id_hex, task_info in task_table_objects.items():
             task_table_object = task_info["TaskSpec"]
             task_driver_id_hex = task_table_object["DriverID"]
             if driver_id_hex != task_driver_id_hex:
