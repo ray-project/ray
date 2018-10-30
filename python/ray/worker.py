@@ -1944,8 +1944,7 @@ def connect(info,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    worker.plasma_client = thread_safe_client(
-        plasma.connect(info["store_socket_name"], "", 64))
+    worker.plasma_client = plasma.connect(info["store_socket_name"], "", 64)
 
     local_scheduler_socket = info["raylet_socket_name"]
 
