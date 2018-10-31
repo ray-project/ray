@@ -26,7 +26,7 @@ COMMON_CONFIG = {
     # === Debugging ===
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Set the RLlib log level for the agent process and its remote evaluators
+    # Set the ray.rllib.* log level for the agent process and its evaluators
     "log_level": "INFO",
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
