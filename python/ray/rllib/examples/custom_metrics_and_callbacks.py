@@ -58,6 +58,8 @@ if __name__ == "__main__":
             },
         }
     })
+
+    # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]
     print(custom_metrics)
     assert "mean_pole_angle" in custom_metrics
