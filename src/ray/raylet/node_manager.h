@@ -223,13 +223,24 @@ class NodeManager {
   /// \return Void.
   void KillWorker(std::shared_ptr<Worker> worker);
 
-  /// The callback for handling an actor table update.
+  /// The callback for handling an actor state transition (e.g., from ALIVE to
+  /// DEAD), whether as a notification from the actor table or as a handler for
+  /// a local actor's state transition.
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
   /// \param data Data associated with this notification.
   /// \return Void.
-  void HandleActorNotification(const ActorID &actor_id,
-                               const std::vector<ActorTableDataT> &data);
+  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
+
+  /// Publish an actor's state transition to all other nodes.
+  ///
+  /// \param actor_id The actor ID of the actor whose state was updated.
+  /// \param data Data to publish.
+  /// \param failure_callback An optional callback to call if the publish is
+  /// unsuccessful.
+  void PublishActorStateTransition(
+      const ActorID &actor_id, const ActorTableDataT &data,
+      const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
   /// When an actor dies, loop over all of the queued tasks for that actor and
   /// treat them as failed.

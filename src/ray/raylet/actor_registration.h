@@ -42,6 +42,8 @@ class ActorRegistration {
   /// be forwarded to this node.
   const ClientID GetNodeManagerId() const;
 
+  const ActorTableDataT &GetTableData() const;
+
   /// Get the object that represents the actor's initial state. This is the
   /// execution dependency returned by this actor's creation task. If
   /// reconstructed, this will recreate the actor.

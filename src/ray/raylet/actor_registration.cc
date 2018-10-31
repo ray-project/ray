@@ -15,6 +15,10 @@ const ClientID ActorRegistration::GetNodeManagerId() const {
   return ClientID::from_binary(actor_table_data_.node_manager_id);
 }
 
+const ActorTableDataT &ActorRegistration::GetTableData() const {
+  return actor_table_data_;
+}
+
 const ObjectID ActorRegistration::GetActorCreationDependency() const {
   return ObjectID::from_binary(actor_table_data_.actor_creation_dummy_object_id);
 }

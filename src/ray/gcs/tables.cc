@@ -273,38 +273,6 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
                 });
 }
 
-Status ActorTable::UpdateActorState(const ActorID &actor_id,
-                                    const ObjectID &actor_creation_dummy_object_id,
-                                    const DriverID &driver_id, const ActorState &state,
-                                    int64_t max_reconstructions,
-                                    int64_t remaining_reconstructions,
-                                    const WriteCallback &failure) {
-  RAY_LOG(DEBUG) << "Publishing actor update: " << actor_id
-                 << ", driver_id: " << driver_id
-                 << ", state: " << static_cast<int64_t>(state)
-                 << ", remaining_reconstructions: " << remaining_reconstructions;
-  auto actor_notification = std::make_shared<ActorTableDataT>();
-  actor_notification->actor_id = actor_id.binary();
-  actor_notification->actor_creation_dummy_object_id =
-      actor_creation_dummy_object_id.binary();
-  actor_notification->driver_id = driver_id.binary();
-  actor_notification->node_manager_id =
-      client_->client_table().GetLocalClientId().binary();
-  actor_notification->state = state;
-  actor_notification->max_reconstructions = max_reconstructions;
-  actor_notification->remaining_reconstructions = remaining_reconstructions;
-
-  // If this actor has been reconstructed N times and now ALIVE, there should be 2*N
-  // entries in actor table (N pairs of (ALIVE + RECONSTRUCTING)). If it's now not ALIVE,
-  // there should be 2*N + 1 ALIVE entries.
-  int log_length = 2 * (max_reconstructions - remaining_reconstructions);
-  if (state != ActorState::ALIVE) {
-    log_length += 1;
-  }
-  return AppendAt(JobID::nil(), actor_id, actor_notification, nullptr, failure,
-                  log_length);
-}
-
 Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();

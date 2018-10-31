@@ -28,8 +28,7 @@ inline void QueueTasks(ray::raylet::SchedulingQueue::TaskQueue &queue,
 
 // Helper function to filter out tasks of a given state.
 inline void FilterStateFromQueue(const ray::raylet::SchedulingQueue::TaskQueue &queue,
-                                 std::unordered_set<ray::TaskID> &task_ids,
-                                 ray::raylet::TaskState filter_state) {
+                                 std::unordered_set<ray::TaskID> &task_ids) {
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     if (queue.HasTask(*it)) {
       it = task_ids.erase(it);
@@ -168,22 +167,25 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
                                   TaskState filter_state) const {
   switch (filter_state) {
   case TaskState::PLACEABLE:
-    FilterStateFromQueue(placeable_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(placeable_tasks_, task_ids);
+    break;
+  case TaskState::WAITING_FOR_ACTOR_CREATION:
+    FilterStateFromQueue(methods_waiting_for_actor_creation_, task_ids);
     break;
   case TaskState::WAITING:
-    FilterStateFromQueue(waiting_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(waiting_tasks_, task_ids);
     break;
   case TaskState::READY:
-    FilterStateFromQueue(ready_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(ready_tasks_, task_ids);
     break;
   case TaskState::RUNNING:
-    FilterStateFromQueue(running_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(running_tasks_, task_ids);
     break;
   case TaskState::BLOCKED:
-    FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(blocked_tasks_, task_ids);
     break;
   case TaskState::INFEASIBLE:
-    FilterStateFromQueue(infeasible_tasks_, task_ids, filter_state);
+    FilterStateFromQueue(infeasible_tasks_, task_ids);
     break;
   case TaskState::DRIVER: {
     const auto driver_ids = GetDriverTaskIds();

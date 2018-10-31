@@ -15,6 +15,7 @@ namespace raylet {
 enum class TaskState {
   INIT,
   PLACEABLE,
+  WAITING_FOR_ACTOR_CREATION,
   WAITING,
   READY,
   RUNNING,
