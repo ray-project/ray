@@ -190,7 +190,7 @@ if __name__ == '__main__':
                 "trial_resources": {
                     "cpu": args.threads,
                     "gpu": 0.5 if args.use_gpu else 0
-                }
+                },
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),
