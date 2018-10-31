@@ -164,7 +164,7 @@ class TestPolicyEvaluator(unittest.TestCase):
                     "on_sample_end": lambda x: counts.update({"sample": 1}),
                 },
             })
-        results = pg.train()
+        pg.train()
         self.assertEqual(counts["sample"], 1)
         self.assertGreater(counts["start"], 0)
         self.assertGreater(counts["end"], 0)
