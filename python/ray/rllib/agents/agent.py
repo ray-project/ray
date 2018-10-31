@@ -31,7 +31,7 @@ COMMON_CONFIG = {
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
     # metrics can be attached to the episode by updating the episode object's
-    # `custom_metrics` dict (see also: evaluation/episode.py).
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
     "callbacks": {
         "on_episode_start": None,
         "on_episode_step": None,

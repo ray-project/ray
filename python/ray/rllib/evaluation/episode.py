@@ -25,7 +25,8 @@ class MultiAgentEpisode(object):
         length (int): Length of this episode.
         episode_id (int): Unique id identifying this trajectory.
         agent_rewards (dict): Summed rewards broken down by agent.
-        custom_metrics (dict): Dict where the user can add custom metrics.
+        custom_metrics (dict): Dict where the you can add custom metrics.
+        user_data (dict): Dict that you can use for temporary storage.
 
     Use case 1: Model-based rollouts in multi-agent:
         A custom compute_actions() function in a policy graph can inspect the
@@ -51,6 +52,7 @@ class MultiAgentEpisode(object):
         self.episode_id = random.randrange(2e9)
         self.agent_rewards = defaultdict(float)
         self.custom_metrics = {}
+        self.user_data = {}
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
         self._agent_to_policy = {}

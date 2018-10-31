@@ -14,18 +14,18 @@ from ray import tune
 def on_episode_start(info):
     episode = info["episode"]
     print("episode {} started".format(episode.episode_id))
-    episode.pole_angles = []
+    episode.user_data["pole_angles"] = []
 
 
 def on_episode_step(info):
     episode = info["episode"]
     pole_angle = abs(episode.last_observation_for()[2])
-    episode.pole_angles.append(pole_angle)
+    episode.user_data["pole_angles"].append(pole_angle)
 
 
 def on_episode_end(info):
     episode = info["episode"]
-    mean_pole_angle = np.mean(episode.pole_angles)
+    mean_pole_angle = np.mean(episode.user_data["pole_angles"])
     print("episode {} ended with length {} and pole angles {}".format(
         episode.episode_id, episode.length, mean_pole_angle))
     episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
