@@ -41,7 +41,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
-    tune.run_experiments({
+    trials = tune.run_experiments({
         "test": {
             "env": "CartPole-v0",
             "run": "PG",
@@ -58,3 +58,7 @@ if __name__ == "__main__":
             },
         }
     })
+    custom_metrics = trials[0].last_result["custom_metrics"]
+    print(custom_metrics)
+    assert "mean_pole_angle" in custom_metrics
+    assert type(custom_metrics["mean_pole_angle"]) is float

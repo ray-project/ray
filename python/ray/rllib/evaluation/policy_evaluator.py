@@ -283,7 +283,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
-                callbacks,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -296,7 +296,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
-                callbacks,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
