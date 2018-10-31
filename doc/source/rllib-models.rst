@@ -30,7 +30,7 @@ The following is a list of the built-in model hyperparameters:
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -73,6 +73,18 @@ Custom models should subclass the common RLlib `model class <https://github.com/
             layer2 = slim.fully_connected(layer1, 64, ...)
             ...
             return layerN, layerN_minus_1
+
+        def value_function(self):
+            """Builds the value function output.
+
+            This method can be overridden to customize the implementation of the
+            value function (e.g., not sharing hidden layers).
+
+            Returns:
+                Tensor of size [BATCH_SIZE] for the value function.
+            """
+            return tf.reshape(
+                linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 

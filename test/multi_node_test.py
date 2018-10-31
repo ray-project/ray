@@ -272,10 +272,6 @@ def test_calling_start_ray_head():
     run_and_get_output(["ray", "start", "--head"])
     subprocess.Popen(["ray", "stop"]).wait()
 
-    # Test starting Ray with a number of workers specified.
-    run_and_get_output(["ray", "start", "--head", "--num-workers", "20"])
-    subprocess.Popen(["ray", "stop"]).wait()
-
     # Test starting Ray with a redis port specified.
     run_and_get_output(["ray", "start", "--head", "--redis-port", "6379"])
     subprocess.Popen(["ray", "stop"]).wait()
@@ -285,9 +281,12 @@ def test_calling_start_ray_head():
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
     subprocess.Popen(["ray", "stop"]).wait()
 
-    # Test starting Ray with an object manager port specified.
-    run_and_get_output(
-        ["ray", "start", "--head", "--object-manager-port", "12345"])
+    # Test starting Ray with the object manager and node manager ports
+    # specified.
+    run_and_get_output([
+        "ray", "start", "--head", "--object-manager-port", "12345",
+        "--node-manager-port", "54321"
+    ])
     subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with the number of CPUs specified.
@@ -312,10 +311,10 @@ def test_calling_start_ray_head():
 
         # Test starting Ray with all arguments specified.
         run_and_get_output([
-            "ray", "start", "--head", "--num-workers", "2", "--redis-port",
-            "6379", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
+            "ray", "start", "--head", "--redis-port", "6379",
+            "--redis-shard-ports", "6380,6381,6382", "--object-manager-port",
+            "12345", "--num-cpus", "2", "--num-gpus", "0",
+            "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
         subprocess.Popen(["ray", "stop"]).wait()
 

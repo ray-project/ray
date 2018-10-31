@@ -302,7 +302,7 @@ def test_python_workers(shutdown_only):
     # purposes only.
     num_workers = 4
     ray.worker._init(
-        num_workers=num_workers,
+        num_cpus=num_workers,
         start_workers_from_local_scheduler=False,
         start_ray_local=True)
 
@@ -315,7 +315,7 @@ def test_python_workers(shutdown_only):
 
 
 def test_put_get(shutdown_only):
-    ray.init(num_workers=0)
+    ray.init(num_cpus=0)
 
     for i in range(100):
         value_before = i * 10**6
@@ -1150,7 +1150,6 @@ def test_free_objects_multi_node(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=3,
-        num_workers=1,
         num_cpus=[1, 1, 1],
         resources=[{
             "Custom0": 1
@@ -1303,7 +1302,7 @@ def test_local_mode(shutdown_only):
 
 def test_resource_constraints(shutdown_only):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
+    ray.init(num_cpus=10, num_gpus=2)
 
     @ray.remote(num_cpus=0)
     def get_worker_id():
@@ -1379,7 +1378,7 @@ def test_resource_constraints(shutdown_only):
 
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
+    ray.init(num_cpus=10, num_gpus=10)
 
     @ray.remote(num_cpus=0)
     def get_worker_id():
@@ -1668,8 +1667,7 @@ def test_multiple_local_schedulers(shutdown_only):
     address_info = ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=3,
-        num_workers=1,
-        num_cpus=[100, 5, 10],
+        num_cpus=[11, 5, 10],
         num_gpus=[0, 5, 1])
 
     # Define a bunch of remote functions that all return the socket name of
@@ -1944,20 +1942,6 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     ray.get([g.remote() for _ in range(100)])
 
 
-def test_no_workers(shutdown_only):
-    ray.init(num_cpus=1, num_workers=0)
-
-    @ray.remote
-    def f():
-        return 1
-
-    # Make sure we can call a remote function. This will require starting a
-    # new worker.
-    ray.get(f.remote())
-
-    ray.get([f.remote() for _ in range(100)])
-
-
 def test_blocking_tasks(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -2058,11 +2042,9 @@ def test_load_balancing_with_dependencies(shutdown_only):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
-    num_workers = 3
     num_local_schedulers = 3
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
         num_cpus=1)
 
@@ -2133,8 +2115,7 @@ def test_global_state_api(shutdown_only):
     task_table = ray.global_state.task_table()
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
-    assert len(task_table[driver_task_id]) == 1
-    task_spec = task_table[driver_task_id][0]["TaskSpec"]
+    task_spec = task_table[driver_task_id]["TaskSpec"]
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
@@ -2165,7 +2146,7 @@ def test_global_state_api(shutdown_only):
     task_id = list(task_id_set)[0]
 
     function_table = ray.global_state.function_table()
-    task_spec = task_table[task_id][0]["TaskSpec"]
+    task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
@@ -2196,13 +2177,9 @@ def test_global_state_api(shutdown_only):
     object_table = ray.global_state.object_table()
     assert len(object_table) == 2
 
-    assert len(object_table[x_id]) == 1
-    assert object_table[x_id][0]["IsEviction"] is False
-    assert object_table[x_id][0]["NumEvictions"] == 0
+    assert object_table[x_id]["IsEviction"][0] is False
 
-    assert len(object_table[result_id]) == 1
-    assert object_table[result_id][0]["IsEviction"] is False
-    assert object_table[result_id][0]["NumEvictions"] == 0
+    assert object_table[result_id]["IsEviction"][0] is False
 
     assert object_table[x_id] == ray.global_state.object_table(x_id)
     object_table_entry = ray.global_state.object_table(result_id)
@@ -2248,10 +2225,7 @@ def test_log_file_api(shutdown_only):
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
-    ray.init(
-        redirect_worker_output=True,
-        num_cpus=num_workers,
-        num_workers=num_workers)
+    ray.init(redirect_worker_output=True, num_cpus=num_workers)
 
     @ray.remote
     def f():
@@ -2270,78 +2244,6 @@ def test_workers(shutdown_only):
         assert "plasma_store_socket" in info
         assert "stderr_file" in info
         assert "stdout_file" in info
-
-
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-def test_flush_api(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def f():
-        return 1
-
-    [ray.put(1) for _ in range(10)]
-    ray.get([f.remote() for _ in range(10)])
-
-    # Wait until all of the task and object information has been stored in
-    # Redis. Note that since a given key may be updated multiple times
-    # (e.g., multiple calls to TaskTableUpdate), this is an attempt to wait
-    # until all updates have happened. Note that in a real application we
-    # could encounter this kind of issue as well.
-    while True:
-        object_table = ray.global_state.object_table()
-        task_table = ray.global_state.task_table()
-
-        tables_ready = True
-
-        if len(object_table) != 20:
-            tables_ready = False
-
-        for object_info in object_table.values():
-            if len(object_info) != 5:
-                tables_ready = False
-            if (object_info["ManagerIDs"] is None
-                    or object_info["DataSize"] == -1
-                    or object_info["Hash"] == ""):
-                tables_ready = False
-
-        if len(task_table) != 10 + 1:
-            tables_ready = False
-
-        driver_task_id = ray.utils.binary_to_hex(
-            ray.worker.global_worker.current_task_id.id())
-
-        for info in task_table.values():
-            if info["State"] != ray.experimental.state.TASK_STATUS_DONE:
-                if info["TaskSpec"]["TaskID"] != driver_task_id:
-                    tables_ready = False
-
-        if tables_ready:
-            break
-        # this test case is blocked sometimes, add this may fix the problem
-        time.sleep(0.1)
-
-    # Flush the tables.
-    ray.experimental.flush_redis_unsafe()
-    ray.experimental.flush_task_and_object_metadata_unsafe()
-
-    # Make sure the tables are empty.
-    assert len(ray.global_state.object_table()) == 0
-    assert len(ray.global_state.task_table()) == 0
-
-    # Run some more tasks.
-    ray.get([f.remote() for _ in range(10)])
-
-    while len(ray.global_state.task_table()) != 0:
-        time.sleep(0.1)
-        ray.experimental.flush_finished_tasks_unsafe()
-
-    # Make sure that we can call this method (but it won't do anything in
-    # this test case).
-    ray.experimental.flush_evicted_objects_unsafe()
 
 
 @pytest.fixture

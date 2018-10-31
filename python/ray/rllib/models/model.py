@@ -7,6 +7,7 @@ from collections import OrderedDict
 import gym
 import tensorflow as tf
 
+from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 
 
@@ -130,6 +131,18 @@ class Model(object):
                     ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
         """
         raise NotImplementedError
+
+    def value_function(self):
+        """Builds the value function output.
+
+        This method can be overridden to customize the implementation of the
+        value function (e.g., not sharing hidden layers).
+
+        Returns:
+            Tensor of size [BATCH_SIZE] for the value function.
+        """
+        return tf.reshape(
+            linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
 
 def _restore_original_dimensions(input_dict, obs_space):

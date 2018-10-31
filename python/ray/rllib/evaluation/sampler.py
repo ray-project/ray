@@ -338,10 +338,10 @@ def _env_runner(async_vector_env,
             if episode.batch_builder.has_pending_data():
                 if (all_done and not pack) or \
                         episode.batch_builder.count >= unroll_length:
-                    yield episode.batch_builder.build_and_reset()
+                    yield episode.batch_builder.build_and_reset(episode)
                 elif all_done:
                     # Make sure postprocessor stays within one episode
-                    episode.batch_builder.postprocess_batch_so_far()
+                    episode.batch_builder.postprocess_batch_so_far(episode)
 
             if all_done:
                 # Handle episode termination
