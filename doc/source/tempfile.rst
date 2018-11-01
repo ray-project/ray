@@ -77,17 +77,6 @@ You are allowed to specify the plasma object store socket in one of these ways:
 The path you specified will be given as it is without being affected any other paths.
 
 
-Raylet Socket
--------------
-
-Raylet sockets can also be controlled by the user in one of these ways:
-
-* Pass ``--raylet-socket-name={your socket path}`` to ``ray start``
-* Specify ``raylet_socket_name`` when call ``ray.init()``
-
-The path you specified will be given as it is without being affected any other paths.
-
-
 Notes
 -----
 
