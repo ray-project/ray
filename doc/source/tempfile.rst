@@ -78,7 +78,7 @@ The path you specified will be given as it is without being affected any other p
 
 
 Raylet Socket
---------------------------
+-------------
 
 Raylet sockets can also be controlled by the user in one of these ways:
 
