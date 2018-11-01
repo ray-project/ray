@@ -15,7 +15,7 @@ pong-a3c-pytorch-cnn:
         model:
             use_lstm: false
             channel_major: true
-            dim: 80
+            dim: 84
             grayscale: true
             zero_mean: false
         optimizer:
