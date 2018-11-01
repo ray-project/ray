@@ -1015,7 +1015,7 @@ def test_profiling_api(shutdown_only):
         profile_data = ray.global_state.chrome_tracing_dump()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "get_task",
+            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
