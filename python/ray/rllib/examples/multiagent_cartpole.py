@@ -85,7 +85,6 @@ if __name__ == "__main__":
                 "custom_model": ["model1", "model2"][i % 2],
             },
             "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-            "n_step": random.choice([1, 2, 3, 4, 5]),
         }
         return (PPOPolicyGraph, obs_space, act_space, config)
 
@@ -98,12 +97,13 @@ if __name__ == "__main__":
 
     run_experiments({
         "test": {
-            "run": "PG",
+            "run": "PPO",
             "env": "multi_cartpole",
             "stop": {
                 "training_iteration": args.num_iters
             },
             "config": {
+                "simple_optimizer": True,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(
