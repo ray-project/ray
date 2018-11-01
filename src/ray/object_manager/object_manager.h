@@ -260,11 +260,22 @@ class ObjectManager : public ObjectManagerInterface {
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
+  /// TODO
+  bool ShouldDoPush(const ObjectID &object_id);
+  /// TODO
+  void IncrementObjectPushCount(const ObjectID &object_id);
+  /// TODO
+  void DecrementObjectPushCount(const ObjectID &object_id);
+  /// TODO
+  void HandlePushFinished(const ObjectID &object_id, const ClientID &client_id,
+                          ray::Status status);
+
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
-  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                         const RemoteConnectionInfo &connection_info);
+  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                                uint64_t data_size, uint64_t metadata_size,
+                                uint64_t chunk_index,
+                                const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on send_service_ thread pool.
@@ -305,6 +316,11 @@ class ObjectManager : public ObjectManagerInterface {
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service &main_service_;
+
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
@@ -312,10 +328,6 @@ class ObjectManager : public ObjectManagerInterface {
   boost::asio::io_service send_service_;
   /// This runs on a thread pool dedicated to receiving objects.
   boost::asio::io_service receive_service_;
-
-  /// Weak reference to main service. We ensure this object is destroyed before
-  /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
 
   /// Used to create "work" for send_service_.
   /// Without this, if send_service_ has no more sends to process, it will stop.
@@ -351,6 +363,10 @@ class ObjectManager : public ObjectManagerInterface {
       ObjectID,
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
+
+  /// A mapping from ObjectID to the number of queued push requests for that
+  /// object.
+  std::unordered_map<ObjectID, int64_t> num_object_push_requests_;
 
   /// A mapping from the ID of objects this node manager is trying to fetch from
   /// other node managers to relevant information (e.g., the remote node
