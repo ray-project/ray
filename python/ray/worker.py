@@ -1513,7 +1513,8 @@ def init(redis_address=None,
          logging_format=ray_constants.LOGGER_FORMAT,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
-         temp_dir=None):
+         temp_dir=None,
+         use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1591,6 +1592,15 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Add the use_raylet option for backwards compatibility.
+    if use_raylet is not None:
+        if use_raylet:
+            logger.warn("WARNING: The use_raylet argument has been "
+                        "deprecated. Please remove it.")
+        else:
+            raise DeprecationWarning("The use_raylet argument is deprecated. "
+                                     "Please remove it.")
+
     if configure_logging:
         logging.basicConfig(level=logging_level, format=logging_format)
 
