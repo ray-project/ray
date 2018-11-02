@@ -95,6 +95,8 @@ class RayTaskError(Exception):
         if (isinstance(exception, RayGetError)
                 or isinstance(exception, RayGetArgumentError)):
             self.exception = exception
+        elif isinstance(exception, Exception):
+            self.exception = type(exception)
         else:
             self.exception = None
         self.traceback_str = traceback_str
