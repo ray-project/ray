@@ -19,7 +19,7 @@ Here are links to the latest wheels (which are built off of master). To install 
 
 .. danger::
 
-    These versions will have newer features but are subject to more bugs. If you encounter crashes or other instability, please revert to the latest stable version.
+    These versions will have newer features but are subject to more bugs. If you encounter crashes or other instabilities, please revert to the latest stable version.
 
 .. code-block:: bash
 
