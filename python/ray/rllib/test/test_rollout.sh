@@ -22,7 +22,7 @@ echo "Checkpoint path $CHECKPOINT_PATH"
 test -e "$CHECKPOINT_PATH"
 
 $ROLLOUT --run=IMPALA "$CHECKPOINT_PATH" --steps=100 \
-    --out=rollouts.pkl --no-render
-test -e rollouts.pkl
+    --out="$TMP/rollouts.pkl" --no-render
+test -e "$TMP/rollouts.pkl"
 rm -rf "$TMP"
 echo "OK"
