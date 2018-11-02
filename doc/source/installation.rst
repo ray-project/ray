@@ -10,7 +10,7 @@ You can install the latest stable version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install ray
+  pip install -U ray
 
 Trying snapshots from master
 ----------------------------
