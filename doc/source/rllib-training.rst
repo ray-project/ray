@@ -256,11 +256,12 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current episode. Custom state can be stored for the episode in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
 
 .. code-block:: python
 
     def on_episode_start(info):
+        print(info.keys())  # -> "env", 'episode"
         episode = info["episode"]
         print("episode {} started".format(episode.episode_id))
         episode.user_data["pole_angles"] = []
