@@ -71,7 +71,7 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   policy_mapping_fn=lambda agent_id:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
-        >>> print(evaluator.sample().keys())
+        >>> print(evaluator.sample())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
