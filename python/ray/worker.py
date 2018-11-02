@@ -92,11 +92,8 @@ class RayTaskError(Exception):
     def __init__(self, function_name, exception, traceback_str):
         """Initialize a RayTaskError."""
         self.function_name = function_name
-        if (isinstance(exception, RayGetError)
-                or isinstance(exception, RayGetArgumentError)):
+        if isinstance(exception, Exception):
             self.exception = exception
-        elif isinstance(exception, Exception):
-            self.exception = type(exception)
         else:
             self.exception = None
         self.traceback_str = traceback_str
