@@ -625,7 +625,7 @@ class GlobalState(object):
         # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
         default_color_mapping = defaultdict(
             lambda: "generic_work", {
-                "get_task": "cq_build_abandoned",
+                "worker_idle": "cq_build_abandoned",
                 "task": "rail_response",
                 "task:deserialize_arguments": "rail_load",
                 "task:execute": "rail_animation",
