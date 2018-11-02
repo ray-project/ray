@@ -582,7 +582,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please `pip install py-spy` first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 export IFS="
