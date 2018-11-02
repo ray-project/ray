@@ -588,7 +588,10 @@ fi
 export IFS="
 "
 sudo true
-for worker in `ps aux | grep default_worker.py | grep -v grep`; do
+workers=$(
+    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+)
+for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
     sudo $pyspy --pid $pid --dump;
