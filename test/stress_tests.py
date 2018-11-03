@@ -102,6 +102,30 @@ def test_submitting_many_tasks(ray_start_sharded):
     assert ray.services.all_processes_alive()
 
 
+def test_submitting_many_actors_to_one(ray_start_sharded):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Worker(object):
+        def __init__(self, actor):
+            self.actor = actor
+
+        def ping(self):
+            return ray.get(self.actor.ping.remote())
+
+    a = Actor.remote()
+    workers = [Worker.remote(a) for _ in range(200)]
+    for _ in range(10):
+        out = ray.get([w.ping.remote() for w in workers])
+        assert out == [None for _ in workers]
+
+
 def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
