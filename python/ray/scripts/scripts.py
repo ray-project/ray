@@ -388,6 +388,12 @@ def stop():
             "grep -v grep | awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)
+    subprocess.call(
+        [
+            "kill -9 $(ps aux | grep ray_ | "
+            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the Ray log monitor process and kill it.
     subprocess.call(
