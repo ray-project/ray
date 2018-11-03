@@ -10,6 +10,14 @@ if(UNIX AND NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -rdynamic")
 endif()
 
+if (APPLE)
+  exec_program(uname ARGS -v OUTPUT_VARIABLE DARWIN_VERSION)
+  string(REGEX MATCH "[0-9]+" DARWIN_VERSION ${DARWIN_VERSION})
+  if (DARWIN_VERSION GREATER 17)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+  endif()
+endif()
+
 # Custom CFLAGS
 
 set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -fPIC -std=c99")
