@@ -591,8 +591,10 @@ if [ ! -e "$pyspy" ]; then
     echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
+# Set IFS to iterate over lines instead of over words.
 export IFS="
 "
+# Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
     ps aux | grep ray_ | grep -v grep

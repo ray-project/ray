@@ -6,6 +6,7 @@ import os
 import re
 import setproctitle
 import string
+import subprocess
 import sys
 import threading
 import time
@@ -2301,3 +2302,38 @@ def test_ray_setproctitle(shutdown_only):
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
     ray.get(unique_1.remote())
+
+
+@pytest.mark.skipif(
+    os.getenv("TRAVIS") is None,
+    reason="This test should only be run on Travis.")
+def test_ray_stack(shutdown_only):
+    ray.init(num_cpus=2)
+
+    def unique_name_1():
+        time.sleep(1000)
+
+    @ray.remote
+    def unique_name_2():
+        time.sleep(1000)
+
+    @ray.remote
+    def unique_name_3():
+        unique_name_1()
+
+    unique_name_2.remote()
+    unique_name_3.remote()
+
+    success = False
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        # Attempt to parse the "ray stack" call.
+        output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
+        if ("unique_name_1" in output and "unique_name_2" in output
+                and "unique_name_3" in output):
+            success = True
+            break
+
+    if not success:
+        raise Exception("Failed to find necessary information with "
+                        "'ray stack'")
