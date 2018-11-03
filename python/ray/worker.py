@@ -796,11 +796,13 @@ class Worker(object):
             with profiling.profile("task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
+                    setproctitle.setproctitle(
+                        "ray_worker:{}()".format(function_name))
                 else:
                     actor = self.actors[task.actor_id().id()]
-                    if function_name == "__init__":
-                        setproctitle.setproctitle(
-                            "ray_" + actor.__class__.__name__)
+                    setproctitle.setproctitle(
+                        "ray_{}:{}()".format(
+                            actor.__class__.__name__, function_name))
                     outputs = function_executor(
                         dummy_return_id, actor, *arguments)
         except Exception as e:
