@@ -577,6 +577,32 @@ def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
+@cli.command()
+def stack():
+    COMMAND = """
+pyspy=`which py-spy`
+if [ ! -e "$pyspy" ]; then
+    echo "ERROR: Please 'pip install py-spy' first"
+    exit 1
+fi
+# Set IFS to iterate over lines instead of over words.
+export IFS="
+"
+# Call sudo to prompt for password before anything has been printed.
+sudo true
+workers=$(
+    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+)
+for worker in $workers; do
+    echo "Stack dump for $worker";
+    pid=`echo $worker | awk '{print $2}'`;
+    sudo $pyspy --pid $pid --dump;
+    echo;
+done
+    """
+    subprocess.call(COMMAND, shell=True)
+
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
@@ -588,6 +614,7 @@ cli.add_command(rsync_up)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)
+cli.add_command(stack)
 
 
 def main():

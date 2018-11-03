@@ -92,6 +92,11 @@ of the following reasons.
 Hanging
 -------
 
+.. tip::
+    
+    You can run ``ray stack`` to dump the stack traces of all Ray workers on
+    the current node. This requires py-spy to be installed.
+
 If a workload is hanging and not progressing, the problem may be one of the
 following.
 
