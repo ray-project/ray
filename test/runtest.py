@@ -2246,6 +2246,22 @@ def test_workers(shutdown_only):
         assert "stdout_file" in info
 
 
+def test_specific_driver_id():
+    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    ray.init(driver_id=dummy_driver_id)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.task_driver_id.id()
+
+    assert_equal(dummy_driver_id.id(), ray.worker.global_worker.worker_id)
+
+    task_driver_id = ray.get(f.remote())
+    assert_equal(dummy_driver_id.id(), task_driver_id)
+
+    ray.shutdown()
+
+
 @pytest.fixture
 def shutdown_only_with_initialization_check():
     yield None
