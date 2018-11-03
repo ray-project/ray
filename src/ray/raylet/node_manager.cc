@@ -505,6 +505,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   } else if (actor_registration.GetState() == ActorState::DEAD) {
     CleanUpTasksForDeadActor(actor_id);
   } else {
+    // TODO: return queued tasks to waiting for actor creation.
     RAY_CHECK(actor_registration.GetState() == ActorState::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
   }
