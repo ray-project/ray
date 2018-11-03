@@ -353,7 +353,7 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                can be stored.
+                file must be stored.
 
         Returns:
             checkpoint (str | dict): If string, the return value is
@@ -362,8 +362,10 @@ class Trainable(object):
                 serialized by Tune and passed to `_restore()`.
 
         Examples:
-            >>> checkpoint_data = trainable._save(checkpoint_dir)
-            >>> trainable2._restore(checkpoint_data)
+            >>> print(trainable1._save("/tmp/checkpoint_1"))
+            "/tmp/checkpoint_1/my_checkpoint_file"
+            >>> print(trainable2._save("/tmp/checkpoint_2"))
+            {"some": "data"}
         """
 
         raise NotImplementedError
