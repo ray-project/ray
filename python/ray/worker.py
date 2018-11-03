@@ -901,19 +901,22 @@ class Worker(object):
                 "task_id": task.task_id().hex()
             }
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                if task.actor_id().id() == NIL_ACTOR_ID:
-                    title = "ray_worker:{}()".format(function_name)
-                    idle_title = "ray_worker"
-                else:
-                    actor = self.actors[task.actor_id().id()]
-                    title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                                 function_name)
-                    idle_title = "ray_{}".format(actor.__class__.__name__)
                 try:
-                    setproctitle.setproctitle(title)
+                    if task.actor_id().id() == NIL_ACTOR_ID:
+                        setproctitle.setproctitle(
+                            "ray_worker:{}()".format(function_name))
+                    else:
+                        actor = self.actors[task.actor_id().id()]
+                        setproctitle.setproctitle("ray_{}:{}()".format(
+                            actor.__class__.__name__, function_name))
                     self._process_task(task, execution_info)
                 finally:
-                    setproctitle.setproctitle(idle_title)
+                    if task.actor_id().id() == NIL_ACTOR_ID:
+                        setproctitle.setproctitle("ray_worker")
+                    else:
+                        actor = self.actors[task.actor_id().id()]
+                        setproctitle.setproctitle("ray_{}".format(
+                            actor.__class__.__name__))
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
