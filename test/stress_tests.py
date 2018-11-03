@@ -225,6 +225,7 @@ def ray_start_reconstruction(request):
     ray.shutdown()
 
 
+@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -266,6 +267,7 @@ def test_simple(ray_start_reconstruction):
         del values
 
 
+@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
