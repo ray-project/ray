@@ -2283,6 +2283,9 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
+@pytest.mark.skipif(
+    os.getenv("TRAVIS") is None,
+    reason="This test should only be run on Travis.")
 def test_ray_stack(shutdown_only):
     ray.init(num_cpus=2)
 
