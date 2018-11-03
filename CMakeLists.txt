@@ -7,14 +7,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
 
-if (APPLE)
-  exec_program(uname ARGS -v OUTPUT_VARIABLE DARWIN_VERSION)
-  string(REGEX MATCH "[0-9]+" DARWIN_VERSION ${DARWIN_VERSION})
-  if (DARWIN_VERSION GREATER 17)
-    set(CMAKE_CXX_FLAGS "-stdlib=libc++")
-  endif()
-endif()
-
 # Use old C++ ABI to be compatible with TensorFlow
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
 

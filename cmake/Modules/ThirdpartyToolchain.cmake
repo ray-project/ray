@@ -123,6 +123,10 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
       "PYARROW_WITH_PARQUET=1"
       "PYARROW_PARALLEL=")
 
+    if (APPLE)
+      set(pyarrow_ENV "${pyarrow_ENV} CXXFLAGS='-stdlib=libc++'")
+    endif()
+
     ExternalProject_Add(pyarrow_ext
       PREFIX external/pyarrow
       DEPENDS arrow_ep
