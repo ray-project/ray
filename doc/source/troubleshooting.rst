@@ -61,10 +61,10 @@ of the following reasons.
 - **Stressful workloads:** Workloads that create many many tasks in a short
   amount of time can sometimes interfere with the heartbeat mechanism that we
   use to check that processes are still alive. On the head node in the cluster,
-  you can check the files ``/tmp/raylogs/monitor-******.out`` and
-  ``/tmp/raylogs/monitor-******.err``. They will indicate which processes Ray
-  has marked as dead (due to a lack of heartbeats). However, it is currently
-  possible for a process to get marked as dead without actually having died.
+  you can check the files ``/tmp/ray/session_*/logs/monitor*``. They will
+  indicate which processes Ray has marked as dead (due to a lack of heartbeats).
+  However, it is currently possible for a process to get marked as dead without
+  actually having died.
 
 - **Starting many actors:** Workloads that start a large number of actors all at
   once may exhibit problems when the processes (or libraries that they use)

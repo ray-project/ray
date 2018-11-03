@@ -189,7 +189,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     logger.info("Head node up-to-date, IP address is: {}".format(
         provider.external_ip(head_node)))
 
-    monitor_str = "tail -n 100 -f /tmp/raylogs/monitor-*"
+    monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
     for s in init_commands:
         if ("ray start" in s and "docker exec" in s
                 and "--autoscaling-config" in s):

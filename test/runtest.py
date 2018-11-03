@@ -1015,7 +1015,7 @@ def test_profiling_api(shutdown_only):
         profile_data = ray.global_state.chrome_tracing_dump()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "get_task",
+            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
@@ -2244,6 +2244,22 @@ def test_workers(shutdown_only):
         assert "plasma_store_socket" in info
         assert "stderr_file" in info
         assert "stdout_file" in info
+
+
+def test_specific_driver_id():
+    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    ray.init(driver_id=dummy_driver_id)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.task_driver_id.id()
+
+    assert_equal(dummy_driver_id.id(), ray.worker.global_worker.worker_id)
+
+    task_driver_id = ray.get(f.remote())
+    assert_equal(dummy_driver_id.id(), task_driver_id)
+
+    ray.shutdown()
 
 
 @pytest.fixture
