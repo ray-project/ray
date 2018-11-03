@@ -29,7 +29,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+                   /* release_delay */ 0),
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
@@ -56,7 +56,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+                   /* release_delay */ 0),
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
@@ -327,7 +327,7 @@ bool ObjectManager::ShouldDoPush(const ObjectID &object_id) {
     return true;
   }
 
-  if (it->second < 10) {
+  if (it->second < 2) {
     return true;
   }
 
@@ -339,7 +339,7 @@ void ObjectManager::IncrementObjectPushCount(const ObjectID &object_id) {
 
   if (it != num_object_push_requests_.end()) {
     RAY_CHECK(it->second >= 0);
-    RAY_CHECK(it->second < 10);
+    RAY_CHECK(it->second < 2);
     it->second++;
   } else {
     num_object_push_requests_[object_id] = 1;
@@ -351,7 +351,7 @@ void ObjectManager::DecrementObjectPushCount(const ObjectID &object_id) {
 
   RAY_CHECK(it != num_object_push_requests_.end());
   RAY_CHECK(it->second > 0);
-  RAY_CHECK(it->second <= 10);
+  RAY_CHECK(it->second <= 2);
   it->second--;
 
   if (it->second == 0) {
@@ -371,6 +371,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
     unfulfilled_push_requests_.erase(iter);
   }
 
+  RAY_LOG(INFO) << "DEC: " << object_id << " " << client_id << " HandlePushTaskTimeout";
   DecrementObjectPushCount(object_id);
 }
 
@@ -381,6 +382,7 @@ void ObjectManager::HandlePushFinished(const ObjectID &object_id,
     // What do we want to do if the transfer failed?
   }
 
+  RAY_LOG(INFO) << "DEC: " << object_id << " " << client_id << " HandlePushFinished";
   DecrementObjectPushCount(object_id);
 }
 
@@ -388,6 +390,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (!ShouldDoPush(object_id)) {
     return;
   }
+  RAY_LOG(INFO) << "INC: " << object_id << " " << client_id << " Push";
   IncrementObjectPushCount(object_id);
 
   if (local_objects_.count(object_id) == 0) {
@@ -401,6 +404,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
                          << " due to direct timeout setting.";
+        RAY_LOG(INFO) << "DEC: " << object_id << " " << client_id << " Push timeout_ms=0";
         DecrementObjectPushCount(object_id);
       } else if (config_.push_timeout_ms > 0) {
         // Put the task into a queue and wait for the notification of Object added.
@@ -446,8 +450,10 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 
             // Notify the main service about whether the transfer succeeded or
             // not.
-            main_service_.post([this, object_id, client_id, status]() {
-              HandlePushFinished(object_id, client_id, status);
+            main_service_.post([this, object_id, client_id, status, chunk_index]() {
+              if (chunk_index == 0) {
+                HandlePushFinished(object_id, client_id, status);
+              }
             });
           });
         }

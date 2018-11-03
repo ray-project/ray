@@ -59,7 +59,9 @@ class Cluster(object):
             "resources": {
                 "CPU": 1
             },
-            "object_store_memory": 100 * (2**20)  # 100 MB
+            "object_store_memory": 100 * (2**20),  # 100 MB
+            "redirect_output": True,
+            "redirect_worker_output": True,
         }
         node_kwargs.update(override_kwargs)
 

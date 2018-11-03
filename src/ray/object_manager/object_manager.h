@@ -357,8 +357,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
-  /// Maintains a map of push requests that have not been fulfilled due to an object not
-  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
+  /// Maintains a map of push requests that have not been fulfilled due to an
+  /// object not being local. Object client pairs are removed from this map when
+  /// a send call is posted to the send service or after push_timeout_ms have
+  /// elapsed.
   std::unordered_map<
       ObjectID,
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
