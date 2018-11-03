@@ -113,6 +113,12 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     find_package(PythonInterp REQUIRED)
     message(STATUS "PYTHON_EXECUTABLE for pyarrow: ${PYTHON_EXECUTABLE}")
 
+    if (APPLE)
+      set(STDLIB_CXXFLAGS "CXXFLAGS='-stdlib=libc++'")
+    else()
+      set(STDLIB_CXXFLAGS "")
+    endif()
+
     # PYARROW_PARALLEL= , so it will add -j to pyarrow build
     set(pyarrow_ENV
       "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
@@ -121,11 +127,8 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
       "PYARROW_BUNDLE_ARROW_CPP=1"
       "PARQUET_HOME=${PARQUET_HOME}"
       "PYARROW_WITH_PARQUET=1"
-      "PYARROW_PARALLEL=")
-
-    if (APPLE)
-      set(pyarrow_ENV "${pyarrow_ENV} CXXFLAGS='-stdlib=libc++'")
-    endif()
+      "PYARROW_PARALLEL="
+      ${STDLIB_CXXFLAGS})
 
     ExternalProject_Add(pyarrow_ext
       PREFIX external/pyarrow
