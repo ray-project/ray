@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
+if (APPLE)
+  exec_program(uname ARGS -v OUTPUT_VARIABLE DARWIN_VERSION)
+  string(REGEX MATCH "[0-9]+" DARWIN_VERSION ${DARWIN_VERSION})
+  if (DARWIN_VERSION GREATER 17)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+  endif()
+endif()
+
 add_subdirectory(util)
 add_subdirectory(gcs)
 add_subdirectory(object_manager)
