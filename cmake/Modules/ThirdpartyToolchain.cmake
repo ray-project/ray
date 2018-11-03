@@ -121,8 +121,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
       "PYARROW_BUNDLE_ARROW_CPP=1"
       "PARQUET_HOME=${PARQUET_HOME}"
       "PYARROW_WITH_PARQUET=1"
-      "PYARROW_PARALLEL="
-      ${STDLIB_CXXFLAGS})
+      "PYARROW_PARALLEL=")
 
     if (APPLE)
       # Since 10.14, the XCode toolchain only accepts libc++ as the
