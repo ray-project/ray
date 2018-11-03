@@ -796,15 +796,10 @@ class Worker(object):
             with profiling.profile("task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
-                    setproctitle.setproctitle(
-                        "ray_worker:{}()".format(function_name))
                 else:
-                    actor = self.actors[task.actor_id().id()]
-                    setproctitle.setproctitle(
-                        "ray_{}:{}()".format(
-                            actor.__class__.__name__, function_name))
                     outputs = function_executor(
-                        dummy_return_id, actor, *arguments)
+                        dummy_return_id, self.actors[task.actor_id().id()],
+                        *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -906,7 +901,19 @@ class Worker(object):
                 "task_id": task.task_id().hex()
             }
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                self._process_task(task, execution_info)
+                if task.actor_id().id() == NIL_ACTOR_ID:
+                    title = "ray_worker:{}()".format(function_name)
+                    idle_title = "ray_worker"
+                else:
+                    actor = self.actors[task.actor_id().id()]
+                    title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                                 function_name)
+                    idle_title = "ray_{}".format(actor.__class__.__name__)
+                try:
+                    setproctitle.setproctitle(title)
+                    self._process_task(task, execution_info)
+                finally:
+                    setproctitle.setproctitle(idle_title)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(

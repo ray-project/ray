@@ -2280,3 +2280,23 @@ def test_wait_reconstruction(shutdown_only):
         ray.pyarrow.plasma.ObjectID(x_id.id()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
+
+
+def test_ray_setproctitle(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class UniqueName(object):
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:f()"
+
+    @ray.remote
+    def unique_1():
+        assert setproctitle.getproctitle() == "ray_worker:runtest.unique_1()"
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.remote())
+    ray.get(unique_1.remote())
