@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import re
+import setproctitle
 import string
 import sys
 import threading
