@@ -589,7 +589,7 @@ export IFS="
 "
 sudo true
 workers=$(
-    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+    ps aux | grep ray_ | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";

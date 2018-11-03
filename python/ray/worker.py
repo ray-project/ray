@@ -10,6 +10,7 @@ import logging
 import numpy as np
 import os
 import redis
+import setproctitle
 import signal
 import sys
 import threading
@@ -796,9 +797,12 @@ class Worker(object):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor(*arguments)
                 else:
+                    actor = self.actors[task.actor_id().id()]
+                    if function_name == "__init__":
+                        setproctitle.setproctitle(
+                            "ray_" + actor.__class__.__name__)
                     outputs = function_executor(
-                        dummy_return_id, self.actors[task.actor_id().id()],
-                        *arguments)
+                        dummy_return_id, actor, *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -1861,6 +1865,7 @@ def connect(info,
     worker.actor_id = NIL_ACTOR_ID
     worker.connected = True
     worker.set_mode(mode)
+    setproctitle.setproctitle("ray_worker")
 
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
