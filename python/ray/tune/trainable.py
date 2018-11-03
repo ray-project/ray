@@ -220,7 +220,8 @@ class Trainable(object):
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, str):
-            if not checkpoint.startswith(checkpoint_dir):
+            if (not checkpoint.startswith(checkpoint_dir)
+                    or checkpoint == checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}".format(checkpoint_dir))
@@ -231,8 +232,9 @@ class Trainable(object):
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            pickle.dump(checkpoint, open(checkpoint_path + ".tune_state",
-                                         "wb"))
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(checkpoint_path, "wb") as f:
+                pickle.dump(checkpoint, f)
         else:
             raise ValueError("Return value from `_save` must be dict or str.")
         pickle.dump({
@@ -294,7 +296,7 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(checkpoint_path + ".tune_state", "rb") as loaded_state:
+            with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
             self._restore(checkpoint_dict)
         else:
