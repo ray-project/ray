@@ -40,7 +40,7 @@ A typical layout of temporary files could look like this:
   /tmp
   └── ray
       └── session_{datetime}_{pid}
-          ├── logs
+          ├── logs  # for logging
           │   ├── log_monitor.err
           │   ├── log_monitor.out
           │   ├── monitor.err
@@ -59,7 +59,7 @@ A typical layout of temporary files could look like this:
           │   ├── worker-{worker_id}.out
           │   └── {other workers}
           ├── ray_ui.ipynb  # ipython notebook file
-          └── sockets  # for logging
+          └── sockets  # for sockets
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
@@ -75,6 +75,7 @@ You are allowed to specify the plasma object store socket in one of these ways:
 * Specify ``plasma_store_socket_name`` when call ``ray.init()``
 
 The path you specified will be given as it is without being affected any other paths.
+
 
 Notes
 -----
