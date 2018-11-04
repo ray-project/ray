@@ -91,6 +91,8 @@ if __name__ == "__main__":
             loss = sgd.step(fetch_stats=True)
             acc = sgd.foreach_model(lambda model: model.test_accuracy())
             print("Iter", i, "loss", loss, "accuracy", acc)
+            acc = sgd.foreach_model(lambda model: model.test_accuracy())
+            print("acc2", acc)
             print("Time per iteration", time.time() - start)
         else:
             sgd.step()
