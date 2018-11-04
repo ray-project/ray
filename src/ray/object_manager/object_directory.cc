@@ -105,7 +105,8 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   return status;
 };
 
-void ObjectDirectory::LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) {
+void ObjectDirectory::LookupRemoteConnectionInfo(
+    RemoteConnectionInfo &connection_info) const {
   const ClientTableDataT &data =
       gcs_client_->client_table().GetClient(connection_info.client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
@@ -115,21 +116,18 @@ void ObjectDirectory::LookupRemoteConnectionInfo(RemoteConnectionInfo &connectio
   }
 }
 
-void ObjectDirectory::RunFunctionForEachClient(
-    const InfoSuccessCallback &client_function) {
+std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
+  std::vector<RemoteConnectionInfo> remote_connections;
   const auto &clients = gcs_client_->client_table().GetAllClients();
   for (const auto &client_pair : clients) {
-    const ClientTableDataT &data = client_pair.second;
-    if (client_pair.first == ClientID::nil() ||
-        client_pair.first == gcs_client_->client_table().GetLocalClientId() ||
-        !data.is_insertion) {
-      continue;
-    } else {
-      RemoteConnectionInfo info(client_pair.first);
-      LookupRemoteConnectionInfo(info);
-      client_function(info);
+    RemoteConnectionInfo info(client_pair.first);
+    LookupRemoteConnectionInfo(info);
+    if (info.Connected() &&
+        info.client_id != gcs_client_->client_table().GetLocalClientId()) {
+      remote_connections.push_back(info);
     }
   }
+  return remote_connections;
 }
 
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,

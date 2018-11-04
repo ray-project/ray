@@ -31,9 +31,6 @@ class ObjectDirectoryInterface {
  public:
   virtual ~ObjectDirectoryInterface() {}
 
-  /// Callbacks for LookupRemoteConnectionInfo.
-  using InfoSuccessCallback = std::function<void(const ray::RemoteConnectionInfo &info)>;
-
   virtual void RegisterBackend() = 0;
 
   /// Lookup how to connect to a remote object manager.
@@ -42,7 +39,13 @@ class ObjectDirectoryInterface {
   /// should be pre-populated with the requested client ID. If the directory
   /// has information about the requested client, then the rest of the fields
   /// in this struct will be populated accordingly.
-  virtual void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) = 0;
+  virtual void LookupRemoteConnectionInfo(
+      RemoteConnectionInfo &connection_info) const = 0;
+
+  /// Get information for all connected remote object managers.
+  ///
+  /// \return A vector of information for all connected remote object managers.
+  virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
   using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
@@ -100,13 +103,6 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
-
-  /// Go through all the client information.
-  ///
-  /// \param success_cb A callback which handles the success of this method.
-  /// This function will be called multiple times.
-  /// \return Void.
-  virtual void RunFunctionForEachClient(const InfoSuccessCallback &client_function) = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -125,9 +121,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   void RegisterBackend() override;
 
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) override;
+  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 
-  void RunFunctionForEachClient(const InfoSuccessCallback &client_function) override;
+  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
                               const OnLocationsFound &callback) override;
