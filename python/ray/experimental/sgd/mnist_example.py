@@ -42,6 +42,8 @@ class MNISTModel(Model):
         if not hasattr(self, "mnist"):
             raise ValueError("Failed to import data", e)
 
+        # Set seed and build layers
+        tf.set_random_seed(0)
         self.x = tf.placeholder(tf.float32, [None, 784], name="x")
         self.y_ = tf.placeholder(tf.float32, [None, 10], name="y_")
         y_conv, self.keep_prob = deepnn(self.x)
@@ -91,8 +93,7 @@ if __name__ == "__main__":
             loss = sgd.step(fetch_stats=True)
             acc = sgd.foreach_model(lambda model: model.test_accuracy())
             print("Iter", i, "loss", loss, "accuracy", acc)
-            acc = sgd.foreach_model(lambda model: model.test_accuracy())
-            print("acc2", acc)
             print("Time per iteration", time.time() - start)
+            assert len(set(acc)) == 1, ("Models out of sync", acc)
         else:
             sgd.step()
