@@ -26,8 +26,18 @@ COMMON_CONFIG = {
     # === Debugging ===
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Set the RLlib log level for the agent process and its remote evaluators
+    # Set the ray.rllib.* log level for the agent process and its evaluators
     "log_level": "INFO",
+    # Callbacks that will be run during various phases of training. These all
+    # take a single "info" dict as an argument. For episode callbacks, custom
+    # metrics can be attached to the episode by updating the episode object's
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
+    "callbacks": {
+        "on_episode_start": None,  # arg: {"env": .., "episode": ...}
+        "on_episode_step": None,   # arg: {"env": .., "episode": ...}
+        "on_episode_end": None,    # arg: {"env": .., "episode": ...}
+        "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
+    },
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -184,7 +194,8 @@ class Agent(Trainable):
             policy_config=config,
             worker_index=worker_index,
             monitor_path=self.logdir if config["monitor"] else None,
-            log_level=config["log_level"])
+            log_level=config["log_level"],
+            callbacks=config["callbacks"])
 
     @classmethod
     def resource_help(cls, config):

@@ -320,6 +320,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/cartpole_lstm.py --stop=200 --use-prev-action-reward
 
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/custom_metrics_and_callbacks.py --num-iters=2
+
 docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=simple

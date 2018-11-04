@@ -29,6 +29,7 @@ Training APIs
 * `Command-line <rllib-training.html>`__
 * `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
+* `Debugging <rllib-training.html#debugging>`__
 * `REST API <rllib-training.html#rest-api>`__
 
 Environments
