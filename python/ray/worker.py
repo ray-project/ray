@@ -92,11 +92,7 @@ class RayTaskError(Exception):
     def __init__(self, function_name, exception, traceback_str):
         """Initialize a RayTaskError."""
         self.function_name = function_name
-        if (isinstance(exception, RayGetError)
-                or isinstance(exception, RayGetArgumentError)):
-            self.exception = exception
-        else:
-            self.exception = None
+        self.exception = exception
         self.traceback_str = traceback_str
 
     def __str__(self):
@@ -2277,7 +2273,7 @@ def get(object_ids, worker=global_worker):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
-                    raise RayGetError(object_ids[i], value)
+                    raise value.exception
             return values
         else:
             value = worker.get_object([object_ids])[0]
@@ -2285,7 +2281,7 @@ def get(object_ids, worker=global_worker):
                 # If the result is a RayTaskError, then the task that created
                 # this object failed, and we should propagate the error message
                 # here.
-                raise RayGetError(object_ids, value)
+                raise value.exception
             return value
 
 
