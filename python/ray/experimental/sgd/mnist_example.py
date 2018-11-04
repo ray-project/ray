@@ -87,8 +87,10 @@ if __name__ == "__main__":
 
     for i in range(args.num_iters):
         if i % 10 == 0:
+            start = time.time()
             loss = sgd.step(fetch_stats=True)
             acc = sgd.foreach_model(lambda model: model.test_accuracy())
             print("Iter", i, "loss", loss, "accuracy", acc)
+            print("Time per iteration", time.time() - start)
         else:
             sgd.step()
