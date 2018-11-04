@@ -597,7 +597,7 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep ray_ | grep -v grep
+    ps aux | grep ' ray_' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
