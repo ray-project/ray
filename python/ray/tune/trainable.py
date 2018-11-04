@@ -224,7 +224,8 @@ class Trainable(object):
                     or checkpoint == checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}".format(checkpoint_dir))
+                    "given checkpoint dir {}: {}".format(
+                        checkpoint_dir, checkpoint))
             if not os.path.exists(checkpoint):
                 raise ValueError(
                     "The returned checkpoint path does not exist: {}".format(
