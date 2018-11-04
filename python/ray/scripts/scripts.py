@@ -390,12 +390,12 @@ def stop():
         shell=True)
     subprocess.call(
         [
-            "ps aux | grep ray_ | grep -v grep"
+            "ps aux | grep ' ray_' | grep -v grep"
         ],
         shell=True)
     subprocess.call(
         [
-            "kill -9 $(ps aux | grep ray_ | "
+            "kill -9 $(ps aux | grep ' ray_' | "
             "grep -v grep | awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)
@@ -602,7 +602,7 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep ray_ | grep -v grep
+    ps aux | grep ' ray_' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
