@@ -646,6 +646,7 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
         fbb, fbb.CreateString(client_id_.binary()), is_transfer);
     fbb.Finish(message);
     // Send synchronously.
+    // TODO(swang): Make this a WriteMessageAsync.
     RAY_CHECK_OK(conn->WriteMessage(
         static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
         fbb.GetSize(), fbb.GetBufferPointer()));
@@ -814,6 +815,7 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
     }
 
     if (conn != nullptr) {
+      // TODO(swang): Make this a WriteMessageAsync.
       ray::Status status = conn->WriteMessage(
           static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
           fbb.GetSize(), fbb.GetBufferPointer());
