@@ -37,8 +37,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   }
 
   MOCK_METHOD0(RegisterBackend, void(void));
-  MOCK_METHOD3(GetInformation, ray::Status(const ClientID &, const InfoSuccessCallback &,
-                                           const InfoFailureCallback &));
+  MOCK_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_METHOD3(SubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &,
                            const OnLocationsFound &));

@@ -105,20 +105,14 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   return status;
 };
 
-ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
-                                            const InfoSuccessCallback &success_callback,
-                                            const InfoFailureCallback &fail_callback) {
-  const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
+void ObjectDirectory::LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) {
+  const ClientTableDataT &data =
+      gcs_client_->client_table().GetClient(connection_info.client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
-  if (result_client_id == ClientID::nil() || !data.is_insertion) {
-    fail_callback();
-  } else {
-    const auto &info =
-        RemoteConnectionInfo(client_id, data.node_manager_address,
-                             static_cast<uint16_t>(data.object_manager_port));
-    success_callback(info);
+  if (result_client_id != ClientID::nil() && data.is_insertion) {
+    connection_info.ip = data.node_manager_address;
+    connection_info.port = static_cast<uint16_t>(data.object_manager_port);
   }
-  return ray::Status::OK();
 }
 
 void ObjectDirectory::RunFunctionForEachClient(
@@ -131,9 +125,8 @@ void ObjectDirectory::RunFunctionForEachClient(
         !data.is_insertion) {
       continue;
     } else {
-      const auto &info =
-          RemoteConnectionInfo(client_pair.first, data.node_manager_address,
-                               static_cast<uint16_t>(data.object_manager_port));
+      RemoteConnectionInfo info(client_pair.first);
+      LookupRemoteConnectionInfo(info);
       client_function(info);
     }
   }

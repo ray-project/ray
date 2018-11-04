@@ -16,10 +16,12 @@ namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo() = default;
-  RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
-                       uint16_t port_num)
-      : client_id(id), ip(ip_address), port(port_num) {}
+  RemoteConnectionInfo(const ClientID &id) : client_id(id) {}
+
+  // Returns whether there is enough information to connect to the remote
+  // object manager.
+  bool Connected() const { return !ip.empty(); }
+
   ClientID client_id;
   std::string ip;
   uint16_t port;
@@ -27,23 +29,20 @@ struct RemoteConnectionInfo {
 
 class ObjectDirectoryInterface {
  public:
-  virtual ~ObjectDirectoryInterface() = default;
+  virtual ~ObjectDirectoryInterface() {}
 
-  /// Callbacks for GetInformation.
+  /// Callbacks for LookupRemoteConnectionInfo.
   using InfoSuccessCallback = std::function<void(const ray::RemoteConnectionInfo &info)>;
-  using InfoFailureCallback = std::function<void()>;
 
   virtual void RegisterBackend() = 0;
 
-  /// This is used to establish object manager client connections.
+  /// Lookup how to connect to a remote object manager.
   ///
-  /// \param client_id The client for which information is required.
-  /// \param success_cb A callback which handles the success of this method.
-  /// \param fail_cb A callback which handles the failure of this method.
-  /// \return Status of whether this asynchronous request succeeded.
-  virtual ray::Status GetInformation(const ClientID &client_id,
-                                     const InfoSuccessCallback &success_cb,
-                                     const InfoFailureCallback &fail_cb) = 0;
+  /// \param connection_info The connection information to fill out. This
+  /// should be pre-populated with the requested client ID. If the directory
+  /// has information about the requested client, then the rest of the fields
+  /// in this struct will be populated accordingly.
+  virtual void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) = 0;
 
   /// Callback for object location notifications.
   using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
@@ -122,13 +121,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ObjectDirectory(boost::asio::io_service &io_service,
                   std::shared_ptr<gcs::AsyncGcsClient> &gcs_client);
 
-  virtual ~ObjectDirectory(){};
+  virtual ~ObjectDirectory() {}
 
   void RegisterBackend() override;
 
-  ray::Status GetInformation(const ClientID &client_id,
-                             const InfoSuccessCallback &success_callback,
-                             const InfoFailureCallback &fail_callback) override;
+  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) override;
 
   void RunFunctionForEachClient(const InfoSuccessCallback &client_function) override;
 

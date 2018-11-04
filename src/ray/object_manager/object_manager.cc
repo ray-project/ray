@@ -263,23 +263,24 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   // TODO(hme): There is no cap on the number of pull request connections.
   connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id, &conn);
 
+  // Try to create a new connection to the remote object manager if one doesn't
+  // already exist.
   if (conn == nullptr) {
-    status = object_directory_->GetInformation(
-        client_id,
-        [this, object_id, client_id](const RemoteConnectionInfo &connection_info) {
-          std::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
-              ConnectionPool::ConnectionType::MESSAGE, connection_info);
-          if (async_conn == nullptr) {
-            return;
-          }
-          connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
-                                          client_id, async_conn);
-          PullSendRequest(object_id, async_conn);
-        },
-        []() {
-          RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
-        });
-  } else {
+    RemoteConnectionInfo connection_info(client_id);
+    object_directory_->LookupRemoteConnectionInfo(connection_info);
+    if (connection_info.Connected()) {
+      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
+                                    connection_info);
+      if (conn != nullptr) {
+        connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
+                                        client_id, conn);
+      }
+    } else {
+      RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
+    }
+  }
+
+  if (conn != nullptr) {
     PullSendRequest(object_id, conn);
   }
 }
@@ -347,34 +348,30 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     return;
   }
 
-  // TODO(hme): Cache this data in ObjectDirectory.
-  // Okay for now since the GCS client caches this data.
-  RAY_CHECK_OK(object_directory_->GetInformation(
-      client_id,
-      [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        const object_manager::protocol::ObjectInfoT &object_info =
-            local_objects_[object_id];
-        uint64_t data_size =
-            static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-        uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-        uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
-        for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-          send_service_.post([this, client_id, object_id, data_size, metadata_size,
-                              chunk_index, info]() {
-            // NOTE: When this callback executes, it's possible that the object
-            // will have already been evicted. It's also possible that the
-            // object could be in the process of being transferred to this
-            // object manager from another object manager.
-            ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
-                              info);
-          });
-        }
-      },
-      []() {
-        // Push is best effort, so do nothing here.
-        RAY_LOG(ERROR)
-            << "Failed to establish connection for Push with remote object manager.";
-      }));
+  RemoteConnectionInfo connection_info(client_id);
+  object_directory_->LookupRemoteConnectionInfo(connection_info);
+  if (connection_info.Connected()) {
+    const object_manager::protocol::ObjectInfoT &object_info = local_objects_[object_id];
+    uint64_t data_size =
+        static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+    uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+    uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+    for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+      send_service_.post([this, client_id, object_id, data_size, metadata_size,
+                          chunk_index, connection_info]() {
+        // NOTE: When this callback executes, it's possible that the object
+        // will have already been evicted. It's also possible that the
+        // object could be in the process of being transferred to this
+        // object manager from another object manager.
+        ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
+                          connection_info);
+      });
+    }
+  } else {
+    // Push is best effort, so do nothing here.
+    RAY_LOG(ERROR)
+        << "Failed to establish connection for Push with remote object manager.";
+  }
 }
 
 void ObjectManager::ExecuteSendObject(const ClientID &client_id,
