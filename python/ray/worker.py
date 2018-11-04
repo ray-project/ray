@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import traceback
+import tblib
 
 # Ray modules
 import pyarrow
@@ -107,37 +108,6 @@ class RayTaskError(Exception):
             return ("Remote function {}{}{} failed with:\n\n{}".format(
                 colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
                 self.traceback_str))
-
-
-class RayGetArgumentError(Exception):
-    """An exception used when a task's argument was produced by a failed task.
-
-    Attributes:
-        argument_index (int): The index (zero indexed) of the failed argument
-            in present task's remote function call.
-        function_name (str): The name of the function for the current task.
-        objectid (lib.ObjectID): The ObjectID that was passed in as the
-            argument.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, function_name, argument_index, objectid, task_error):
-        """Initialize a RayGetArgumentError object."""
-        self.argument_index = argument_index
-        self.function_name = function_name
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetArgumentError as a string."""
-        return ("Failed to get objectid {} as argument {} for remote function "
-                "{}{}{}. It was created by remote function {}{}{} which "
-                "failed with:\n{}".format(
-                    self.objectid, self.argument_index, colorama.Fore.RED,
-                    self.function_name, colorama.Fore.RESET, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
 
 
 class Worker(object):
@@ -686,7 +656,7 @@ class Worker(object):
                     # If the result is a RayTaskError, then the task that
                     # created this object failed, and we should propagate the
                     # error message here.
-                    raise RayGetArgumentError(function_name, i, arg, argument)
+                    raise RayTaskError(function_name, argument.exception, argument.traceback_str)
             else:
                 # pass the argument by value
                 argument = arg
@@ -753,10 +723,10 @@ class Worker(object):
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
-        except RayGetArgumentError as e:
-            self._handle_process_task_failure(function_id, function_name,
-                                              return_object_ids, e, None)
-            return
+        except RayTaskError as e:
+            self._handle_process_task_failure(
+                function_id, function_name, return_object_ids, e.exception,
+                e.__str__() + e.traceback_str)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -772,6 +742,10 @@ class Worker(object):
                     outputs = function_executor(
                         dummy_return_id, self.actors[task.actor_id().id()],
                         *arguments)
+        except RayTaskError as e:
+            self._handle_process_task_failure(
+                function_id, function_name, return_object_ids, e.exception,
+                e.__str__() + e.traceback_str)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -793,6 +767,10 @@ class Worker(object):
                 if num_returns == 1:
                     outputs = (outputs, )
                 self._store_outputs_in_object_store(return_object_ids, outputs)
+        except RayTaskError as e:
+            self._handle_process_task_failure(
+                function_id, function_name, return_object_ids, e.exception,
+                e.__str__() + e.traceback_str)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -1096,12 +1074,6 @@ def _initialize_serialization(driver_id, worker=global_worker):
         Exception,
         use_pickle=True,
         driver_id=driver_id)
-    register_custom_serializer(
-        RayGetArgumentError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetArgumentError")
     # Tell Ray to serialize lambdas with pickle.
     register_custom_serializer(
         type(lambda: 0),
@@ -2218,6 +2190,12 @@ def register_custom_serializer(cls,
         register_class_for_serialization({"worker": worker})
 
 
+def _raise_error_from_task(ray_task_error):
+    traceback_str = ray_task_error.traceback_str
+    tb = tblib.Traceback.from_string(traceback_str).as_traceback()
+    raise ray_task_error.exception.with_traceback(tb)
+
+
 def get(object_ids, worker=global_worker):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2248,7 +2226,7 @@ def get(object_ids, worker=global_worker):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
-                    raise value.exception
+                    _raise_error_from_task(value)
             return values
         else:
             value = worker.get_object([object_ids])[0]
@@ -2256,7 +2234,7 @@ def get(object_ids, worker=global_worker):
                 # If the result is a RayTaskError, then the task that created
                 # this object failed, and we should propagate the error message
                 # here.
-                raise value.exception
+                _raise_error_from_task(value)
             return value
 
 

@@ -66,6 +66,7 @@ def push_error_to_driver(worker,
         data: This should be a dictionary mapping strings to strings. It
             will be serialized with json and stored in Redis.
     """
+    return
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
