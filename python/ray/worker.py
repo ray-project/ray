@@ -109,29 +109,6 @@ class RayTaskError(Exception):
                 self.traceback_str))
 
 
-class RayGetError(Exception):
-    """An exception used when get is called on an output of a failed task.
-
-    Attributes:
-        objectid (lib.ObjectID): The ObjectID that get was called on.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, objectid, task_error):
-        """Initialize a RayGetError object."""
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetError as a string."""
-        return ("Could not get objectid {}. It was created by remote function "
-                "{}{}{} which failed with:\n\n{}".format(
-                    self.objectid, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
-
-
 class RayGetArgumentError(Exception):
     """An exception used when a task's argument was produced by a failed task.
 
@@ -776,7 +753,7 @@ class Worker(object):
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
-        except (RayGetError, RayGetArgumentError) as e:
+        except RayGetArgumentError as e:
             self._handle_process_task_failure(function_id, function_name,
                                               return_object_ids, e, None)
             return
@@ -1116,11 +1093,9 @@ def _initialize_serialization(driver_id, worker=global_worker):
         driver_id=driver_id,
         class_id="ray.RayTaskError")
     register_custom_serializer(
-        RayGetError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetError")
+        Exception,
+        use_pickle=True,
+        driver_id=driver_id)
     register_custom_serializer(
         RayGetArgumentError,
         use_dict=True,
