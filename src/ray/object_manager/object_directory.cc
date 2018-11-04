@@ -62,6 +62,8 @@ void ObjectDirectory::RegisterBackend() {
     // empty, since this may indicate that the objects have been evicted from
     // all nodes.
     for (const auto &callback_pair : callbacks) {
+      // It is safe to call the callback directly since this is already running
+      // in the subscription callback stack.
       callback_pair.second(client_id_vec, object_id);
     }
   };
@@ -157,7 +159,9 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // have been evicted from all nodes.
   std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
                                       listener_state.current_object_locations.end());
-  callback(client_id_vec, object_id);
+  io_service_.post([this, callback, client_id_vec, object_id]() {
+    callback(client_id_vec, object_id);
+  });
   return status;
 }
 
@@ -188,6 +192,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         std::unordered_set<ClientID> client_ids;
         std::vector<ClientID> locations_vector = UpdateObjectLocations(
             client_ids, location_history, gcs_client_->client_table());
+        // It is safe to call the callback directly since this is already running
+        // in the GCS client's lookup callback stack.
         callback(locations_vector, object_id);
       });
   return status;

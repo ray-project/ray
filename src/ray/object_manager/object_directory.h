@@ -115,7 +115,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
  public:
   /// Create an object directory.
   ///
-  /// \param io_service The event loop to dispatch callbacks to.
+  /// \param io_service The event loop to dispatch callbacks to. This should
+  /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and client
   /// information from.
   ObjectDirectory(boost::asio::io_service &io_service,
