@@ -627,7 +627,7 @@ class RunExperimentTest(unittest.TestCase):
                 return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
-                return path
+                return path + "/checkpoint"
 
         trials = run_experiments({
             "foo": {
