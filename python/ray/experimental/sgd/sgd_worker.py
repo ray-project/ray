@@ -182,15 +182,24 @@ class SGDWorker(object):
                            tf.local_variables_initializer())
         self.sess.run(init_op)
 
+    def _grad_feed_dict(self):
+        # Aggregate feed dicts for each model on this worker.
+        feed_dict = {}
+        for model in self.models:
+            feed_dict.update(model.get_feed_dict())
+        return feed_dict
+
     def foreach_model(self, fn):
-        return [fn(m) for m in self.models]
+        with self.sess.as_default():
+            return [fn(m) for m in self.models]
 
     def foreach_worker(self, fn):
-        return fn(self)
+        with self.sess.as_default():
+            return fn(self)
 
     def compute_gradients(self):
         start = time.time()
-        feed_dict = {}
+        feed_dict = self._grad_feed_dict()
         # Aggregate feed dicts for each model on this worker.
         for model in self.models:
             feed_dict.update(model.get_feed_dict())
@@ -219,6 +228,7 @@ class SGDWorker(object):
         fetches = run_timeline(
             self.sess,
             [self.models[0].loss, self.apply_op, self.nccl_control_out],
+            feed_dict=self._grad_feed_dict(),
             name="compute_apply")
         return fetches[0]
 
@@ -227,7 +237,9 @@ class SGDWorker(object):
                          agg_grad_shard_oids,
                          tl_name="ps_compute_apply",
                          write_timeline=False):
-        feed_dict = dict(zip(self.plasma_in_grads_oids, out_grad_shard_oids))
+        feed_dict = self._grad_feed_dict()
+        feed_dict.update(
+            dict(zip(self.plasma_in_grads_oids, out_grad_shard_oids)))
         feed_dict.update(
             dict(zip(self.plasma_out_grads_oids, agg_grad_shard_oids)))
         fetch(agg_grad_shard_oids)
