@@ -145,6 +145,14 @@ class DistributedSGD(object):
             out.extend(r)
         return r
 
+    def for_model(self, fn):
+        """Apply the given function to a single model replica.
+
+        Returns:
+            Result from applying the function.
+        """
+        return ray.get(self.workers[0].for_model.remote(fn))
+
     def step(self, fetch_stats=False):
         """Run a single SGD step.
 

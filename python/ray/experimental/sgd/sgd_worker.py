@@ -197,6 +197,10 @@ class SGDWorker(object):
         with self.sess.as_default():
             return fn(self)
 
+    def for_model(self, fn):
+        with self.sess.as_default():
+            return fn(self.models[0])
+
     def compute_gradients(self):
         start = time.time()
         feed_dict = self._grad_feed_dict()
