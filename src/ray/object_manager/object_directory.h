@@ -27,7 +27,6 @@ struct RemoteConnectionInfo {
 
 class ObjectDirectoryInterface {
  public:
-  ObjectDirectoryInterface() = default;
   virtual ~ObjectDirectoryInterface() = default;
 
   /// Callbacks for GetInformation.
@@ -114,8 +113,15 @@ class ObjectDirectoryInterface {
 /// Ray ObjectDirectory declaration.
 class ObjectDirectory : public ObjectDirectoryInterface {
  public:
-  ObjectDirectory() = default;
-  ~ObjectDirectory() override = default;
+  /// Create an object directory.
+  ///
+  /// \param io_service The event loop to dispatch callbacks to.
+  /// \param gcs_client A Ray GCS client to request object and client
+  /// information from.
+  ObjectDirectory(boost::asio::io_service &io_service,
+                  std::shared_ptr<gcs::AsyncGcsClient> &gcs_client);
+
+  virtual ~ObjectDirectory(){};
 
   void RegisterBackend() override;
 
@@ -139,8 +145,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
-  /// Ray only (not part of the OD interface).
-  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_client);
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
@@ -154,6 +158,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<ClientID> current_object_locations;
   };
 
+  /// Reference to the event loop.
+  boost::asio::io_service &io_service_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.

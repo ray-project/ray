@@ -23,7 +23,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       config_(config),
-      object_directory_(new ObjectDirectory(gcs_client)),
+      object_directory_(new ObjectDirectory(main_service, gcs_client)),
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.

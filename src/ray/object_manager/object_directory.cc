@@ -2,8 +2,9 @@
 
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
-    : gcs_client_(gcs_client) {}
+ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
+                                 std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
+    : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
 
