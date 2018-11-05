@@ -477,7 +477,24 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks() {
+void NodeManager::DispatchTasks(const Task* new_ready_task) {
+
+  // new_ready_task has just been added to the ready queue, and it is the
+  // only task which was added to the ready queue.
+  //
+  // Since DispatchTasks() is called every time a task is added to the ready
+  // queue, and every time a task finishes execution and resources become
+  // available, we are guaranteed that no other tasks in the ready queue are
+  // feasible, so we just need to check whether new_ready_task is feasible.
+  if (new_ready_task != nullptr) {
+    const auto &task_resources = new_ready_task->GetTaskSpecification().GetRequiredResources();
+    if (local_available_resources_.Contains(task_resources)) {
+      auto dispatched_task = local_queues_.RemoveTask(new_ready_task->GetTaskSpecification().TaskId());
+      AssignTask(dispatched_task);
+    }
+    return;
+  }
+
   // Work with a copy of scheduled tasks.
   // (See design_docs/task_states.rst for the state transition diagram.)
   auto ready_tasks = local_queues_.GetReadyTasks();
@@ -580,7 +597,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks();
+    DispatchTasks(nullptr);
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -609,7 +626,7 @@ void NodeManager::ProcessGetTaskMessage(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks();
+  DispatchTasks(nullptr);
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -698,7 +715,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "driver_id: " << worker->GetAssignedDriverId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks();
+    DispatchTasks(nullptr);
   } else {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
@@ -1060,7 +1077,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
+      DispatchTasks(nullptr);
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
     }
@@ -1094,7 +1111,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   local_queues_.QueueBlockedTasks({task});
   worker->MarkBlocked();
 
-  DispatchTasks();
+  DispatchTasks(nullptr);
 }
 
 void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
@@ -1208,7 +1225,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
-    DispatchTasks();
+    DispatchTasks(&task);
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
@@ -1319,7 +1336,7 @@ void NodeManager::AssignTask(Task &task) {
           // worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          DispatchTasks();
+          DispatchTasks(nullptr);
         }
       });
 }
@@ -1454,7 +1471,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
     // New ready tasks appeared in the queue, try to dispatch them.
-    DispatchTasks();
+    DispatchTasks(nullptr);
 
     // Check that remaining tasks that could not be transitioned are blocked
     // workers or drivers.
@@ -1531,7 +1548,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
+      DispatchTasks(nullptr);
     }
   });
 }
