@@ -50,6 +50,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
@@ -174,6 +175,9 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   Heartbeat();
+  // Start the timer that gets object manager profiling information and sends it
+  // to the GCS.
+  GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
 }
@@ -278,6 +282,34 @@ void NodeManager::Heartbeat() {
     RAY_CHECK(!error);
     Heartbeat();
   });
+}
+
+void NodeManager::GetObjectManagerProfileInfo() {
+  int64_t start_time_ms = current_time_ms();
+
+  auto profile_info = object_manager_.GetAndResetProfilingInfo();
+
+  if (profile_info.profile_events.size() > 0) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = CreateProfileTableData(fbb, &profile_info);
+    fbb.Finish(message);
+    auto profile_message = flatbuffers::GetRoot<ProfileTableData>(fbb.GetBufferPointer());
+
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*profile_message));
+  }
+
+  // Reset the timer.
+  object_manager_profile_timer_.expires_from_now(heartbeat_period_);
+  object_manager_profile_timer_.async_wait(
+      [this](const boost::system::error_code &error) {
+        RAY_CHECK(!error);
+        GetObjectManagerProfileInfo();
+      });
+
+  int64_t interval = current_time_ms() - start_time_ms;
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
+    RAY_LOG(WARNING) << "GetObjectManagerProfileInfo handler took " << interval << " ms.";
+  }
 }
 
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
