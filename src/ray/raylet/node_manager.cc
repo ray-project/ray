@@ -655,9 +655,9 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
-  RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died, "
-                 << "remaining reconstructions = "
-                 << actor_registration.GetRemainingReconstructions();
+  RAY_LOG(INFO) << "The actor with ID " << actor_id << " died, "
+                << "remaining reconstructions = "
+                << actor_registration.GetRemainingReconstructions();
 
   // Check if this actor needs to be reconstructed.
   ActorState new_state =
@@ -684,13 +684,11 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   }
   ray::gcs::ActorTable::WriteCallback failure_callback = nullptr;
   if (was_local) {
-    failure_callback = [was_local](gcs::AsyncGcsClient *client, const ActorID &id,
-                                   const ActorTableDataT &data) {
-      if (was_local) {
-        // If the disconnected actor was local, only this node will try to update actor
-        // state. So the update shouldn't fail.
-        RAY_LOG(FATAL) << "Failed to update state for actor " << id;
-      }
+    failure_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
+                          const ActorTableDataT &data) {
+      // If the disconnected actor was local, only this node will try to update actor
+      // state. So the update shouldn't fail.
+      RAY_LOG(FATAL) << "Failed to update state for actor " << id;
     };
   }
   PublishActorStateTransition(actor_id, new_actor_data, failure_callback);
@@ -1478,8 +1476,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     HandleActorStateTransition(actor_id, new_actor_data);
     PublishActorStateTransition(
         actor_id, new_actor_data,
-        /*failure_callback=*/[this](gcs::AsyncGcsClient *client, const ActorID &id,
-                                    const ActorTableDataT &data) {
+        /*failure_callback=*/
+        [](gcs::AsyncGcsClient *client, const ActorID &id, const ActorTableDataT &data) {
           // Only one node at a time should succeed at creating the actor.
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });

@@ -2456,7 +2456,7 @@ def remote(*args, **kwargs):
       third-party libraries or to reclaim resources that cannot easily be
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
-    * **max_reconstructions**: Only for *actors*. This sepcifies the maximum
+    * **max_reconstructions**: Only for *actors*. This specifies the maximum
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
