@@ -269,23 +269,19 @@ class SchedulingQueue {
   /// this raylet.
   ResourceSet current_resource_load_;
 
-  /// \brief Return all resource demand associated with the specified task queue.
+  /// Bookkeeping for total number of resources in the ready queue.
+  /// Adds all the resources from the tasks in the argument to
+  /// current_resource_load_.
   ///
-  /// \param task_queue The task queue for which aggregate resource demand is calculated.
-  /// \return Aggregate resource demand.
-  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
+  /// \param tasks The tasks whose resources are added to current_resource_load_.
+  void AddReadyQueueResources(const std::vector<Task> &tasks);
 
-  void AddQueueResources(const std::vector<Task> &tasks) {
-    for (const auto &task : tasks) {
-      current_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
-    }
-  }
-
-  void RemoveQueueResources(const std::vector<Task> &tasks) {
-    for (const auto &task : tasks) {
-      current_resource_load_.SubtractResourcesStrict(task.GetTaskSpecification().GetRequiredResources());
-    }
-  }
+  /// Bookkeeping for total number of resources in the ready queue.
+  /// Removes all the resources from the tasks in the argument from
+  /// current_resource_load_.
+  ///
+  /// \param tasks The tasks whose resources are removed from current_resource_load_.
+  void RemoveReadyQueueResources(const std::vector<Task> &tasks);
 };
 
 }  // namespace raylet

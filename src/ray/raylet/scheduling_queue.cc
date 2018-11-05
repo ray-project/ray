@@ -135,18 +135,8 @@ const std::list<Task> &SchedulingQueue::GetInfeasibleTasks() const {
   return this->infeasible_tasks_.GetTasks();
 }
 
-ResourceSet SchedulingQueue::GetQueueResources(const TaskQueue &task_queue) const {
-  // Iterate over all tasks of the specified queue and aggregate total resource
-  // demand in a resource set.
-  ResourceSet queue_resources;
-  for (const auto &task : task_queue.GetTasks()) {
-    queue_resources.AddResources(task.GetTaskSpecification().GetRequiredResources());
-  }
-  return queue_resources;
-}
-
 ResourceSet SchedulingQueue::GetReadyQueueResources() const {
-  return GetQueueResources(ready_tasks_);
+  return current_resource_load_;
 }
 
 ResourceSet SchedulingQueue::GetResourceLoad() const {
@@ -209,8 +199,9 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
   std::vector<Task> removed_tasks_from_ready_queue;
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks_from_ready_queue);
-  RemoveQueueResources(removed_tasks_from_ready_queue);
-  removed_tasks.insert(removed_tasks.end(), removed_tasks_from_ready_queue.begin(), removed_tasks_from_ready_queue.end());
+  RemoveReadyQueueResources(removed_tasks_from_ready_queue);
+  removed_tasks.insert(removed_tasks.end(), removed_tasks_from_ready_queue.begin(),
+                       removed_tasks_from_ready_queue.end());
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
@@ -240,7 +231,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::READY:
     RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
-    RemoveQueueResources(removed_tasks);
+    RemoveReadyQueueResources(removed_tasks);
     break;
   case TaskState::RUNNING:
     RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
@@ -265,7 +256,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::READY:
     QueueTasks(ready_tasks_, removed_tasks);
-    AddQueueResources(removed_tasks);
+    AddReadyQueueResources(removed_tasks);
     break;
   case TaskState::RUNNING:
     QueueTasks(running_tasks_, removed_tasks);
@@ -304,7 +295,7 @@ void SchedulingQueue::QueuePlaceableTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
   QueueTasks(ready_tasks_, tasks);
-  AddQueueResources(tasks);
+  AddReadyQueueResources(tasks);
 }
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
@@ -377,6 +368,20 @@ const std::string SchedulingQueue::ToString() const {
   result += "methods_waiting_for_actor_creation_ size is " +
             std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
   return result;
+}
+
+void SchedulingQueue::AddReadyQueueResources(const std::vector<Task> &tasks) {
+  for (const auto &task : tasks) {
+    current_resource_load_.AddResources(
+        task.GetTaskSpecification().GetRequiredResources());
+  }
+}
+
+void SchedulingQueue::RemoveReadyQueueResources(const std::vector<Task> &tasks) {
+  for (const auto &task : tasks) {
+    current_resource_load_.SubtractResourcesStrict(
+        task.GetTaskSpecification().GetRequiredResources());
+  }
 }
 
 }  // namespace raylet
