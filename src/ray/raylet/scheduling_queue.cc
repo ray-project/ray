@@ -304,7 +304,7 @@ void SchedulingQueue::QueuePlaceableTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
   QueueTasks(ready_tasks_, tasks);
-
+  AddQueueResources(tasks);
 }
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
