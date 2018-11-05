@@ -36,7 +36,20 @@ class SchedulingPolicy {
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
 
-  std::vector<TaskID> SpillOver(SchedulingResources &remote_scheduling_resources) const;
+
+  /// \brief Given a set of cluster resources and subset of cluster nodes,
+  /// perform a spill-over scheduling operation. This is a light-weight decision.
+  ///
+  /// \param cluster_resources: a set of cluster resources containing resource and load
+  /// information for some subset of the cluster. For all client IDs in the returned
+  /// placement map, the corresponding SchedulingResources::resources_load_ is
+  /// incremented by the aggregate resource demand of the tasks assigned to it.
+  /// \param remote_client_ids a list of IDs corresponding to raylets that participate
+  /// in this scheduling decision.
+  /// \return Scheduling decision, mapping tasks to raylets for placement.
+  std::unordered_map<TaskID, ClientID> SpillOver(
+      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+      const std::vector<ClientID> &remote_client_ids);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

@@ -1,6 +1,7 @@
-#include "scheduling_policy.h"
-
 #include <chrono>
+#include <vector>
+
+#include "scheduling_policy.h"
 
 #include "ray/util/logging.h"
 
@@ -116,35 +117,54 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   return decision;
 }
 
-std::vector<TaskID> SchedulingPolicy::SpillOver(
-    SchedulingResources &remote_scheduling_resources) const {
+std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
+    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+    const std::vector<ClientID> &remote_client_ids) {
   // The policy decision to be returned.
-  std::vector<TaskID> decision;
+  std::unordered_map<TaskID, ClientID> decision;
+  std::uniform_int_distribution<int> distribution(0, remote_client_ids.size() - 1);
 
-  ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
-
-  // Check if we can accommodate an infeasible task.
+  // Make an attempt at accommodating each infeasible tasks.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
-    if (spec.GetRequiredPlacementResources().IsSubset(
-            remote_scheduling_resources.GetTotalResources())) {
-      decision.push_back(spec.TaskId());
-      new_load.AddResources(spec.GetRequiredResources());
+    const auto &placement_resources = spec.GetRequiredPlacementResources();
+    // Find a random node that can accommodate the task.
+    // This is randomized to prevent forwarding cycles.
+    int num_attempts = 0;
+    while (num_attempts < 10) {
+      auto &client_id = remote_client_ids[distribution(gen_)];
+      const auto &remote_scheduling_resources = cluster_resources[client_id];
+      if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
+        decision[spec.TaskId()] = client_id;
+        ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
+        new_load.AddResources(spec.GetRequiredResources());
+        cluster_resources[client_id].SetLoadResources(std::move(new_load));
+        break;
+      }
+      num_attempts++;
     }
   }
 
-  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
-    const auto &spec = task.GetTaskSpecification();
-    if (!spec.IsActorTask()) {
-      if (spec.GetRequiredPlacementResources().IsSubset(
-              remote_scheduling_resources.GetTotalResources())) {
-        decision.push_back(spec.TaskId());
-        new_load.AddResources(spec.GetRequiredResources());
-        break;
+  // Check if we can forward a single ready task to each node.
+  for (auto &client_id : remote_client_ids) {
+    const auto &remote_scheduling_resources = cluster_resources[client_id];
+    for (const auto &task : scheduling_queue_.GetReadyTasks()) {
+      const auto &spec = task.GetTaskSpecification();
+      if (!spec.IsActorTask()) {
+        const auto &task_id = spec.TaskId();
+        // Skip over tasks already assigned.
+        if (decision.find(task_id) != decision.end() &&
+            spec.GetRequiredPlacementResources().IsSubset(
+            remote_scheduling_resources.GetTotalResources())) {
+          decision[task_id] = client_id;
+          ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
+          new_load.AddResources(spec.GetRequiredResources());
+          cluster_resources[client_id].SetLoadResources(std::move(new_load));
+          break;
+        }
       }
     }
   }
-  remote_scheduling_resources.SetLoadResources(std::move(new_load));
 
   return decision;
 }

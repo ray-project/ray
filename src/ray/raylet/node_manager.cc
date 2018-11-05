@@ -403,11 +403,6 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
 void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  if (client_id == local_client_id) {
-    // Skip heartbeats from self.
-    return;
-  }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(client_id);
@@ -428,11 +423,27 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
+}
 
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
+void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  std::vector<ClientID> client_ids(heartbeat_batch.batch.size());
+  // Update load information provided by each heartbeat.
+  for (const auto &heartbeat_data : heartbeat_batch.batch) {
+    const ClientID &client_id = ClientID::from_binary(heartbeat_data->client_id);
+    if (client_id == local_client_id) {
+      // Skip heartbeats from self.
+      continue;
+    }
+    HeartbeatAdded(client_id, *heartbeat_data);
+    client_ids.push_back(client_id);
+  }
   // Extract decision for this local scheduler.
+  auto decision = scheduling_policy_.SpillOver(cluster_resource_map_, client_ids);
   std::unordered_set<TaskID> local_task_ids;
-  for (const auto &task_id : decision) {
+  for (const auto &task_client_pair : decision) {
+    const TaskID &task_id = task_client_pair.first;
+    const ClientID &client_id = task_client_pair.second;
     // (See design_docs/task_states.rst for the state transition diagram.)
     TaskState state;
     const auto task = local_queues_.RemoveTask(task_id, &state);
@@ -446,13 +457,6 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
     ForwardTaskOrResubmit(task, client_id);
-  }
-}
-
-void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
-  for (const auto &heartbeat_data : heartbeat_batch.batch) {
-    const ClientID &client_id = ClientID::from_binary(heartbeat_data->client_id);
-    HeartbeatAdded(client_id, *heartbeat_data);
   }
 }
 
