@@ -214,17 +214,28 @@ class Trainable(object):
             Checkpoint path that may be passed to restore().
         """
 
-        checkpoint_path = tempfile.mkdtemp(
-            prefix="checkpoint_{}".format(self._iteration),
-            dir=checkpoint_dir or self.logdir)
-        checkpoint = self._save(checkpoint_path)
+        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
+                                      "checkpoint_{}".format(self._iteration))
+        os.makedirs(checkpoint_dir)
+        checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, str):
+            if (not checkpoint.startswith(checkpoint_dir)
+                    or checkpoint == checkpoint_dir):
+                raise ValueError(
+                    "The returned checkpoint path must be within the "
+                    "given checkpoint dir {}: {}".format(
+                        checkpoint_dir, checkpoint))
+            if not os.path.exists(checkpoint):
+                raise ValueError(
+                    "The returned checkpoint path does not exist: {}".format(
+                        checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            pickle.dump(checkpoint, open(checkpoint_path + ".tune_state",
-                                         "wb"))
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(checkpoint_path, "wb") as f:
+                pickle.dump(checkpoint, f)
         else:
             raise ValueError("Return value from `_save` must be dict or str.")
         pickle.dump({
@@ -286,7 +297,7 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(checkpoint_path + ".tune_state", "rb") as loaded_state:
+            with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
             self._restore(checkpoint_dict)
         else:
@@ -343,7 +354,7 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                can be stored.
+                file must be stored.
 
         Returns:
             checkpoint (str | dict): If string, the return value is
@@ -352,8 +363,10 @@ class Trainable(object):
                 serialized by Tune and passed to `_restore()`.
 
         Examples:
-            >>> checkpoint_data = trainable._save(checkpoint_dir)
-            >>> trainable2._restore(checkpoint_data)
+            >>> print(trainable1._save("/tmp/checkpoint_1"))
+            "/tmp/checkpoint_1/my_checkpoint_file"
+            >>> print(trainable2._save("/tmp/checkpoint_2"))
+            {"some": "data"}
         """
 
         raise NotImplementedError
