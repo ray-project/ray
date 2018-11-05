@@ -262,6 +262,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_supported_spaces.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    pytest /ray/python/ray/tune/test/cluster_tests.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
     --smoke-test
 

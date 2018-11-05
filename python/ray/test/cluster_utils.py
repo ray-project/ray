@@ -37,7 +37,8 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                ray.init(redis_address=self.redis_address)
+                output_info = ray.init(redis_address=self.redis_address)
+                logger.info(output_info)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -153,7 +154,10 @@ class Cluster(object):
         all_nodes = list(self.worker_nodes)
         for node in all_nodes:
             self.remove_node(node)
-        self.remove_node(self.head_node)
+        if self.head_node:
+            self.remove_node(self.head_node)
+        else:
+            logger.warning("No headnode exists!")
 
 
 class Node(object):
