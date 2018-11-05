@@ -655,8 +655,9 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
-  RAY_LOG(INFO) << "The actor with ID " << actor_id << " died, "
-                << "remaining reconstructions = "
+  RAY_LOG(INFO) << "The actor with ID " << actor_id << " died "
+                << (intentional_disconnect ? "intentionally" : "unintentionally")
+                << ", remaining reconstructions = "
                 << actor_registration.GetRemainingReconstructions();
 
   // Check if this actor needs to be reconstructed.
