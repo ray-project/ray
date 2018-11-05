@@ -98,9 +98,9 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn);
  * @param fetch_only Only fetch objects, do not reconstruct them.
  * @return Void.
  */
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID> &object_ids,
-                                         bool fetch_only = false);
+void local_scheduler_notify_blocked(LocalSchedulerConnection *conn,
+                                    const std::vector<ObjectID> &object_ids,
+                                    bool fetch_only, const TaskID &current_task_id);
 
 /**
  * Notify the local scheduler that this client (worker) is no longer blocked.
@@ -108,7 +108,8 @@ void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
  * @param conn The connection information.
  * @return Void.
  */
-void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
+void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
+                                      const TaskID &current_task_id);
 
 // /**
 //  * Get an actor's current task frontier.

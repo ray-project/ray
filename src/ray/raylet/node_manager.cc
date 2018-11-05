@@ -541,11 +541,12 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
-  case protocol::MessageType::ReconstructObjects: {
-    ProcessReconstructObjectsMessage(client, message_data);
+  case protocol::MessageType::NotifyBlocked: {
+    ProcessNotifyBlockedMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
-    HandleClientUnblocked(client);
+    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
+    HandleTaskUnblocked(client, from_flatbuf(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -614,27 +615,33 @@ void NodeManager::ProcessGetTaskMessage(
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool push_warning) {
-  const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
-  // This client can't be a worker and a driver.
-  RAY_CHECK(worker == nullptr || driver == nullptr);
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  bool is_worker = false, is_driver = false;
+  if (worker) {
+    // The client is a worker.
+    is_worker = true;
+  } else {
+    worker = worker_pool_.GetRegisteredDriver(client);
+    if (worker) {
+      // The client is a driver.
+      is_driver = true;
+    } else {
+      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
+                    << "been disconnected.";
+    }
+  }
+  RAY_CHECK(!(is_worker && is_driver));
 
-  // If both worker and driver are null, then this method has already been
-  // called, so just return.
-  if (worker == nullptr && driver == nullptr) {
-    RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                  << "been disconnected.";
-    return;
+  // If the client has any blocked tasks, mark them as unblocked. In
+  // particular, we are no longer waiting for their dependencies.
+  if (worker) {
+    while (!worker->GetBlockedTaskIds().empty()) {
+      HandleTaskUnblocked(client, *worker->GetBlockedTaskIds().begin());
+    }
   }
 
-  // If the client is blocked, we need to treat it as unblocked. In particular,
-  // we are no longer waiting for its dependencies. If the client is not
-  // blocked, this won't do anything.
-  HandleClientUnblocked(client);
-
   // Remove the dead client from the pool and stop listening for messages.
-
-  if (worker) {
+  if (is_worker) {
     // The client is a worker. Handle the case where the worker is killed
     // while executing a task. Clean up the assigned task's resources, push
     // an error to the driver.
@@ -645,7 +652,6 @@ void NodeManager::ProcessDisconnectClientMessage(
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
       task_dependency_manager_.TaskCanceled(task_id);
-      // task_dependency_manager_.UnsubscribeDependencies(current_task_id);
       const Task &task = local_queues_.RemoveTask(task_id);
       const TaskSpecification &spec = task.GetTaskSpecification();
       // Handle the task failure in order to raise an exception in the
@@ -699,18 +705,17 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Since some resources may have been released, we can try to dispatch more tasks.
     DispatchTasks();
-  } else {
+  } else if (is_driver) {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
                                                               /*is_dead=*/true));
-    RAY_CHECK(driver);
-    auto driver_id = driver->GetAssignedTaskId();
+    auto driver_id = worker->GetAssignedTaskId();
     RAY_CHECK(!driver_id.is_nil());
     local_queues_.RemoveDriverTaskId(driver_id);
-    worker_pool_.DisconnectDriver(driver);
+    worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(DEBUG) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
-                   << "driver_id: " << driver->GetAssignedDriverId();
+    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
+                   << "driver_id: " << worker->GetAssignedDriverId();
   }
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
@@ -730,9 +735,9 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   SubmitTask(task, Lineage());
 }
 
-void NodeManager::ProcessReconstructObjectsMessage(
+void NodeManager::ProcessNotifyBlockedMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::ReconstructObjects>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::NotifyBlocked>(message_data);
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < message->object_ids()->size(); ++i) {
     ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));
@@ -752,7 +757,8 @@ void NodeManager::ProcessReconstructObjectsMessage(
   }
 
   if (!required_object_ids.empty()) {
-    HandleClientBlocked(client, required_object_ids);
+    const TaskID task_id = from_flatbuf(*message->task_id());
+    HandleTaskBlocked(client, required_object_ids, task_id);
   }
 }
 
@@ -777,7 +783,8 @@ void NodeManager::ProcessWaitRequestMessage(
 
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    HandleClientBlocked(client, required_object_ids);
+    // TODO
+    HandleTaskBlocked(client, required_object_ids, TaskID::nil());
   }
 
   ray::Status status = object_manager_.Wait(
@@ -796,7 +803,8 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (client_blocked) {
-            HandleClientUnblocked(client);
+            // TODO
+            HandleTaskUnblocked(client, TaskID::nil());
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1067,132 +1075,114 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
-void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(worker);
-  if (worker->IsBlocked()) {
-    return;
-  }
-  // If the worker isn't already blocked, then release any CPU resources that
-  // it acquired for its assigned task while it is blocked. The resources will
-  // be acquired again once the worker is unblocked.
-  RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
-  // Get the CPU resources required by the running task.
-  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-  double required_cpus = required_resources.GetNumCpus();
-  const std::unordered_map<std::string, double> cpu_resources = {
-      {kCPU_ResourceLabel, required_cpus}};
-
-  // Release the CPU resources.
-  auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
-  local_available_resources_.Release(cpu_resource_ids);
-  RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-      ResourceSet(cpu_resources)));
-
-  // Mark the task as blocked.
-  local_queues_.QueueBlockedTasks({task});
-  worker->MarkBlocked();
-
-  DispatchTasks();
-}
-
-void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(worker);
-  if (!worker->IsBlocked()) {
-    return;
-  }
-
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
-  // Get the CPU resources required by the running task.
-  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-  double required_cpus = required_resources.GetNumCpus();
-  const ResourceSet cpu_resources(
-      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
-
-  // Check if we can reacquire the CPU resources.
-  bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
-
-  if (!oversubscribed) {
-    // Reacquire the CPU resources for the worker. Note that care needs to be
-    // taken if the user is using the specific CPU IDs since the IDs that we
-    // reacquire here may be different from the ones that the task started with.
-    auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
-    worker->AcquireTaskCpuResources(resource_ids);
-    RAY_CHECK(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-            cpu_resources));
-  } else {
-    // In this case, we simply don't reacquire the CPU resources for the worker.
-    // The worker can keep running and when the task finishes, it will simply
-    // not have any CPU resources to release.
-    RAY_LOG(WARNING)
-        << "Resources oversubscribed: "
-        << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-               .GetAvailableResources()
-               .ToString();
-  }
-
-  // Mark the task as running again.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  local_queues_.QueueRunningTasks({task});
-  worker->MarkUnblocked();
-}
-
-void NodeManager::HandleClientBlocked(
-    const std::shared_ptr<LocalClientConnection> &client,
-    const std::vector<ObjectID> &required_object_ids) {
+void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                                    const std::vector<ObjectID> &required_object_ids,
+                                    const TaskID &current_task_id) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
-    // The client is a worker. Mark the worker as blocked. This
-    // temporarily releases any resources that the worker holds while it is
-    // blocked.
-    HandleWorkerBlocked(worker);
+    // The client is a worker. If the worker is not already blocked and the
+    // blocked task matches the one assigned to the worker, then mark the
+    // worker as blocked. This temporarily releases any resources that the
+    // worker holds while it is blocked.
+    if (!worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+      const auto task = local_queues_.RemoveTask(current_task_id);
+      local_queues_.QueueRunningTasks({task});
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = required_resources.GetNumCpus();
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+
+      // Release the CPU resources.
+      auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+      local_available_resources_.Release(cpu_resource_ids);
+      RAY_CHECK(
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+              ResourceSet(cpu_resources)));
+      worker->MarkBlocked();
+
+      // Try dispatching tasks since we may have released some resources.
+      DispatchTasks();
+    }
   } else {
-    // The client is a driver. Drivers do not hold resources, so we simply
-    // mark the driver as blocked.
+    // The client is a driver. Drivers do not hold resources, so we simply mark
+    // the task as blocked.
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
-    worker->MarkBlocked();
   }
-  const TaskID current_task_id = worker->GetAssignedTaskId();
-  RAY_CHECK(!current_task_id.is_nil());
+
+  RAY_CHECK(worker);
+  // Mark the task as blocked.
+  worker->AddBlockedTaskId(current_task_id);
+  if (local_queues_.GetBlockedTaskIds().count(current_task_id) == 0) {
+    local_queues_.AddBlockedTaskId(current_task_id);
+  }
+
   // Subscribe to the objects required by the ray.get. These objects will
   // be fetched and/or reconstructed as necessary, until the objects become
   // local or are unsubscribed.
   task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids);
 }
 
-void NodeManager::HandleClientUnblocked(
-    const std::shared_ptr<LocalClientConnection> &client) {
+void NodeManager::HandleTaskUnblocked(
+    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
-  // Re-acquire the CPU resources for the task that was assigned to the
-  // unblocked worker.
   // TODO(swang): Because the object dependencies are tracked in the task
   // dependency manager, we could actually remove this message entirely and
   // instead unblock the worker once all the objects become available.
-  bool was_blocked;
   if (worker) {
-    was_blocked = worker->IsBlocked();
-    // Mark the worker as unblocked. This returns the temporarily released
-    // resources to the worker.
-    HandleWorkerUnblocked(worker);
+    // The client is a worker. If the worker is not already unblocked and the
+    // unblocked task matches the one assigned to the worker, then mark the
+    // worker as unblocked. This returns the temporarily released resources to
+    // the worker.
+    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      const auto task = local_queues_.RemoveTask(current_task_id);
+      local_queues_.QueueRunningTasks({task});
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = required_resources.GetNumCpus();
+      const ResourceSet cpu_resources(
+          std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
+
+      // Check if we can reacquire the CPU resources.
+      bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+
+      if (!oversubscribed) {
+        // Reacquire the CPU resources for the worker. Note that care needs to be
+        // taken if the user is using the specific CPU IDs since the IDs that we
+        // reacquire here may be different from the ones that the task started with.
+        auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+        worker->AcquireTaskCpuResources(resource_ids);
+        RAY_CHECK(
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+                cpu_resources));
+      } else {
+        // In this case, we simply don't reacquire the CPU resources for the worker.
+        // The worker can keep running and when the task finishes, it will simply
+        // not have any CPU resources to release.
+        RAY_LOG(WARNING)
+            << "Resources oversubscribed: "
+            << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                   .GetAvailableResources()
+                   .ToString();
+      }
+      worker->MarkUnblocked();
+    }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply
     // mark the driver as unblocked.
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
-    was_blocked = worker->IsBlocked();
-    worker->MarkUnblocked();
   }
-  // Unsubscribe to the objects. Any fetch or reconstruction operations to
-  // make the objects local are canceled.
-  if (was_blocked) {
-    const TaskID current_task_id = worker->GetAssignedTaskId();
-    RAY_CHECK(!current_task_id.is_nil());
+
+  RAY_CHECK(worker);
+  // If the task was previously blocked, then stop waiting for its dependencies
+  // and mark the task as unblocked.
+  if (worker->RemoveBlockedTaskId(current_task_id)) {
+    // Unsubscribe to the objects. Any fetch or reconstruction operations to
+    // make the objects local are canceled.
     task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+    local_queues_.RemoveBlockedTaskId(current_task_id);
   }
 }
 

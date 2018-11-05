@@ -452,7 +452,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.local_scheduler_client.reconstruct_objects(
+            self.local_scheduler_client.notify_blocked(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -468,6 +468,15 @@ class Worker(object):
 
         if len(unready_ids) > 0:
             with self.state_lock:
+                task_id = self.current_task_id
+                if not ray.utils.is_main_thread():
+                    # If this is running on a separate thread, then the mapping
+                    # to the current task ID may not be correct. Generate a
+                    # random task ID so that the backend can differentiate
+                    # between different threads.
+                    task_id = ray.ObjectID(random_string())
+                assert task_id.id() != NIL_ID
+
                 # Try reconstructing any objects we haven't gotten yet. Try to
                 # get them until at least get_timeout_milliseconds
                 # milliseconds passes, then repeat.
@@ -484,9 +493,10 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.local_scheduler_client.reconstruct_objects(
+                        self.local_scheduler_client.notify_blocked(
                             ray_object_ids_to_fetch[i:(
-                                i + fetch_request_size)], False)
+                                i + fetch_request_size)], False,
+                            task_id)
                     results = self.retrieve_and_deserialize(
                         object_ids_to_fetch,
                         max([
@@ -504,7 +514,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked()
+                self.local_scheduler_client.notify_unblocked(task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -758,13 +768,13 @@ class Worker(object):
         (these will be retrieved by calls to get or by subsequent tasks that
         use the outputs of this task).
         """
-        # The ID of the driver that this task belongs to. This is needed so
-        # that if the task throws an exception, we propagate the error
-        # message to the correct driver.
-        self.task_driver_id = task.driver_id()
-        self.current_task_id = task.task_id()
-        self.task_index = 0
-        self.put_index = 1
+        with self.state_lock:
+            # The ID of the driver that this task belongs to. This is needed so
+            # that if the task throws an exception, we propagate the error
+            # message to the correct driver.
+            self.task_driver_id = task.driver_id()
+            self.current_task_id = task.task_id()
+
         function_id = task.function_id()
         args = task.arguments()
         return_object_ids = task.returns()
@@ -824,6 +834,13 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
+
+        # Reset the state fields so the next task can run.
+        with self.state_lock:
+            self.task_driver_id = ray.ObjectID(NIL_ID)
+            self.current_task_id = ray.ObjectID(NIL_ID)
+            self.task_index = 0
+            self.put_index = 1
 
     def _handle_process_task_failure(self, function_id, function_name,
                                      return_object_ids, error, backtrace):
@@ -2356,6 +2373,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
                                     type(object_id)))
 
     worker.check_connected()
+    # TODO(swang): Check main thread.
     with profiling.profile("ray.wait", worker=worker):
         # When Ray is run in LOCAL_MODE, all functions are run immediately,
         # so all objects in object_id are ready.

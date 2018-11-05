@@ -423,3 +423,6 @@ def thread_safe_client(client, lock=None):
     if lock is None:
         lock = threading.Lock()
     return _ThreadSafeProxy(client, lock)
+
+def is_main_thread():
+    return threading.current_thread().getName() == "MainThread"

@@ -160,8 +160,8 @@ const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_.GetTasks();
 }
 
-const std::list<Task> &SchedulingQueue::GetBlockedTasks() const {
-  return this->blocked_tasks_.GetTasks();
+const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {
+  return blocked_task_ids_;
 }
 
 void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
@@ -179,9 +179,16 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::RUNNING:
     FilterStateFromQueue(running_tasks_, task_ids, filter_state);
     break;
-  case TaskState::BLOCKED:
-    FilterStateFromQueue(blocked_tasks_, task_ids, filter_state);
-    break;
+  case TaskState::BLOCKED: {
+    const auto blocked_ids = GetBlockedTaskIds();
+    for (auto it = task_ids.begin(); it != task_ids.end();) {
+      if (blocked_ids.count(*it) == 1) {
+        it = task_ids.erase(it);
+      } else {
+        it++;
+      }
+    }
+  } break;
   case TaskState::INFEASIBLE:
     FilterStateFromQueue(infeasible_tasks_, task_ids, filter_state);
     break;
@@ -211,7 +218,6 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
-  RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
 
   RAY_CHECK(task_ids.size() == 0);
@@ -243,9 +249,6 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::RUNNING:
     RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
     break;
-  case TaskState::BLOCKED:
-    RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
-    break;
   case TaskState::INFEASIBLE:
     RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
     break;
@@ -267,9 +270,6 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::RUNNING:
     QueueTasks(running_tasks_, removed_tasks);
     break;
-  case TaskState::BLOCKED:
-    QueueTasks(blocked_tasks_, removed_tasks);
-    break;
   case TaskState::INFEASIBLE:
     QueueTasks(infeasible_tasks_, removed_tasks);
     break;
@@ -288,7 +288,7 @@ bool SchedulingQueue::HasTask(const TaskID &task_id) const {
   return (methods_waiting_for_actor_creation_.HasTask(task_id) ||
           waiting_tasks_.HasTask(task_id) || placeable_tasks_.HasTask(task_id) ||
           ready_tasks_.HasTask(task_id) || running_tasks_.HasTask(task_id) ||
-          blocked_tasks_.HasTask(task_id) || infeasible_tasks_.HasTask(task_id));
+          infeasible_tasks_.HasTask(task_id));
 }
 
 void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
@@ -307,10 +307,6 @@ void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
   QueueTasks(running_tasks_, tasks);
 }
 
-void SchedulingQueue::QueueBlockedTasks(const std::vector<Task> &tasks) {
-  QueueTasks(blocked_tasks_, tasks);
-}
-
 std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForDriver(
     const DriverID &driver_id) const {
   std::unordered_set<TaskID> task_ids;
@@ -320,7 +316,6 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForDriver(
   GetDriverTasksFromQueue(placeable_tasks_, driver_id, task_ids);
   GetDriverTasksFromQueue(ready_tasks_, driver_id, task_ids);
   GetDriverTasksFromQueue(running_tasks_, driver_id, task_ids);
-  GetDriverTasksFromQueue(blocked_tasks_, driver_id, task_ids);
   GetDriverTasksFromQueue(infeasible_tasks_, driver_id, task_ids);
 
   return task_ids;
@@ -335,10 +330,19 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
   GetActorTasksFromQueue(placeable_tasks_, actor_id, task_ids);
   GetActorTasksFromQueue(ready_tasks_, actor_id, task_ids);
   GetActorTasksFromQueue(running_tasks_, actor_id, task_ids);
-  GetActorTasksFromQueue(blocked_tasks_, actor_id, task_ids);
   GetActorTasksFromQueue(infeasible_tasks_, actor_id, task_ids);
 
   return task_ids;
+}
+
+void SchedulingQueue::AddBlockedTaskId(const TaskID &task_id) {
+  auto inserted = blocked_task_ids_.insert(task_id);
+  RAY_CHECK(inserted.second);
+}
+
+void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
+  auto erased = blocked_task_ids_.erase(task_id);
+  RAY_CHECK(erased == 1);
 }
 
 void SchedulingQueue::AddDriverTaskId(const TaskID &driver_id) {
@@ -366,8 +370,6 @@ const std::string SchedulingQueue::ToString() const {
       "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
   result +=
       "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
-  result +=
-      "blocked_tasks_ size is " + std::to_string(blocked_tasks_.GetTasks().size()) + "\n";
   result += "infeasible_tasks_ size is " +
             std::to_string(infeasible_tasks_.GetTasks().size()) + "\n";
   result += "methods_waiting_for_actor_creation_ size is " +

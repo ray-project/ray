@@ -301,22 +301,27 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
                 &conn->write_mutex);
 }
 
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID> &object_ids,
-                                         bool fetch_only) {
+void local_scheduler_notify_blocked(LocalSchedulerConnection *conn,
+                                    const std::vector<ObjectID> &object_ids,
+                                    bool fetch_only, const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message =
-      ray::protocol::CreateReconstructObjects(fbb, object_ids_message, fetch_only);
+  auto message = ray::protocol::CreateNotifyBlocked(fbb, object_ids_message, fetch_only,
+                                                    to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  write_message(conn->conn, static_cast<int64_t>(MessageType::ReconstructObjects),
+  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyBlocked),
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
   /* TODO(swang): Propagate the error. */
 }
 
-void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
-  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked), 0, NULL,
-                &conn->write_mutex);
+void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
+                                      const TaskID &current_task_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  fbb.Finish(message);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked),
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(

@@ -38,6 +38,20 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
+bool Worker::AddBlockedTaskId(const TaskID &task_id) {
+  auto inserted = blocked_task_ids_.insert(task_id);
+  return inserted.second;
+}
+
+bool Worker::RemoveBlockedTaskId(const TaskID &task_id) {
+  auto erased = blocked_task_ids_.erase(task_id);
+  return erased == 1;
+}
+
+const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
+  return blocked_task_ids_;
+}
+
 void Worker::AssignDriverId(const DriverID &driver_id) {
   assigned_driver_id_ = driver_id;
 }

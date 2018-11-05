@@ -72,12 +72,13 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
 }
 // clang-format on
 
-static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
-                                                            PyObject *args) {
+static PyObject *PyLocalSchedulerClient_notify_blocked(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
   std::vector<ObjectID> object_ids;
-  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_fetch_only)) {
+  TaskID current_task_id;
+  if (!PyArg_ParseTuple(args, "OO|O&", &py_object_ids, &py_fetch_only,
+                        &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
   bool fetch_only = PyObject_IsTrue(py_fetch_only);
@@ -90,15 +91,19 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  local_scheduler_reconstruct_objects(
+  local_scheduler_notify_blocked(
       reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
-      object_ids, fetch_only);
+      object_ids, fetch_only, current_task_id);
   Py_RETURN_NONE;
 }
 
-static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self) {
+static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self, PyObject *args) {
+  TaskID current_task_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
+    return NULL;
+  }
   local_scheduler_notify_unblocked(
-      ((PyLocalSchedulerClient *)self)->local_scheduler_connection);
+      ((PyLocalSchedulerClient *)self)->local_scheduler_connection, current_task_id);
   Py_RETURN_NONE;
 }
 
@@ -364,10 +369,10 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction)PyLocalSchedulerClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"reconstruct_objects", (PyCFunction)PyLocalSchedulerClient_reconstruct_objects,
-     METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
+    {"notify_blocked", (PyCFunction)PyLocalSchedulerClient_notify_blocked, METH_VARARGS,
+     "Ask the local scheduler to reconstruct an object."},
     {"notify_unblocked", (PyCFunction)PyLocalSchedulerClient_notify_unblocked,
-     METH_NOARGS, "Notify the local scheduler that we are unblocked."},
+     METH_VARARGS, "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyLocalSchedulerClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
     {"gpu_ids", (PyCFunction)PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
