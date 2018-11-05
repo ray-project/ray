@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -118,10 +119,20 @@ class BinaryDistribution(Distribution):
         return True
 
 
+def find_version(*filepath):
+    # Extract version information from filepath
+    here = os.path.abspath(os.path.dirname(__file__))
+    with open(os.path.join(here, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
 setup(
     name="ray",
-    # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.5.3",
+    version=find_version("ray", "__init__.py"),
     description=("A system for parallel and distributed Python that unifies "
                  "the ML ecosystem."),
     long_description=open("../README.rst").read(),
