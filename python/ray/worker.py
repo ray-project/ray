@@ -904,6 +904,7 @@ class Worker(object):
             if task.actor_id().id() == NIL_ACTOR_ID:
                 title = "ray_worker:{}()".format(function_name)
             else:
+                actor = self.actors[task.actor_id().id()]
                 title = "ray_{}:{}()".format(
                     actor.__class__.__name__, function_name)
             with profiling.profile("task", extra_data=extra_data, worker=self):
