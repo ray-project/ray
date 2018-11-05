@@ -205,9 +205,9 @@ class TaskSpecification {
   /// Get the size in bytes of the task specification.
   size_t size() const;
   /// Field storing required resources. Initalized in constructor.
-  std::unordered_map<std::string, double> required_resources_;
+  ResourceSet required_resources_;
   /// Field storing required placement resources. Initalized in constructor.
-  std::unordered_map<std::string, double> required_placement_resources_;
+  ResourceSet required_placement_resources_;
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };
