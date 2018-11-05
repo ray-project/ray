@@ -49,7 +49,7 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping tasks to raylets for placement.
   std::unordered_map<TaskID, ClientID> SpillOver(
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const std::vector<ClientID> &remote_client_ids);
+      std::vector<ClientID> &remote_client_ids);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

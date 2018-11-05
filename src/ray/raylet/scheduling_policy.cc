@@ -1,5 +1,6 @@
+#include <algorithm>
 #include <chrono>
-#include <vector>
+#include <random>
 
 #include "scheduling_policy.h"
 
@@ -119,20 +120,21 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
     std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-    const std::vector<ClientID> &remote_client_ids) {
+    std::vector<ClientID> &remote_client_ids) {
+  // Shuffle the nodes to prevent infinite forwarding loops.
+  const unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+  auto rng = std::default_random_engine(seed);
+  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), rng);
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
-  std::uniform_int_distribution<int> distribution(0, remote_client_ids.size() - 1);
 
-  // Make an attempt at accommodating each infeasible tasks.
+  // Check if we can accommodate all infeasible tasks.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
     const auto &placement_resources = spec.GetRequiredPlacementResources();
-    // Find a random node that can accommodate the task.
-    // This is randomized to prevent forwarding cycles.
-    int num_attempts = 0;
-    while (num_attempts < 10) {
-      auto &client_id = remote_client_ids[distribution(gen_)];
+    // Find the first node that can accommodate the resources.
+    // NOTE(ujvl): this does not distribute tasks evenly across nodes.
+    for (auto &client_id : remote_client_ids) {
       const auto &remote_scheduling_resources = cluster_resources[client_id];
       if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
         decision[spec.TaskId()] = client_id;
@@ -141,7 +143,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
         cluster_resources[client_id].SetLoadResources(std::move(new_load));
         break;
       }
-      num_attempts++;
     }
   }
 
@@ -153,7 +154,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
       if (!spec.IsActorTask()) {
         const auto &task_id = spec.TaskId();
         // Skip over tasks already assigned.
-        if (decision.find(task_id) != decision.end() &&
+        if (decision.find(task_id) == decision.end() &&
             spec.GetRequiredPlacementResources().IsSubset(
             remote_scheduling_resources.GetTotalResources())) {
           decision[task_id] = client_id;
@@ -165,7 +166,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
       }
     }
   }
-
   return decision;
 }
 
