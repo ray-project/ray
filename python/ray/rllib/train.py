@@ -56,6 +56,12 @@ def create_parser(parser_creator=None):
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
     parser.add_argument(
+        "--ray-object-store-memory",
+        default=None,
+        type=int,
+        help="--object-store-memory to pass to Ray."
+        " This only has an affect in local mode.")
+    parser.add_argument(
         "--experiment-name",
         default="default",
         type=str,
@@ -111,11 +117,13 @@ def run(args, parser):
         ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=args.ray_num_local_schedulers,
+            object_store_memory=object_store_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     else:
         ray.init(
             redis_address=args.redis_address,
+            object_store_memory=object_store_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     run_experiments(
