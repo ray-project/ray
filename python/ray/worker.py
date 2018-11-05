@@ -468,14 +468,15 @@ class Worker(object):
 
         if len(unready_ids) > 0:
             with self.state_lock:
-                task_id = self.current_task_id
+                # Get the task ID, to notify the backend which task is blocked.
+                current_task_id = self.current_task_id
                 if not ray.utils.is_main_thread():
                     # If this is running on a separate thread, then the mapping
                     # to the current task ID may not be correct. Generate a
                     # random task ID so that the backend can differentiate
                     # between different threads.
-                    task_id = ray.ObjectID(random_string())
-                assert task_id.id() != NIL_ID
+                    current_task_id = ray.ObjectID(random_string())
+                assert current_task_id.id() != NIL_ID
 
                 # Try reconstructing any objects we haven't gotten yet. Try to
                 # get them until at least get_timeout_milliseconds
@@ -496,7 +497,7 @@ class Worker(object):
                         self.local_scheduler_client.notify_blocked(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
-                            task_id)
+                            current_task_id)
                     results = self.retrieve_and_deserialize(
                         object_ids_to_fetch,
                         max([
@@ -514,7 +515,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked(task_id)
+                self.local_scheduler_client.notify_unblocked(current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -2394,9 +2395,21 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if num_returns > len(object_ids):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
+
+        # Get the task ID, to notify the backend which task is blocked.
+        with worker.state_lock:
+            current_task_id = worker.current_task_id
+            if not ray.utils.is_main_thread():
+                # If this is running on a separate thread, then the mapping
+                # to the current task ID may not be correct. Generate a
+                # random task ID so that the backend can differentiate
+                # between different threads.
+                task_id = ray.ObjectID(random_string())
+            assert task_id.id() != NIL_ID
+
         timeout = timeout if timeout is not None else 2**30
         ready_ids, remaining_ids = worker.local_scheduler_client.wait(
-            object_ids, num_returns, timeout, False)
+            object_ids, num_returns, timeout, False, current_task_id)
         return ready_ids, remaining_ids
 
 

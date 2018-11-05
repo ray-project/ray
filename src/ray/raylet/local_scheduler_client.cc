@@ -326,11 +326,13 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
 
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
-    int num_returns, int64_t timeout_milliseconds, bool wait_local) {
+    int num_returns, int64_t timeout_milliseconds, bool wait_local,
+    const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
-      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local);
+      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   int64_t type;
   int64_t reply_size;

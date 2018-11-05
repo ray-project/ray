@@ -781,16 +781,16 @@ void NodeManager::ProcessWaitRequestMessage(
     }
   }
 
+  const TaskID &current_task_id = from_flatbuf(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    // TODO
-    HandleTaskBlocked(client, required_object_ids, TaskID::nil());
+    HandleTaskBlocked(client, required_object_ids, current_task_id);
   }
 
   ray::Status status = object_manager_.Wait(
       object_ids, wait_ms, num_required_objects, wait_local,
-      [this, client_blocked, client](std::vector<ObjectID> found,
-                                     std::vector<ObjectID> remaining) {
+      [this, client, current_task_id](std::vector<ObjectID> found,
+                                      std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -802,10 +802,7 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetSize(), fbb.GetBufferPointer());
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
-          if (client_blocked) {
-            // TODO
-            HandleTaskUnblocked(client, TaskID::nil());
-          }
+          HandleTaskUnblocked(client, current_task_id);
         } else {
           // We failed to write to the client, so disconnect the client.
           RAY_LOG(WARNING)

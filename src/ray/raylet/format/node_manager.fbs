@@ -173,6 +173,9 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  task_id: string;
 }
 
 table WaitReply {

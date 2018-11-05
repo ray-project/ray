@@ -165,9 +165,10 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   int num_returns;
   int64_t timeout_ms;
   PyObject *py_wait_local;
+  TaskID current_task_id;
 
-  if (!PyArg_ParseTuple(args, "OilO", &py_object_ids, &num_returns, &timeout_ms,
-                        &py_wait_local)) {
+  if (!PyArg_ParseTuple(args, "OilOO&", &py_object_ids, &num_returns, &timeout_ms,
+                        &py_wait_local, &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
 
@@ -195,7 +196,7 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   // Invoke wait.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = local_scheduler_wait(
       reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
-      object_ids, num_returns, timeout_ms, static_cast<bool>(wait_local));
+      object_ids, num_returns, timeout_ms, wait_local, current_task_id);
 
   // Convert result to py object.
   PyObject *py_found = PyList_New(static_cast<Py_ssize_t>(result.first.size()));
