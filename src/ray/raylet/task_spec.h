@@ -183,6 +183,7 @@ class TaskSpecification {
   /// so the placement of the actor should take this into account.
   ///
   /// \return The resources that are required to place a task on a node.
+  //??const std::unordered_map<std::string, double> RequiredResourcesFromFlatBuffer() const;
   const ResourceSet GetRequiredPlacementResources() const;
   bool IsDriverTask() const;
   Language GetLanguage() const;
@@ -204,7 +205,10 @@ class TaskSpecification {
   const uint8_t *data() const;
   /// Get the size in bytes of the task specification.
   size_t size() const;
-
+  /// Field storing required resources. Initalized in constructor.
+  std::unordered_map<std::string, double> required_resources_;
+  /// Field storing required placement resources. Initalized in constructor.
+  std::unordered_map<std::string, double> required_placement_resources_;
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };

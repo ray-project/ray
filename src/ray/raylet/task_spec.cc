@@ -32,6 +32,16 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
 
 void TaskSpecification::AssignSpecification(const uint8_t *spec, size_t spec_size) {
   spec_.assign(spec, spec + spec_size);
+  // Initialize required_resources_ and required_placement_resources_
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  required_resources_ = map_from_flatbuf(*message->required_resources());
+  required_placement_resources_ =
+      map_from_flatbuf(*message->required_placement_resources());
+  // If the required_placement_resources field is empty, then the placement
+  // resources default to the required resources.
+  if (required_placement_resources_.size() == 0) {
+    required_placement_resources_ = required_resources_;
+  }
 }
 
 TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
@@ -168,30 +178,20 @@ size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
 }
 
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_resources = map_from_flatbuf(*message->required_resources());
-  auto it = required_resources.find(resource_name);
-  RAY_CHECK(it != required_resources.end());
+  RAY_CHECK(required_resources_.empty() == true);
+  auto it = required_resources_.find(resource_name);
+  RAY_CHECK(it != required_resources_.end());
   return it->second;
 }
 
 const ResourceSet TaskSpecification::GetRequiredResources() const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_resources = map_from_flatbuf(*message->required_resources());
-  return ResourceSet(required_resources);
+  RAY_CHECK(required_resources_.empty() == true);
+  return ResourceSet(required_resources_);
 }
 
 const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_placement_resources =
-      map_from_flatbuf(*message->required_placement_resources());
-  // If the required_placement_resources field is empty, then the placement
-  // resources default to the required resources.
-  if (required_placement_resources.size() == 0) {
-    required_placement_resources = map_from_flatbuf(*message->required_resources());
-  }
-
-  return ResourceSet(required_placement_resources);
+  RAY_CHECK(required_placement_resources_.empty() == true);
+  return ResourceSet(required_placement_resources_);
 }
 
 bool TaskSpecification::IsDriverTask() const {
