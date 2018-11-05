@@ -1875,6 +1875,7 @@ def connect(info,
     # Initialize some fields.
     if mode is WORKER_MODE:
         worker.worker_id = random_string()
+        setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
@@ -1898,7 +1899,6 @@ def connect(info,
     worker.actor_id = NIL_ACTOR_ID
     worker.connected = True
     worker.set_mode(mode)
-    setproctitle.setproctitle("ray_worker")
 
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
