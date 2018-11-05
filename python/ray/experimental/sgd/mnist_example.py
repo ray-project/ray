@@ -54,7 +54,8 @@ class MNISTModel(Model):
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.y_, logits=y_conv))
         self.optimizer = tf.train.AdamOptimizer(1e-4)
-        self.variables = TensorFlowVariables(self.loss, tf.get_default_session())
+        self.variables = TensorFlowVariables(self.loss,
+                                             tf.get_default_session())
 
         # For evaluating test accuracy
         correct_prediction = tf.equal(
@@ -89,8 +90,9 @@ if __name__ == "__main__":
         gpu=args.gpu,
         strategy=args.strategy)
 
-    # Important: synchronize weights of all models
-    print(sgd.for_model(lambda m: m.variables.get_weights()))
+    # Important: synchronize the initial weights of all model replicas
+    w0 = sgd.for_model(lambda m: m.variables.get_flat())
+    sgd.foreach_model(lambda m: m.variables.set_flat(w0))
 
     for i in range(args.num_iters):
         if i % 10 == 0:

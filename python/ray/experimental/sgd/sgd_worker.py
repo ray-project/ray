@@ -57,8 +57,7 @@ class SGDWorker(object):
                         self.models.append(model)
                         grads = [
                             t for t in model.optimizer.compute_gradients(
-                                model.loss)
-                            if t[0] is not None
+                                model.loss) if t[0] is not None
                         ]
                         grad_ops.append(grads)
 
