@@ -150,10 +150,8 @@ ResourceSet SchedulingQueue::GetReadyQueueResources() const {
 }
 
 ResourceSet SchedulingQueue::GetResourceLoad() const {
-  ResourceSet load_resource_set;
-  load_resource_set.AddResources(GetReadyQueueResources());
   // TODO(atumanov): consider other types of tasks as part of load.
-  return load_resource_set;
+  return current_resource_load_;
 }
 
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
@@ -209,7 +207,10 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   RemoveTasksFromQueue(methods_waiting_for_actor_creation_, task_ids, removed_tasks);
   RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
-  RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  std::vector<Task> removed_tasks_from_ready_queue;
+  RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks_from_ready_queue);
+  RemoveQueueResources(removed_tasks_from_ready_queue);
+  removed_tasks.insert(removed_tasks.end(), removed_tasks_from_ready_queue.begin(), removed_tasks_from_ready_queue.end());
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
@@ -239,6 +240,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::READY:
     RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+    RemoveQueueResources(removed_tasks);
     break;
   case TaskState::RUNNING:
     RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
@@ -263,6 +265,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::READY:
     QueueTasks(ready_tasks_, removed_tasks);
+    AddQueueResources(removed_tasks);
     break;
   case TaskState::RUNNING:
     QueueTasks(running_tasks_, removed_tasks);
@@ -301,6 +304,7 @@ void SchedulingQueue::QueuePlaceableTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
   QueueTasks(ready_tasks_, tasks);
+
 }
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {

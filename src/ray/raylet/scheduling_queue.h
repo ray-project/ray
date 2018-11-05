@@ -265,12 +265,27 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
+  /// Keeps track of the aggregate resource set for all tasks exerting load on
+  /// this raylet.
+  ResourceSet current_resource_load_;
 
   /// \brief Return all resource demand associated with the specified task queue.
   ///
   /// \param task_queue The task queue for which aggregate resource demand is calculated.
   /// \return Aggregate resource demand.
   ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
+
+  void AddQueueResources(const std::vector<Task> &tasks) {
+    for (const auto &task : tasks) {
+      current_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
+    }
+  }
+
+  void RemoveQueueResources(const std::vector<Task> &tasks) {
+    for (const auto &task : tasks) {
+      current_resource_load_.SubtractResourcesStrict(task.GetTaskSpecification().GetRequiredResources());
+    }
+  }
 };
 
 }  // namespace raylet
