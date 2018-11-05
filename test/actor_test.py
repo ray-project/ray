@@ -39,6 +39,7 @@ def head_node_cluster():
         initialize_head=True, connect=True)
     yield cluster
     # The code after the yield will run as teardown code.
+    ray.shutdown()
     cluster.shutdown()
 
 
