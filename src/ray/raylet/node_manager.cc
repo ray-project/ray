@@ -1077,7 +1077,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks(nullptr);
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
     }
@@ -1548,7 +1547,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks(nullptr);
     }
   });
 }

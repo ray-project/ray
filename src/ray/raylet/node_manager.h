@@ -188,12 +188,21 @@ class NodeManager {
 
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
-  /// If we know that a new task has been added to the ready queue, and this is
-  /// the only change to the ready queue since the last time DispatchTasks()
-  /// was called, we pass this task as new_ready_task. This is an optimization
-  /// to avoid DispatchTask() going over all tasks in the ready queue.
-  /// Otherwise, we set new_ready_task to nullptr, case in which DispatchTask()
-  /// go over all tasks in the ready queue.
+  ///
+  /// If new_ready_task != nullptr, try to dispatch just this task. Otherwise,
+  /// check all tasks in the ready queue.
+  ///
+  /// Explanation: Before invoking this function, we guarantee
+  /// that new_ready_task != nullptr iff the addition of this task is
+  /// (a) the only change to the ready queue since DispatchTasks() has been
+  /// previously called, and (b) local available resources have not changed
+  /// since then. As a result, we are guaranteed that new_ready_task is the
+  /// only task in the ready queue that could be dispatches (all the other ones
+  /// have been already checked last time when DispatchTasks() was invoked).
+  /// This is an optimization to avoid DispatchTask() going over all tasks
+  /// in the ready queue.
+  ///
+  /// \param new_task_ready Dispatch only this task if != nullptr; otherwise check all tasks in the ready queue.
   void DispatchTasks(const Task* new_ready_task);
   /// Handle a worker becoming blocked in a `ray.get`.
   ///
