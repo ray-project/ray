@@ -39,6 +39,9 @@ PROCESS_TYPE_GLOBAL_SCHEDULER = "global_scheduler"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
+# Max bytes to allocate to plasma unless overriden by the user
+MAX_DEFAULT_MEM = 20 * 1000 * 1000 * 1000
+
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
 # important because it determines the order in which these processes will be
@@ -1149,9 +1152,17 @@ def start_plasma_store(node_ip_address,
                 os.close(shm_fd)
         else:
             objstore_memory = int(system_memory * 0.8)
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if objstore_memory > MAX_DEFAULT_MEM:
+            logger.warning(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    MAX_DEFAULT_MEM // 1e9) +
+                "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start.")
+            objstore_memory = MAX_DEFAULT_MEM
     # Start the Plasma store.
     logger.info("Starting the Plasma object store with {0:.2f} GB memory."
-                .format(objstore_memory // 10**9))
+                .format(objstore_memory / 10**9))
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
         plasma_store_memory=objstore_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
