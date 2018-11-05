@@ -6,6 +6,7 @@ import pytest
 import time
 
 import ray
+from ray.test.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -15,6 +16,7 @@ def ray_start():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
 
 @pytest.fixture
 def cluster_start():
@@ -78,7 +80,7 @@ def test_proper_cluster_resources(cluster_start):
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
     cluster.remove_node(nodes.pop())
-    cluster.wait_for_nodes()
+    cluster.wait_for_nodes(100)
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
     for i in range(5):
