@@ -15,7 +15,8 @@ class Cluster(object):
     def __init__(self,
                  initialize_head=False,
                  connect=False,
-                 head_node_args=None):
+                 head_node_args=None,
+                 redis_password=None):
         """Initializes the cluster.
 
         Args:
@@ -30,6 +31,7 @@ class Cluster(object):
         self.head_node = None
         self.worker_nodes = {}
         self.redis_address = None
+        self.redis_password = redis_password
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -37,7 +39,9 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                ray.init(redis_address=self.redis_address)
+                ray.init(
+                    redis_address=self.redis_address,
+                    redis_password=self.redis_password)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -66,6 +70,7 @@ class Cluster(object):
         if self.head_node is None:
             address_info = services.start_ray_head(
                 node_ip_address=services.get_node_ip_address(),
+                redis_password=self.redis_password,
                 include_webui=False,
                 **node_kwargs)
             self.redis_address = address_info["redis_address"]
@@ -77,7 +82,9 @@ class Cluster(object):
             self.head_node = node
         else:
             address_info = services.start_ray_node(
-                services.get_node_ip_address(), self.redis_address,
+                services.get_node_ip_address(),
+                self.redis_address,
+                redis_password=self.redis_password,
                 **node_kwargs)
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()

@@ -7,6 +7,7 @@ import pytest
 import redis
 
 import ray
+from ray.test.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -52,3 +53,19 @@ class TestRedisPassword(object):
         redis_client = redis.StrictRedis(
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
+
+    @pytest.mark.skipif(
+        os.environ.get("RAY_USE_NEW_GCS") == "on",
+        reason="New GCS API doesn't support Redis authentication yet.")
+    def test_redis_password_cluster(self, password, shutdown_only):
+        # Workaround for https://github.com/ray-project/ray/issues/3045
+        @ray.remote
+        def f():
+            return 1
+
+        cluster = Cluster(
+            initialize_head=True, connect=True, redis_password=password)
+        cluster.add_node()
+
+        object_id = f.remote()
+        ray.get(object_id)
