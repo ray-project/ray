@@ -44,14 +44,14 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs, UniqueId currentTaskId) {
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
     boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
-        numReturns, timeoutMs, false);
+        numReturns, timeoutMs, false, currentTaskId);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -87,12 +87,12 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
+  public void notifyBlocked(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
     if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
+      RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeReconstructObjects(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly);
+    nativeNotifyBlocked(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly, currentTaskId);
   }
 
   @Override
@@ -102,8 +102,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void notifyUnblocked() {
-    nativeNotifyUnblocked(client);
+  public void notifyUnblocked(UniqueId currentTaskId) {
+    nativeNotifyUnblocked(client, currentTaskId);
   }
 
   @Override
@@ -271,15 +271,15 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeDestroy(long client);
 
-  private static native void nativeReconstructObjects(long client, byte[][] objectIds,
-      boolean fetchOnly);
+  private static native void nativeNotifyBlocked(long client, byte[][] objectIds,
+      boolean fetchOnly, UniqueId currentTaskId);
 
-  private static native void nativeNotifyUnblocked(long client);
+  private static native void nativeNotifyUnblocked(long client, UniqueId currentTaskId);
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal);
+      int numReturns, int timeout, boolean waitLocal, UniqueId currentTaskId);
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
