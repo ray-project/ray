@@ -24,6 +24,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       config_(config),
       object_directory_(new ObjectDirectory(gcs_client)),
+      gcs_client_(gcs_client),
       main_service_(main_service),
       store_notification_(main_service_, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
@@ -294,18 +295,26 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           }
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          PullSendRequest(object_id, async_conn);
+          PullSendRequest(object_id, client_id, async_conn);
         },
         []() {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
         });
   } else {
-    PullSendRequest(object_id, conn);
+    PullSendRequest(object_id, client_id, conn);
   }
 }
 
 void ObjectManager::PullSendRequest(const ObjectID &object_id,
+                                    const ClientID &client_id,
                                     std::shared_ptr<SenderConnection> &conn) {
+  ProfileEventT profile_event;
+  profile_event.event_type = "send_pull_request";
+  profile_event.start_time = current_time_ms();  // TODO(rkn): Make this higher resolution.
+  profile_event.end_time = profile_event.start_time;
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"]";
+  profile_events_.push_back(profile_event);
+
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -384,6 +393,26 @@ void ObjectManager::HandlePushFinished(const ObjectID &object_id,
 
   RAY_LOG(INFO) << "DEC: " << object_id << " " << client_id << " HandlePushFinished";
   DecrementObjectPushCount(object_id);
+}
+
+void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
+                                          const ClientID &client_id,
+                                          uint64_t chunk_index,
+                                          int64_t start_time,
+                                          int64_t end_time,
+                                          ray::Status status) {
+  if (!status.ok()) {
+    // What do we want to do if the transfer failed?
+  }
+
+  RAY_LOG(INFO) << "DEC: " << object_id << " " << client_id << " HandleReceiveFinished";
+
+  ProfileEventT profile_event;
+  profile_event.event_type = "receive_finished";
+  profile_event.start_time = start_time;
+  profile_event.end_time = end_time;
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," + std::to_string(chunk_index) + "]";
+  profile_events_.push_back(profile_event);
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
@@ -819,20 +848,38 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
+  const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
-    ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
-                         chunk_index, *conn);
+    // TODO(rkn): ExecuteReceiveObject should return a status.
+    const ClientID client_id = conn->GetClientID();
+
+    ProfileEventT profile_event;
+    profile_event.event_type = "receive_finished";
+    int64_t start_time = current_time_ms();
+    profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," + std::to_string(chunk_index) + "]";
+
+    auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
+                                       chunk_index, *conn);
+
+    // Notify the main thread that we have finished receiving the object.
+    main_service_.post([this, object_id, client_id, chunk_index, start_time, status]() {
+      int64_t end_time = current_time_ms();
+      HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
+    });
+
   });
+
 }
 
-void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
-                                         const ObjectID &object_id, uint64_t data_size,
-                                         uint64_t metadata_size, uint64_t chunk_index,
-                                         TcpClientConnection &conn) {
+ray::Status ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
+                                                const ObjectID &object_id,
+                                                uint64_t data_size,
+                                                uint64_t metadata_size,
+                                                uint64_t chunk_index,
+                                                TcpClientConnection &conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
@@ -870,6 +917,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
   conn.ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << "/" << config_.max_receives;
+
+  return chunk_status.second;
 }
 
 void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -918,5 +967,41 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   };
   object_directory_->RunFunctionForEachClient(function_on_client);
 }
+
+ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
+  ProfileTableDataT profile_info;
+  profile_info.component_type = "object_manager";
+  profile_info.component_id = client_id_.binary();
+  //profile_info.node_ip_address =
+
+  for (auto const &profile_event : profile_events_) {
+    profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+  }
+
+  profile_events_.clear();
+
+  return profile_info;
+}
+
+// void ObjectManager::PushProfileEventsToGcs() {
+//
+//   ProfileTableDataT profile_info;
+//   profile_info.component_type = std::string(component_type, component_type_length);
+//   profile_info.component_id = component_id.binary();
+//   profile_info.node_ip_address = std::string(node_ip_address, node_ip_address_length);
+//
+//   for (auto const &profile_event : profile_events_) {
+//     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+//   }
+//
+//   flatbuffers::FlatBufferBuilder fbb;
+//   auto message = CreateProfileTableData(fbb, &profile_info);
+//   fbb.Finish(message);
+//   auto message = flatbuffers::GetRoot<ProfileTableData>(fbb.GetBufferPointer());
+//
+//   // RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*message));
+//
+//   profile_events_.clear();
+// }
 
 }  // namespace ray

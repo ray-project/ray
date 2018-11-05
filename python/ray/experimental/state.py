@@ -521,6 +521,72 @@ class GlobalState(object):
 
         return task_info
 
+    def object_transfers(self, receiver_perspective=True):
+        """TODO"""
+
+        transfers = defaultdict(list)  # Keys are (to, from) pairs
+
+        for key, items in self.profile_table().items():
+            if items[0]["component_type"] != "object_manager":
+                continue
+
+            for item in items:
+                if item["event_type"] == "receive_finished":
+                    object_id, client_id, chunk_id = item["extra_data"]
+                    transfers[(client_id, key)].append(item)
+                elif item["event_type"] == "send_pull_request":
+                    object_id, client_id = item["extra_data"]
+                    transfers[(client_id, key)].append(item)
+                else:
+                    assert False, "This should be unreachable."
+
+        transfers = dict(transfers)
+
+        events = []
+
+        for key, items in transfers.items():
+            sending_client_id, receiving_client_id = key
+            object_id = items[0]["extra_data"][0]
+
+            for event in items:
+                new_event = {
+                    # The category of the event.
+                    "cat": event["event_type"],
+                    # The start time in microseconds.
+                    "ts": event["start_time"] * 1000,
+                    # The duration in microseconds.
+                    "dur": (event["end_time"] - event["start_time"]) * 1000,
+                    # What is this?
+                    "ph": "X",
+                    # This is the name of the color to display the box in.
+                    "cname": "generic_work",
+                    # The extra user-defined data.
+                    "args": event["extra_data"],
+                }
+                if receiver_perspective:
+                    new_event.update({
+                        # The string displayed on the event.
+                        "name": event["event_type"] + " " + object_id + " from " + sending_client_id,
+                        # The identifier for the group of rows that the event
+                        # appears in.
+                        "pid": receiving_client_id,
+                        # The identifier for the row that the event appears in.
+                        "tid": "Remote client " + sending_client_id,
+                    })
+                else:
+                    new_event.update({
+                        # The string displayed on the event.
+                        "name": event["event_type"] + " " + object_id + " to " + receiving_client_id,
+                        # The identifier for the group of rows that the event
+                        # appears in.
+                        "pid": sending_client_id,
+                        # The identifier for the row that the event appears in.
+                        "tid": "Remote client " + receiving_client_id,
+                    })
+                events.append(new_event)
+
+        return events
+
     def _profile_table(self, component_id):
         """Get the profile events for a given component.
 

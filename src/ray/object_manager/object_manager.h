@@ -177,6 +177,12 @@ class ObjectManager : public ObjectManagerInterface {
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Return profiling information and reset the profiling information.
+  ///
+  /// \return All profiling information that has accumulated since the last call
+  /// to this method.
+  ProfileTableDataT GetAndResetProfilingInfo();
+
  private:
   friend class TestObjectManager;
 
@@ -254,7 +260,13 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
+  ///
+  /// \param object_id The ID of the object request.
+  /// \param client_id The ID of the object manager to request the object from.
+  /// \param conn The connection to the remote object manager.
+  /// \return Void.
   void PullSendRequest(const ObjectID &object_id,
+                       const ClientID &client_id,
                        std::shared_ptr<SenderConnection> &conn);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
@@ -269,6 +281,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// TODO
   void HandlePushFinished(const ObjectID &object_id, const ClientID &client_id,
                           ray::Status status);
+  /// TODO
+  void HandleReceiveFinished(const ObjectID &object_id, const ClientID &client_id,
+                             uint64_t chunk_index, int64_t start_time,
+                             int64_t end_time, ray::Status status);
 
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
@@ -293,10 +309,11 @@ class ObjectManager : public ObjectManagerInterface {
   /// This will invoke the object receive on the receive_service_ thread pool.
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
+
   /// Execute a receive on the receive_service_ thread pool.
-  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                            uint64_t data_size, uint64_t metadata_size,
-                            uint64_t chunk_index, TcpClientConnection &conn);
+  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                                   uint64_t data_size, uint64_t metadata_size,
+                                   uint64_t chunk_index, TcpClientConnection &conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -316,6 +333,9 @@ class ObjectManager : public ObjectManagerInterface {
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
@@ -377,6 +397,10 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+
+  /// Profiling events that are to be batched together and added to the profile
+  /// table in the GCS.
+  std::vector<ProfileEventT> profile_events_;
 };
 
 }  // namespace ray
