@@ -2115,7 +2115,7 @@ def _changeproctitle(title):
     old_title = setproctitle.getproctitle()
     setproctitle.setproctitle(title)
     yield
-    setproctitle.setproctitle(title)
+    setproctitle.setproctitle(old_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
