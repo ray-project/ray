@@ -1,4 +1,12 @@
-"""Example of how to interface a model with Ray SGD."""
+"""Example of how to interface a model with Ray SGD.
+
+We use a small model here, so no speedup for distributing the computation is
+expected. This example shows:
+    - How to set up a simple input pipeline
+    - How to evaluate model accuracy during training
+    - How to get and set model weights
+    - How to train with ray.experimental.sgd.DistributedSGD
+"""
 
 from __future__ import absolute_import
 from __future__ import division
