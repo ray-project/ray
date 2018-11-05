@@ -203,7 +203,7 @@ def _simple_sgd_step(actors):
     start = time.time()
     ray.get([a.apply_gradients.remote(avg_grad) for a in actors])
     logger.debug("apply all grads time {}".format(time.time() - start))
-    return np.mean(losses)
+    return {"loss": np.mean(losses)}
 
 
 def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
@@ -257,6 +257,6 @@ def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
         # Wait for at least the ps gets to finish
         ray.get(ps_gets)
     if fetch_stats:
-        return np.mean(ray.get(losses))
+        return {"loss": np.mean(ray.get(losses))}
     else:
         return None
