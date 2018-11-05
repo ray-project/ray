@@ -87,18 +87,12 @@ def test_actor_reconstruction(start_connected_cluster):
     actor = MyActor.remote()
 
     def kill_node():
-        # Kill the node that the actor reside on.
+        # Kill the node that the actor resides on.
         # Return node's object store socket name.
         object_store_socket = ray.get(actor.get_object_store_socket.remote())
-        node_to_remove = None
         for node in cluster.worker_nodes:
-            object_store_sockets = [
-                address.name
-                for address in node.address_info["object_store_addresses"]
-            ]
-            if object_store_socket in object_store_sockets:
-                node_to_remove = node
-        cluster.remove_node(node_to_remove)
+            if object_store_socket == node.get_plasma_store_name():
+                cluster.remove_node(node)
         return object_store_socket
 
     # Call increase 3 times.
