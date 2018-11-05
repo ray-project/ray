@@ -48,18 +48,19 @@ class SGDWorker(object):
             device_tmpl = "/gpu:%d"
         else:
             device_tmpl = "/cpu:%d"
-        for device_idx in range(num_devices):
-            device = device_tmpl % device_idx
-            with tf.device(device):
-                with tf.variable_scope("device_%d" % device_idx):
-                    model = model_creator(worker_index, device_idx)
-                    self.models.append(model)
-                    model.grads = [
-                        t
-                        for t in model.optimizer.compute_gradients(model.loss)
-                        if t[0] is not None
-                    ]
-                    grad_ops.append(model.grads)
+        with self.sess.as_default():
+            for device_idx in range(num_devices):
+                device = device_tmpl % device_idx
+                with tf.device(device):
+                    with tf.variable_scope("device_%d" % device_idx):
+                        model = model_creator(worker_index, device_idx)
+                        self.models.append(model)
+                        grads = [
+                            t for t in model.optimizer.compute_gradients(
+                                model.loss)
+                            if t[0] is not None
+                        ]
+                        grad_ops.append(grads)
 
         if num_devices == 1:
             assert not max_bytes, \

@@ -16,6 +16,7 @@ from ray.tune import run_experiments
 from ray.tune.examples.tune_mnist_ray import *
 from ray.experimental.sgd.model import Model
 from ray.experimental.sgd.sgd import DistributedSGD
+from ray.experimental.tfutils import TensorFlowVariables
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--redis-address", default=None, type=str)
@@ -53,6 +54,7 @@ class MNISTModel(Model):
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.y_, logits=y_conv))
         self.optimizer = tf.train.AdamOptimizer(1e-4)
+        self.variables = TensorFlowVariables(self.loss, tf.get_default_session())
 
         # For evaluating test accuracy
         correct_prediction = tf.equal(
@@ -86,6 +88,9 @@ if __name__ == "__main__":
         devices_per_worker=args.devices_per_worker,
         gpu=args.gpu,
         strategy=args.strategy)
+
+    # Important: synchronize weights of all models
+    print(sgd.for_model(lambda m: m.variables.get_weights()))
 
     for i in range(args.num_iters):
         if i % 10 == 0:
