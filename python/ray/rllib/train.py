@@ -117,13 +117,13 @@ def run(args, parser):
         ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=args.ray_num_local_schedulers,
-            object_store_memory=object_store_memory,
+            object_store_memory=args.ray_object_store_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     else:
         ray.init(
             redis_address=args.redis_address,
-            object_store_memory=object_store_memory,
+            object_store_memory=args.ray_object_store_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     run_experiments(
