@@ -12,7 +12,7 @@
 /// across multiple nodes.
 ///
 /// TODO(rkn): This function appears in multiple places. It should be
-/// de-duplicated.
+/// deduplicated.
 ///
 /// \return The number of milliseconds since the steady clock epoch.
 inline int64_t current_time_ms() {
