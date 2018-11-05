@@ -51,6 +51,11 @@ def create_parser(parser_creator=None):
         help="--num-gpus to pass to Ray."
         " This only has an affect in local mode.")
     parser.add_argument(
+        "--ray-num-local-schedulers",
+        default=None,
+        type=int,
+        help="Emulate multiple cluster nodes for debugging.")
+    parser.add_argument(
         "--experiment-name",
         default="default",
         type=str,
@@ -102,10 +107,17 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    ray.init(
-        redis_address=args.redis_address,
-        num_cpus=args.ray_num_cpus,
-        num_gpus=args.ray_num_gpus)
+    if args.ray_num_local_schedulers:
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=args.ray_num_local_schedulers,
+            num_cpus=args.ray_num_cpus,
+            num_gpus=args.ray_num_gpus)
+    else:
+        ray.init(
+            redis_address=args.redis_address,
+            num_cpus=args.ray_num_cpus,
+            num_gpus=args.ray_num_gpus)
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
