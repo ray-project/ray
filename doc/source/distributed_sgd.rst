@@ -43,12 +43,12 @@ The full documentation for ``DistributedSGD`` is as follows:
 Examples
 --------
 
-For examples of end-to-end usage, check out the `ImageNet synthetic data test <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/test_sgd.py>`__ and also the simple `MNIST training example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/mnist_example.py>`__, which includes examples of how access the model weights and monitor test accuracy as training progresses.
+For examples of end-to-end usage, check out the `ImageNet synthetic data test <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/test_sgd.py>`__ and also the simple `MNIST training example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/mnist_example.py>`__, which includes examples of how access the model weights and monitor accuracy as training progresses.
 
 Performance
 -----------
 
-When using the new Ray backend (which will be enabled by default in Ray 0.6+), we expect performance competitive with other synchronous SGD implementations on 25Gbps Ethernet.
+When using the new Ray backend (which will be enabled by default in Ray 0.6+), we `expect <https://github.com/ray-project/ray/pull/3033>`__ performance competitive with other synchronous SGD implementations on 25Gbps Ethernet.
 
 .. figure:: sgd.png
     :width: 756px
