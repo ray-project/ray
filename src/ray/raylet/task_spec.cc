@@ -178,19 +178,19 @@ size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
 }
 
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  RAY_CHECK(required_resources_.empty() == true);
+  RAY_CHECK(required_resources_.empty() == false);
   auto it = required_resources_.find(resource_name);
   RAY_CHECK(it != required_resources_.end());
   return it->second;
 }
 
 const ResourceSet TaskSpecification::GetRequiredResources() const {
-  RAY_CHECK(required_resources_.empty() == true);
+  RAY_CHECK(required_resources_.empty() == false);
   return ResourceSet(required_resources_);
 }
 
 const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
-  RAY_CHECK(required_placement_resources_.empty() == true);
+  RAY_CHECK(required_placement_resources_.empty() == false);
   return ResourceSet(required_placement_resources_);
 }
 
