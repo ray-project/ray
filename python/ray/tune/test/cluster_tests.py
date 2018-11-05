@@ -42,14 +42,19 @@ class _Train(tune.Trainable):
 
 
 def test_counting_resources(start_connected_cluster):
-    """Removing a node should cause a Trial to be requeued."""
+    """Tests that Tune accounting is consistent with actual cluster."""
     cluster = start_connected_cluster
-    node = cluster.add_node(resources=dict(CPU=1))
+    assert ray.global_state.cluster_resources()["CPU"] == 1
+    nodes = []
+    nodes += [cluster.add_node(resources=dict(CPU=1))]
+    cluster.wait_for_nodes()
+    assert ray.global_state.cluster_resources()["CPU"] == 2
+
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {
-            "training_iteration": 3
+            "training_iteration": 10
         }
     }
 
@@ -59,24 +64,23 @@ def test_counting_resources(start_connected_cluster):
         runner.add_trial(t)
 
     runner.step()  # run 1
-    cluster.remove_node(node)
+    cluster.remove_node(nodes.pop())
+    cluster.wait_for_nodes()
+    assert ray.global_state.cluster_resources()["CPU"] == 1
     runner.step()  # run 2
-    node = cluster.add_node(resources=dict(CPU=1))
 
-    assert all(t.status == Trial.RUNNING for t in trials)
+    for i in range(5):
+        nodes += [cluster.add_node(resources=dict(CPU=1))]
+    cluster.wait_for_nodes()
+    assert ray.global_state.cluster_resources()["CPU"] == 6
 
     runner.step()  # 1 result
-    print(runner.debug_string())
 
-    cluster.remove_node(node)
-
-    runner.step()  # recover
     for i in range(5):
-        runner.step()
-    assert all(t.status == Trial.TERMINATED for t in trials)
-
-    with pytest.raises(TuneError):
-        runner.step()
+        node = nodes.pop()
+        cluster.remove_node(node)
+    cluster.wait_for_nodes()
+    assert ray.global_state.cluster_resources()["CPU"] == 1
 
 
 def test_remove_node_before_result(start_connected_cluster):
