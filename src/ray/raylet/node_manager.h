@@ -193,7 +193,7 @@ class NodeManager {
   /// was called, we pass this task as new_ready_task. This is an optimization
   /// to avoid DispatchTask() going over all tasks in the ready queue.
   /// Otherwise, we set new_ready_task to nullptr, case in which DispatchTask()
-  /// go over all tasks in the ready queue. e 
+  /// go over all tasks in the ready queue.
   void DispatchTasks(const Task* new_ready_task);
   /// Handle a worker becoming blocked in a `ray.get`.
   ///
