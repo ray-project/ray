@@ -30,7 +30,6 @@ class TestRedisPassword(object):
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")
     def test_redis_password(self, password, shutdown_only):
-        # Workaround for https://github.com/ray-project/ray/issues/3045
         @ray.remote
         def f():
             return 1
@@ -58,7 +57,6 @@ class TestRedisPassword(object):
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")
     def test_redis_password_cluster(self, password, shutdown_only):
-        # Workaround for https://github.com/ray-project/ray/issues/3045
         @ray.remote
         def f():
             return 1
