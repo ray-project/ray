@@ -91,7 +91,9 @@ class DistributedSGD(object):
 
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
-        logger.info("Creating SGD workers ({} total)".format(num_workers))
+        logger.info(
+            "Creating SGD workers ({} total, {} devices per worker)".format(
+                num_workers, devices_per_worker))
         for worker_index in range(num_workers):
             self.workers.append(
                 RemoteSGDWorker.remote(

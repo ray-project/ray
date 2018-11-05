@@ -1,4 +1,4 @@
-"""Example of how to interface a model with Ray SGD.
+"""Example of how to train a model with Ray SGD.
 
 We use a small model here, so no speedup for distributing the computation is
 expected. This example shows:
@@ -13,15 +13,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import numpy as np
 import time
 
 from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 
 import ray
-from ray.tune import run_experiments
-from ray.tune.examples.tune_mnist_ray import *
+from ray.tune.examples.tune_mnist_ray import deepnn
 from ray.experimental.sgd.model import Model
 from ray.experimental.sgd.sgd import DistributedSGD
 from ray.experimental.tfutils import TensorFlowVariables
