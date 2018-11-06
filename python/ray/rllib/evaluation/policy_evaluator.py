@@ -17,10 +17,11 @@ from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.compression import pack
-from ray.rllib.utils.filter import get_filter
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.compression import pack
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
@@ -70,7 +71,7 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   policy_mapping_fn=lambda agent_id:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
-        >>> print(evaluator.sample().keys())
+        >>> print(evaluator.sample())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
@@ -101,7 +102,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  policy_config=None,
                  worker_index=0,
                  monitor_path=None,
-                 log_level=None):
+                 log_level=None,
+                 callbacks=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -161,6 +163,7 @@ class PolicyEvaluator(EvaluatorInterface):
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
             log_level (str): Set the root log level on creation.
+            callbacks (dict): Dict of custom debug callbacks.
         """
 
         if log_level:
@@ -169,6 +172,7 @@ class PolicyEvaluator(EvaluatorInterface):
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
+        self.callbacks = callbacks or {}
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
@@ -279,6 +283,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -291,6 +296,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -299,8 +305,7 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_map = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
-            merged_conf = policy_config.copy()
-            merged_conf.update(conf)
+            merged_conf = merge_dicts(policy_config, conf)
             with tf.variable_scope(name):
                 if isinstance(obs_space, gym.spaces.Dict):
                     raise ValueError(
@@ -341,6 +346,12 @@ class PolicyEvaluator(EvaluatorInterface):
             batches.append(batch)
         batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
+
+        if self.callbacks.get("on_sample_end"):
+            self.callbacks["on_sample_end"]({
+                "evaluator": self,
+                "samples": batch
+            })
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):

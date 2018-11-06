@@ -106,6 +106,8 @@ def create_parser():
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
+        "--use-gpu", action="store_true", help="Use GPU in training.")
+    parser.add_argument(
         '--jobs',
         type=int,
         default=1,
@@ -113,8 +115,8 @@ def create_parser():
     parser.add_argument(
         '--threads',
         type=int,
-        default=None,
-        help='threads used in operations (default: all)')
+        default=2,
+        help='threads used in operations (default: 2)')
     parser.add_argument(
         '--steps',
         type=float,
@@ -185,6 +187,10 @@ if __name__ == '__main__':
                 },
                 "run": "train_mnist",
                 "num_samples": 1 if args.smoke_test else 10,
+                "trial_resources": {
+                    "cpu": args.threads,
+                    "gpu": 0.5 if args.use_gpu else 0
+                },
                 "config": {
                     "lr": lambda spec: np.random.uniform(0.001, 0.1),
                     "momentum": lambda spec: np.random.uniform(0.1, 0.9),

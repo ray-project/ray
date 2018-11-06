@@ -3,17 +3,23 @@ Installing Ray
 
 Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, OS X 10.11 and 10.12.
 
-You can install Ray as follows.
+Latest stable version
+---------------------
+
+You can install the latest stable version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install ray
+  pip install -U ray
 
-Trying the latest version of Ray
---------------------------------
+Trying snapshots from master
+----------------------------
 
-Here are links to the latest wheels (which are built off of master). These versions will have newer
-features but may be subject to more bugs. To install these wheels, run the following command:
+Here are links to the latest wheels (which are built off of master). To install these wheels, run the following command:
+
+.. danger::
+
+    These versions will have newer features but are subject to more bugs. If you encounter crashes or other instabilities, please revert to the latest stable version.
 
 .. code-block:: bash
 

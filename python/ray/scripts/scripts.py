@@ -105,6 +105,11 @@ def cli(logging_level, logging_format):
     type=int,
     help="the port to use for starting the object manager")
 @click.option(
+    "--node-manager-port",
+    required=False,
+    type=int,
+    help="the port to use for starting the node manager")
+@click.option(
     "--object-store-memory",
     required=False,
     type=int,
@@ -190,11 +195,11 @@ def cli(logging_level, logging_format):
     help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
-          object_manager_port, object_store_memory, num_workers, num_cpus,
-          num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir):
+          object_manager_port, node_manager_port, object_store_memory,
+          num_workers, num_cpus, num_gpus, resources, head, no_ui, block,
+          plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -243,15 +248,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         logger.info("Using IP address {} for this node."
                     .format(node_ip_address))
 
-        address_info = {}
-        # Use the provided object manager port if there is one.
-        if object_manager_port is not None:
-            address_info["object_manager_ports"] = [object_manager_port]
-        if address_info == {}:
-            address_info = None
-
         address_info = services.start_ray_head(
-            address_info=address_info,
+            object_manager_ports=[object_manager_port],
+            node_manager_ports=[node_manager_port],
             node_ip_address=node_ip_address,
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -337,6 +336,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             node_ip_address=node_ip_address,
             redis_address=redis_address,
             object_manager_ports=[object_manager_port],
+            node_manager_ports=[node_manager_port],
             num_workers=num_workers,
             object_store_memory=object_store_memory,
             redis_password=redis_password,
@@ -402,7 +402,7 @@ def stop():
         from notebook.notebookapp import list_running_servers
         pids = [
             str(server["pid"]) for server in list_running_servers()
-            if "/tmp/raylogs" in server["notebook_dir"]
+            if "/tmp/ray" in server["notebook_dir"]
         ]
         subprocess.call(
             ["kill {} 2> /dev/null".format(" ".join(pids))], shell=True)
@@ -577,6 +577,32 @@ def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
+@cli.command()
+def stack():
+    COMMAND = """
+pyspy=`which py-spy`
+if [ ! -e "$pyspy" ]; then
+    echo "ERROR: Please 'pip install py-spy' first"
+    exit 1
+fi
+# Set IFS to iterate over lines instead of over words.
+export IFS="
+"
+# Call sudo to prompt for password before anything has been printed.
+sudo true
+workers=$(
+    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+)
+for worker in $workers; do
+    echo "Stack dump for $worker";
+    pid=`echo $worker | awk '{print $2}'`;
+    sudo $pyspy --pid $pid --dump;
+    echo;
+done
+    """
+    subprocess.call(COMMAND, shell=True)
+
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
@@ -588,6 +614,7 @@ cli.add_command(rsync_up)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)
+cli.add_command(stack)
 
 
 def main():

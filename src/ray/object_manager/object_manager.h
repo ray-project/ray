@@ -29,6 +29,10 @@
 namespace ray {
 
 struct ObjectManagerConfig {
+  /// The port that the object manager should use to listen for connections
+  /// from other object managers. If this is 0, the object manager will choose
+  /// its own port.
+  int object_manager_port;
   /// The time in milliseconds to wait before retrying a pull
   /// that fails due to client id lookup.
   uint pull_timeout_ms;

@@ -6,6 +6,7 @@ import gym
 import numpy as np
 import time
 import unittest
+from collections import Counter
 
 import ray
 from ray.rllib.agents.pg import PGAgent
@@ -28,7 +29,11 @@ class MockPolicyGraph(PolicyGraph):
                         episodes=None):
         return [0] * len(obs_batch), [], {}
 
-    def postprocess_trajectory(self, batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               batch,
+                               other_agent_batches=None,
+                               episode=None):
+        assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -42,7 +47,11 @@ class BadPolicyGraph(PolicyGraph):
                         episodes=None):
         raise Exception("intentional error")
 
-    def postprocess_trajectory(self, batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               batch,
+                               other_agent_batches=None,
+                               episode=None):
+        assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
@@ -141,6 +150,26 @@ class TestPolicyEvaluator(unittest.TestCase):
         self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
         result2 = agent.train()
         self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
+
+    def testCallbacks(self):
+        counts = Counter()
+        pg = PGAgent(
+            env="CartPole-v0", config={
+                "num_workers": 0,
+                "sample_batch_size": 50,
+                "callbacks": {
+                    "on_episode_start": lambda x: counts.update({"start": 1}),
+                    "on_episode_step": lambda x: counts.update({"step": 1}),
+                    "on_episode_end": lambda x: counts.update({"end": 1}),
+                    "on_sample_end": lambda x: counts.update({"sample": 1}),
+                },
+            })
+        pg.train()
+        self.assertEqual(counts["sample"], 1)
+        self.assertGreater(counts["start"], 0)
+        self.assertGreater(counts["end"], 0)
+        self.assertGreater(counts["step"], 50)
+        self.assertLess(counts["step"], 100)
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))

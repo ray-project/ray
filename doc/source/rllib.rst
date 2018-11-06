@@ -29,6 +29,7 @@ Training APIs
 * `Command-line <rllib-training.html>`__
 * `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
+* `Debugging <rllib-training.html#debugging>`__
 * `REST API <rllib-training.html#rest-api>`__
 
 Environments
@@ -99,3 +100,6 @@ If you encounter errors like
 `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
+
+For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
+the stack traces of all Ray workers on the current node. This requires py-spy to be installed.

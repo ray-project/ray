@@ -83,7 +83,7 @@ class PolicyGraph(object):
             is_training (bool): whether we are training the policy
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
-                multiagent algorithms.
+                multi-agent algorithms.
 
         Returns:
             actions (obj): single action
@@ -96,7 +96,10 @@ class PolicyGraph(object):
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -108,6 +111,9 @@ class PolicyGraph(object):
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy_graph, agent_batch) tuples
                 containing the policy graph and experiences of the other agent.
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multi-agent algorithms.
 
         Returns:
             SampleBatch: postprocessed sample batch.

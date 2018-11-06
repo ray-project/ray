@@ -721,7 +721,7 @@ class Worker(object):
             arguments.append(argument)
         return arguments
 
-    def _store_outputs_in_objstore(self, object_ids, outputs):
+    def _store_outputs_in_object_store(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
 
         This stores the values that were returned by a remote function in the
@@ -819,7 +819,7 @@ class Worker(object):
                 num_returns = len(return_object_ids)
                 if num_returns == 1:
                     outputs = (outputs, )
-                self._store_outputs_in_objstore(return_object_ids, outputs)
+                self._store_outputs_in_object_store(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -831,7 +831,7 @@ class Worker(object):
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
-        self._store_outputs_in_objstore(return_object_ids, failure_objects)
+        self._store_outputs_in_object_store(return_object_ids, failure_objects)
         # Log the error message.
         ray.utils.push_error_to_driver(
             self,
@@ -918,7 +918,7 @@ class Worker(object):
         Returns:
             A task from the local scheduler.
         """
-        with profiling.profile("get_task", worker=self):
+        with profiling.profile("worker_idle", worker=self):
             task = self.local_scheduler_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -1279,6 +1279,7 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
+          driver_id=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
           temp_dir=None):
@@ -1303,8 +1304,6 @@ def _init(address_info=None,
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        num_workers (int): The number of workers to start. This is only
-            provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
         object_store_memory: The maximum amount of memory (in bytes) to
@@ -1338,6 +1337,7 @@ def _init(address_info=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        driver_id: The ID of driver.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1457,6 +1457,7 @@ def _init(address_info=None,
         if raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -1487,6 +1488,7 @@ def _init(address_info=None,
         object_id_seed=object_id_seed,
         mode=driver_mode,
         worker=global_worker,
+        driver_id=driver_id,
         redis_password=redis_password)
     return address_info
 
@@ -1510,12 +1512,14 @@ def init(redis_address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
+         driver_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
-         temp_dir=None):
+         temp_dir=None,
+         use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1554,8 +1558,6 @@ def init(redis_address=None,
             object IDs. The same value can be used across multiple runs of the
             same job in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        num_workers (int): The number of workers to start. This is only
-            provided if redis_address is not provided.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
@@ -1576,6 +1578,7 @@ def init(redis_address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        driver_id: The ID of driver.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be loging.INFO.
@@ -1595,6 +1598,15 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Add the use_raylet option for backwards compatibility.
+    if use_raylet is not None:
+        if use_raylet:
+            logger.warn("WARNING: The use_raylet argument has been "
+                        "deprecated. Please remove it.")
+        else:
+            raise DeprecationWarning("The use_raylet argument is deprecated. "
+                                     "Please remove it.")
+
     if configure_logging:
         logging.basicConfig(level=logging_level, format=logging_format)
 
@@ -1632,6 +1644,7 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
+        driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)
@@ -1823,6 +1836,7 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
+            driver_id=None,
             redis_password=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
@@ -1833,6 +1847,7 @@ def connect(info,
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
+        driver_id: The ID of driver. If it's None, then we will generate one.
         redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
     """
@@ -1840,8 +1855,20 @@ def connect(info,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
+
     # Initialize some fields.
-    worker.worker_id = random_string()
+    if mode is WORKER_MODE:
+        worker.worker_id = random_string()
+    else:
+        # This is the code path of driver mode.
+        if driver_id is None:
+            driver_id = ray.ObjectID(random_string())
+
+        if not isinstance(driver_id, ray.ObjectID):
+            raise Exception(
+                "The type of given driver id must be ray.ObjectID.")
+
+        worker.worker_id = driver_id.id()
 
     # When tasks are executed on remote workers in the context of multiple
     # drivers, the task driver ID is used to keep track of which driver is
