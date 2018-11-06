@@ -3,14 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import json
 import os
+import logging
 import pickle
 import tempfile
 from datetime import datetime
 import tensorflow as tf
 
 import ray
+from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -19,11 +20,48 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+# yapf: disable
+# __sphinx_doc_begin__
 COMMON_CONFIG = {
+    # === Debugging ===
+    # Whether to write episode stats and videos to the agent log dir
+    "monitor": False,
+    # Set the ray.rllib.* log level for the agent process and its evaluators
+    "log_level": "INFO",
+    # Callbacks that will be run during various phases of training. These all
+    # take a single "info" dict as an argument. For episode callbacks, custom
+    # metrics can be attached to the episode by updating the episode object's
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
+    "callbacks": {
+        "on_episode_start": None,  # arg: {"env": .., "episode": ...}
+        "on_episode_step": None,   # arg: {"env": .., "episode": ...}
+        "on_episode_end": None,    # arg: {"env": .., "episode": ...}
+        "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
+    },
+
+    # === Policy ===
+    # Arguments to pass to model. See models/catalog.py for a full list of the
+    # available model options.
+    "model": MODEL_DEFAULTS,
+    # Arguments to pass to the policy optimizer. These vary by optimizer.
+    "optimizer": {},
+
+    # === Environment ===
     # Discount factor of the MDP
     "gamma": 0.99,
-    # Number of steps after which the rollout gets cut
+    # Number of steps after which the episode is forced to terminate
     "horizon": None,
+    # Arguments to pass to the env creator
+    "env_config": {},
+    # Environment name can also be passed via config
+    "env": None,
+    # Whether to clip rewards prior to experience postprocessing. Setting to
+    # None means clip for Atari only.
+    "clip_rewards": None,
+    # Whether to use rllib or deepmind preprocessors by default
+    "preprocessor_pref": "deepmind",
+
+    # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
     # Number of actors used for parallelism
@@ -37,28 +75,13 @@ COMMON_CONFIG = {
     "batch_mode": "truncate_episodes",
     # Whether to use a background thread for sampling (slightly off-policy)
     "sample_async": False,
-    # Which observation filter to apply to the observation
+    # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
     "synchronize_filters": True,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
-    "clip_rewards": None,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
-    # Arguments to pass to the env creator
-    "env_config": {},
-    # Environment name can also be passed via config
-    "env": None,
-    # Arguments to pass to model
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {},
     # Configure TF for single-process operation by default
     "tf_session_args": {
+        # note: parallelism_threads is set to auto for the local evaluator
         "intra_op_parallelism_threads": 1,
         "inter_op_parallelism_threads": 1,
         "gpu_options": {
@@ -72,10 +95,10 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Whether to write episode stats and videos to the agent log dir
-    "monitor": False,
     # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
     "gpu_fraction": 1,
+    # Drop metric batches from unresponsive workers after this many seconds
+    "collect_metrics_timeout": 180,
 
     # === Multiagent ===
     "multiagent": {
@@ -88,6 +111,8 @@ COMMON_CONFIG = {
         "policies_to_train": None,
     },
 }
+# __sphinx_doc_end__
+# yapf: enable
 
 
 def with_common_config(extra_config):
@@ -168,14 +193,16 @@ class Agent(Trainable):
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            monitor_path=self.logdir if config["monitor"] else None)
+            monitor_path=self.logdir if config["monitor"] else None,
+            log_level=config["log_level"],
+            callbacks=config["callbacks"])
 
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers` and other configs. See the "
                 "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: " + json.dumps(config))
+                "The config of this agent is: {}".format(config))
 
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
@@ -199,7 +226,8 @@ class Agent(Trainable):
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = '_'.join([self._agent_name, self._env_id, timestr])
+            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
+                                              timestr)
 
             def default_logger_creator(config):
                 """Creates a Unified logger with a default logdir prefix
@@ -234,10 +262,10 @@ class Agent(Trainable):
 
         return Trainable.train(self)
 
-    def _setup(self):
+    def _setup(self, config):
         env = self._env_id
         if env:
-            self.config["env"] = env
+            config["env"] = env
             if _global_registry.contains(ENV_CREATOR, env):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
@@ -248,10 +276,12 @@ class Agent(Trainable):
 
         # Merge the supplied config with the class default
         merged_config = self._default_config.copy()
-        merged_config = deep_update(merged_config, self.config,
+        merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
@@ -350,12 +380,11 @@ class Agent(Trainable):
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
-        pickle.dump(self.__getstate__(),
-                    open(checkpoint_path + ".agent_state", "wb"))
+        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".agent_state", "rb"))
+        extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
 

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import logging
 import pickle
 import tensorflow as tf
 
@@ -11,17 +12,16 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.serving_env import ServingEnv
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.compression import pack
-from ray.rllib.utils.filter import get_filter
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.compression import pack
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 
@@ -71,7 +71,7 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   policy_mapping_fn=lambda agent_id:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
-        >>> print(evaluator.sample().keys())
+        >>> print(evaluator.sample())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
@@ -101,7 +101,9 @@ class PolicyEvaluator(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
-                 monitor_path=None):
+                 monitor_path=None,
+                 log_level=None,
+                 callbacks=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -160,29 +162,44 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_level (str): Set the root log level on creation.
+            callbacks (dict): Dict of custom debug callbacks.
         """
+
+        if log_level:
+            logging.getLogger("ray.rllib").setLevel(log_level)
 
         env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
+        self.callbacks = callbacks or {}
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
+        if not callable(policy_mapping_fn):
+            raise ValueError(
+                "Policy mapping function not callable. If you're using Tune, "
+                "make sure to escape the function with tune.function() "
+                "to prevent it from being evaluated as an expression.")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_context)
-        if isinstance(self.env, VectorEnv) or \
-                isinstance(self.env, ServingEnv) or \
-                isinstance(self.env, MultiAgentEnv) or \
+        if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
+
+            if model_config.get("custom_preprocessor"):
+                raise ValueError(
+                    "Custom preprocessors are not supported for env types "
+                    "MultiAgentEnv and AsyncVectorEnv. Please preprocess "
+                    "observations in your env directly.")
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
-                "custom_preprocessor" not in model_config and \
+                not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
             if clip_rewards is None:
@@ -191,9 +208,8 @@ class PolicyEvaluator(EvaluatorInterface):
             def wrap(env):
                 env = wrap_deepmind(
                     env,
-                    dim=model_config.get("dim", 84),
-                    framestack=not model_config.get("use_lstm")
-                    and not model_config.get("no_framestack"))
+                    dim=model_config.get("dim"),
+                    framestack=model_config.get("framestack"))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
@@ -230,7 +246,14 @@ class PolicyEvaluator(EvaluatorInterface):
             self.policy_map = self._build_policy_map(policy_dict,
                                                      policy_config)
 
-        self.multiagent = self.policy_map.keys() != {DEFAULT_POLICY_ID}
+        self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
+        if self.multiagent:
+            if not (isinstance(self.env, MultiAgentEnv)
+                    or isinstance(self.env, AsyncVectorEnv)):
+                raise ValueError(
+                    "Have multiple policy graphs {}, but the env ".format(
+                        self.policy_map) +
+                    "{} is not a subclass of MultiAgentEnv?".format(self.env))
 
         self.filters = {
             policy_id: get_filter(observation_filter,
@@ -260,6 +283,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -272,6 +296,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.filters,
                 clip_rewards,
                 unroll_length,
+                self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
@@ -280,9 +305,20 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_map = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
-            merged_conf = policy_config.copy()
-            merged_conf.update(conf)
+            merged_conf = merge_dicts(policy_config, conf)
             with tf.variable_scope(name):
+                if isinstance(obs_space, gym.spaces.Dict):
+                    raise ValueError(
+                        "Found raw Dict space as input to policy graph. "
+                        "Please preprocess your environment observations "
+                        "with DictFlatteningPreprocessor and set the "
+                        "obs space to `preprocessor.observation_space`.")
+                elif isinstance(obs_space, gym.spaces.Tuple):
+                    raise ValueError(
+                        "Found raw Tuple space as input to policy graph. "
+                        "Please preprocess your environment observations "
+                        "with TupleFlatteningPreprocessor and set the "
+                        "obs space to `preprocessor.observation_space`.")
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
 
@@ -310,6 +346,12 @@ class PolicyEvaluator(EvaluatorInterface):
             batches.append(batch)
         batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
+
+        if self.callbacks.get("on_sample_end"):
+            self.callbacks["on_sample_end"]({
+                "evaluator": self,
+                "samples": batch
+            })
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
@@ -401,6 +443,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
         else:
@@ -441,6 +485,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
                     info_out[pid], _ = (
                         self.policy_map[pid].compute_apply(batch))
             return info_out

@@ -2,12 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.tune.trial import Resources
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
@@ -53,14 +59,9 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     # Use the sync samples optimizer instead of the multi-gpu one
     "simple_optimizer": False,
-    # Override model config
-    "model": {
-        # Whether to use LSTM model
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -92,7 +93,7 @@ class PPOAgent(Agent):
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"]
+                    "train_batch_size": self.config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
@@ -115,7 +116,7 @@ class PPOAgent(Agent):
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
-                print("Warning: " + msg)
+                logger.warn(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(
@@ -137,7 +138,8 @@ class PPOAgent(Agent):
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(
                 lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        res = self.optimizer.collect_metrics()
+        res = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
         res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
             info=dict(fetches, **res.get("info", {})))

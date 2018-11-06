@@ -149,7 +149,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
-            p_values = self._build_p_network(self.cur_observations)
+            p_values = self._build_p_network(self.cur_observations,
+                                             observation_space)
             self.p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -178,11 +179,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
-            self.p_t = self._build_p_network(self.obs_t)
+            self.p_t = self._build_p_network(self.obs_t, observation_space)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1 = self._build_p_network(self.obs_tp1)
+            p_tp1 = self._build_p_network(self.obs_tp1, observation_space)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -197,14 +198,16 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_t = self._build_q_network(self.obs_t, self.act_t)
+            q_t = self._build_q_network(self.obs_t, observation_space,
+                                        self.act_t)
             self.q_func_vars = _scope_vars(scope.name)
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_tp0 = self._build_q_network(self.obs_t, output_actions)
+            q_tp0 = self._build_q_network(self.obs_t, observation_space,
+                                          output_actions)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = self._build_q_network(self.obs_tp1,
+            q_tp1 = self._build_q_network(self.obs_tp1, observation_space,
                                           output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
 
@@ -267,16 +270,20 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # Hard initial update
         self.update_target(tau=1.0)
 
-    def _build_q_network(self, obs, actions):
+    def _build_q_network(self, obs, obs_space, actions):
         return QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]), actions,
+            ModelCatalog.get_model({
+                "obs": obs
+            }, obs_space, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"]).value
 
-    def _build_p_network(self, obs):
+    def _build_p_network(self, obs, obs_space):
         return PNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]),
-            self.dim_actions, self.config["actor_hiddens"],
+            ModelCatalog.get_model({
+                "obs": obs
+            }, obs_space, 1, self.config["model"]), self.dim_actions,
+            self.config["actor_hiddens"],
             self.config["actor_hidden_activation"]).action_scores
 
     def _build_action_network(self, p_values, stochastic, eps):
@@ -325,7 +332,10 @@ class DDPGPolicyGraph(TFPolicyGraph):
             "td_error": self.loss.td_error,
         }
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         return _postprocess_dqn(self, sample_batch)
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,

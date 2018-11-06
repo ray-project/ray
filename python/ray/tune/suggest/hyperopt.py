@@ -4,9 +4,13 @@ from __future__ import print_function
 
 import numpy as np
 import copy
+import logging
+
 try:
+    hyperopt_logger = logging.getLogger("hyperopt")
+    hyperopt_logger.setLevel(logging.WARNING)
     import hyperopt as hpo
-except Exception as e:
+except Exception:
     hpo = None
 
 from ray.tune.error import TuneError
@@ -47,7 +51,6 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>> }
         >>> algo = HyperOptSearch(
         >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
-        >>> algo.add_configurations(config)
     """
 
     def __init__(self,

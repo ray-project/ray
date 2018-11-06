@@ -6,11 +6,14 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +38,7 @@ public class RayConfig {
   public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
+  public final List<String> jvmParameters;
 
   private String redisAddress;
   private String redisIp;
@@ -51,6 +55,8 @@ public class RayConfig {
   public final String redisModulePath;
   public final String plasmaStoreExecutablePath;
   public final String rayletExecutablePath;
+  public final String driverResourcePath;
+  public final String pythonWorkerCommand;
 
   private void validate() {
     if (workerMode == WorkerMode.WORKER) {
@@ -126,6 +132,18 @@ public class RayConfig {
     List<String> customLibraryPath = config.getStringList("ray.library.path");
     // custom classpath
     classpath = config.getStringList("ray.classpath");
+    // custom worker jvm parameters
+    if (config.hasPath("ray.worker.jvm-parameters")) {
+      jvmParameters = config.getStringList("ray.worker.jvm-parameters");
+    } else {
+      jvmParameters = ImmutableList.of();
+    }
+
+    if (config.hasPath("ray.worker.python-command")) {
+      pythonWorkerCommand = config.getString("ray.worker.python-command");
+    } else {
+      pythonWorkerCommand = null;
+    }
 
     // redis configurations
     String redisAddress = config.getString("ray.redis.address");
@@ -147,14 +165,21 @@ public class RayConfig {
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
         rayHome + "/build/src/plasma",
-        rayHome + "/build/src/local_scheduler"
+        rayHome + "/build/src/ray/raylet"
     ).addAll(customLibraryPath).build();
 
     redisServerExecutablePath = rayHome +
-        "/build/src/common/thirdparty/redis/src/redis-server";
-    redisModulePath = rayHome + "/build/src/common/redis_module/libray_redis_module.so";
+        "/build/src/ray/thirdparty/redis/src/redis-server";
+    redisModulePath = rayHome + "/build/src/ray/gcs/redis_module/libray_redis_module.so";
     plasmaStoreExecutablePath = rayHome + "/build/src/plasma/plasma_store_server";
     rayletExecutablePath = rayHome + "/build/src/ray/raylet/raylet";
+
+    // driver resource path
+    if (config.hasPath("ray.driver.resource-path")) {
+      driverResourcePath = config.getString("ray.driver.resource-path");
+    } else {
+      driverResourcePath = null;
+    }
 
     // validate config
     validate();
@@ -219,9 +244,16 @@ public class RayConfig {
   */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.systemProperties()
-        .withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE))
-        .withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
+    Config config = ConfigFactory.systemProperties();
+    String configPath = System.getProperty("ray.config");
+    if (StringUtil.isNullOrEmpty(configPath)) {
+      LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
+      config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
+    } else {
+      LOGGER.info("Loading config from " + configPath + ".");
+      config = config.withFallback(ConfigFactory.parseFile(new File(configPath)));
+    }
+    config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config);
   }
 

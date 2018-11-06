@@ -15,10 +15,4 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD, ElementType.TYPE})
 public @interface RayRemote {
 
-  /**
-   * Defines the quantity of various custom resources to reserve
-   * for this task or for the lifetime of the actor.
-   * @return an array of custom resource items.
-   */
-  ResourceItem[] resources() default {};
 }

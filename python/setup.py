@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,13 +20,10 @@ import setuptools.command.build_ext as _build_ext
 # NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
 
 ray_files = [
-    "ray/core/src/common/thirdparty/redis/src/redis-server",
-    "ray/core/src/common/redis_module/libray_redis_module.so",
+    "ray/core/src/ray/thirdparty/redis/src/redis-server",
+    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server",
-    "ray/core/src/plasma/plasma_manager",
-    "ray/core/src/local_scheduler/local_scheduler",
-    "ray/core/src/local_scheduler/liblocal_scheduler_library_python.so",
-    "ray/core/src/global_scheduler/global_scheduler",
+    "ray/core/src/ray/raylet/liblocal_scheduler_library_python.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
@@ -98,7 +96,7 @@ class build_ext(_build_ext.build_ext):
         for filename in optional_ray_files:
             try:
                 self.move_file(filename)
-            except Exception as e:
+            except Exception:
                 print("Failed to copy optional file {}. This is ok."
                       .format(filename))
 
@@ -121,10 +119,26 @@ class BinaryDistribution(Distribution):
         return True
 
 
+def find_version(*filepath):
+    # Extract version information from filepath
+    here = os.path.abspath(os.path.dirname(__file__))
+    with open(os.path.join(here, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
 setup(
     name="ray",
-    # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.5.3",
+    version=find_version("ray", "__init__.py"),
+    description=("A system for parallel and distributed Python that unifies "
+                 "the ML ecosystem."),
+    long_description=open("../README.rst").read(),
+    url="https://github.com/ray-project/ray",
+    keywords=("ray distributed parallel machine-learning "
+              "reinforcement-learning deep-learning python"),
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.

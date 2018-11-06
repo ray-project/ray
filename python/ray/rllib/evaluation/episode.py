@@ -7,13 +7,15 @@ import random
 
 import numpy as np
 
+from ray.rllib.env.async_vector_env import _DUMMY_AGENT_ID
+
 
 class MultiAgentEpisode(object):
     """Tracks the current state of a (possibly multi-agent) episode.
 
     The APIs in this class should be considered experimental, but we should
     avoid changing things for the sake of changing them since users may
-    depend on them for advanced algorithms.
+    depend on them for custom metrics or advanced algorithms.
 
     Attributes:
         new_batch_builder (func): Create a new MultiAgentSampleBatchBuilder.
@@ -23,6 +25,8 @@ class MultiAgentEpisode(object):
         length (int): Length of this episode.
         episode_id (int): Unique id identifying this trajectory.
         agent_rewards (dict): Summed rewards broken down by agent.
+        custom_metrics (dict): Dict where the you can add custom metrics.
+        user_data (dict): Dict that you can use for temporary storage.
 
     Use case 1: Model-based rollouts in multi-agent:
         A custom compute_actions() function in a policy graph can inspect the
@@ -47,6 +51,8 @@ class MultiAgentEpisode(object):
         self.length = 0
         self.episode_id = random.randrange(2e9)
         self.agent_rewards = defaultdict(float)
+        self.custom_metrics = {}
+        self.user_data = {}
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
         self._agent_to_policy = {}
@@ -54,8 +60,10 @@ class MultiAgentEpisode(object):
         self._agent_to_last_obs = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
+        self._agent_to_prev_action = {}
+        self._agent_reward_history = defaultdict(list)
 
-    def policy_for(self, agent_id):
+    def policy_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the policy graph for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
@@ -66,27 +74,41 @@ class MultiAgentEpisode(object):
             self._agent_to_policy[agent_id] = self._policy_mapping_fn(agent_id)
         return self._agent_to_policy[agent_id]
 
-    def last_observation_for(self, agent_id):
+    def last_observation_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
 
-    def last_action_for(self, agent_id):
-        """Returns the last action for the specified agent."""
+    def last_action_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the last action for the specified agent, or zeros."""
 
-        action = self._agent_to_last_action[agent_id]
-        # Concatenate tuple actions
-        if isinstance(action, list):
-            expanded = []
-            for a in action:
-                if len(a.shape) == 1:
-                    expanded.append(np.expand_dims(a, 1))
-                else:
-                    expanded.append(a)
-            action = np.concatenate(expanded, axis=1).flatten()
-        return action
+        if agent_id in self._agent_to_last_action:
+            return _flatten_action(self._agent_to_last_action[agent_id])
+        else:
+            policy = self._policies[self.policy_for(agent_id)]
+            flat = _flatten_action(policy.action_space.sample())
+            return np.zeros_like(flat)
 
-    def rnn_state_for(self, agent_id):
+    def prev_action_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the previous action for the specified agent."""
+
+        if agent_id in self._agent_to_prev_action:
+            return _flatten_action(self._agent_to_prev_action[agent_id])
+        else:
+            # We're at t=0, so return all zeros.
+            return np.zeros_like(self.last_action_for(agent_id))
+
+    def prev_reward_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the previous reward for the specified agent."""
+
+        history = self._agent_reward_history[agent_id]
+        if len(history) >= 2:
+            return history[-2]
+        else:
+            # We're at t=0, so there is no previous reward, just return zero.
+            return 0.0
+
+    def rnn_state_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last RNN state for the specified agent."""
 
         if agent_id not in self._agent_to_rnn_state:
@@ -94,7 +116,7 @@ class MultiAgentEpisode(object):
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 
-    def last_pi_info_for(self, agent_id):
+    def last_pi_info_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last info object for the specified agent."""
 
         return self._agent_to_last_pi_info[agent_id]
@@ -105,6 +127,7 @@ class MultiAgentEpisode(object):
                 self.agent_rewards[agent_id,
                                    self.policy_for(agent_id)] += reward
                 self.total_reward += reward
+                self._agent_reward_history[agent_id].append(reward)
 
     def _set_rnn_state(self, agent_id, rnn_state):
         self._agent_to_rnn_state[agent_id] = rnn_state
@@ -117,3 +140,16 @@ class MultiAgentEpisode(object):
 
     def _set_last_pi_info(self, agent_id, pi_info):
         self._agent_to_last_pi_info[agent_id] = pi_info
+
+
+def _flatten_action(action):
+    # Concatenate tuple actions
+    if isinstance(action, list) or isinstance(action, tuple):
+        expanded = []
+        for a in action:
+            if not hasattr(a, "shape") or len(a.shape) == 0:
+                expanded.append(np.expand_dims(a, 1))
+            else:
+                expanded.append(a)
+        action = np.concatenate(expanded, axis=0).flatten()
+    return action

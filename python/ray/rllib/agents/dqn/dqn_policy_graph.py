@@ -275,7 +275,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values, q_logits, q_dist = self._build_q_network(
-                self.cur_observations)
+                self.cur_observations, observation_space)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -294,12 +294,13 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t, q_logits_t, q_dist_t = self._build_q_network(self.obs_t)
+            q_t, q_logits_t, q_dist_t = self._build_q_network(
+                self.obs_t, observation_space)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, q_logits_tp1, q_dist_tp1 = self._build_q_network(
-                self.obs_tp1)
+                self.obs_tp1, observation_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -313,7 +314,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
                     q_dist_tp1_using_online_net = self._build_q_network(
-                        self.obs_tp1)
+                        self.obs_tp1, observation_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -362,10 +363,12 @@ class DQNPolicyGraph(TFPolicyGraph):
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_q_network(self, obs):
+    def _build_q_network(self, obs, space):
         qnet = QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]),
-            self.num_actions, self.config["dueling"], self.config["hiddens"],
+            ModelCatalog.get_model({
+                "obs": obs
+            }, space, 1, self.config["model"]), self.num_actions,
+            self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
             self.config["v_min"], self.config["v_max"], self.config["sigma0"])
         return qnet.value, qnet.logits, qnet.dist
@@ -411,7 +414,10 @@ class DQNPolicyGraph(TFPolicyGraph):
             "td_error": self.loss.td_error,
         }
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         return _postprocess_dqn(self, sample_batch)
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,

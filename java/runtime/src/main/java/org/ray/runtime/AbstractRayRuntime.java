@@ -10,8 +10,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.BaseTaskOptions;
+import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.functionmanager.FunctionManager;
@@ -22,8 +26,7 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
-import org.ray.runtime.util.UniqueIdHelper;
-import org.ray.runtime.util.exception.TaskExecutionException;
+import org.ray.runtime.util.UniqueIdUtil;
 import org.ray.runtime.util.logger.RayLog;
 
 /**
@@ -48,7 +51,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager();
+    functionManager = new FunctionManager(rayConfig.driverResourcePath);
     worker = new Worker(this);
     workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.driverId);
   }
@@ -63,7 +66,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    UniqueId objectId = UniqueIdHelper.computePutId(
+    UniqueId objectId = UniqueIdUtil.computePutId(
         workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
 
     put(objectId, obj);
@@ -77,7 +80,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public <T> T get(UniqueId objectId) throws TaskExecutionException {
+  public <T> T get(UniqueId objectId) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId));
     return ret.get(0);
   }
@@ -146,7 +149,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       }
 
       return finalRet;
-    } catch (TaskExecutionException e) {
+    } catch (RayException e) {
       RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
           + " get with Exception", e);
       throw e;
@@ -186,8 +189,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject call(RayFunc func, Object[] args) {
-    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false);
+  public RayObject call(RayFunc func, Object[] args, CallOptions options) {
+    TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
@@ -198,7 +201,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, false);
+    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, null);
     spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
     actorImpl.setTaskCursor(spec.returnIds[1]);
     rayletClient.submitTask(spec);
@@ -207,8 +210,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args) {
-    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL, args, true);
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
+      Object[] args, ActorCreationOptions options) {
+    TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL,
+        args, true, options);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
@@ -222,7 +227,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
     UniqueId[] ret = new UniqueId[numReturns];
     for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdHelper.computeReturnId(taskId, i + 1);
+      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
     }
     return ret;
   }
@@ -236,17 +241,28 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A TaskSpec object.
    */
   private TaskSpec createTaskSpec(RayFunc func, RayActorImpl actor, Object[] args,
-      boolean isActorCreationTask) {
+      boolean isActorCreationTask, BaseTaskOptions taskOptions) {
     final TaskSpec current = workerContext.getCurrentTask();
     UniqueId taskId = rayletClient.generateTaskId(current.driverId,
-        current.taskId,
-        workerContext.nextCallIndex());
+        current.taskId, workerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
     UniqueId[] returnIds = genReturnIds(taskId, numReturns);
 
     UniqueId actorCreationId = UniqueId.NIL;
     if (isActorCreationTask) {
       actorCreationId = returnIds[0];
+    }
+
+    Map<String, Double> resources;
+    if (null == taskOptions) {
+      resources = new HashMap<>();
+    } else {
+      resources = new HashMap<>(taskOptions.resources);
+    }
+
+    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
+            && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
+      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
     RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
@@ -261,7 +277,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         ArgumentsBuilder.wrap(args),
         returnIds,
-        ResourceUtil.getResourcesMapFromArray(rayFunction.getRayRemoteAnnotation()),
+        resources,
         rayFunction.getFunctionDescriptor()
     );
   }
@@ -286,4 +302,3 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return functionManager;
   }
 }
-

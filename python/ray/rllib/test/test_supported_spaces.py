@@ -2,7 +2,7 @@ import unittest
 import traceback
 
 import gym
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Discrete, Tuple, Dict
 from gym.envs.registration import EnvSpec
 import numpy as np
 import sys
@@ -14,37 +14,28 @@ from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
-    "simple_tuple": Tuple([
-        Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ]),
-    "implicit_tuple": [
-        Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ],
-    "mixed_tuple": Tuple(
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
-         Box(0.0, 1.0, (5, ), dtype=np.float32)]),
+         Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
-    "image": Box(0.0, 1.0, (84, 84, 1), dtype=np.float32),
-    "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
-    "atari_ram": Box(0.0, 1.0, (128, ), dtype=np.float32),
-    "simple_tuple": Tuple([
-        Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ]),
-    "mixed_tuple": Tuple(
-        [Discrete(10), Box(0.0, 1.0, (5, ), dtype=np.float32)]),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "tuple": Tuple([Discrete(10),
+                    Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    "dict": Dict({
+        "task": Discrete(10),
+        "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    }),
 }
 
 
-def make_stub_env(action_space, obs_space):
+def make_stub_env(action_space, obs_space, check_action_bounds):
     class StubEnv(gym.Env):
         def __init__(self):
             self.action_space = action_space
@@ -56,23 +47,30 @@ def make_stub_env(action_space, obs_space):
             return sample
 
         def step(self, action):
+            if check_action_bounds and not self.action_space.contains(action):
+                raise ValueError("Illegal action for {}: {}".format(
+                    self.action_space, action))
+            if (isinstance(self.action_space, Tuple)
+                    and len(action) != len(self.action_space.spaces)):
+                raise ValueError("Illegal action for {}: {}".format(
+                    self.action_space, action))
             return self.observation_space.sample(), 1, True, {}
 
     return StubEnv
 
 
-def check_support(alg, config, stats):
+def check_support(alg, config, stats, check_bounds=False):
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")
-            stub_env = make_stub_env(action_space, obs_space)
+            stub_env = make_stub_env(action_space, obs_space, check_bounds)
             register_env("stub_env", lambda c: stub_env())
             stat = "ok"
             a = None
             try:
                 a = get_agent_class(alg)(config=config, env="stub_env")
                 a.train()
-            except UnsupportedSpaceException as e:
+            except UnsupportedSpaceException:
                 stat = "unsupported"
             except Exception as e:
                 stat = "ERROR"
@@ -94,7 +92,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
-        check_support("IMPALA", {"gpu": False}, stats)
+        check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {
@@ -109,8 +107,13 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
                 "sample_batch_size": 10,
-                "sgd_minibatch_size": 1
-            }, stats)
+                "sgd_minibatch_size": 1,
+                "model": {
+                    "squash_to_range": True
+                },
+            },
+            stats,
+            check_bounds=True)
         check_support(
             "ES", {
                 "num_workers": 1,

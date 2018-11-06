@@ -8,6 +8,7 @@ import pytest
 import time
 
 import ray
+import ray.tempfile_services
 import ray.ray_constants as ray_constants
 
 
@@ -36,7 +37,6 @@ def ray_start_combination(request):
     # Start the Ray processes.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         num_cpus=10)
     yield num_local_schedulers, num_workers_per_scheduler
@@ -161,9 +161,7 @@ def ray_start_reconstruction(request):
 
     # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
-    redis_address, redis_shards = ray.services.start_redis(
-        node_ip_address, use_raylet=use_raylet)
+    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
     redis_ip_address = ray.services.get_ip_address(redis_address)
     redis_port = ray.services.get_port(redis_address)
     time.sleep(0.1)
@@ -171,21 +169,17 @@ def ray_start_reconstruction(request):
     # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
     plasma_addresses = []
-    objstore_memory = plasma_store_memory // num_local_schedulers
+    object_store_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
-        store_stdout_file, store_stderr_file = ray.services.new_log_files(
-            "plasma_store_{}".format(i), True)
-        manager_stdout_file, manager_stderr_file = (ray.services.new_log_files(
-            "plasma_manager_{}".format(i), True))
+        store_stdout_file, store_stderr_file = (
+            ray.tempfile_services.new_plasma_store_log_file(i, True))
         plasma_addresses.append(
             ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
-                objstore_memory=objstore_memory,
+                object_store_memory=object_store_memory,
                 store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
+                store_stderr_file=store_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {
@@ -196,7 +190,6 @@ def ray_start_reconstruction(request):
     ray.worker._init(
         address_info=address_info,
         start_ray_local=True,
-        num_workers=1,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
         redirect_output=True)
@@ -399,9 +392,7 @@ def wait_for_errors(error_check):
     return errors
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")

@@ -3,17 +3,23 @@ Installing Ray
 
 Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04, Ubuntu 16.04, OS X 10.11 and 10.12.
 
-You can install Ray as follows.
+Latest stable version
+---------------------
+
+You can install the latest stable version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install ray
+  pip install -U ray
 
-Trying the latest version of Ray
---------------------------------
+Trying snapshots from master
+----------------------------
 
-Here are links to the latest wheels (which are built off of master). These versions will have newer
-features but may be subject to more bugs. To install these wheels, run the following command:
+Here are links to the latest wheels (which are built off of master). To install these wheels, run the following command:
+
+.. danger::
+
+    These versions will have newer features but are subject to more bugs. If you encounter crashes or other instabilities, please revert to the latest stable version.
 
 .. code-block:: bash
 
@@ -23,6 +29,7 @@ features but may be subject to more bugs. To install these wheels, run the follo
 ===================  ===================
        Linux                MacOS
 ===================  ===================
+`Linux Python 3.7`_  `MacOS Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_
 `Linux Python 3.5`_  `MacOS Python 3.5`_
 `Linux Python 3.4`_  `MacOS Python 3.4`_
@@ -30,14 +37,16 @@ features but may be subject to more bugs. To install these wheels, run the follo
 ===================  ===================
 
 
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp34-cp34m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp34-cp34m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.2-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp37-cp37m-manylinux1_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp34-cp34m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp37-cp37m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp34-cp34m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.5.3-cp27-cp27m-macosx_10_6_intel.whl
 
 
 Building Ray from source

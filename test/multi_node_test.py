@@ -5,49 +5,11 @@ from __future__ import print_function
 import os
 import pytest
 import subprocess
-import sys
-import tempfile
 import time
 
 import ray
-from ray.test.test_utils import run_and_get_output
-
-
-def run_string_as_driver(driver_script):
-    """Run a driver as a separate process.
-
-    Args:
-        driver_script: A string to run as a Python script.
-
-    Returns:
-        The script's output.
-    """
-    # Save the driver script as a file so we can call it using subprocess.
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        out = ray.utils.decode(
-            subprocess.check_output([sys.executable, f.name]))
-    return out
-
-
-def run_string_as_driver_nonblocking(driver_script):
-    """Start a driver as a separate process and return immediately.
-
-    Args:
-        driver_script: A string to run as a Python script.
-
-    Returns:
-        A handle to the driver process.
-    """
-    # Save the driver script as a file so we can call it using subprocess. We
-    # do not delete this file because if we do then it may get removed before
-    # the Python process tries to run it.
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(driver_script.encode("ascii"))
-        f.flush()
-        return subprocess.Popen(
-            [sys.executable, f.name], stdout=subprocess.PIPE)
+from ray.test.test_utils import (run_and_get_output, run_string_as_driver,
+                                 run_string_as_driver_nonblocking)
 
 
 @pytest.fixture
@@ -239,9 +201,6 @@ def ray_start_head_with_resources():
     subprocess.Popen(["ray", "stop"]).wait()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_drivers_release_resources(ray_start_head_with_resources):
     redis_address = ray_start_head_with_resources
 
@@ -313,10 +272,6 @@ def test_calling_start_ray_head():
     run_and_get_output(["ray", "start", "--head"])
     subprocess.Popen(["ray", "stop"]).wait()
 
-    # Test starting Ray with a number of workers specified.
-    run_and_get_output(["ray", "start", "--head", "--num-workers", "20"])
-    subprocess.Popen(["ray", "stop"]).wait()
-
     # Test starting Ray with a redis port specified.
     run_and_get_output(["ray", "start", "--head", "--redis-port", "6379"])
     subprocess.Popen(["ray", "stop"]).wait()
@@ -326,9 +281,12 @@ def test_calling_start_ray_head():
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
     subprocess.Popen(["ray", "stop"]).wait()
 
-    # Test starting Ray with an object manager port specified.
-    run_and_get_output(
-        ["ray", "start", "--head", "--object-manager-port", "12345"])
+    # Test starting Ray with the object manager and node manager ports
+    # specified.
+    run_and_get_output([
+        "ray", "start", "--head", "--object-manager-port", "12345",
+        "--node-manager-port", "54321"
+    ])
     subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with the number of CPUs specified.
@@ -353,10 +311,10 @@ def test_calling_start_ray_head():
 
         # Test starting Ray with all arguments specified.
         run_and_get_output([
-            "ray", "start", "--head", "--num-workers", "2", "--redis-port",
-            "6379", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
+            "ray", "start", "--head", "--redis-port", "6379",
+            "--redis-shard-ports", "6380,6381,6382", "--object-manager-port",
+            "12345", "--num-cpus", "2", "--num-gpus", "0",
+            "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
         subprocess.Popen(["ray", "stop"]).wait()
 

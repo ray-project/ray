@@ -1,7 +1,11 @@
+#include "ray/util/logging.h"
+
+#ifndef _WIN32
+#include <execinfo.h>
+#endif
+#include <stdlib.h>
 #include <cstdlib>
 #include <iostream>
-
-#include "ray/util/logging.h"
 
 #ifdef RAY_USE_GLOG
 #include "glog/logging.h"
@@ -13,13 +17,13 @@ namespace ray {
 // which is independent of any libs.
 class CerrLog {
  public:
-  CerrLog(int severity) : severity_(severity), has_logged_(false) {}
+  CerrLog(RayLogLevel severity) : severity_(severity), has_logged_(false) {}
 
   virtual ~CerrLog() {
     if (has_logged_) {
       std::cerr << std::endl;
     }
-    if (severity_ == RAY_FATAL) {
+    if (severity_ == RayLogLevel::FATAL) {
       PrintBackTrace();
       std::abort();
     }
@@ -32,7 +36,7 @@ class CerrLog {
 
   template <class T>
   CerrLog &operator<<(const T &t) {
-    if (severity_ != RAY_DEBUG) {
+    if (severity_ != RayLogLevel::DEBUG) {
       has_logged_ = true;
       std::cerr << t;
     }
@@ -40,7 +44,7 @@ class CerrLog {
   }
 
  protected:
-  const int severity_;
+  const RayLogLevel severity_;
   bool has_logged_;
 
   void PrintBackTrace() {
@@ -52,27 +56,33 @@ class CerrLog {
   }
 };
 
-int RayLog::severity_threshold_ = RAY_INFO;
+#ifdef RAY_USE_GLOG
+typedef google::LogMessage LoggingProvider;
+#else
+typedef ray::CerrLog LoggingProvider;
+#endif
+
+RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 
 #ifdef RAY_USE_GLOG
 using namespace google;
 
 // Glog's severity map.
-static int GetMappedSeverity(int severity) {
+static int GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
-  case RAY_DEBUG:
+  case RayLogLevel::DEBUG:
     return GLOG_INFO;
-  case RAY_INFO:
+  case RayLogLevel::INFO:
     return GLOG_INFO;
-  case RAY_WARNING:
+  case RayLogLevel::WARNING:
     return GLOG_WARNING;
-  case RAY_ERROR:
+  case RayLogLevel::ERROR:
     return GLOG_ERROR;
-  case RAY_FATAL:
+  case RayLogLevel::FATAL:
     return GLOG_FATAL;
   default:
-    RAY_LOG(FATAL) << "Unsupported logging level: " << severity;
+    RAY_LOG(FATAL) << "Unsupported logging level: " << static_cast<int>(severity);
     // This return won't be hit but compiler needs it.
     return GLOG_FATAL;
   }
@@ -80,11 +90,11 @@ static int GetMappedSeverity(int severity) {
 
 #endif
 
-void RayLog::StartRayLog(const std::string &app_name, int severity_threshold,
+void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
-#ifdef RAY_USE_GLOG
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
+#ifdef RAY_USE_GLOG
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
   google::InitGoogleLogging(app_name_.c_str());
   google::SetStderrLogging(mapped_severity_threshold);
@@ -122,34 +132,44 @@ void RayLog::InstallFailureSignalHandler() {
 #endif
 }
 
-bool RayLog::IsLevelEnabled(int log_level) { return log_level >= severity_threshold_; }
+bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
+  return log_level >= severity_threshold_;
+}
 
-RayLog::RayLog(const char *file_name, int line_number, int severity)
-    // glog does not have DEBUG level, we can handle it here.
-    : is_enabled_(severity >= severity_threshold_) {
+RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
+    // glog does not have DEBUG level, we can handle it using is_enabled_.
+    : logging_provider_(nullptr),
+      is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
   if (is_enabled_) {
-    logging_provider_.reset(
-        new google::LogMessage(file_name, line_number, GetMappedSeverity(severity)));
+    logging_provider_ =
+        new google::LogMessage(file_name, line_number, GetMappedSeverity(severity));
   }
 #else
-  logging_provider_.reset(new CerrLog(severity));
-  *logging_provider_ << file_name << ":" << line_number << ": ";
+  auto logging_provider = new CerrLog(severity);
+  *logging_provider << file_name << ":" << line_number << ": ";
+  logging_provider_ = logging_provider;
 #endif
 }
 
 std::ostream &RayLog::Stream() {
+  auto logging_provider = reinterpret_cast<LoggingProvider *>(logging_provider_);
 #ifdef RAY_USE_GLOG
   // Before calling this function, user should check IsEnabled.
   // When IsEnabled == false, logging_provider_ will be empty.
-  return logging_provider_->stream();
+  return logging_provider->stream();
 #else
-  return logging_provider_->Stream();
+  return logging_provider->Stream();
 #endif
 }
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
 
-RayLog::~RayLog() { logging_provider_.reset(); }
+RayLog::~RayLog() {
+  if (logging_provider_ != nullptr) {
+    delete reinterpret_cast<LoggingProvider *>(logging_provider_);
+    logging_provider_ = nullptr;
+  }
+}
 
 }  // namespace ray

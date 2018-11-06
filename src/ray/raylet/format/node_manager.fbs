@@ -23,9 +23,12 @@ enum MessageType:int {
   // Send a reply confirming the successful registration of a worker or driver.
   // This is sent from the local scheduler to a worker or driver.
   RegisterClientReply,
-  // Notify the local scheduler that this client is disconnecting gracefully.
+  // Notify the local scheduler that this client is disconnecting unexpectedly.
   // This is sent from a worker to a local scheduler.
   DisconnectClient,
+  // Notify the local scheduler that this client is disconnecting gracefully.
+  // This is sent from a worker to a local scheduler.
+  IntentionalDisconnectClient,
   // Get a new task from the local scheduler. This is sent from a worker to a
   // local scheduler.
   GetTask,
@@ -39,8 +42,6 @@ enum MessageType:int {
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
   NotifyUnblocked,
-  // Add a result table entry for an object put.
-  PutObject,
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   GetActorFrontierRequest,
@@ -102,6 +103,10 @@ table ResourceIdSetInfo {
   // that the length of this list must be the same as the length of
   // resource_ids.
   resource_fractions: [double];
+}
+
+// This message is sent from a worker to the node manager.
+table DisconnectClient {
 }
 
 // This message is sent from the local scheduler to a worker.
@@ -183,7 +188,7 @@ table PushErrorRequest {
 }
 
 table FreeObjectsRequest {
-  // Whether keep this request with local object store 
+  // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
   // List of object ids we'll delete from object store.

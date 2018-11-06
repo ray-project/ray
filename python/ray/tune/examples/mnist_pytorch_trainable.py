@@ -80,9 +80,9 @@ class Net(nn.Module):
 
 
 class TrainMNIST(Trainable):
-    def _setup(self):
-        args = self.config.pop("args")
-        vars(args).update(self.config)
+    def _setup(self, config):
+        args = config.pop("args")
+        vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
         torch.manual_seed(args.seed)
@@ -159,12 +159,13 @@ class TrainMNIST(Trainable):
         self._train_iteration()
         return self._test()
 
-    def _save(self, path):
-        torch.save(self.model.state_dict(), os.path.join(path, "model.pth"))
-        return path
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        torch.save(self.model.state_dict(), checkpoint_path)
+        return checkpoint_path
 
-    def _restore(self, path):
-        self.model.load_state_dict(os.path.join(path, "model.pth"))
+    def _restore(self, checkpoint_path):
+        self.model.load_state_dict(checkpoint_path)
 
 
 if __name__ == '__main__':

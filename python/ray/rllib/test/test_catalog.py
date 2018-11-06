@@ -15,16 +15,18 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 class CustomPreprocessor(Preprocessor):
-    pass
+    def _init_shape(self, obs_space, options):
+        return None
 
 
 class CustomPreprocessor2(Preprocessor):
-    pass
+    def _init_shape(self, obs_space, options):
+        return None
 
 
 class CustomModel(Model):
     def _build_layers(self, *args):
-        return None, None
+        return tf.constant([[0] * 5]), None
 
 
 class ModelCatalogTest(unittest.TestCase):
@@ -69,19 +71,24 @@ class ModelCatalogTest(unittest.TestCase):
         ray.init()
 
         with tf.variable_scope("test1"):
-            p1 = ModelCatalog.get_model(np.zeros((10, 3), dtype=np.float32), 5)
+            p1 = ModelCatalog.get_model({
+                "obs": np.zeros((10, 3), dtype=np.float32)
+            }, Box(0, 1, shape=(3, ), dtype=np.float32), 5, {})
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
         with tf.variable_scope("test2"):
-            p2 = ModelCatalog.get_model(
-                np.zeros((10, 84, 84, 3), dtype=np.float32), 5)
+            p2 = ModelCatalog.get_model({
+                "obs": np.zeros((10, 84, 84, 3), dtype=np.float32)
+            }, Box(0, 1, shape=(84, 84, 3), dtype=np.float32), 5, {})
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
         ray.init()
         ModelCatalog.register_custom_model("foo", CustomModel)
-        p1 = ModelCatalog.get_model(
-            tf.constant([1, 2, 3]), 5, {"custom_model": "foo"})
+        p1 = ModelCatalog.get_model({
+            "obs": tf.constant([1, 2, 3])
+        }, Box(0, 1, shape=(3, ), dtype=np.float32), 5,
+                                    {"custom_model": "foo"})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
 

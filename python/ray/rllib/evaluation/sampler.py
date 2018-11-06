@@ -3,22 +3,29 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict, namedtuple
+import logging
+import numpy as np
 import six.moves.queue as queue
 import threading
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
     MultiAgentBatch
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
+from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
-RolloutMetrics = namedtuple(
-    "RolloutMetrics", ["episode_length", "episode_reward", "agent_rewards"])
+logger = logging.getLogger(__name__)
 
-PolicyEvalData = namedtuple("PolicyEvalData",
-                            ["env_id", "agent_id", "obs", "rnn_state"])
+RolloutMetrics = namedtuple(
+    "RolloutMetrics",
+    ["episode_length", "episode_reward", "agent_rewards", "custom_metrics"])
+
+PolicyEvalData = namedtuple(
+    "PolicyEvalData",
+    ["env_id", "agent_id", "obs", "rnn_state", "prev_action", "prev_reward"])
 
 
 class SyncSampler(object):
@@ -37,6 +44,7 @@ class SyncSampler(object):
                  obs_filters,
                  clip_rewards,
                  unroll_length,
+                 callbacks,
                  horizon=None,
                  pack=False,
                  tf_sess=None):
@@ -50,7 +58,7 @@ class SyncSampler(object):
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self._obs_filters, clip_rewards, pack, tf_sess)
+            self._obs_filters, clip_rewards, pack, callbacks, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -93,6 +101,7 @@ class AsyncSampler(threading.Thread):
                  obs_filters,
                  clip_rewards,
                  unroll_length,
+                 callbacks,
                  horizon=None,
                  pack=False,
                  tf_sess=None):
@@ -113,6 +122,7 @@ class AsyncSampler(threading.Thread):
         self.daemon = True
         self.pack = pack
         self.tf_sess = tf_sess
+        self.callbacks = callbacks
 
     def run(self):
         try:
@@ -125,7 +135,8 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self._obs_filters, self.clip_rewards, self.pack, self.tf_sess)
+            self._obs_filters, self.clip_rewards, self.pack, self.callbacks,
+            self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -187,6 +198,7 @@ def _env_runner(async_vector_env,
                 obs_filters,
                 clip_rewards,
                 pack,
+                callbacks,
                 tf_sess=None):
     """This implements the common experience collection logic.
 
@@ -205,6 +217,7 @@ def _env_runner(async_vector_env,
         clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `unroll_length` in size.
+        callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
 
@@ -218,7 +231,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        print("Warning, no horizon specified, assuming infinite")
+        logger.warn("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 
@@ -233,8 +246,14 @@ def _env_runner(async_vector_env,
             return MultiAgentSampleBatchBuilder(policies, clip_rewards)
 
     def new_episode():
-        return MultiAgentEpisode(policies, policy_mapping_fn,
-                                 get_batch_builder, extra_batch_callback)
+        episode = MultiAgentEpisode(policies, policy_mapping_fn,
+                                    get_batch_builder, extra_batch_callback)
+        if callbacks.get("on_episode_start"):
+            callbacks["on_episode_start"]({
+                "env": async_vector_env,
+                "episode": episode
+            })
+        return episode
 
     active_episodes = defaultdict(new_episode)
 
@@ -264,10 +283,11 @@ def _env_runner(async_vector_env,
                 atari_metrics = _fetch_atari_metrics(async_vector_env)
                 if atari_metrics is not None:
                     for m in atari_metrics:
-                        yield m
+                        yield m._replace(custom_metrics=episode.custom_metrics)
                 else:
                     yield RolloutMetrics(episode.length, episode.total_reward,
-                                         dict(episode.agent_rewards))
+                                         dict(episode.agent_rewards),
+                                         episode.custom_metrics)
             else:
                 all_done = False
                 # At least send an empty dict if not done
@@ -281,7 +301,9 @@ def _env_runner(async_vector_env,
                 if not agent_done:
                     to_eval[policy_id].append(
                         PolicyEvalData(env_id, agent_id, filtered_obs,
-                                       episode.rnn_state_for(agent_id)))
+                                       episode.rnn_state_for(agent_id),
+                                       episode.last_action_for(agent_id),
+                                       rewards[env_id][agent_id] or 0.0))
 
                 last_observation = episode.last_observation_for(agent_id)
                 episode._set_last_observation(agent_id, filtered_obs)
@@ -297,24 +319,38 @@ def _env_runner(async_vector_env,
                         obs=last_observation,
                         actions=episode.last_action_for(agent_id),
                         rewards=rewards[env_id][agent_id],
+                        prev_actions=episode.prev_action_for(agent_id),
+                        prev_rewards=episode.prev_reward_for(agent_id),
                         dones=agent_done,
                         infos=infos[env_id][agent_id],
                         new_obs=filtered_obs,
                         **episode.last_pi_info_for(agent_id))
+
+            # Invoke the step callback after the step is logged to the episode
+            if callbacks.get("on_episode_step"):
+                callbacks["on_episode_step"]({
+                    "env": async_vector_env,
+                    "episode": episode
+                })
 
             # Cut the batch if we're not packing multiple episodes into one,
             # or if we've exceeded the requested batch size.
             if episode.batch_builder.has_pending_data():
                 if (all_done and not pack) or \
                         episode.batch_builder.count >= unroll_length:
-                    yield episode.batch_builder.build_and_reset()
+                    yield episode.batch_builder.build_and_reset(episode)
                 elif all_done:
                     # Make sure postprocessor stays within one episode
-                    episode.batch_builder.postprocess_batch_so_far()
+                    episode.batch_builder.postprocess_batch_so_far(episode)
 
             if all_done:
                 # Handle episode termination
                 batch_builder_pool.append(episode.batch_builder)
+                if callbacks.get("on_episode_end"):
+                    callbacks["on_episode_end"]({
+                        "env": async_vector_env,
+                        "episode": episode
+                    })
                 del active_episodes[env_id]
                 resetted_obs = async_vector_env.try_reset(env_id)
                 if resetted_obs is None:
@@ -326,12 +362,17 @@ def _env_runner(async_vector_env,
                     episode = active_episodes[env_id]
                     for agent_id, raw_obs in resetted_obs.items():
                         policy_id = episode.policy_for(agent_id)
+                        policy = _get_or_raise(policies, policy_id)
                         filtered_obs = _get_or_raise(obs_filters,
                                                      policy_id)(raw_obs)
                         episode._set_last_observation(agent_id, filtered_obs)
                         to_eval[policy_id].append(
-                            PolicyEvalData(env_id, agent_id, filtered_obs,
-                                           episode.rnn_state_for(agent_id)))
+                            PolicyEvalData(
+                                env_id, agent_id, filtered_obs,
+                                episode.rnn_state_for(agent_id),
+                                np.zeros_like(
+                                    _flatten_action(
+                                        policy.action_space.sample())), 0.0))
 
         # Batch eval policy actions if possible
         if tf_sess:
@@ -350,11 +391,15 @@ def _env_runner(async_vector_env,
                 pending_fetches[policy_id] = policy.build_compute_actions(
                     builder, [t.obs for t in eval_data],
                     rnn_in,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
                     is_training=True)
             else:
                 eval_results[policy_id] = policy.compute_actions(
                     [t.obs for t in eval_data],
                     rnn_in,
+                    prev_action_batch=[t.prev_action for t in eval_data],
+                    prev_reward_batch=[t.prev_reward for t in eval_data],
                     is_training=True,
                     episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
@@ -364,12 +409,17 @@ def _env_runner(async_vector_env,
         # Record the policy eval results
         for policy_id, eval_data in to_eval.items():
             actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+            if len(rnn_in_cols[policy_id]) != len(rnn_out_cols):
+                raise ValueError(
+                    "Length of RNN in did not match RNN out, got: "
+                    "{} vs {}".format(rnn_in_cols[policy_id], rnn_out_cols))
             # Add RNN state info
             for f_i, column in enumerate(rnn_in_cols[policy_id]):
                 pi_info_cols["state_in_{}".format(f_i)] = column
             for f_i, column in enumerate(rnn_out_cols):
                 pi_info_cols["state_out_{}".format(f_i)] = column
             # Save output rows
+            actions = _unbatch_tuple_actions(actions)
             for i, action in enumerate(actions):
                 env_id = eval_data[i].env_id
                 agent_id = eval_data[i].agent_id
@@ -405,8 +455,21 @@ def _fetch_atari_metrics(async_vector_env):
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}))
+            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}))
     return atari_out
+
+
+def _unbatch_tuple_actions(action_batch):
+    # convert list of batches -> batch of lists
+    if isinstance(action_batch, TupleActions):
+        out = []
+        for j in range(len(action_batch.batches[0])):
+            out.append([
+                action_batch.batches[i][j]
+                for i in range(len(action_batch.batches))
+            ])
+        return out
+    return action_batch
 
 
 def _to_column_format(rnn_state_rows):

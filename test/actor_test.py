@@ -718,7 +718,7 @@ def test_actor_load_balancing(shutdown_only):
     num_local_schedulers = 3
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
+        num_cpus=1,
         num_local_schedulers=num_local_schedulers)
 
     @ray.remote
@@ -764,7 +764,6 @@ def test_actor_gpus(shutdown_only):
     num_gpus_per_scheduler = 4
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -807,7 +806,6 @@ def test_actor_multiple_gpus(shutdown_only):
     num_gpus_per_scheduler = 5
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -878,7 +876,6 @@ def test_actor_different_numbers_of_gpus(shutdown_only):
     # numbers of GPUs.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=3,
         num_cpus=[10, 10, 10],
         num_gpus=[0, 5, 10])
@@ -919,7 +916,6 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
     num_gpus_per_scheduler = 10
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         redirect_output=True,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
@@ -968,7 +964,6 @@ def test_actors_and_tasks_with_gpus(shutdown_only):
     num_gpus_per_scheduler = 6
     ray.worker._init(
         start_ray_local=True,
-        num_workers=0,
         num_local_schedulers=num_local_schedulers,
         num_cpus=num_gpus_per_scheduler,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
@@ -1231,9 +1226,6 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_exception_raised_when_actor_node_dies(shutdown_only):
     ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
 
@@ -1278,9 +1270,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
     process.wait()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1288,7 +1278,7 @@ def test_local_scheduler_dying(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=1,
         redirect_output=True)
 
     @ray.remote
@@ -1328,9 +1318,7 @@ def test_local_scheduler_dying(shutdown_only):
     assert results == list(range(1, 1 + len(results)))
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1406,7 +1394,7 @@ def setup_counter_actor(test_checkpoint=False,
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=1,
         redirect_output=True)
 
     # Only set the checkpoint interval if we're testing with checkpointing.
@@ -1465,9 +1453,7 @@ def setup_counter_actor(test_checkpoint=False,
     return actor, ids
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1495,9 +1481,7 @@ def test_checkpointing(shutdown_only):
     assert num_inc_calls < x
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1526,9 +1510,7 @@ def test_remote_checkpoint(shutdown_only):
     assert x == 101
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1557,9 +1539,7 @@ def test_lost_checkpoint(shutdown_only):
     assert 5 < num_inc_calls
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1590,9 +1570,7 @@ def test_checkpoint_exception(shutdown_only):
         assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1662,9 +1640,7 @@ def test_distributed_handle(self):
     assert x == count + 1
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
@@ -1752,7 +1728,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=1,
         redirect_output=True)
 
     # Make a shared queue.
@@ -1821,9 +1797,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     assert queue == reconstructed_queue[:len(queue)]
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
@@ -1859,9 +1833,7 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1878,9 +1850,7 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1968,6 +1938,28 @@ def test_pickling_actor_handle(ray_start_regular):
     ray.get(new_f.method.remote())
 
 
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
+    @ray.remote
+    class Actor1(object):
+        def f(self):
+            return 1
+
+    @ray.remote
+    class Actor2(object):
+        def __init__(self, constructor):
+            self.actor = constructor()
+
+        def step(self):
+            ray.get(self.actor.f.remote())
+
+    a = Actor1.remote()
+
+    b = Actor2.remote(lambda: a)
+
+    ray.get(b.step.remote())
+    ray.get(b.step.remote())
+
+
 def test_register_and_get_named_actors(ray_start_regular):
     # TODO(heyucongtom): We should test this from another driver.
 
@@ -2036,7 +2028,7 @@ def test_custom_label_placement(shutdown_only):
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=2,
-        num_workers=0,
+        num_cpus=2,
         resources=[{
             "CustomResource1": 2
         }, {
@@ -2067,11 +2059,7 @@ def test_custom_label_placement(shutdown_only):
 
 
 def test_creating_more_actors_than_resources(shutdown_only):
-    ray.init(
-        num_workers=0,
-        num_cpus=10,
-        num_gpus=2,
-        resources={"CustomResource1": 1})
+    ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 
     @ray.remote(num_gpus=1)
     class ResourceActor1(object):

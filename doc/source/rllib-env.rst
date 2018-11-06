@@ -5,6 +5,23 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
+**Compatibility matrix**:
+
+=============  ================  ==================  ===========  ==================
+Algorithm      Discrete Actions  Continuous Actions  Multi-Agent  Recurrent Policies
+=============  ================  ==================  ===========  ==================
+A2C, A3C        **Yes**           **Yes**             **Yes**      **Yes**
+PPO             **Yes**           **Yes**             **Yes**      **Yes**
+PG              **Yes**           **Yes**             **Yes**      **Yes**
+IMPALA          **Yes**           No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes**           No                  **Yes**      No
+DDPG            No                **Yes**             **Yes**      No
+APEX-DQN        **Yes**           No                  **Yes**      No
+APEX-DDPG       No                **Yes**             **Yes**      No
+ES              **Yes**           **Yes**             No           No
+ARS             **Yes**           **Yes**             No           No
+=============  ================  ==================  ===========  ==================
+
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 
 .. code-block:: python
@@ -50,14 +67,14 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
 OpenAI Gym
 ----------
 
-RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__ example env implementations useful as a reference.
+RLlib uses Gym as its environment interface for single-agent training. For more information on how to implement a custom Gym environment, see the `gym.Env class definition <https://github.com/openai/gym/blob/master/gym/core.py>`__. You may also find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and `Carla simulator <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__ example env implementations useful as a reference.
 
 Performance
 ~~~~~~~~~~~
 
 There are two ways to scale experience collection with Gym environments:
 
-    1. **Vectorization within a single process:** Though many envs can very achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
+    1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
 
       You can configure ``{"num_envs_per_worker": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__.
 
@@ -132,9 +149,79 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__.
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+
+.. code-block:: bash
+   :emphasize-lines: 6,14,22
+
+    Result for PPO_multi_cartpole_0:
+      episode_len_mean: 34.025862068965516
+      episode_reward_max: 159.0
+      episode_reward_mean: 86.06896551724138
+      info:
+        policy_0:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6833480000495911
+          kl: 0.010264254175126553
+          policy_loss: -11.95590591430664
+          total_loss: 197.7039794921875
+          vf_explained_var: 0.0010995268821716309
+          vf_loss: 209.6578826904297
+        policy_1:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6827034950256348
+          kl: 0.01119876280426979
+          policy_loss: -8.787769317626953
+          total_loss: 88.26161193847656
+          vf_explained_var: 0.0005457401275634766
+          vf_loss: 97.0471420288086
+      policy_reward_mean:
+        policy_0: 21.194444444444443
+        policy_1: 21.798387096774192
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
+
+Variable-Sharing Between Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
+
+.. code-block:: python
+
+        with tf.variable_scope(
+                tf.VariableScope(tf.AUTO_REUSE, "name_of_global_shared_scope"),
+                reuse=tf.AUTO_REUSE,
+                auxiliary_name_scope=False):
+            <create the shared layers here>
+
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__.
+
+Implementing a Centralized Critic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implementing a shared critic between multiple policies requires the definition of custom policy graphs. It can be done as follows:
+
+1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. This assumes you use variable sharing to access the critic network from multiple policies. The critic predictions can then be added to the postprocessed trajectory. Here's an example:
+
+.. code-block:: python
+
+    def postprocess_trajectory(self, sample_batch, other_agent_batches, episode):
+        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
+        global_obs_batch = np.stack(
+            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
+            axis=1)
+        # add the global obs and global critic value
+        sample_batch["global_obs"] = global_obs_batch
+        sample_batch["global_vf"] = self.sess.run(
+            self.global_critic_network, feed_dict={"obs": global_obs_batch})
+        # metrics like "global reward" can be retrieved from the info return of the environment
+        sample_batch["global_rewards"] = [
+            info["global_reward"] for info in sample_batch["infos"]]
+        return sample_batch
+
+2. Updating the critic: the centralized critic loss can be added to the loss of some arbitrary policy graph. The policy graph that is chosen must add the inputs for the critic loss to its postprocessed trajectory batches.
+
+For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
 
 Agent-Driven
 ------------

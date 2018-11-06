@@ -5,7 +5,6 @@ from __future__ import print_function
 import click
 import json
 import logging
-import os
 import subprocess
 
 import ray.services as services
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
     # The client table prefix must be kept in sync with the file
-    # "src/common/redis_module/ray_redis_module.cc" where it is defined.
+    # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
     REDIS_CLIENT_TABLE_PREFIX = "CL:"
     client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
     # Filter to clients on the same node and do some basic checking.
@@ -90,6 +89,11 @@ def cli(logging_level, logging_format):
     help=("If provided, attempt to configure Redis with this "
           "maximum number of clients."))
 @click.option(
+    "--redis-password",
+    required=False,
+    type=str,
+    help="If provided, secure Redis ports with this password")
+@click.option(
     "--redis-shard-ports",
     required=False,
     type=str,
@@ -100,6 +104,11 @@ def cli(logging_level, logging_format):
     required=False,
     type=int,
     help="the port to use for starting the object manager")
+@click.option(
+    "--node-manager-port",
+    required=False,
+    type=int,
+    help="the port to use for starting the node manager")
 @click.option(
     "--object-store-memory",
     required=False,
@@ -163,11 +172,6 @@ def cli(logging_level, logging_format):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--use-raylet",
-    is_flag=True,
-    default=None,
-    help="use the raylet code path")
-@click.option(
     "--no-redirect-worker-output",
     is_flag=True,
     default=False,
@@ -177,25 +181,34 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="do not redirect non-worker stdout and stderr to files")
+@click.option(
+    "--plasma-store-socket-name",
+    default=None,
+    help="manually specify the socket name of the plasma store")
+@click.option(
+    "--raylet-socket-name",
+    default=None,
+    help="manually specify the socket path of the raylet process")
+@click.option(
+    "--temp-dir",
+    default=None,
+    help="manually specify the root temporary dir of the Ray process")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, redis_shard_ports, object_manager_port,
-          object_store_memory, num_workers, num_cpus, num_gpus, resources,
-          head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet, no_redirect_worker_output, no_redirect_output):
+          redis_max_clients, redis_password, redis_shard_ports,
+          object_manager_port, node_manager_port, object_store_memory,
+          num_workers, num_cpus, num_gpus, resources, head, no_ui, block,
+          plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        logger.info("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
-
     try:
         resources = json.loads(resources)
-    except Exception as e:
+    except Exception:
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "
@@ -235,15 +248,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         logger.info("Using IP address {} for this node."
                     .format(node_ip_address))
 
-        address_info = {}
-        # Use the provided object manager port if there is one.
-        if object_manager_port is not None:
-            address_info["object_manager_ports"] = [object_manager_port]
-        if address_info == {}:
-            address_info = None
-
         address_info = services.start_ray_head(
-            address_info=address_info,
+            object_manager_ports=[object_manager_port],
+            node_manager_ports=[node_manager_port],
             node_ip_address=node_ip_address,
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -255,26 +262,32 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
-            redis_protected_mode=False,
+            redis_password=redis_password,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet)
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir)
         logger.info(address_info)
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
-            "    ray start --redis-address {}\n\n"
+            "    ray start --redis-address {}{}{}\n\n"
             "from the node you wish to add. You can connect a driver to the "
             "cluster from Python by running\n\n"
             "    import ray\n"
-            "    ray.init(redis_address=\"{}\")\n\n"
+            "    ray.init(redis_address=\"{}{}{}\")\n\n"
             "If you have trouble connecting from a different machine, check "
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(address_info["redis_address"],
-                                  address_info["redis_address"]))
+            "    ray stop".format(
+                address_info["redis_address"], " --redis-password "
+                if redis_password else "", redis_password if redis_password
+                else "", address_info["redis_address"], "\", redis_password=\""
+                if redis_password else "", redis_password
+                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if redis_port is not None:
@@ -299,10 +312,12 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
-        services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
+        services.wait_for_redis_to_start(
+            redis_ip_address, int(redis_port), password=redis_password)
 
         # Create a Redis client.
-        redis_client = services.create_redis_client(redis_address)
+        redis_client = services.create_redis_client(
+            redis_address, password=redis_password)
 
         # Check that the verion information on this node matches the version
         # information that the cluster was started with.
@@ -321,15 +336,19 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             node_ip_address=node_ip_address,
             redis_address=redis_address,
             object_manager_ports=[object_manager_port],
+            node_manager_ports=[node_manager_port],
             num_workers=num_workers,
             object_store_memory=object_store_memory,
+            redis_password=redis_password,
             cleanup=False,
             redirect_worker_output=not no_redirect_worker_output,
             redirect_output=not no_redirect_output,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet)
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir)
         logger.info(address_info)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
@@ -344,11 +363,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 @cli.command()
 def stop():
     subprocess.call(
-        [
-            "killall global_scheduler plasma_store_server plasma_manager "
-            "local_scheduler raylet raylet_monitor"
-        ],
-        shell=True)
+        ["killall plasma_store_server raylet raylet_monitor"], shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(
@@ -387,7 +402,7 @@ def stop():
         from notebook.notebookapp import list_running_servers
         pids = [
             str(server["pid"]) for server in list_running_servers()
-            if "/tmp/raylogs" in server["notebook_dir"]
+            if "/tmp/ray" in server["notebook_dir"]
         ]
         subprocess.call(
             ["kill {} 2> /dev/null".format(" ".join(pids))], shell=True)
@@ -413,24 +428,24 @@ def stop():
     "--min-workers",
     required=False,
     type=int,
-    help=("Override the configured min worker node count for the cluster."))
+    help="Override the configured min worker node count for the cluster.")
 @click.option(
     "--max-workers",
     required=False,
     type=int,
-    help=("Override the configured max worker node count for the cluster."))
+    help="Override the configured max worker node count for the cluster.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 @click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
-    help=("Don't ask for confirmation."))
+    help="Don't ask for confirmation.")
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                      restart_only, yes, cluster_name):
     if restart_only or no_restart:
@@ -446,19 +461,19 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     "--workers-only",
     is_flag=True,
     default=False,
-    help=("Only destroy the workers."))
+    help="Only destroy the workers.")
 @click.option(
     "--yes",
     "-y",
     is_flag=True,
     default=False,
-    help=("Don't ask for confirmation."))
+    help="Don't ask for confirmation.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name):
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
 
@@ -469,17 +484,17 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     "--start",
     is_flag=True,
     default=False,
-    help=("Start the cluster if needed."))
+    help="Start the cluster if needed.")
 @click.option(
-    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 @click.option(
-    "--new", "-N", is_flag=True, help=("Force creation of a new screen."))
+    "--new", "-N", is_flag=True, help="Force creation of a new screen.")
 def attach(cluster_config_file, start, tmux, cluster_name, new):
     attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
 
@@ -493,7 +508,7 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def rsync_down(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
@@ -507,7 +522,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def rsync_up(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
@@ -519,27 +534,27 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--stop",
     is_flag=True,
     default=False,
-    help=("Stop the cluster after the command finishes running."))
+    help="Stop the cluster after the command finishes running.")
 @click.option(
     "--start",
     is_flag=True,
     default=False,
-    help=("Start the cluster if needed."))
+    help="Start the cluster if needed.")
 @click.option(
     "--screen",
     is_flag=True,
     default=False,
-    help=("Run the command in a screen."))
+    help="Run the command in a screen.")
 @click.option(
-    "--tmux", is_flag=True, default=False, help=("Run the command in tmux."))
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help=("Port to forward."))
+    "--port-forward", required=False, type=int, help="Port to forward.")
 def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
@@ -557,9 +572,35 @@ def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
     "-n",
     required=False,
     type=str,
-    help=("Override the configured cluster name."))
+    help="Override the configured cluster name.")
 def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
+
+
+@cli.command()
+def stack():
+    COMMAND = """
+pyspy=`which py-spy`
+if [ ! -e "$pyspy" ]; then
+    echo "ERROR: Please 'pip install py-spy' first"
+    exit 1
+fi
+# Set IFS to iterate over lines instead of over words.
+export IFS="
+"
+# Call sudo to prompt for password before anything has been printed.
+sudo true
+workers=$(
+    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+)
+for worker in $workers; do
+    echo "Stack dump for $worker";
+    pid=`echo $worker | awk '{print $2}'`;
+    sudo $pyspy --pid $pid --dump;
+    echo;
+done
+    """
+    subprocess.call(COMMAND, shell=True)
 
 
 cli.add_command(start)
@@ -573,6 +614,7 @@ cli.add_command(rsync_up)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)
+cli.add_command(stack)
 
 
 def main():

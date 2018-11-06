@@ -4,19 +4,6 @@ from __future__ import print_function
 
 import flatbuffers
 
-from ray.core.generated.ResultTableReply import ResultTableReply
-from ray.core.generated.SubscribeToNotificationsReply \
-    import SubscribeToNotificationsReply
-from ray.core.generated.TaskExecutionDependencies import \
-    TaskExecutionDependencies
-from ray.core.generated.TaskReply import TaskReply
-from ray.core.generated.DriverTableMessage import DriverTableMessage
-from ray.core.generated.LocalSchedulerInfoMessage import \
-    LocalSchedulerInfoMessage
-from ray.core.generated.SubscribeToDBClientTableReply import \
-    SubscribeToDBClientTableReply
-from ray.core.generated.TaskInfo import TaskInfo
-
 import ray.core.generated.ErrorTableData
 
 from ray.core.generated.GcsTableEntry import GcsTableEntry
@@ -32,28 +19,12 @@ from ray.core.generated.TablePrefix import TablePrefix
 from ray.core.generated.TablePubsub import TablePubsub
 
 __all__ = [
-    "SubscribeToNotificationsReply", "ResultTableReply",
-    "TaskExecutionDependencies", "TaskReply", "DriverTableMessage",
-    "LocalSchedulerInfoMessage", "SubscribeToDBClientTableReply", "TaskInfo",
     "GcsTableEntry", "ClientTableData", "ErrorTableData", "HeartbeatTableData",
     "DriverTableData", "ProfileTableData", "ObjectTableData", "Task",
     "TablePrefix", "TablePubsub", "construct_error_message"
 ]
 
-# These prefixes must be kept up-to-date with the definitions in
-# ray_redis_module.cc.
-DB_CLIENT_PREFIX = "CL:"
-TASK_PREFIX = "TT:"
-OBJECT_CHANNEL_PREFIX = "OC:"
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
 FUNCTION_PREFIX = "RemoteFunction:"
-
-# These prefixes must be kept up-to-date with the definitions in
-# common/state/redis.cc
-LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
-PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
-DRIVER_DEATH_CHANNEL = b"driver_deaths"
 
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")

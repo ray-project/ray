@@ -6,8 +6,6 @@ import copy
 from collections import defaultdict
 import heapq
 import json
-import numbers
-import os
 import redis
 import sys
 import time
@@ -17,25 +15,6 @@ import ray.gcs_utils
 import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
-
-# This mapping from integer to task state string must be kept up-to-date with
-# the scheduling_state enum in task.h.
-TASK_STATUS_WAITING = 1
-TASK_STATUS_SCHEDULED = 2
-TASK_STATUS_QUEUED = 4
-TASK_STATUS_RUNNING = 8
-TASK_STATUS_DONE = 16
-TASK_STATUS_LOST = 32
-TASK_STATUS_RECONSTRUCTING = 64
-TASK_STATUS_MAPPING = {
-    TASK_STATUS_WAITING: "WAITING",
-    TASK_STATUS_SCHEDULED: "SCHEDULED",
-    TASK_STATUS_QUEUED: "QUEUED",
-    TASK_STATUS_RUNNING: "RUNNING",
-    TASK_STATUS_DONE: "DONE",
-    TASK_STATUS_LOST: "LOST",
-    TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
-}
 
 
 class GlobalState(object):
@@ -47,7 +26,6 @@ class GlobalState(object):
     Attributes:
         redis_client: The Redis client used to query the primary redis server.
         redis_clients: Redis clients for each of the Redis shards.
-        use_raylet: True if we are using the raylet code path.
     """
 
     def __init__(self):
@@ -57,8 +35,6 @@ class GlobalState(object):
         self.redis_client = None
         # Clients for the redis shards, storing the object table & task table.
         self.redis_clients = None
-        # True if we are using the raylet code path and false otherwise.
-        self.use_raylet = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -78,6 +54,7 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
+                                 redis_password=None,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -89,9 +66,10 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
+            redis_password: The password of the redis server.
         """
         self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
 
         start_time = time.time()
 
@@ -128,22 +106,15 @@ class GlobalState(object):
                             "ip_address_ports = {}".format(
                                 num_redis_shards, ip_address_ports))
 
-        use_raylet = self.redis_client.get("UseRaylet")
-        if use_raylet is not None:
-            self.use_raylet = int(use_raylet) == 1
-        elif os.environ.get("RAY_USE_XRAY") == "1":
-            # This environment variable is used in our testing setup.
-            print("Detected environment variable 'RAY_USE_XRAY'.")
-            self.use_raylet = True
-        else:
-            self.use_raylet = False
-
         # Get the rest of the information.
         self.redis_clients = []
         for ip_address_port in ip_address_ports:
             shard_address, shard_port = ip_address_port.split(b":")
             self.redis_clients.append(
-                redis.StrictRedis(host=shard_address, port=shard_port))
+                redis.StrictRedis(
+                    host=shard_address,
+                    port=shard_port,
+                    password=redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -188,53 +159,29 @@ class GlobalState(object):
             object_id = ray.ObjectID(hex_to_binary(object_id))
 
         # Return information about a single object ID.
-        if not self.use_raylet:
-            # Use the non-raylet code path.
-            object_locations = self._execute_command(
-                object_id, "RAY.OBJECT_TABLE_LOOKUP", object_id.id())
-            if object_locations is not None:
-                manager_ids = [
-                    binary_to_hex(manager_id)
-                    for manager_id in object_locations
-                ]
-            else:
-                manager_ids = None
+        message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
+                                        ray.gcs_utils.TablePrefix.OBJECT, "",
+                                        object_id.id())
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
 
-            result_table_response = self._execute_command(
-                object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
-            result_table_message = (
-                ray.gcs_utils.ResultTableReply.GetRootAsResultTableReply(
-                    result_table_response, 0))
+        assert gcs_entry.EntriesLength() > 0
 
-            result = {
-                "ManagerIDs": manager_ids,
-                "TaskID": binary_to_hex(result_table_message.TaskId()),
-                "IsPut": bool(result_table_message.IsPut()),
-                "DataSize": result_table_message.DataSize(),
-                "Hash": binary_to_hex(result_table_message.Hash())
-            }
+        entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
+            gcs_entry.Entries(0), 0)
 
-        else:
-            # Use the raylet code path.
-            message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
-                                            ray.gcs_utils.TablePrefix.OBJECT,
-                                            "", object_id.id())
-            result = []
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                message, 0)
+        object_info = {
+            "DataSize": entry.ObjectSize(),
+            "Manager": entry.Manager(),
+            "IsEviction": [entry.IsEviction()],
+        }
 
-            for i in range(gcs_entry.EntriesLength()):
-                entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
-                    gcs_entry.Entries(i), 0)
-                object_info = {
-                    "DataSize": entry.ObjectSize(),
-                    "Manager": entry.Manager(),
-                    "IsEviction": entry.IsEviction(),
-                    "NumEvictions": entry.NumEvictions()
-                }
-                result.append(object_info)
+        for i in range(1, gcs_entry.EntriesLength()):
+            entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
+                gcs_entry.Entries(i), 0)
+            object_info["IsEviction"].append(entry.IsEviction())
 
-        return result
+        return object_info
 
     def object_table(self, object_id=None):
         """Fetch and parse the object table info for one or more object IDs.
@@ -252,25 +199,12 @@ class GlobalState(object):
             return self._object_table(object_id)
         else:
             # Return the entire object table.
-            if not self.use_raylet:
-                object_info_keys = self._keys(
-                    ray.gcs_utils.OBJECT_INFO_PREFIX + "*")
-                object_location_keys = self._keys(
-                    ray.gcs_utils.OBJECT_LOCATION_PREFIX + "*")
-                object_ids_binary = set([
-                    key[len(ray.gcs_utils.OBJECT_INFO_PREFIX):]
-                    for key in object_info_keys
-                ] + [
-                    key[len(ray.gcs_utils.OBJECT_LOCATION_PREFIX):]
-                    for key in object_location_keys
-                ])
-            else:
-                object_keys = self._keys(
-                    ray.gcs_utils.TablePrefix_OBJECT_string + "*")
-                object_ids_binary = {
-                    key[len(ray.gcs_utils.TablePrefix_OBJECT_string):]
-                    for key in object_keys
-                }
+            object_keys = self._keys(ray.gcs_utils.TablePrefix_OBJECT_string +
+                                     "*")
+            object_ids_binary = {
+                key[len(ray.gcs_utils.TablePrefix_OBJECT_string):]
+                for key in object_keys
+            }
 
             results = {}
             for object_id_binary in object_ids_binary:
@@ -287,112 +221,49 @@ class GlobalState(object):
 
         Returns:
             A dictionary with information about the task ID in question.
-                TASK_STATUS_MAPPING should be used to parse the "State" field
-                into a human-readable string.
         """
-        if not self.use_raylet:
-            # Use the non-raylet code path.
-            task_table_response = self._execute_command(
-                task_id, "RAY.TASK_TABLE_GET", task_id.id())
-            if task_table_response is None:
-                raise Exception("There is no entry for task ID {} in the task "
-                                "table.".format(binary_to_hex(task_id.id())))
-            task_table_message = ray.gcs_utils.TaskReply.GetRootAsTaskReply(
-                task_table_response, 0)
-            task_spec = task_table_message.TaskSpec()
-            task_spec = ray.local_scheduler.task_from_string(task_spec)
+        message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
+                                        ray.gcs_utils.TablePrefix.RAYLET_TASK,
+                                        "", task_id.id())
+        gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
 
-            task_spec_info = {
-                "DriverID": binary_to_hex(task_spec.driver_id().id()),
-                "TaskID": binary_to_hex(task_spec.task_id().id()),
-                "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-                "ParentCounter": task_spec.parent_counter(),
-                "ActorID": binary_to_hex(task_spec.actor_id().id()),
-                "ActorCreationID": binary_to_hex(
-                    task_spec.actor_creation_id().id()),
-                "ActorCreationDummyObjectID": binary_to_hex(
-                    task_spec.actor_creation_dummy_object_id().id()),
-                "ActorCounter": task_spec.actor_counter(),
-                "FunctionID": binary_to_hex(task_spec.function_id().id()),
-                "Args": task_spec.arguments(),
-                "ReturnObjectIDs": task_spec.returns(),
-                "RequiredResources": task_spec.required_resources()
-            }
+        assert gcs_entries.EntriesLength() == 1
 
-            execution_dependencies_message = (
-                ray.gcs_utils.TaskExecutionDependencies.
-                GetRootAsTaskExecutionDependencies(
-                    task_table_message.ExecutionDependencies(), 0))
-            execution_dependencies = [
-                ray.ObjectID(
-                    execution_dependencies_message.ExecutionDependencies(i))
-                for i in range(execution_dependencies_message.
-                               ExecutionDependenciesLength())
-            ]
+        task_table_message = ray.gcs_utils.Task.GetRootAsTask(
+            gcs_entries.Entries(0), 0)
 
-            # TODO(rkn): The return fields ExecutionDependenciesString and
-            # ExecutionDependencies are redundant, so we should remove
-            # ExecutionDependencies. However, it is currently used in
-            # monitor.py.
+        execution_spec = task_table_message.TaskExecutionSpec()
+        task_spec = task_table_message.TaskSpecification()
+        task_spec = ray.raylet.task_from_string(task_spec)
+        task_spec_info = {
+            "DriverID": binary_to_hex(task_spec.driver_id().id()),
+            "TaskID": binary_to_hex(task_spec.task_id().id()),
+            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
+            "ParentCounter": task_spec.parent_counter(),
+            "ActorID": binary_to_hex(task_spec.actor_id().id()),
+            "ActorCreationID": binary_to_hex(
+                task_spec.actor_creation_id().id()),
+            "ActorCreationDummyObjectID": binary_to_hex(
+                task_spec.actor_creation_dummy_object_id().id()),
+            "ActorCounter": task_spec.actor_counter(),
+            "FunctionID": binary_to_hex(task_spec.function_id().id()),
+            "Args": task_spec.arguments(),
+            "ReturnObjectIDs": task_spec.returns(),
+            "RequiredResources": task_spec.required_resources()
+        }
 
-            return {
-                "State": task_table_message.State(),
-                "LocalSchedulerID": binary_to_hex(
-                    task_table_message.LocalSchedulerId()),
-                "ExecutionDependenciesString": task_table_message.
-                ExecutionDependencies(),
-                "ExecutionDependencies": execution_dependencies,
-                "SpillbackCount": task_table_message.SpillbackCount(),
-                "TaskSpec": task_spec_info
-            }
-
-        else:
-            # Use the raylet code path.
-            message = self._execute_command(
-                task_id, "RAY.TABLE_LOOKUP",
-                ray.gcs_utils.TablePrefix.RAYLET_TASK, "", task_id.id())
-            gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                message, 0)
-
-            info = []
-            for i in range(gcs_entries.EntriesLength()):
-                task_table_message = ray.gcs_utils.Task.GetRootAsTask(
-                    gcs_entries.Entries(i), 0)
-
-                execution_spec = task_table_message.TaskExecutionSpec()
-                task_spec = task_table_message.TaskSpecification()
-                task_spec = ray.local_scheduler.task_from_string(task_spec)
-                task_spec_info = {
-                    "DriverID": binary_to_hex(task_spec.driver_id().id()),
-                    "TaskID": binary_to_hex(task_spec.task_id().id()),
-                    "ParentTaskID": binary_to_hex(
-                        task_spec.parent_task_id().id()),
-                    "ParentCounter": task_spec.parent_counter(),
-                    "ActorID": binary_to_hex(task_spec.actor_id().id()),
-                    "ActorCreationID": binary_to_hex(
-                        task_spec.actor_creation_id().id()),
-                    "ActorCreationDummyObjectID": binary_to_hex(
-                        task_spec.actor_creation_dummy_object_id().id()),
-                    "ActorCounter": task_spec.actor_counter(),
-                    "FunctionID": binary_to_hex(task_spec.function_id().id()),
-                    "Args": task_spec.arguments(),
-                    "ReturnObjectIDs": task_spec.returns(),
-                    "RequiredResources": task_spec.required_resources()
-                }
-
-                info.append({
-                    "ExecutionSpec": {
-                        "Dependencies": [
-                            execution_spec.Dependencies(i)
-                            for i in range(execution_spec.DependenciesLength())
-                        ],
-                        "LastTimestamp": execution_spec.LastTimestamp(),
-                        "NumForwards": execution_spec.NumForwards()
-                    },
-                    "TaskSpec": task_spec_info
-                })
-
-            return info
+        return {
+            "ExecutionSpec": {
+                "Dependencies": [
+                    execution_spec.Dependencies(i)
+                    for i in range(execution_spec.DependenciesLength())
+                ],
+                "LastTimestamp": execution_spec.LastTimestamp(),
+                "NumForwards": execution_spec.NumForwards()
+            },
+            "TaskSpec": task_spec_info
+        }
 
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
@@ -409,19 +280,12 @@ class GlobalState(object):
             task_id = ray.ObjectID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
-            if not self.use_raylet:
-                task_table_keys = self._keys(ray.gcs_utils.TASK_PREFIX + "*")
-                task_ids_binary = [
-                    key[len(ray.gcs_utils.TASK_PREFIX):]
-                    for key in task_table_keys
-                ]
-            else:
-                task_table_keys = self._keys(
-                    ray.gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
-                task_ids_binary = [
-                    key[len(ray.gcs_utils.TablePrefix_RAYLET_TASK_string):]
-                    for key in task_table_keys
-                ]
+            task_table_keys = self._keys(
+                ray.gcs_utils.TablePrefix_RAYLET_TASK_string + "*")
+            task_ids_binary = [
+                key[len(ray.gcs_utils.TablePrefix_RAYLET_TASK_string):]
+                for key in task_table_keys
+            ]
 
             results = {}
             for task_id_binary in task_ids_binary:
@@ -457,95 +321,54 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
-        if not self.use_raylet:
-            db_client_keys = self.redis_client.keys(
-                ray.gcs_utils.DB_CLIENT_PREFIX + "*")
-            node_info = {}
-            for key in db_client_keys:
-                client_info = self.redis_client.hgetall(key)
-                node_ip_address = decode(client_info[b"node_ip_address"])
-                if node_ip_address not in node_info:
-                    node_info[node_ip_address] = []
-                client_info_parsed = {}
-                assert b"client_type" in client_info
-                assert b"deleted" in client_info
-                assert b"ray_client_id" in client_info
-                for field, value in client_info.items():
-                    if field == b"node_ip_address":
-                        pass
-                    elif field == b"client_type":
-                        client_info_parsed["ClientType"] = decode(value)
-                    elif field == b"deleted":
-                        client_info_parsed["Deleted"] = bool(
-                            int(decode(value)))
-                    elif field == b"ray_client_id":
-                        client_info_parsed["DBClientID"] = binary_to_hex(value)
-                    elif field == b"manager_address":
-                        client_info_parsed["AuxAddress"] = decode(value)
-                    elif field == b"local_scheduler_socket_name":
-                        client_info_parsed["LocalSchedulerSocketName"] = (
-                            decode(value))
-                    elif client_info[b"client_type"] == b"local_scheduler":
-                        # The remaining fields are resource types.
-                        client_info_parsed[decode(field)] = float(
-                            decode(value))
-                    else:
-                        client_info_parsed[decode(field)] = decode(value)
 
-                node_info[node_ip_address].append(client_info_parsed)
+        NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
+            NIL_CLIENT_ID)
 
-            return node_info
+        # Handle the case where no clients are returned. This should only
+        # occur potentially immediately after the cluster is started.
+        if message is None:
+            return []
 
-        else:
-            # This is the raylet code path.
-            NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-            message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
-                NIL_CLIENT_ID)
+        node_info = {}
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
 
-            # Handle the case where no clients are returned. This should only
-            # occur potentially immediately after the cluster is started.
-            if message is None:
-                return []
+        # Since GCS entries are append-only, we override so that
+        # only the latest entries are kept.
+        for i in range(gcs_entry.EntriesLength()):
+            client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+                gcs_entry.Entries(i), 0))
 
-            node_info = {}
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                message, 0)
+            resources = {
+                decode(client.ResourcesTotalLabel(i)):
+                client.ResourcesTotalCapacity(i)
+                for i in range(client.ResourcesTotalLabelLength())
+            }
+            client_id = ray.utils.binary_to_hex(client.ClientId())
 
-            # Since GCS entries are append-only, we override so that
-            # only the latest entries are kept.
-            for i in range(gcs_entry.EntriesLength()):
-                client = (
-                    ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-                        gcs_entry.Entries(i), 0))
+            # If this client is being removed, then it must
+            # have previously been inserted, and
+            # it cannot have previously been removed.
+            if not client.IsInsertion():
+                assert client_id in node_info, "Client removed not found!"
+                assert node_info[client_id]["IsInsertion"], (
+                    "Unexpected duplicate removal of client.")
 
-                resources = {
-                    decode(client.ResourcesTotalLabel(i)):
-                    client.ResourcesTotalCapacity(i)
-                    for i in range(client.ResourcesTotalLabelLength())
-                }
-                client_id = ray.utils.binary_to_hex(client.ClientId())
-
-                # If this client is being removed, then it must
-                # have previously been inserted, and
-                # it cannot have previously been removed.
-                if not client.IsInsertion():
-                    assert client_id in node_info, "Client removed not found!"
-                    assert node_info[client_id]["IsInsertion"], (
-                        "Unexpected duplicate removal of client.")
-
-                node_info[client_id] = {
-                    "ClientID": client_id,
-                    "IsInsertion": client.IsInsertion(),
-                    "NodeManagerAddress": decode(client.NodeManagerAddress()),
-                    "NodeManagerPort": client.NodeManagerPort(),
-                    "ObjectManagerPort": client.ObjectManagerPort(),
-                    "ObjectStoreSocketName": decode(
-                        client.ObjectStoreSocketName()),
-                    "RayletSocketName": decode(client.RayletSocketName()),
-                    "Resources": resources
-                }
-            return list(node_info.values())
+            node_info[client_id] = {
+                "ClientID": client_id,
+                "IsInsertion": client.IsInsertion(),
+                "NodeManagerAddress": decode(client.NodeManagerAddress()),
+                "NodeManagerPort": client.NodeManagerPort(),
+                "ObjectManagerPort": client.ObjectManagerPort(),
+                "ObjectStoreSocketName": decode(
+                    client.ObjectStoreSocketName()),
+                "RayletSocketName": decode(client.RayletSocketName()),
+                "Resources": resources
+            }
+        return list(node_info.values())
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.
@@ -748,10 +571,6 @@ class GlobalState(object):
         return profile_events
 
     def profile_table(self):
-        if not self.use_raylet:
-            raise Exception("This method is only supported in the raylet "
-                            "code path.")
-
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
         component_identifiers_binary = [
@@ -806,7 +625,7 @@ class GlobalState(object):
         # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
         default_color_mapping = defaultdict(
             lambda: "generic_work", {
-                "get_task": "cq_build_abandoned",
+                "worker_idle": "cq_build_abandoned",
                 "task": "rail_response",
                 "task:deserialize_arguments": "rail_load",
                 "task:execute": "rail_animation",
@@ -901,7 +720,7 @@ class GlobalState(object):
                     repr(arg)
                     for arg in task_table[task_id]["TaskSpec"]["Args"]
                 ]
-            except Exception as e:
+            except Exception:
                 print("Could not find task {}".format(task_id))
 
         # filter out tasks not in task_table
@@ -1200,23 +1019,6 @@ class GlobalState(object):
             info[key] = cur
             latest_timestamp = cur
 
-    def local_schedulers(self):
-        """Get a list of live local schedulers.
-
-        Returns:
-            A list of the live local schedulers.
-        """
-        if self.use_raylet:
-            raise Exception("The local_schedulers() method is deprecated.")
-        clients = self.client_table()
-        local_schedulers = []
-        for ip_address, client_list in clients.items():
-            for client in client_list:
-                if (client["ClientType"] == "local_scheduler"
-                        and not client["Deleted"]):
-                    local_schedulers.append(client)
-        return local_schedulers
-
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
         worker_keys = self.redis_client.keys("Worker*")
@@ -1230,8 +1032,6 @@ class GlobalState(object):
                 "local_scheduler_socket": (decode(
                     worker_info[b"local_scheduler_socket"])),
                 "node_ip_address": decode(worker_info[b"node_ip_address"]),
-                "plasma_manager_socket": decode(
-                    worker_info[b"plasma_manager_socket"]),
                 "plasma_store_socket": decode(
                     worker_info[b"plasma_store_socket"])
             }
@@ -1291,27 +1091,27 @@ class GlobalState(object):
                 resource in the cluster.
         """
         resources = defaultdict(int)
-        if not self.use_raylet:
-            local_schedulers = self.local_schedulers()
-
-            for local_scheduler in local_schedulers:
-                for key, value in local_scheduler.items():
-                    if key not in [
-                            "ClientType", "Deleted", "DBClientID",
-                            "AuxAddress", "LocalSchedulerSocketName"
-                    ]:
-                        resources[key] += value
-
-        else:
-            clients = self.client_table()
-            for client in clients:
+        clients = self.client_table()
+        for client in clients:
+            # Only count resources from live clients.
+            if client["IsInsertion"]:
                 for key, value in client["Resources"].items():
                     resources[key] += value
 
         return dict(resources)
 
+    def _live_client_ids(self):
+        """Returns a set of client IDs corresponding to clients still alive."""
+        return {
+            client["ClientID"]
+            for client in self.client_table() if client["IsInsertion"]
+        }
+
     def available_resources(self):
         """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
 
         Note that this information can grow stale as tasks start and finish.
 
@@ -1321,97 +1121,48 @@ class GlobalState(object):
         """
         available_resources_by_id = {}
 
-        if not self.use_raylet:
-            subscribe_client = self.redis_client.pubsub()
-            subscribe_client.subscribe(
-                ray.gcs_utils.LOCAL_SCHEDULER_INFO_CHANNEL)
+        subscribe_clients = [
+            redis_client.pubsub(ignore_subscribe_messages=True)
+            for redis_client in self.redis_clients
+        ]
+        for subscribe_client in subscribe_clients:
+            subscribe_client.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
 
-            local_scheduler_ids = {
-                local_scheduler["DBClientID"]
-                for local_scheduler in self.local_schedulers()
-            }
+        client_ids = self._live_client_ids()
 
-            while set(available_resources_by_id.keys()) != local_scheduler_ids:
+        while set(available_resources_by_id.keys()) != client_ids:
+            for subscribe_client in subscribe_clients:
+                # Parse client message
                 raw_message = subscribe_client.get_message()
-                if raw_message is None:
+                if (raw_message is None or raw_message["channel"] !=
+                        ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
                     continue
                 data = raw_message["data"]
-                # Ignore subscribtion success message from Redis
-                # This is a long in python 2 and an int in python 3
-                if isinstance(data, numbers.Number):
-                    continue
-                message = (ray.gcs_utils.LocalSchedulerInfoMessage.
-                           GetRootAsLocalSchedulerInfoMessage(data, 0))
-                num_resources = message.DynamicResourcesLength()
+                gcs_entries = (
+                    ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                        data, 0))
+                heartbeat_data = gcs_entries.Entries(0)
+                message = (ray.gcs_utils.HeartbeatTableData.
+                           GetRootAsHeartbeatTableData(heartbeat_data, 0))
+                # Calculate available resources for this client
+                num_resources = message.ResourcesAvailableLabelLength()
                 dynamic_resources = {}
                 for i in range(num_resources):
-                    dyn = message.DynamicResources(i)
-                    resource_id = decode(dyn.Key())
-                    dynamic_resources[resource_id] = dyn.Value()
+                    resource_id = decode(message.ResourcesAvailableLabel(i))
+                    dynamic_resources[resource_id] = (
+                        message.ResourcesAvailableCapacity(i))
 
-                # Update available resources for this local scheduler
-                client_id = binary_to_hex(message.DbClientId())
+                # Update available resources for this client
+                client_id = ray.utils.binary_to_hex(message.ClientId())
                 available_resources_by_id[client_id] = dynamic_resources
 
-                # Update local schedulers in cluster
-                local_scheduler_ids = {
-                    local_scheduler["DBClientID"]
-                    for local_scheduler in self.local_schedulers()
-                }
+            # Update clients in cluster
+            client_ids = self._live_client_ids()
 
-                # Remove disconnected local schedulers
-                for local_scheduler_id in available_resources_by_id.keys():
-                    if local_scheduler_id not in local_scheduler_ids:
-                        del available_resources_by_id[local_scheduler_id]
-        else:
-            # Assumes the number of Redis clients does not change
-            subscribe_clients = [
-                redis_client.pubsub(ignore_subscribe_messages=True)
-                for redis_client in self.redis_clients
-            ]
-            for subscribe_client in subscribe_clients:
-                subscribe_client.subscribe(
-                    ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
-
-            client_ids = {client["ClientID"] for client in self.client_table()}
-
-            while set(available_resources_by_id.keys()) != client_ids:
-                for subscribe_client in subscribe_clients:
-                    # Parse client message
-                    raw_message = subscribe_client.get_message()
-                    if (raw_message is None or raw_message["channel"] !=
-                            ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL):
-                        continue
-                    data = raw_message["data"]
-                    gcs_entries = (
-                        ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                            data, 0))
-                    heartbeat_data = gcs_entries.Entries(0)
-                    message = (ray.gcs_utils.HeartbeatTableData.
-                               GetRootAsHeartbeatTableData(heartbeat_data, 0))
-                    # Calculate available resources for this client
-                    num_resources = message.ResourcesAvailableLabelLength()
-                    dynamic_resources = {}
-                    for i in range(num_resources):
-                        resource_id = decode(
-                            message.ResourcesAvailableLabel(i))
-                        dynamic_resources[resource_id] = (
-                            message.ResourcesAvailableCapacity(i))
-
-                    # Update available resources for this client
-                    client_id = ray.utils.binary_to_hex(message.ClientId())
-                    available_resources_by_id[client_id] = dynamic_resources
-
-                # Update clients in cluster
-                client_ids = {
-                    client["ClientID"]
-                    for client in self.client_table()
-                }
-
-                # Remove disconnected clients
-                for client_id in available_resources_by_id.keys():
-                    if client_id not in client_ids:
-                        del available_resources_by_id[client_id]
+            # Remove disconnected clients
+            for client_id in available_resources_by_id.keys():
+                if client_id not in client_ids:
+                    del available_resources_by_id[client_id]
 
         # Calculate total available resources
         total_available_resources = defaultdict(int)
@@ -1464,10 +1215,6 @@ class GlobalState(object):
             A dictionary mapping job ID to a list of the error messages for
                 that job.
         """
-        if not self.use_raylet:
-            raise Exception("The error_messages method is only supported in "
-                            "the raylet code path.")
-
         if job_id is not None:
             return self._error_messages(job_id)
 

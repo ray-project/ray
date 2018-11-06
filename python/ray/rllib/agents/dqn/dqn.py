@@ -20,6 +20,8 @@ OPTIMIZER_SHARED_CONFIGS = [
     "learning_starts"
 ]
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Number of atoms for representing the distribution of return. When
@@ -115,6 +117,8 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class DQNAgent(Agent):
@@ -232,10 +236,13 @@ class DQNAgent(Agent):
             # Only collect metrics from the third of workers with lowest eps
             result = collect_metrics(
                 self.local_evaluator,
-                self.remote_evaluators[-len(self.remote_evaluators) // 3:])
+                self.remote_evaluators[-len(self.remote_evaluators) // 3:],
+                timeout_seconds=self.config["collect_metrics_timeout"])
         else:
-            result = collect_metrics(self.local_evaluator,
-                                     self.remote_evaluators)
+            result = collect_metrics(
+                self.local_evaluator,
+                self.remote_evaluators,
+                timeout_seconds=self.config["collect_metrics_timeout"])
 
         result.update(
             timesteps_this_iter=self.global_timestep - start_timestep,
