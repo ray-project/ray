@@ -153,9 +153,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // have been evicted from all nodes.
   std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
                                       listener_state.current_object_locations.end());
-  io_service_.post([callback, client_id_vec, object_id]() {
-    callback(client_id_vec, object_id);
-  });
+  io_service_.post(
+      [callback, client_id_vec, object_id]() { callback(client_id_vec, object_id); });
   return status;
 }
 
