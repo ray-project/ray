@@ -9,7 +9,6 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.explained_variance import explained_variance
 
 
@@ -180,9 +179,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sampler = curr_action_dist.sample()
         if self.config["use_gae"]:
             if self.config["vf_share_layers"]:
-                self.value_function = tf.reshape(
-                    linear(self.model.last_layer, 1, "value",
-                           normc_initializer(1.0)), [-1])
+                self.value_function = self.model.value_function()
             else:
                 vf_config = self.config["model"].copy()
                 # Do not split the last layer of the value function into
@@ -286,7 +283,10 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         vf = self.sess.run(self.value_function, feed_dict)
         return vf[0]
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

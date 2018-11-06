@@ -1267,7 +1267,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
     process.kill()
 
     # Submit some new actor tasks.
-    x_ids = [actor.inc.remote() for _ in range(100)]
+    x_ids = [actor.inc.remote() for _ in range(5)]
 
     # Make sure that getting the result raises an exception.
     for _ in range(10):

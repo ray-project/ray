@@ -359,7 +359,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                         dones=t == 4,
                         infos={},
                         new_obs=obs_batch[0])
-                batch = builder.build_and_reset()
+                batch = builder.build_and_reset(episode=None)
                 episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions

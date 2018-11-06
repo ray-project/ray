@@ -38,12 +38,14 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                self.connect()
+                self.connect(head_node_args.get("redis_password"))
 
-    def connect(self):
+    def connect(self, redis_password=None):
         assert self.redis_address is not None
         assert not self.connected
-        ray.init(redis_address=self.redis_address)
+        ray.init(
+            redis_address=self.redis_address,
+            redis_password=redis_password)
         self.connected = True
 
     def add_node(self, **override_kwargs):
