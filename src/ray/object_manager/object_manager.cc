@@ -643,7 +643,7 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
     flatbuffers::FlatBufferBuilder fbb;
     bool is_transfer = (type == ConnectionPool::ConnectionType::TRANSFER);
     auto message = object_manager_protocol::CreateConnectClientMessage(
-        fbb, fbb.CreateString(client_id_.binary()), is_transfer);
+        fbb, to_flatbuf(fbb, client_id_), is_transfer);
     fbb.Finish(message);
     // Send synchronously.
     // TODO(swang): Make this a WriteMessageAsync.
