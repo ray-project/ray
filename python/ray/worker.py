@@ -214,9 +214,14 @@ class Worker(object):
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
-        # Identity of the driver that this worker is processing.
-        self.task_driver_id = None
         self.function_actor_manager = FunctionActorManager(self)
+        # Reads/writes to the following fields must be protected by
+        # self.state_lock.
+        # Identity of the driver that this worker is processing.
+        self.task_driver_id = ray.ObjectID(NIL_ID)
+        self.current_task_id = ray.ObjectID(NIL_ID)
+        self.task_index = 0
+        self.put_index = 1
 
     def get_current_thread_task_id(self):
         """Get the current thread's task ID.
@@ -789,6 +794,11 @@ class Worker(object):
         use the outputs of this task).
         """
         with self.state_lock:
+            assert self.task_driver_id.is_nil()
+            assert self.current_task_id.is_nil()
+            assert self.task_index == 0
+            assert self.put_index == 1
+
             # The ID of the driver that this task belongs to. This is needed so
             # that if the task throws an exception, we propagate the error
             # message to the correct driver.
