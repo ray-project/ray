@@ -1168,7 +1168,7 @@ def test_multithreading(shutdown_only):
 
     # test multi-threading in the actor
     a = MultithreadedActor.remote()
-    ray.get(a.test_multi_threading.remote())
+    ray.get(a.spawn.remote())
     ray.get(a.join.remote())
 
 
