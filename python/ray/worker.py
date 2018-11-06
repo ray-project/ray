@@ -905,8 +905,8 @@ class Worker(object):
                 title = "ray_worker:{}()".format(function_name)
             else:
                 actor = self.actors[task.actor_id().id()]
-                title = "ray_{}:{}()".format(
-                    actor.__class__.__name__, function_name)
+                title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                             function_name)
             with profiling.profile("task", extra_data=extra_data, worker=self):
                 with _changeproctitle(title):
                     self._process_task(task, execution_info)
