@@ -20,6 +20,8 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
+logger = logging.getLogger(__name__)
+
 # yapf: disable
 # __sphinx_doc_begin__
 COMMON_CONFIG = {
@@ -252,6 +254,7 @@ class Agent(Trainable):
             self.optimizer.local_evaluator.set_global_vars(self.global_vars)
             for ev in self.optimizer.remote_evaluators:
                 ev.set_global_vars.remote(self.global_vars)
+            logger.debug("updated global vars: {}".format(self.global_vars))
 
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
                 and hasattr(self, "local_evaluator")):
@@ -259,6 +262,8 @@ class Agent(Trainable):
                 self.local_evaluator.filters,
                 self.remote_evaluators,
                 update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                self.local_evaluator.filters))
 
         return Trainable.train(self)
 
