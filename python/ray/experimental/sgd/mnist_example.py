@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Example of how to train a model with Ray SGD.
 
 We use a small model here, so no speedup for distributing the computation is
