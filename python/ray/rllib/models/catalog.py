@@ -189,7 +189,7 @@ class ModelCatalog(object):
             seq_in (Tensor): Optional RNN sequence length tensor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
 
         assert isinstance(input_dict, dict)
@@ -238,7 +238,7 @@ class ModelCatalog(object):
             options (dict): Optional args to pass to the model constructor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
         from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
                                                     PyTorchFCNet)
