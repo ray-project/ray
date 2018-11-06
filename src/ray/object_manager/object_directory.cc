@@ -107,12 +107,15 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  const ClientTableDataT &data =
-      gcs_client_->client_table().GetClient(connection_info.client_id);
-  ClientID result_client_id = ClientID::from_binary(data.client_id);
-  if (result_client_id != ClientID::nil() && data.is_insertion) {
-    connection_info.ip = data.node_manager_address;
-    connection_info.port = static_cast<uint16_t>(data.object_manager_port);
+  ClientTableDataT client_data;
+  gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
+  ClientID result_client_id = ClientID::from_binary(client_data.client_id);
+  if (!result_client_id.is_nil()) {
+    RAY_CHECK(result_client_id == connection_info.client_id);
+    if (client_data.is_insertion) {
+      connection_info.ip = client_data.node_manager_address;
+      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port);
+    }
   }
 }
 
