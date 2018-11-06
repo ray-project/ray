@@ -192,15 +192,19 @@ class NodeManager {
   /// If new_ready_task != nullptr, try to dispatch just this task. Otherwise,
   /// check all tasks in the ready queue.
   ///
-  /// Explanation: Before invoking this function, we guarantee
-  /// that new_ready_task != nullptr iff the addition of this task is
-  /// (a) the only change to the ready queue since DispatchTasks() has been
-  /// previously called, and (b) local available resources have not changed
-  /// since then. As a result, we are guaranteed that new_ready_task is the
-  /// only task in the ready queue that could be dispatches (all the other ones
-  /// have been already checked last time when DispatchTasks() was invoked).
-  /// This is an optimization to avoid DispatchTask() going over all tasks
-  /// in the ready queue.
+  /// Explanation: This function is called after one of the following cases occurs:
+  /// (1) A new task is inserted in the ready queue.
+  /// (2) More resources are becoming available (e.g., when a task finsihes).
+  /// (3) A worker becomes available.
+  /// Each time when it is invoked, this function schedules all tasks in the
+  /// ready queue, given resource constraints. This guarantees that when a
+  /// new task (new_ready_task) is added to the ready queue, that is the only
+  /// task that could be scheduled; none of the other tasks in the ready task
+  /// can be scheduled since no more resources or workers have became available
+  /// since the last time this function was invoked, and the last time the
+  /// function was invoked it scheduled all possible task in the ready queue
+  /// (thus there are no feasible tasks in the ready queue, maybe except the new
+  /// task which was added).
   ///
   /// \param new_task_ready Dispatch only this task if != nullptr; otherwise check all tasks in the ready queue.
   void DispatchTasks(const Task* new_ready_task);
