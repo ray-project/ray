@@ -242,13 +242,6 @@ class NodeManager {
       const ActorID &actor_id, const ActorTableDataT &data,
       const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
-  /// When an actor dies, loop over all of the queued tasks for that actor and
-  /// treat them as failed.
-  ///
-  /// \param actor_id The actor that died.
-  /// \return Void.
-  void CleanUpTasksForDeadActor(const ActorID &actor_id);
-
   /// When a driver dies, loop over all of the queued tasks for that driver and
   /// treat them as failed.
   ///

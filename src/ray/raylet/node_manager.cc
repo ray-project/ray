@@ -503,22 +503,26 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       SubmitTask(method, Lineage());
     }
   } else if (actor_registration.GetState() == ActorState::DEAD) {
-    CleanUpTasksForDeadActor(actor_id);
+    // When an actor dies, loop over all of the queued tasks for that actor
+    // and treat them as failed.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
+    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+    for (auto const &task : removed_tasks) {
+      const TaskSpecification &spec = task.GetTaskSpecification();
+      TreatTaskAsFailed(spec);
+      task_dependency_manager_.TaskCanceled(spec.TaskId());
+    }
   } else {
-    // TODO: return queued tasks to waiting for actor creation.
     RAY_CHECK(actor_registration.GetState() == ActorState::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-  }
-}
-
-void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
-  auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-
-  for (auto const &task : removed_tasks) {
-    const TaskSpecification &spec = task.GetTaskSpecification();
-    TreatTaskAsFailed(spec);
-    task_dependency_manager_.TaskCanceled(spec.TaskId());
+    // When an actor fails but can be reconstructed, resubmit all of the queued
+    // tasks for that actor. This will mark the tasks as waiting for actor
+    // creation.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
+    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+    for (auto const &task : removed_tasks) {
+      SubmitTask(task, Lineage());
+    }
   }
 }
 

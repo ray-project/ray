@@ -1429,7 +1429,7 @@ def test_reconstruction_suppression(head_node_cluster):
         return ray.get(actor_handle.inc.remote())
 
     # Make sure all of the actors have started.
-    actors = [Counter.remote() for _ in range(100)]
+    actors = [Counter.remote() for _ in range(20)]
     ray.get([actor.inc.remote() for actor in actors])
 
     # Kill a node.
