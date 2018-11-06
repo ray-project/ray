@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import atexit
 import colorama
+import faulthandler
 import hashlib
 import inspect
 import logging
@@ -402,7 +403,8 @@ class Worker(object):
                 invalid_error = RayTaskError(
                     "<unknown>", None,
                     "Invalid return value: likely worker died or was killed "
-                    "while executing the task.")
+                    "while executing the task; check previous logs or dmesg "
+                    "for errors.")
                 return [invalid_error] * len(object_ids)
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
@@ -1840,6 +1842,9 @@ def connect(info,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
+
+    # Enable nice stack traces on SIGSEGV etc.
+    faulthandler.enable(all_threads=False)
 
     # Initialize some fields.
     if mode is WORKER_MODE:

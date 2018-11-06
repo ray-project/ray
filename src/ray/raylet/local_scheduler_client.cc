@@ -258,7 +258,10 @@ ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  RAY_CHECK(type == static_cast<int64_t>(MessageType::ExecuteTask));
+  if (type != static_cast<int64_t>(MessageType::ExecuteTask)) {
+    RAY_LOG(FATAL) <<
+        "Problem communicating with raylet from worker: check logs or dmesg for previous errors.";
+  }
 
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
@@ -338,8 +341,10 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     // Read result.
     read_message(conn->conn, &type, &reply_size, &reply);
   }
-  RAY_CHECK(static_cast<ray::protocol::MessageType>(type) ==
-            ray::protocol::MessageType::WaitReply);
+  if (static_cast<ray::protocol::MessageType>(type) != ray::protocol::MessageType::WaitReply) {
+    RAY_LOG(FATAL) <<
+        "Problem communicating with raylet from worker: check logs or dmesg for previous errors.";
+  }
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;

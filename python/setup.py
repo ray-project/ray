@@ -151,6 +151,7 @@ setup(
         "pytest",
         "pyyaml",
         "redis",
+        "faulthandler;python_version<'3'",
         # The six module is required by pyarrow.
         "six >= 1.0.0",
         "flatbuffers"
