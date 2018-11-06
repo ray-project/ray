@@ -1101,7 +1101,6 @@ def start_plasma_store(node_ip_address,
     logger.info("Starting the Plasma object store with {} GB memory "
                 "using {}.".format(object_store_memory_str, plasma_directory))
     # Start the Plasma store.
-
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
         plasma_store_memory=object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
