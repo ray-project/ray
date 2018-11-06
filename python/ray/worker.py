@@ -1282,7 +1282,8 @@ def _init(address_info=None,
           driver_id=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
-          temp_dir=None):
+          temp_dir=None,
+          config_file=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1416,7 +1417,8 @@ def _init(address_info=None,
             include_webui=include_webui,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir)
+            temp_dir=temp_dir,
+            config_file=config_file)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1519,6 +1521,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         config_file=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1647,7 +1650,8 @@ def init(redis_address=None,
         driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        config_file=config_file)
     for hook in _post_init_hooks:
         hook()
     return ret

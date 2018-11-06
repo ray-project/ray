@@ -857,6 +857,7 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  cleanup=True,
+                 config=None,
                  redis_password=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -892,6 +893,9 @@ def start_raylet(redis_address,
     Returns:
         The raylet socket name.
     """
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
@@ -903,11 +907,8 @@ def start_raylet(redis_address,
         1, min(multiprocessing.cpu_count(), static_resources["CPU"]))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
-    resource_argument = ",".join([
-        "{},{}".format(resource_name, resource_value)
-        for resource_name, resource_value in zip(static_resources.keys(),
-                                                 static_resources.values())
-    ])
+    resource_argument = ",".join(
+        ["{},{}".format(*kv) for kv in static_resources.items()])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
@@ -945,6 +946,7 @@ def start_raylet(redis_address,
         str(num_workers),
         str(maximum_startup_concurrency),
         resource_argument,
+        config_str,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
         redis_password or "",
@@ -1198,7 +1200,8 @@ def start_raylet_monitor(redis_address,
                          stdout_file=None,
                          stderr_file=None,
                          cleanup=True,
-                         redis_password=None):
+                         redis_password=None,
+                         config=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1215,7 +1218,9 @@ def start_raylet_monitor(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port]
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_MONITOR].append(p)
@@ -1246,7 +1251,8 @@ def start_ray_processes(address_info=None,
                         autoscaling_config=None,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
-                        temp_dir=None):
+                        temp_dir=None,
+                        config_file=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1322,6 +1328,11 @@ def start_ray_processes(address_info=None,
     logger.info("Process STDOUT and STDERR is being redirected to {}.".format(
         get_logs_dir_path()))
 
+    config = None
+    if config_file:
+        with open(config_file) as f:
+            config = yaml.load(f)
+
     if resources is None:
         resources = {}
     if not isinstance(resources, list):
@@ -1382,7 +1393,8 @@ def start_ray_processes(address_info=None,
             stdout_file=monitor_stdout_file,
             stderr_file=monitor_stderr_file,
             cleanup=cleanup,
-            redis_password=redis_password)
+            redis_password=redis_password,
+            config=config)
     if redis_shards == []:
         # Get redis shards from primary redis instance.
         redis_ip_address, redis_port = redis_address.split(":")
@@ -1460,7 +1472,8 @@ def start_ray_processes(address_info=None,
                 stdout_file=raylet_stdout_file,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
-                redis_password=redis_password))
+                redis_password=redis_password,
+                config=config))
 
     # Try to start the web UI.
     if include_webui:
@@ -1493,7 +1506,8 @@ def start_ray_node(node_ip_address,
                    huge_pages=False,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
-                   temp_dir=None):
+                   temp_dir=None,
+                   config_file=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1564,7 +1578,8 @@ def start_ray_node(node_ip_address,
         huge_pages=huge_pages,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        config_file=config_file)
 
 
 def start_ray_head(address_info=None,
@@ -1591,7 +1606,8 @@ def start_ray_head(address_info=None,
                    autoscaling_config=None,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
-                   temp_dir=None):
+                   temp_dir=None,
+                   config_file=None):
     """Start Ray in local mode.
 
     Args:
@@ -1684,4 +1700,5 @@ def start_ray_head(address_info=None,
         autoscaling_config=autoscaling_config,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        config_file=config_file)
