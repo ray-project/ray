@@ -1118,7 +1118,7 @@ def test_illegal_api_calls(shutdown_only):
 def test_multithreading(shutdown_only):
     # This test requires at least 2 CPUs to finish since the worker does not
     # relase resources when joining the threads.
-    ray.init(num_cpus=10)
+    ray.init(num_cpus=2)
 
     @ray.remote
     def f():

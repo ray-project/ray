@@ -174,9 +174,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = local_scheduler_wait(
-      conn, object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal),
-      *current_task_id.PID);
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
+      local_scheduler_wait(conn, object_ids, numReturns, timeoutMillis,
+                           static_cast<bool>(isWaitLocal), *current_task_id.PID);
 
   // Convert result to java object.
   jboolean put_value = true;
