@@ -136,7 +136,6 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
 
-
         if self._server:
             self._process_requests()
 
