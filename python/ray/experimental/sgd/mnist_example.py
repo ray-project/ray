@@ -128,4 +128,4 @@ if __name__ == "__main__":
             },
         })
     else:
-        train_mnist({"args": args}, lambda d: None)
+        train_mnist({"args": args}, lambda **kw: None)
