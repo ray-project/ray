@@ -1,7 +1,9 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
-#include <stdint.h>
+#include <unordered_map>
+
+#include "ray/util/logging.h"
 
 class RayConfig {
  public:
@@ -105,14 +107,11 @@ class RayConfig {
   void initialize(const std::unordered_map<std::string, int> &config_map) {
     RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
-      switch (pair.first):
-      case "handler_warning_timeout_ms": {
+      if (pair.first == "handler_warning_timeout_ms") {
         handler_warning_timeout_ms_ = pair.second;
-      } break;
-      case "num_heartbeats_timeout": {
+      } else if (pair.first == "num_heartbeats_timeout") {
         num_heartbeats_timeout_ = pair.second;
-      } break;
-      default:
+      } else {
         RAY_LOG(FATAL) << "Invalid config key: " << pair.first;
       }
     }
