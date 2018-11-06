@@ -865,13 +865,6 @@ class Worker(object):
                 function_id, function_name, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-        # Reset the state fields so the next task can run.
-        with self.state_lock:
-            self.task_driver_id = ray.ObjectID(NIL_ID)
-            self.current_task_id = ray.ObjectID(NIL_ID)
-            self.task_index = 0
-            self.put_index = 1
-
     def _handle_process_task_failure(self, function_id, function_name,
                                      return_object_ids, error, backtrace):
         failure_object = RayTaskError(function_name, error, backtrace)
@@ -948,6 +941,12 @@ class Worker(object):
             }
             with profiling.profile("task", extra_data=extra_data, worker=self):
                 self._process_task(task, execution_info)
+            # Reset the state fields so the next task can run.
+            with self.state_lock:
+                self.task_driver_id = ray.ObjectID(NIL_ID)
+                self.current_task_id = ray.ObjectID(NIL_ID)
+                self.task_index = 0
+                self.put_index = 1
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
