@@ -235,7 +235,9 @@ class Worker(object):
             if not self.multithreading_warned:
                 logger.warning(
                     "Calling ray.get or ray.wait in a separate thread "
-                    "may lead to deadlock")
+                    "may lead to deadlock if the main thread blocks on this "
+                    "thread and there are not enough resources to execute "
+                    "more tasks")
                 self.multithreading_warned = True
         assert not current_task_id.is_nil()
         return current_task_id
