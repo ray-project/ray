@@ -54,7 +54,7 @@ def create_parser(parser_creator=None):
         const=True,
         help="Surpress rendering of the environment.")
     parser.add_argument(
-        "--steps", default=None, help="Number of steps to roll out.")
+        "--steps", default=10000, help="Number of steps to roll out.")
     parser.add_argument("--out", default=None, help="Output filename.")
     parser.add_argument(
         "--config",
@@ -70,6 +70,12 @@ def run(args, parser):
         # Load configuration from file
         config_dir = os.path.dirname(args.checkpoint)
         config_path = os.path.join(config_dir, "params.json")
+        if not os.path.exists(config_path):
+            config_path = os.path.join(config_dir, "../params.json")
+        if not os.path.exists(config_path):
+            raise ValueError(
+                "Could not find params.json in either the checkpoint dir or "
+                "its parent directory.")
         with open(config_path) as f:
             args.config = json.load(f)
 

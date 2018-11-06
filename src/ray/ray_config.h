@@ -1,7 +1,9 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
-#include <stdint.h>
+#include <unordered_map>
+
+#include "ray/util/logging.h"
 
 class RayConfig {
  public:
@@ -102,6 +104,20 @@ class RayConfig {
 
   int num_workers_per_process() const { return num_workers_per_process_; }
 
+  void initialize(const std::unordered_map<std::string, int> &config_map) {
+    RAY_CHECK(!initialized_);
+    for (auto const &pair : config_map) {
+      if (pair.first == "handler_warning_timeout_ms") {
+        handler_warning_timeout_ms_ = pair.second;
+      } else if (pair.first == "num_heartbeats_timeout") {
+        num_heartbeats_timeout_ = pair.second;
+      } else {
+        RAY_LOG(FATAL) << "Invalid config key: " << pair.first;
+      }
+    }
+    initialized_ = true;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -138,7 +154,8 @@ class RayConfig {
         object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
         object_manager_default_chunk_size_(1000000),
-        num_workers_per_process_(1) {}
+        num_workers_per_process_(1),
+        initialized_(false) {}
 
   ~RayConfig() {}
 
@@ -263,6 +280,10 @@ class RayConfig {
 
   /// Number of workers per process
   int num_workers_per_process_;
+
+  /// Whether the initialization of the instance has been called before.
+  /// The RayConfig instance can only (and must) be initialized once.
+  bool initialized_;
 };
 
 #endif  // RAY_CONFIG_H
