@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import pytest
 import time
+import os
+import yaml
+import tempfile
 
 import ray
 from ray.test.cluster_utils import Cluster
@@ -21,10 +24,19 @@ def ray_start():
 @pytest.fixture
 def cluster_start():
     # Start the Ray processes.
+    memory_config = yaml.dump({"num_heartbeats_timeout": 10})
+    buff = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+    path = buff.name
+    buff.write(memory_config)
+    buff.close()
+    import ipdb; ipdb.set_trace(context=5)
     cluster = Cluster(
         initialize_head=True, connect=True,
-        head_node_args={"resources": dict(CPU=1)})
+        head_node_args={
+            "resources": dict(CPU=1),
+            "config_file": path})
     yield cluster
+    os.unlink(path)
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -80,7 +92,7 @@ def test_proper_cluster_resources(cluster_start):
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
     cluster.remove_node(nodes.pop())
-    cluster.wait_for_nodes(100)
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
     for i in range(5):
