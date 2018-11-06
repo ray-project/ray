@@ -476,6 +476,11 @@ class Worker(object):
                     # random task ID so that the backend can differentiate
                     # between different threads.
                     current_task_id = ray.ObjectID(random_string())
+                    if not self.multithreading_warned:
+                        logger.warning(
+                            "Calling ray.get or ray.wait in a separate thread "
+                            "may lead to deadlock")
+                        self.multithreading_warned = True
                 assert current_task_id.id() != NIL_ID
 
                 # Try reconstructing any objects we haven't gotten yet. Try to
@@ -2050,6 +2055,9 @@ def connect(info,
     else:
         # A non-driver worker begins without an assigned task.
         worker.current_task_id = ray.ObjectID(NIL_ID)
+    # A flag for making sure that we only print one warning message about
+    # multithreading per worker.
+    worker.multithreading_warned = False
 
     worker.local_scheduler_client = ray.raylet.LocalSchedulerClient(
         local_scheduler_socket, worker.worker_id, is_worker,
@@ -2405,6 +2413,11 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
                 # random task ID so that the backend can differentiate
                 # between different threads.
                 task_id = ray.ObjectID(random_string())
+                if not worker.multithreading_warned:
+                    logger.warning(
+                        "Calling ray.get or ray.wait in a separate thread may "
+                        "lead to deadlock")
+                    worker.multithreading_warned = True
             assert task_id.id() != NIL_ID
 
         timeout = timeout if timeout is not None else 2**30

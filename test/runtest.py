@@ -1116,16 +1116,21 @@ def test_illegal_api_calls(shutdown_only):
 
 
 def test_multithreading(shutdown_only):
-    ray.init(num_cpus=1)
+    # This test requires at least 2 CPUs to finish since the worker does not
+    # relase resources when joining the threads.
+    ray.init(num_cpus=2)
 
     @ray.remote
     def f():
         pass
 
     def g(n):
+        print("getting n", n)
         for _ in range(1000 // n):
             ray.get([f.remote() for _ in range(n)])
+        print("putting n", n)
         res = [ray.put(i) for i in range(1000 // n)]
+        print("waiting n", n)
         ray.wait(res, len(res))
 
     def test_multi_threading():
@@ -1145,6 +1150,26 @@ def test_multithreading(shutdown_only):
     test_multi_threading()
     # test multi-threading in the worker
     ray.get(test_multi_threading_in_worker.remote())
+
+    @ray.remote
+    class MultithreadedActor(object):
+        def __init__(self):
+            pass
+
+        def spawn(self):
+            self.threads = [
+                threading.Thread(target=g, args=(n, ))
+                for n in [1, 5, 10, 100, 200]
+            ]
+            [t.start() for t in self.threads]
+
+        def join(self):
+            [t.join() for t in self.threads]
+
+    # test multi-threading in the actor
+    a = MultithreadedActor.remote()
+    ray.get(a.test_multi_threading.remote())
+    ray.get(a.join.remote())
 
 
 def test_free_objects_multi_node(shutdown_only):
