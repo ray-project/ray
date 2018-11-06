@@ -53,6 +53,8 @@ int main(int argc, char *argv[]) {
     raylet_config[config_name] = std::stoi(config_value);
   }
 
+  RayConfig::instance().initialize(raylet_config);
+
   // Parse the resource list.
   std::istringstream resource_string(static_resource_list);
   std::string resource_name;
