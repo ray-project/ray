@@ -66,7 +66,7 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void notifyBlocked(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
 
   }
 

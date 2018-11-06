@@ -541,8 +541,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
-  case protocol::MessageType::NotifyBlocked: {
-    ProcessNotifyBlockedMessage(client, message_data);
+  case protocol::MessageType::FetchOrReconstruct: {
+    ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
@@ -735,9 +735,9 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   SubmitTask(task, Lineage());
 }
 
-void NodeManager::ProcessNotifyBlockedMessage(
+void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::NotifyBlocked>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < message->object_ids()->size(); ++i) {
     ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));

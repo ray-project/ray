@@ -301,15 +301,16 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
                 &conn->write_mutex);
 }
 
-void local_scheduler_notify_blocked(LocalSchedulerConnection *conn,
-                                    const std::vector<ObjectID> &object_ids,
-                                    bool fetch_only, const TaskID &current_task_id) {
+void local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
+                                          const std::vector<ObjectID> &object_ids,
+                                          bool fetch_only,
+                                          const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message = ray::protocol::CreateNotifyBlocked(fbb, object_ids_message, fetch_only,
-                                                    to_flatbuf(fbb, current_task_id));
+  auto message = ray::protocol::CreateFetchOrReconstruct(
+      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyBlocked),
+  write_message(conn->conn, static_cast<int64_t>(MessageType::FetchOrReconstruct),
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
   /* TODO(swang): Propagate the error. */
 }

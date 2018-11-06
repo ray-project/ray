@@ -15,7 +15,7 @@ public interface RayletClient {
 
   TaskSpec getTask();
 
-  void notifyBlocked(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId);
+  void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId);
 
   void notifyUnblocked(UniqueId currentTaskId);
 

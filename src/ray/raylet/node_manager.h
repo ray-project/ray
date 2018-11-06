@@ -304,13 +304,13 @@ class NodeManager {
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
-  /// Process client message of NotifyBlocked
+  /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessNotifyBlockedMessage(const std::shared_ptr<LocalClientConnection> &client,
-                                   const uint8_t *message_data);
+  void ProcessFetchOrReconstructMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///

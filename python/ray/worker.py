@@ -218,6 +218,28 @@ class Worker(object):
         self.task_driver_id = None
         self.function_actor_manager = FunctionActorManager(self)
 
+    def get_current_thread_task_id(self):
+        """Get the current thread's task ID.
+
+        This returns the assigned task ID if called on the main thread, else a
+        random task ID.  This method is not thread-safe and must be called with
+        self.state_lock acquired.
+        """
+        current_task_id = self.current_task_id
+        if not ray.utils.is_main_thread():
+            # If this is running on a separate thread, then the mapping
+            # to the current task ID may not be correct. Generate a
+            # random task ID so that the backend can differentiate
+            # between different threads.
+            current_task_id = ray.ObjectID(random_string())
+            if not self.multithreading_warned:
+                logger.warning(
+                    "Calling ray.get or ray.wait in a separate thread "
+                    "may lead to deadlock")
+                self.multithreading_warned = True
+        assert not current_task_id.is_nil()
+        return current_task_id
+
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
 
@@ -452,7 +474,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.local_scheduler_client.notify_blocked(
+            self.local_scheduler_client.fetch_or_reconstruct(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -469,19 +491,7 @@ class Worker(object):
         if len(unready_ids) > 0:
             with self.state_lock:
                 # Get the task ID, to notify the backend which task is blocked.
-                current_task_id = self.current_task_id
-                if not ray.utils.is_main_thread():
-                    # If this is running on a separate thread, then the mapping
-                    # to the current task ID may not be correct. Generate a
-                    # random task ID so that the backend can differentiate
-                    # between different threads.
-                    current_task_id = ray.ObjectID(random_string())
-                    if not self.multithreading_warned:
-                        logger.warning(
-                            "Calling ray.get or ray.wait in a separate thread "
-                            "may lead to deadlock")
-                        self.multithreading_warned = True
-                assert current_task_id.id() != NIL_ID
+                current_task_id = self.get_current_thread_task_id()
 
                 # Try reconstructing any objects we haven't gotten yet. Try to
                 # get them until at least get_timeout_milliseconds
@@ -499,7 +509,7 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.local_scheduler_client.notify_blocked(
+                        self.local_scheduler_client.fetch_or_reconstruct(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
                             current_task_id)
@@ -627,6 +637,8 @@ class Worker(object):
                 # have been submitted by the current task so far.
                 task_index = self.task_index
                 self.task_index += 1
+                # The parent task must be set for the submitted task.
+                assert not self.current_task_id.is_nil()
             # Submit the task to local scheduler.
             task = ray.raylet.Task(
                 driver_id, ray.ObjectID(
@@ -2406,19 +2418,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
         # Get the task ID, to notify the backend which task is blocked.
         with worker.state_lock:
-            current_task_id = worker.current_task_id
-            if not ray.utils.is_main_thread():
-                # If this is running on a separate thread, then the mapping
-                # to the current task ID may not be correct. Generate a
-                # random task ID so that the backend can differentiate
-                # between different threads.
-                task_id = ray.ObjectID(random_string())
-                if not worker.multithreading_warned:
-                    logger.warning(
-                        "Calling ray.get or ray.wait in a separate thread may "
-                        "lead to deadlock")
-                    worker.multithreading_warned = True
-            assert task_id.id() != NIL_ID
+            current_task_id = worker.get_current_thread_task_id()
 
         timeout = timeout if timeout is not None else 2**30
         ready_ids, remaining_ids = worker.local_scheduler_client.wait(

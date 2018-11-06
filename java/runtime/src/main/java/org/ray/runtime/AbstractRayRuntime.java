@@ -99,7 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       List<List<UniqueId>> fetchBatches =
           splitIntoBatches(objectIds, FETCH_BATCH_SIZE);
       for (List<UniqueId> batch : fetchBatches) {
-        rayletClient.notifyBlocked(batch, true, taskId);
+        rayletClient.fetchOrReconstruct(batch, true, taskId);
       }
 
       // Get the objects. We initially try to get the objects immediately.
@@ -124,7 +124,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
 
         for (List<UniqueId> batch : reconstructBatches) {
-          rayletClient.notifyBlocked(batch, false, taskId);
+          rayletClient.fetchOrReconstruct(batch, false, taskId);
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy

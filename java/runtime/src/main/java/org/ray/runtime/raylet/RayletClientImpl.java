@@ -87,12 +87,12 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void notifyBlocked(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
     if (RayLog.core.isInfoEnabled()) {
       RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeNotifyBlocked(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly, currentTaskId);
+    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly, currentTaskId);
   }
 
   @Override
@@ -271,7 +271,7 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeDestroy(long client);
 
-  private static native void nativeNotifyBlocked(long client, byte[][] objectIds,
+  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
       boolean fetchOnly, UniqueId currentTaskId);
 
   private static native void nativeNotifyUnblocked(long client, UniqueId currentTaskId);

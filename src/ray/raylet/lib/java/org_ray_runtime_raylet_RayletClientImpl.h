@@ -41,14 +41,14 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlo
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeNotifyBlocked
+ * Method:    nativeFetchOrReconstruct
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyBlocked(JNIEnv *, jclass,
-                                                                 jlong, jobjectArray,
-                                                                 jboolean,
-                                                                 jbyteArray);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(JNIEnv *, jclass,
+                                                                      jlong, jobjectArray,
+                                                                      jboolean,
+                                                                      jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

@@ -176,6 +176,16 @@ static PyObject *PyObjectID_hex(PyObject *self) {
   return result;
 }
 
+static PyObject *PyObjectID_is_nil(PyObject *self) {
+  ObjectID object_id;
+  PyObjectToUniqueID(self, &object_id);
+  if (object_id.is_nil()) {
+    Py_RETURN_TRUE;
+  } else {
+    Py_RETURN_FALSE;
+  }
+}
+
 static PyObject *PyObjectID_richcompare(PyObjectID *self, PyObject *other, int op) {
   PyObject *result = NULL;
   if (Py_TYPE(self)->tp_richcompare != Py_TYPE(other)->tp_richcompare) {
@@ -245,6 +255,8 @@ static PyMethodDef PyObjectID_methods[] = {
      "Return the redis shard that this ObjectID is associated with"},
     {"hex", (PyCFunction)PyObjectID_hex, METH_NOARGS,
      "Return the object ID as a string in hex."},
+    {"is_nil", (PyCFunction)PyObjectID_is_nil, METH_NOARGS,
+     "Return whether the ObjectID is nil"},
     {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_NOARGS,
      "Say how to pickle this ObjectID. This raises an exception to prevent"
      "object IDs from being serialized."},

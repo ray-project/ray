@@ -72,7 +72,8 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
 }
 // clang-format on
 
-static PyObject *PyLocalSchedulerClient_notify_blocked(PyObject *self, PyObject *args) {
+static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
+                                                             PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
   std::vector<ObjectID> object_ids;
@@ -91,7 +92,7 @@ static PyObject *PyLocalSchedulerClient_notify_blocked(PyObject *self, PyObject 
     }
     object_ids.push_back(object_id);
   }
-  local_scheduler_notify_blocked(
+  local_scheduler_fetch_or_reconstruct(
       reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
       object_ids, fetch_only, current_task_id);
   Py_RETURN_NONE;
@@ -370,8 +371,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction)PyLocalSchedulerClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"notify_blocked", (PyCFunction)PyLocalSchedulerClient_notify_blocked, METH_VARARGS,
-     "Ask the local scheduler to reconstruct an object."},
+    {"fetch_or_reconstruct", (PyCFunction)PyLocalSchedulerClient_fetch_or_reconstruct,
+     METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
     {"notify_unblocked", (PyCFunction)PyLocalSchedulerClient_notify_unblocked,
      METH_VARARGS, "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyLocalSchedulerClient_compute_put_id, METH_VARARGS,

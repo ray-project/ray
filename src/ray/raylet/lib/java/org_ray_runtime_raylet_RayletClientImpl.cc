@@ -118,11 +118,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestro
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeNotifyBlocked
+ * Method:    nativeFetchOrReconstruct
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyBlocked(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
     JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly,
     jbyteArray currentTaskId) {
   std::vector<ObjectID> object_ids;
@@ -136,7 +136,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyBlocked(
   }
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_notify_blocked(conn, object_ids, fetchOnly, *current_task_id.PID);
+  local_scheduler_fetch_or_reconstruct(conn, object_ids, fetchOnly, *current_task_id.PID);
 }
 
 /*
