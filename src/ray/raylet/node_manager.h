@@ -206,9 +206,8 @@ class NodeManager {
   /// Handle a task that is unblocked. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
   /// or a driver task. This can be triggered when a client finishes a get call
-  /// or a wait call. It is ok to call this even if the task is not actually
-  /// blocked.
-  ///
+  /// or a wait call. The given task must be blocked, via a previous call to
+  /// HandleTaskBlocked.
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.

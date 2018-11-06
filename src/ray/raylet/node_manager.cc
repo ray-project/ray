@@ -741,18 +741,19 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < message->object_ids()->size(); ++i) {
     ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));
-    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-      if (message->fetch_only()) {
-        // If only a fetch is required, then do not subscribe to the
-        // dependencies to the task dependency manager.
+    if (message->fetch_only()) {
+      // If only a fetch is required, then do not subscribe to the
+      // dependencies to the task dependency manager.
+      if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+        // Fetch the object if it's not already local.
         RAY_CHECK_OK(object_manager_.Pull(object_id));
-      } else {
-        // If reconstruction is also required, then add any missing objects
-        // to the list to subscribe to in the task dependency manager. These
-        // objects will be pulled from remote node managers and reconstructed
-        // if necessary.
-        required_object_ids.push_back(object_id);
       }
+    } else {
+      // If reconstruction is also required, then add any requested objects to
+      // the list to subscribe to in the task dependency manager. These objects
+      // will be pulled from remote node managers and reconstructed if
+      // necessary.
+      required_object_ids.push_back(object_id);
     }
   }
 
@@ -789,8 +790,8 @@ void NodeManager::ProcessWaitRequestMessage(
 
   ray::Status status = object_manager_.Wait(
       object_ids, wait_ms, num_required_objects, wait_local,
-      [this, client, current_task_id](std::vector<ObjectID> found,
-                                      std::vector<ObjectID> remaining) {
+      [this, client_blocked, client, current_task_id](std::vector<ObjectID> found,
+                                                      std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -802,7 +803,9 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetSize(), fbb.GetBufferPointer());
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
-          HandleTaskUnblocked(client, current_task_id);
+          if (client_blocked) {
+            HandleTaskUnblocked(client, current_task_id);
+          }
         } else {
           // We failed to write to the client, so disconnect the client.
           RAY_LOG(WARNING)
@@ -1175,12 +1178,11 @@ void NodeManager::HandleTaskUnblocked(
   RAY_CHECK(worker);
   // If the task was previously blocked, then stop waiting for its dependencies
   // and mark the task as unblocked.
-  if (worker->RemoveBlockedTaskId(current_task_id)) {
-    // Unsubscribe to the objects. Any fetch or reconstruction operations to
-    // make the objects local are canceled.
-    task_dependency_manager_.UnsubscribeDependencies(current_task_id);
-    local_queues_.RemoveBlockedTaskId(current_task_id);
-  }
+  worker->RemoveBlockedTaskId(current_task_id);
+  // Unsubscribe to the objects. Any fetch or reconstruction operations to
+  // make the objects local are canceled.
+  task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+  local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
