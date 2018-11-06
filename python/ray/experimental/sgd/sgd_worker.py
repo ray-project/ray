@@ -62,9 +62,10 @@ class SGDWorker(object):
                         grad_ops.append(grads)
 
         if num_devices == 1:
-            assert not max_bytes, \
-                "grad_shard_bytes > 0 ({}) requires num_devices > 1".format(
-                    max_bytes)
+            if max_bytes:
+                raise ValueError(
+                    "Implementation limitation: grad_shard_bytes > 0 "
+                    "({}) currently requires > 1 device".format(max_bytes))
             self.packed_grads_and_vars = grad_ops
         else:
             if max_bytes:
