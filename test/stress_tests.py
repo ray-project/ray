@@ -507,7 +507,7 @@ def test_driver_put_errors(ray_start_driver_put_errors):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.local_scheduler_client.reconstruct_objects(
+    ray.worker.global_worker.local_scheduler_client.fetch_or_reconstruct(
         [args[0]], False)
 
     def error_check(errors):
