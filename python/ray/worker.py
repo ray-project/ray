@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
 import atexit
 import colorama
 import hashlib
@@ -10,6 +11,7 @@ import logging
 import numpy as np
 import os
 import redis
+import setproctitle
 import signal
 import sys
 import threading
@@ -899,8 +901,15 @@ class Worker(object):
                 "name": function_name,
                 "task_id": task.task_id().hex()
             }
+            if task.actor_id().id() == NIL_ACTOR_ID:
+                title = "ray_worker:{}()".format(function_name)
+            else:
+                actor = self.actors[task.actor_id().id()]
+                title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                             function_name)
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                self._process_task(task, execution_info)
+                with _changeproctitle(title):
+                    self._process_task(task, execution_info)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1844,6 +1853,7 @@ def connect(info,
     # Initialize some fields.
     if mode is WORKER_MODE:
         worker.worker_id = random_string()
+        setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
@@ -2085,6 +2095,14 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
+
+
+@contextmanager
+def _changeproctitle(title):
+    old_title = setproctitle.getproctitle()
+    setproctitle.setproctitle(title)
+    yield
+    setproctitle.setproctitle(old_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
