@@ -26,7 +26,7 @@ Then, pass a model creator function to the ``ray.experimental.sgd.DistributedSGD
         strategy="ps")
 
     for i in range(NUM_ITERS):
-        print(sgd.step(fetch_stats=True))
+        sgd.step()
 
 Under the hood, Ray SGD will create *replicas* of your model onto each hardware device (GPU) allocated to workers (controlled by ``num_workers``). Multiple devices can be managed by each worker process (controlled by ``devices_per_worker``). Each model instance will be in a separate TF variable scope. The ``DistributedSGD`` class coordinates the distributed computation and application of gradients to improve the model.
 
