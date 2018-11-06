@@ -340,6 +340,10 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
         --num-workers=2 --devices-per-worker=2 --strategy=ps
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=20 \
+        --num-workers=2 --devices-per-worker=2 --strategy=ps --tune
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --run A3C \

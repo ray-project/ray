@@ -19,6 +19,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 
 import ray
+from ray.tune import run_experiments
 from ray.tune.examples.tune_mnist_ray import deepnn
 from ray.experimental.sgd.model import Model
 from ray.experimental.sgd.sgd import DistributedSGD
@@ -30,6 +31,7 @@ parser.add_argument("--num-iters", default=10000, type=int)
 parser.add_argument("--batch-size", default=50, type=int)
 parser.add_argument("--num-workers", default=1, type=int)
 parser.add_argument("--devices-per-worker", default=1, type=int)
+parser.add_argument("--tune", action="store_true", help="Run in Ray Tune")
 parser.add_argument(
     "--strategy", default="ps", type=str, help="One of 'simple' or 'ps'")
 parser.add_argument(
@@ -85,10 +87,8 @@ class MNISTModel(Model):
             })
 
 
-if __name__ == "__main__":
-    args = parser.parse_args()
-    ray.init(redis_address=args.redis_address)
-
+def train_mnist(config, reporter):
+    args = config["args"]
     sgd = DistributedSGD(
         lambda w_i, d_i: MNISTModel(),
         num_workers=args.num_workers,
@@ -108,5 +108,23 @@ if __name__ == "__main__":
             print("Iter", i, "loss", loss, "accuracy", acc)
             print("Time per iteration", time.time() - start)
             assert len(set(acc)) == 1, ("Models out of sync", acc)
+            reporter(timesteps_total=i, mean_loss=loss, mean_accuracy=acc[0])
         else:
             sgd.step()
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    ray.init(redis_address=args.redis_address)
+
+    if args.tune:
+        run_experiments({
+            "mnist_sgd": {
+                "run": train_mnist,
+                "config": {
+                    "args": args,
+                },
+            },
+        })
+    else:
+        train_mnist({"args": args}, lambda d: None)
