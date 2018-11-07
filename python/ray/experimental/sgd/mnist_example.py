@@ -42,16 +42,18 @@ parser.add_argument(
 class MNISTModel(Model):
     def __init__(self):
         # Import data
-        e = None
+        error = None
         for _ in range(10):
             try:
                 self.mnist = input_data.read_data_sets(
                     "/tmp/tensorflow/mnist/input_data", one_hot=True)
+                error = None
                 break
             except Exception as e:
+                error = e
                 time.sleep(5)
-        if not hasattr(self, "mnist"):
-            raise ValueError("Failed to import data", e)
+        if error:
+            raise ValueError("Failed to import data", error)
 
         # Set seed and build layers
         tf.set_random_seed(0)
