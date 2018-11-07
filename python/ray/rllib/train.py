@@ -119,8 +119,8 @@ def run(args, parser):
         for _ in range(args.ray_num_local_schedulers):
             cluster.add_node(
                 resources={
-                    "num_cpus": args.ray_num_cpus,
-                    "num_gpus": args.ray_num_gpus,
+                    "num_cpus": args.ray_num_cpus or 1,
+                    "num_gpus": args.ray_num_gpus or 0,
                 },
                 object_store_memory=args.ray_object_store_memory)
         ray.init(redis_address=cluster.redis_address)
