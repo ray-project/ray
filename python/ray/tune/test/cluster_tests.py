@@ -2,7 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import json
+import tempfile
 import pytest
+try:
+    import pytest_timeout
+except ModuleNotFoundError as e:
+    pytest_timeout = None
 
 from ray.test.cluster_utils import Cluster
 import ray
@@ -17,10 +24,15 @@ from ray.tune.suggest import grid_search, BasicVariantGenerator
 @pytest.fixture
 def start_connected_cluster():
     # Start the Ray processes.
+
     cluster = Cluster(
         initialize_head=True, connect=True,
-        head_node_args={"resources": dict(CPU=1)})
+        head_node_args={
+            "resources": dict(CPU=1),
+            "internal_config": json.dumps(
+                {"num_heartbeats_timeout": 10})})
     yield cluster
+    os.unlink(path)
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -83,6 +95,9 @@ def test_counting_resources(start_connected_cluster):
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
 
+@pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
+    " not installed; skipping test that may hang.")
+@pytest.mark.timeout(10, method="thread")
 def test_remove_node_before_result(start_connected_cluster):
     """Removing a node should cause a Trial to be requeued."""
     cluster = start_connected_cluster
@@ -108,7 +123,9 @@ def test_remove_node_before_result(start_connected_cluster):
     print(runner.debug_string())
 
     cluster.remove_node(node)
-
+    cluster.wait_for_nodes()
+    print("\n"*5)
+    print("!!!!!!!!!!!!!!!! Finished")
     runner.step()  # recover
     for i in range(5):
         runner.step()
@@ -143,6 +160,7 @@ def test_trial_migration(start_connected_cluster):
     print(runner.debug_string())
 
     cluster.remove_node(node)
+    cluster.wait_for_nodes()
     node2 = cluster.add_node(resources=dict(CPU=1))
 
     runner.step()  # recover
