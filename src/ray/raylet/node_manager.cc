@@ -61,7 +61,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
-          std::make_shared<ObjectDirectory>(gcs_client),
+          std::make_shared<ObjectDirectory>(io_service, gcs_client),
           gcs_client_->task_reconstruction_log()),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
@@ -304,14 +304,13 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // Establish a new NodeManager connection to this GCS client.
-  auto client_info = gcs_client_->client_table().GetClient(client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id << " at "
-                 << client_info.node_manager_address << ":"
-                 << client_info.node_manager_port;
+                 << client_data.node_manager_address << ":"
+                 << client_data.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
   auto status =
-      TcpConnect(socket, client_info.node_manager_address, client_info.node_manager_port);
+      TcpConnect(socket, client_data.node_manager_address, client_data.node_manager_port);
   // A disconnected client has 2 entries in the client table (one for being
   // inserted and one for being removed). When a new raylet starts, ClientAdded
   // will be called with the disconnected client's first entry, which will cause
@@ -1555,8 +1554,6 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
 
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
-
-  auto client_info = gcs_client_->client_table().GetClient(node_id);
 
   // Lookup remote server connection for this node_id and use it to send the request.
   auto it = remote_server_connections_.find(node_id);

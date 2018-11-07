@@ -517,12 +517,6 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
 
     // Set the local client's ID.
     local_client_.client_id = client_id.binary();
-
-    // Add a nil client to the cache so that we can serve requests for clients
-    // that we have not heard about.
-    ClientTableDataT nil_client;
-    nil_client.client_id = ClientID::nil().binary();
-    client_cache_[ClientID::nil()] = nil_client;
   };
 
   /// Connect as a client to the GCS. This registers us in the client table
@@ -560,9 +554,11 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// information for clients that we've heard a notification for.
   ///
   /// \param client The client to get information about.
-  /// \return A reference to the requested client. If the client is not in the
-  /// cache, then an entry with a nil ClientID will be returned.
-  const ClientTableDataT &GetClient(const ClientID &client) const;
+  /// \param A reference to the client information. If we have information
+  /// about the client in the cache, then the reference will be modified to
+  /// contain that information. Else, the reference will be updated to contain
+  /// a nil client ID.
+  void GetClient(const ClientID &client, ClientTableDataT &client_info) const;
 
   /// Get the local client's ID.
   ///
