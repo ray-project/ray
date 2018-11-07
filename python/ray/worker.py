@@ -1292,7 +1292,7 @@ def _init(address_info=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
           temp_dir=None,
-          config_file=None):
+          internal_config=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1354,6 +1354,8 @@ def _init(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1427,7 +1429,7 @@ def _init(address_info=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
-            config_file=config_file)
+            internal_config=internal_config)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1530,7 +1532,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
-         config_file=None,
+         internal_config=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1602,6 +1604,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1660,7 +1664,7 @@ def init(redis_address=None,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        config_file=config_file)
+        internal_config=internal_config)
     for hook in _post_init_hooks:
         hook()
     return ret
