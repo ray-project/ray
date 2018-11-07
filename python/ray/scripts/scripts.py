@@ -411,7 +411,7 @@ def stop():
             if "/tmp/ray" in server["notebook_dir"]
         ]
         subprocess.call(
-            ["kill {} 2> /dev/null".format(" ".join(pids))], shell=True)
+            ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
     except ImportError:
         pass
 
