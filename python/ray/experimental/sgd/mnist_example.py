@@ -42,6 +42,7 @@ parser.add_argument(
 class MNISTModel(Model):
     def __init__(self):
         # Import data
+        e = None
         for _ in range(10):
             try:
                 self.mnist = input_data.read_data_sets(
