@@ -132,7 +132,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         self.preprocessors = []
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
-            logger.info("Creating sub-preprocessor for {}".format(space))
+            logger.debug("Creating sub-preprocessor for {}".format(space))
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size
@@ -157,7 +157,7 @@ class DictFlatteningPreprocessor(Preprocessor):
         size = 0
         self.preprocessors = []
         for space in self._obs_space.spaces.values():
-            logger.info("Creating sub-preprocessor for {}".format(space))
+            logger.debug("Creating sub-preprocessor for {}".format(space))
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += preprocessor.size
