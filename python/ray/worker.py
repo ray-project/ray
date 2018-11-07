@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
 import atexit
 import colorama
 import hashlib
@@ -10,6 +11,7 @@ import logging
 import numpy as np
 import os
 import redis
+import setproctitle
 import signal
 import sys
 import threading
@@ -900,8 +902,15 @@ class Worker(object):
                 "name": function_name,
                 "task_id": task.task_id().hex()
             }
+            if task.actor_id().id() == NIL_ACTOR_ID:
+                title = "ray_worker:{}()".format(function_name)
+            else:
+                actor = self.actors[task.actor_id().id()]
+                title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                             function_name)
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                self._process_task(task, execution_info)
+                with _changeproctitle(title):
+                    self._process_task(task, execution_info)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -919,7 +928,7 @@ class Worker(object):
         Returns:
             A task from the local scheduler.
         """
-        with profiling.profile("get_task", worker=self):
+        with profiling.profile("worker_idle", worker=self):
             task = self.local_scheduler_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -1280,6 +1289,7 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
+          driver_id=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
           temp_dir=None):
@@ -1337,6 +1347,7 @@ def _init(address_info=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        driver_id: The ID of driver.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1456,6 +1467,7 @@ def _init(address_info=None,
         if raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -1486,6 +1498,7 @@ def _init(address_info=None,
         object_id_seed=object_id_seed,
         mode=driver_mode,
         worker=global_worker,
+        driver_id=driver_id,
         redis_password=redis_password)
     return address_info
 
@@ -1509,12 +1522,14 @@ def init(redis_address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=True,
+         driver_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
-         temp_dir=None):
+         temp_dir=None,
+         use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1573,6 +1588,7 @@ def init(redis_address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        driver_id: The ID of driver.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be loging.INFO.
@@ -1592,6 +1608,15 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Add the use_raylet option for backwards compatibility.
+    if use_raylet is not None:
+        if use_raylet:
+            logger.warn("WARNING: The use_raylet argument has been "
+                        "deprecated. Please remove it.")
+        else:
+            raise DeprecationWarning("The use_raylet argument is deprecated. "
+                                     "Please remove it.")
+
     if configure_logging:
         logging.basicConfig(level=logging_level, format=logging_format)
 
@@ -1629,6 +1654,7 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
+        driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir)
@@ -1775,12 +1801,6 @@ def print_error_messages(worker):
     worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
     num_errors_received = 0
 
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
@@ -1788,11 +1808,7 @@ def print_error_messages(worker):
             if error_applies_to_driver(error_key, worker=worker):
                 error_message = ray.utils.decode(
                     worker.redis_client.hget(error_key, "message"))
-                if error_message not in old_error_messages:
-                    logger.error(error_message)
-                    old_error_messages.add(error_message)
-                else:
-                    logger.error("Suppressing duplicate error message.")
+                logger.error(error_message)
             num_errors_received += 1
 
     try:
@@ -1803,12 +1819,7 @@ def print_error_messages(worker):
                     if error_applies_to_driver(error_key, worker=worker):
                         error_message = ray.utils.decode(
                             worker.redis_client.hget(error_key, "message"))
-                        if error_message not in old_error_messages:
-                            logger.error(error_message)
-                            old_error_messages.add(error_message)
-                        else:
-                            logger.error(
-                                "Suppressing duplicate error message.")
+                        logger.error(error_message)
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -1820,6 +1831,7 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
+            driver_id=None,
             redis_password=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
@@ -1830,6 +1842,7 @@ def connect(info,
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
+        driver_id: The ID of driver. If it's None, then we will generate one.
         redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
     """
@@ -1837,8 +1850,21 @@ def connect(info,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
+
     # Initialize some fields.
-    worker.worker_id = random_string()
+    if mode is WORKER_MODE:
+        worker.worker_id = random_string()
+        setproctitle.setproctitle("ray_worker")
+    else:
+        # This is the code path of driver mode.
+        if driver_id is None:
+            driver_id = ray.ObjectID(random_string())
+
+        if not isinstance(driver_id, ray.ObjectID):
+            raise Exception(
+                "The type of given driver id must be ray.ObjectID.")
+
+        worker.worker_id = driver_id.id()
 
     # When tasks are executed on remote workers in the context of multiple
     # drivers, the task driver ID is used to keep track of which driver is
@@ -1903,8 +1929,9 @@ def connect(info,
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
-                info["redis_address"], info["node_ip_address"],
-                [log_stdout_file, log_stderr_file])
+                info["redis_address"],
+                info["node_ip_address"], [log_stdout_file, log_stderr_file],
+                password=redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
@@ -2069,6 +2096,14 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
+
+
+@contextmanager
+def _changeproctitle(title):
+    old_title = setproctitle.getproctitle()
+    setproctitle.setproctitle(title)
+    yield
+    setproctitle.setproctitle(old_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):

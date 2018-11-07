@@ -50,7 +50,7 @@ class ApexAgent(DQNAgent):
     def default_resource_request(cls, config):
         cf = merge_dicts(cls._default_config, config)
         return Resources(
-            cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
+            cpu=1,
             gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])

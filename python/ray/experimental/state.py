@@ -162,22 +162,26 @@ class GlobalState(object):
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
                                         object_id.id())
-        result = []
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
-        for i in range(gcs_entry.EntriesLength()):
+        assert gcs_entry.EntriesLength() > 0
+
+        entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
+            gcs_entry.Entries(0), 0)
+
+        object_info = {
+            "DataSize": entry.ObjectSize(),
+            "Manager": entry.Manager(),
+            "IsEviction": [entry.IsEviction()],
+        }
+
+        for i in range(1, gcs_entry.EntriesLength()):
             entry = ray.gcs_utils.ObjectTableData.GetRootAsObjectTableData(
                 gcs_entry.Entries(i), 0)
-            object_info = {
-                "DataSize": entry.ObjectSize(),
-                "Manager": entry.Manager(),
-                "IsEviction": entry.IsEviction(),
-                "NumEvictions": entry.NumEvictions()
-            }
-            result.append(object_info)
+            object_info["IsEviction"].append(entry.IsEviction())
 
-        return result
+        return object_info
 
     def object_table(self, object_id=None):
         """Fetch and parse the object table info for one or more object IDs.
@@ -224,44 +228,42 @@ class GlobalState(object):
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
-        info = []
-        for i in range(gcs_entries.EntriesLength()):
-            task_table_message = ray.gcs_utils.Task.GetRootAsTask(
-                gcs_entries.Entries(i), 0)
+        assert gcs_entries.EntriesLength() == 1
 
-            execution_spec = task_table_message.TaskExecutionSpec()
-            task_spec = task_table_message.TaskSpecification()
-            task_spec = ray.raylet.task_from_string(task_spec)
-            task_spec_info = {
-                "DriverID": binary_to_hex(task_spec.driver_id().id()),
-                "TaskID": binary_to_hex(task_spec.task_id().id()),
-                "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-                "ParentCounter": task_spec.parent_counter(),
-                "ActorID": binary_to_hex(task_spec.actor_id().id()),
-                "ActorCreationID": binary_to_hex(
-                    task_spec.actor_creation_id().id()),
-                "ActorCreationDummyObjectID": binary_to_hex(
-                    task_spec.actor_creation_dummy_object_id().id()),
-                "ActorCounter": task_spec.actor_counter(),
-                "FunctionID": binary_to_hex(task_spec.function_id().id()),
-                "Args": task_spec.arguments(),
-                "ReturnObjectIDs": task_spec.returns(),
-                "RequiredResources": task_spec.required_resources()
-            }
+        task_table_message = ray.gcs_utils.Task.GetRootAsTask(
+            gcs_entries.Entries(0), 0)
 
-            info.append({
-                "ExecutionSpec": {
-                    "Dependencies": [
-                        execution_spec.Dependencies(i)
-                        for i in range(execution_spec.DependenciesLength())
-                    ],
-                    "LastTimestamp": execution_spec.LastTimestamp(),
-                    "NumForwards": execution_spec.NumForwards()
-                },
-                "TaskSpec": task_spec_info
-            })
+        execution_spec = task_table_message.TaskExecutionSpec()
+        task_spec = task_table_message.TaskSpecification()
+        task_spec = ray.raylet.task_from_string(task_spec)
+        task_spec_info = {
+            "DriverID": binary_to_hex(task_spec.driver_id().id()),
+            "TaskID": binary_to_hex(task_spec.task_id().id()),
+            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
+            "ParentCounter": task_spec.parent_counter(),
+            "ActorID": binary_to_hex(task_spec.actor_id().id()),
+            "ActorCreationID": binary_to_hex(
+                task_spec.actor_creation_id().id()),
+            "ActorCreationDummyObjectID": binary_to_hex(
+                task_spec.actor_creation_dummy_object_id().id()),
+            "ActorCounter": task_spec.actor_counter(),
+            "FunctionID": binary_to_hex(task_spec.function_id().id()),
+            "Args": task_spec.arguments(),
+            "ReturnObjectIDs": task_spec.returns(),
+            "RequiredResources": task_spec.required_resources()
+        }
 
-        return info
+        return {
+            "ExecutionSpec": {
+                "Dependencies": [
+                    execution_spec.Dependencies(i)
+                    for i in range(execution_spec.DependenciesLength())
+                ],
+                "LastTimestamp": execution_spec.LastTimestamp(),
+                "NumForwards": execution_spec.NumForwards()
+            },
+            "TaskSpec": task_spec_info
+        }
 
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
@@ -623,7 +625,7 @@ class GlobalState(object):
         # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
         default_color_mapping = defaultdict(
             lambda: "generic_work", {
-                "get_task": "cq_build_abandoned",
+                "worker_idle": "cq_build_abandoned",
                 "task": "rail_response",
                 "task:deserialize_arguments": "rail_load",
                 "task:execute": "rail_animation",

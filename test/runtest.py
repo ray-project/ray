@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import os
 import re
+import setproctitle
 import string
+import subprocess
 import sys
 import threading
 import time
@@ -1015,7 +1017,7 @@ def test_profiling_api(shutdown_only):
         profile_data = ray.global_state.chrome_tracing_dump()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "get_task",
+            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
@@ -2115,8 +2117,7 @@ def test_global_state_api(shutdown_only):
     task_table = ray.global_state.task_table()
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
-    assert len(task_table[driver_task_id]) == 1
-    task_spec = task_table[driver_task_id][0]["TaskSpec"]
+    task_spec = task_table[driver_task_id]["TaskSpec"]
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
@@ -2147,7 +2148,7 @@ def test_global_state_api(shutdown_only):
     task_id = list(task_id_set)[0]
 
     function_table = ray.global_state.function_table()
-    task_spec = task_table[task_id][0]["TaskSpec"]
+    task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
@@ -2178,13 +2179,9 @@ def test_global_state_api(shutdown_only):
     object_table = ray.global_state.object_table()
     assert len(object_table) == 2
 
-    assert len(object_table[x_id]) == 1
-    assert object_table[x_id][0]["IsEviction"] is False
-    assert object_table[x_id][0]["NumEvictions"] == 0
+    assert object_table[x_id]["IsEviction"][0] is False
 
-    assert len(object_table[result_id]) == 1
-    assert object_table[result_id][0]["IsEviction"] is False
-    assert object_table[result_id][0]["NumEvictions"] == 0
+    assert object_table[result_id]["IsEviction"][0] is False
 
     assert object_table[x_id] == ray.global_state.object_table(x_id)
     object_table_entry = ray.global_state.object_table(result_id)
@@ -2251,76 +2248,20 @@ def test_workers(shutdown_only):
         assert "stdout_file" in info
 
 
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-def test_flush_api(shutdown_only):
-    ray.init(num_cpus=1)
+def test_specific_driver_id():
+    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    ray.init(driver_id=dummy_driver_id)
 
     @ray.remote
     def f():
-        return 1
+        return ray.worker.global_worker.task_driver_id.id()
 
-    [ray.put(1) for _ in range(10)]
-    ray.get([f.remote() for _ in range(10)])
+    assert_equal(dummy_driver_id.id(), ray.worker.global_worker.worker_id)
 
-    # Wait until all of the task and object information has been stored in
-    # Redis. Note that since a given key may be updated multiple times
-    # (e.g., multiple calls to TaskTableUpdate), this is an attempt to wait
-    # until all updates have happened. Note that in a real application we
-    # could encounter this kind of issue as well.
-    while True:
-        object_table = ray.global_state.object_table()
-        task_table = ray.global_state.task_table()
+    task_driver_id = ray.get(f.remote())
+    assert_equal(dummy_driver_id.id(), task_driver_id)
 
-        tables_ready = True
-
-        if len(object_table) != 20:
-            tables_ready = False
-
-        for object_info in object_table.values():
-            if len(object_info) != 5:
-                tables_ready = False
-            if (object_info["ManagerIDs"] is None
-                    or object_info["DataSize"] == -1
-                    or object_info["Hash"] == ""):
-                tables_ready = False
-
-        if len(task_table) != 10 + 1:
-            tables_ready = False
-
-        driver_task_id = ray.utils.binary_to_hex(
-            ray.worker.global_worker.current_task_id.id())
-
-        for info in task_table.values():
-            if info["State"] != ray.experimental.state.TASK_STATUS_DONE:
-                if info["TaskSpec"]["TaskID"] != driver_task_id:
-                    tables_ready = False
-
-        if tables_ready:
-            break
-        # this test case is blocked sometimes, add this may fix the problem
-        time.sleep(0.1)
-
-    # Flush the tables.
-    ray.experimental.flush_redis_unsafe()
-    ray.experimental.flush_task_and_object_metadata_unsafe()
-
-    # Make sure the tables are empty.
-    assert len(ray.global_state.object_table()) == 0
-    assert len(ray.global_state.task_table()) == 0
-
-    # Run some more tasks.
-    ray.get([f.remote() for _ in range(10)])
-
-    while len(ray.global_state.task_table()) != 0:
-        time.sleep(0.1)
-        ray.experimental.flush_finished_tasks_unsafe()
-
-    # Make sure that we can call this method (but it won't do anything in
-    # this test case).
-    ray.experimental.flush_evicted_objects_unsafe()
+    ray.shutdown()
 
 
 @pytest.fixture
@@ -2357,3 +2298,58 @@ def test_wait_reconstruction(shutdown_only):
         ray.pyarrow.plasma.ObjectID(x_id.id()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
+
+
+def test_ray_setproctitle(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class UniqueName(object):
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:f()"
+
+    @ray.remote
+    def unique_1():
+        assert setproctitle.getproctitle() == "ray_worker:runtest.unique_1()"
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.remote())
+    ray.get(unique_1.remote())
+
+
+@pytest.mark.skipif(
+    os.getenv("TRAVIS") is None,
+    reason="This test should only be run on Travis.")
+def test_ray_stack(shutdown_only):
+    ray.init(num_cpus=2)
+
+    def unique_name_1():
+        time.sleep(1000)
+
+    @ray.remote
+    def unique_name_2():
+        time.sleep(1000)
+
+    @ray.remote
+    def unique_name_3():
+        unique_name_1()
+
+    unique_name_2.remote()
+    unique_name_3.remote()
+
+    success = False
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        # Attempt to parse the "ray stack" call.
+        output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
+        if ("unique_name_1" in output and "unique_name_2" in output
+                and "unique_name_3" in output):
+            success = True
+            break
+
+    if not success:
+        raise Exception("Failed to find necessary information with "
+                        "'ray stack'")

@@ -168,16 +168,12 @@ def _configure_iam_role(config):
 
     _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES)
 
-    # NOTE: The amount of access is determined by the scope + IAM
-    # role of the service account. Even if the cloud-platform scope
-    # gives (scope) access to the whole cloud-platform, the service
-    # account is limited by the IAM rights specified below.
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
-        "scopes": ["https://www.googleapis.com/auth/cloud-platform"]
-    }]
-    config["worker_nodes"]["serviceAccounts"] = [{
-        "email": service_account["email"],
+        # NOTE: The amount of access is determined by the scope + IAM
+        # role of the service account. Even if the cloud-platform scope
+        # gives (scope) access to the whole cloud-platform, the service
+        # account is limited by the IAM rights specified below.
         "scopes": ["https://www.googleapis.com/auth/cloud-platform"]
     }]
 

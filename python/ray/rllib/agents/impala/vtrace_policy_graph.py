@@ -14,7 +14,6 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 
@@ -140,9 +139,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
         action_dist = dist_class(self.model.outputs)
-        values = tf.reshape(
-            linear(self.model.last_layer, 1, "value", normc_initializer(1.0)),
-            [-1])
+        values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
@@ -251,7 +248,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth
         return sample_batch
 

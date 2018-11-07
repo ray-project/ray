@@ -64,7 +64,9 @@ class TFPolicyGraph(PolicyGraph):
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory(),
-                and has shape [BATCH_SIZE, data...].
+                and has shape [BATCH_SIZE, data...]. These keys will be read
+                from postprocessed sample batches and fed into the specified
+                placeholders during loss computation.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
