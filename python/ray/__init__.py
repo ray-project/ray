@@ -61,8 +61,7 @@ import ray.internal  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 
-# Ray version string. TODO(rkn): This is also defined separately in setup.py.
-# Fix this.
+# Ray version string.
 __version__ = "0.5.3"
 
 __all__ = [
