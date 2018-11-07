@@ -14,7 +14,6 @@ import subprocess
 import sys
 import threading
 import time
-import yaml
 from collections import OrderedDict
 import redis
 
@@ -1253,7 +1252,7 @@ def start_ray_processes(address_info=None,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
                         temp_dir=None,
-                        config_file=None):
+                        internal_config=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1318,6 +1317,8 @@ def start_ray_processes(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1329,10 +1330,7 @@ def start_ray_processes(address_info=None,
     logger.info("Process STDOUT and STDERR is being redirected to {}.".format(
         get_logs_dir_path()))
 
-    config = None
-    if config_file:
-        with open(config_file) as f:
-            config = yaml.load(f)
+    config = json.loads(internal_config) if internal_config else None
 
     if resources is None:
         resources = {}
@@ -1508,7 +1506,7 @@ def start_ray_node(node_ip_address,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None,
-                   config_file=None):
+                   internal_config=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1552,6 +1550,8 @@ def start_ray_node(node_ip_address,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1580,7 +1580,7 @@ def start_ray_node(node_ip_address,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        config_file=config_file)
+        internal_config=internal_config)
 
 
 def start_ray_head(address_info=None,
@@ -1608,7 +1608,7 @@ def start_ray_head(address_info=None,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
                    temp_dir=None,
-                   config_file=None):
+                   internal_config=None):
     """Start Ray in local mode.
 
     Args:
@@ -1669,6 +1669,8 @@ def start_ray_head(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1702,4 +1704,4 @@ def start_ray_head(address_info=None,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        config_file=config_file)
+        internal_config=internal_config)
