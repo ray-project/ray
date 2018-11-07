@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import os
 import pytest
@@ -216,7 +217,10 @@ def ray_start_reconstruction(request):
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
-        redirect_output=True)
+        redirect_output=True,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
 
     yield (redis_ip_address, redis_port, plasma_store_memory,
            num_local_schedulers)
@@ -249,7 +253,6 @@ def ray_start_reconstruction(request):
     ray.shutdown()
 
 
-@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -291,7 +294,6 @@ def test_simple(ray_start_reconstruction):
         del values
 
 
-@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -348,7 +350,6 @@ def test_recursive(ray_start_reconstruction):
         del values
 
 
-@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
