@@ -259,8 +259,8 @@ ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
     exit(1);
   }
   if (type != static_cast<int64_t>(MessageType::ExecuteTask)) {
-    RAY_LOG(FATAL) <<
-        "Problem communicating with raylet from worker: check logs or dmesg for previous errors.";
+    RAY_LOG(FATAL) << "Problem communicating with raylet from worker: check logs or "
+                      "dmesg for previous errors.";
   }
 
   // Parse the flatbuffer object.
@@ -341,9 +341,10 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     // Read result.
     read_message(conn->conn, &type, &reply_size, &reply);
   }
-  if (static_cast<ray::protocol::MessageType>(type) != ray::protocol::MessageType::WaitReply) {
-    RAY_LOG(FATAL) <<
-        "Problem communicating with raylet from worker: check logs or dmesg for previous errors.";
+  if (static_cast<ray::protocol::MessageType>(type) !=
+      ray::protocol::MessageType::WaitReply) {
+    RAY_LOG(FATAL) << "Problem communicating with raylet from worker: check logs or "
+                      "dmesg for previous errors.";
   }
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
