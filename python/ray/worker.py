@@ -1667,7 +1667,7 @@ def init(redis_address=None,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        internal_config=internal_config)
+        _internal_config=_internal_config)
     for hook in _post_init_hooks:
         hook()
     return ret
