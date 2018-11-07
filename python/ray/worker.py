@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
 import atexit
 import colorama
 import hashlib
@@ -10,6 +11,7 @@ import logging
 import numpy as np
 import os
 import redis
+import setproctitle
 import signal
 import sys
 import threading
@@ -899,8 +901,15 @@ class Worker(object):
                 "name": function_name,
                 "task_id": task.task_id().hex()
             }
+            if task.actor_id().id() == NIL_ACTOR_ID:
+                title = "ray_worker:{}()".format(function_name)
+            else:
+                actor = self.actors[task.actor_id().id()]
+                title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                             function_name)
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                self._process_task(task, execution_info)
+                with _changeproctitle(title):
+                    self._process_task(task, execution_info)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1283,7 +1292,7 @@ def _init(address_info=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
           temp_dir=None,
-          config_file=None):
+          _internal_config=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1345,6 +1354,8 @@ def _init(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1418,7 +1429,7 @@ def _init(address_info=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
-            config_file=config_file)
+            _internal_config=_internal_config)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1459,6 +1470,9 @@ def _init(address_info=None,
         if raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+        if _internal_config is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "_internal_config must not be provided.")
 
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
@@ -1521,7 +1535,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
-         config_file=None,
+         _internal_config=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1593,6 +1607,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1651,7 +1667,7 @@ def init(redis_address=None,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        config_file=config_file)
+        _internal_config=_internal_config)
     for hook in _post_init_hooks:
         hook()
     return ret
@@ -1795,12 +1811,6 @@ def print_error_messages(worker):
     worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
     num_errors_received = 0
 
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
@@ -1808,11 +1818,7 @@ def print_error_messages(worker):
             if error_applies_to_driver(error_key, worker=worker):
                 error_message = ray.utils.decode(
                     worker.redis_client.hget(error_key, "message"))
-                if error_message not in old_error_messages:
-                    logger.error(error_message)
-                    old_error_messages.add(error_message)
-                else:
-                    logger.error("Suppressing duplicate error message.")
+                logger.error(error_message)
             num_errors_received += 1
 
     try:
@@ -1823,12 +1829,7 @@ def print_error_messages(worker):
                     if error_applies_to_driver(error_key, worker=worker):
                         error_message = ray.utils.decode(
                             worker.redis_client.hget(error_key, "message"))
-                        if error_message not in old_error_messages:
-                            logger.error(error_message)
-                            old_error_messages.add(error_message)
-                        else:
-                            logger.error(
-                                "Suppressing duplicate error message.")
+                        logger.error(error_message)
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -1863,6 +1864,7 @@ def connect(info,
     # Initialize some fields.
     if mode is WORKER_MODE:
         worker.worker_id = random_string()
+        setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
@@ -1937,8 +1939,9 @@ def connect(info,
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
-                info["redis_address"], info["node_ip_address"],
-                [log_stdout_file, log_stderr_file])
+                info["redis_address"],
+                info["node_ip_address"], [log_stdout_file, log_stderr_file],
+                password=redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
@@ -2103,6 +2106,14 @@ def disconnect(worker=global_worker):
     worker.cached_functions_to_run = []
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
+
+
+@contextmanager
+def _changeproctitle(title):
+    old_title = setproctitle.getproctitle()
+    setproctitle.setproctitle(title)
+    yield
+    setproctitle.setproctitle(old_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):

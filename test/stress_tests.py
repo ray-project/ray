@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import os
 import pytest
@@ -102,6 +103,30 @@ def test_submitting_many_tasks(ray_start_sharded):
     assert ray.services.all_processes_alive()
 
 
+def test_submitting_many_actors_to_one(ray_start_sharded):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Worker(object):
+        def __init__(self, actor):
+            self.actor = actor
+
+        def ping(self):
+            return ray.get(self.actor.ping.remote())
+
+    a = Actor.remote()
+    workers = [Worker.remote(a) for _ in range(100)]
+    for _ in range(10):
+        out = ray.get([w.ping.remote() for w in workers])
+        assert out == [None for _ in workers]
+
+
 def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
@@ -192,7 +217,10 @@ def ray_start_reconstruction(request):
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
-        redirect_output=True)
+        redirect_output=True,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
 
     yield (redis_ip_address, redis_port, plasma_store_memory,
            num_local_schedulers)

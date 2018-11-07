@@ -165,11 +165,14 @@ class TestPolicyEvaluator(unittest.TestCase):
                 },
             })
         pg.train()
-        self.assertEqual(counts["sample"], 1)
+        pg.train()
+        pg.train()
+        pg.train()
+        self.assertEqual(counts["sample"], 4)
         self.assertGreater(counts["start"], 0)
         self.assertGreater(counts["end"], 0)
-        self.assertGreater(counts["step"], 50)
-        self.assertLess(counts["step"], 100)
+        self.assertGreater(counts["step"], 200)
+        self.assertLess(counts["step"], 400)
 
     def testQueryEvaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
