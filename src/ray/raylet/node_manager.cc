@@ -477,27 +477,20 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks(const Task* new_ready_task) {
+void NodeManager::DispatchTasks(const std::list<Task> &new_task_queue) {
 
-  // new_ready_task has just been added to the ready queue, and it is the
-  // only task which was added to the ready queue.
-  //
-  // Since DispatchTasks() is called every time a task is added to the ready
-  // queue, and every time a task finishes execution and resources become
-  // available, we are guaranteed that no other tasks in the ready queue are
-  // feasible, so we just need to check whether new_ready_task is feasible.
-  if (new_ready_task != nullptr) {
-    const auto &task_resources = new_ready_task->GetTaskSpecification().GetRequiredResources();
-    if (local_available_resources_.Contains(task_resources)) {
-      auto dispatched_task = local_queues_.RemoveTask(new_ready_task->GetTaskSpecification().TaskId());
-      AssignTask(dispatched_task);
-    }
-    return;
+  // If new_task_queue is not empty, schedule only tasks in this queue.
+  // This is because the previous time this function was invoked we
+  // already looked at all tasks in the ready queue, and we were not able
+  // to schedule any of those. Furthermore since the last call no new
+  // resources or worker became available (otehrwise we would have called
+  // this function). 
+  auto ready_tasks = new_task_queue;
+  if (ready_tasks.empty()) {
+    // Work with a copy of scheduled tasks.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    ready_tasks = local_queues_.GetReadyTasks();
   }
-
-  // Work with a copy of scheduled tasks.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  auto ready_tasks = local_queues_.GetReadyTasks();
   // Return if there are no tasks to schedule.
   if (ready_tasks.empty()) {
     return;
@@ -597,7 +590,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks(nullptr);
+    DispatchTasks({});
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -626,7 +619,7 @@ void NodeManager::ProcessGetTaskMessage(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks(nullptr);
+  DispatchTasks({});
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -715,7 +708,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "driver_id: " << worker->GetAssignedDriverId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks(nullptr);
+    DispatchTasks({});
   } else {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
@@ -1110,7 +1103,7 @@ void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
   local_queues_.QueueBlockedTasks({task});
   worker->MarkBlocked();
 
-  DispatchTasks(nullptr);
+  DispatchTasks({});
 }
 
 void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
@@ -1224,7 +1217,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
     // Try to dispatch the newly ready task.
-    DispatchTasks(&task);
+    DispatchTasks({task});
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
@@ -1335,7 +1328,7 @@ void NodeManager::AssignTask(Task &task) {
           // worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          DispatchTasks(nullptr);
+          AssignTask(task);
         }
       });
 }
@@ -1470,7 +1463,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
     // New ready tasks appeared in the queue, try to dispatch them.
-    DispatchTasks(nullptr);
+    DispatchTasks({});
 
     // Check that remaining tasks that could not be transitioned are blocked
     // workers or drivers.
