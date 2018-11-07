@@ -52,7 +52,7 @@ public class RayletClientImpl implements RayletClient {
     }
 
     boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
-        numReturns, timeoutMs, false, currentTaskId);
+        numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -94,7 +94,8 @@ public class RayletClientImpl implements RayletClient {
       RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly, currentTaskId);
+    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+        fetchOnly, currentTaskId.getBytes());
   }
 
   @Override
@@ -105,7 +106,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void notifyUnblocked(UniqueId currentTaskId) {
-    nativeNotifyUnblocked(client, currentTaskId);
+    nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
@@ -274,14 +275,14 @@ public class RayletClientImpl implements RayletClient {
   private static native void nativeDestroy(long client);
 
   private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
-      boolean fetchOnly, UniqueId currentTaskId);
+      boolean fetchOnly, byte[] currentTaskId);
 
-  private static native void nativeNotifyUnblocked(long client, UniqueId currentTaskId);
+  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId);
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal, UniqueId currentTaskId);
+      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId);
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
