@@ -189,6 +189,17 @@ class NodeManager {
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   ///
+  /// This function is called in one of the following cases:
+  ///   (1) A set of new tasks is added to the ready queue.
+  ///   (2) New resources are becoming available on the local node.
+  ///   (3) A new worker becomes available.
+  /// Note in case (1) we only need to look at the new tasks added to the
+  /// ready queue, as we know that the old tasks in the ready queue cannot
+  /// be scheduled (We checked those tasks last time new resources or
+  /// workers became available, and nothing changed since then.) In this case,
+  /// task_queue contains only the newly added tasks to the ready queue;
+  /// Otherwise, task_queue points to entire ready queue.
+  ///
   /// \param task_queue Tasks to be dispatched, a subset from ready queue.
   void DispatchTasks(const std::list<Task> &task_queue);
   /// Handle a worker becoming blocked in a `ray.get`.

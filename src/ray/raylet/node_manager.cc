@@ -479,7 +479,8 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 
 void NodeManager::DispatchTasks(const std::list<Task> &task_queue) {
 
-  // Work with a copy of scheduled tasks.
+  // Since task_queue can be &local_queues_.GetReadyTasks(), and this
+  // list is modified by the code below, create a copy.
   // (See design_docs/task_states.rst for the state transition diagram.)
   auto ready_tasks = task_queue;
   // Return if there are no tasks to schedule.
@@ -1207,11 +1208,10 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
-    // Dispatch the new ready task only, and ignore the rest of tasks
-    // in the ready queue. This is because the last time we called Dispatchtasks()
-    // as a result of resources or workers becomming available we checked all
-    // tasks in the ready queue and we were not able to schedule any, so no
-    // need to check them again.
+    // Dispatch just the new who was added to the ready task.
+    // The other tasks in the ready queue can be ignored as no new resources
+    // have been added and no new worker has became available since the last
+    // time DispatchTasks() was called.
     DispatchTasks({task});
   } else {
     local_queues_.QueueWaitingTasks({task});
@@ -1468,11 +1468,10 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueReadyTasks(ready_tasks);
     const std::list<Task> ready_tasks_list(ready_tasks.begin(), ready_tasks.end());
-    // Dispatch only the new ready tasks, and ignore the rest of tasks
-    // in the ready queue. This is because the last time we called Dispatchtasks()
-    // as a result of resources or workers becomming available we checked all
-    // tasks in the ready queue and we were not able to schedule any, so no
-    // need to check them again.
+    // Dispatch only the new ready tasks whose dependencies were fulfilled.
+    // The other tasks in the ready queue can be ignored as no new resources
+    // have been added and no new worker has became available since the last
+    // time DispatchTasks() was called.
     DispatchTasks(ready_tasks_list);
   }
 }
