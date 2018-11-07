@@ -189,7 +189,7 @@ ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
       debug_label_(debug_label) {}
 
 template <class T>
-const ClientID &ClientConnection<T>::GetClientID() {
+const ClientID &ClientConnection<T>::GetClientId() {
   return client_id_;
 }
 

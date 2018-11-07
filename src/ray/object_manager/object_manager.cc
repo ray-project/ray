@@ -22,7 +22,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      recent_pushes_timer_(main_service) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -33,6 +34,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
+
+  // Start the timer that clears objects clearly from the list of recently
+  // transferred objects.
+  ForgetRecentPushes();
 }
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -47,7 +52,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      recent_pushes_timer_(main_service) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
@@ -59,6 +65,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
+
+  // Start the timer that clears objects clearly from the list of recently
+  // transferred objects.
+  ForgetRecentPushes();
 }
 
 ObjectManager::~ObjectManager() { StopIOService(); }
@@ -347,6 +357,13 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+  auto &recent_pushes = recent_pushes_[client_id];
+  if (std::find(recent_pushes.begin(), recent_pushes.end(), object_id) !=
+      recent_pushes.end()) {
+    // We recently pushed this object to the client, so ignore this Push.
+    return;
+  }
+
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
     auto &clients = unfulfilled_push_requests_[object_id];
@@ -378,6 +395,18 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     }
     return;
   }
+
+  // Keep track of the fact that we're attempting to push this object to the
+  // remote object manager. Note that it's possible that the transfer will fail,
+  // but the object ID will eventually be cleared out of this list by the
+  // recent_pushes_timer_ timer.
+  recent_pushes.push_back(object_id);
+  if (static_cast<int64_t>(recent_pushes.size()) >
+      RayConfig::instance().object_manager_num_recent_pushes()) {
+    recent_pushes.pop_front();
+  }
+  RAY_CHECK(static_cast<int64_t>(recent_pushes.size()) <=
+            RayConfig::instance().object_manager_num_recent_pushes());
 
   RemoteConnectionInfo connection_info(client_id);
   object_directory_->LookupRemoteConnectionInfo(connection_info);
@@ -487,6 +516,24 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
                    << config_.max_sends;
   }
   return status;
+}
+
+void ObjectManager::ForgetRecentPushes() {
+  // For each remote manager, forget about one object pushed to that object
+  // manager.
+  for (auto &pair : recent_pushes_) {
+    if (pair.second.size() > 0) {
+      pair.second.pop_front();
+    }
+  }
+
+  // Reset the timer.
+  recent_pushes_timer_.expires_from_now(std::chrono::milliseconds(
+      RayConfig::instance().object_manager_recent_pushes_timer_period_ms()));
+  recent_pushes_timer_.async_wait([this](const boost::system::error_code &error) {
+    RAY_CHECK(!error);
+    ForgetRecentPushes();
+  });
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
@@ -745,7 +792,12 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
+  const ClientID client_id = conn->GetClientId();
   connection_pool_.RemoveReceiver(conn);
+
+  recent_pushes_.erase(client_id);
+  // We don't need to clean up unfulfilled_push_requests_ because the
+  // unfulfilled push timers will fire and clean it up.
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -777,7 +829,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   uint64_t metadata_size = object_header->metadata_size();
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
-    const ClientID client_id = conn->GetClientID();
+    const ClientID client_id = conn->GetClientId();
     auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
                                        chunk_index, *conn);
     // Notify the main thread that we have finished receiving the object.

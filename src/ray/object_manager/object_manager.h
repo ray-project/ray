@@ -10,6 +10,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"
@@ -102,7 +103,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// \return Status of whether adding the subscription succeeded.
   ray::Status SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
 
-  /// Push an object to to the node manager on the node corresponding to client id.
+  /// Consider pushing an object to a remote object manager. This object manager
+  /// may choose to ignore the Push call (e.g., if Push is called twice in a row
+  /// on the same object, the second one might be ignored).
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
@@ -325,6 +328,13 @@ class ObjectManager : public ObjectManagerInterface {
                              const ObjectBufferPool::ChunkInfo &chunk_info,
                              std::shared_ptr<SenderConnection> &conn);
 
+  /// Remove some elements from the list of recently pushed objects. This allows
+  /// the object manager to forget about objects it pushed so that it can push
+  /// them again. This is executed on the main service on a timer.
+  ///
+  /// \return Void.
+  void ForgetRecentPushes();
+
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will invoke the object receive on the receive_service_ thread pool.
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -392,6 +402,15 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// A mapping from remote client to a list of the objects that have recently
+  /// been transferred to that client. We only keep track of a bounded number of
+  /// recent pushes.
+  std::unordered_map<ClientID, std::deque<ObjectID>> recent_pushes_;
+  /// The timer used to periodically remove elements from recent_pushes_. This
+  /// ensures that the object manager will eventually be able to send the same
+  /// object to other remote node managers.
+  boost::asio::steady_timer recent_pushes_timer_;
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.

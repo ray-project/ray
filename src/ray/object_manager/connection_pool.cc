@@ -19,7 +19,7 @@ void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &clien
 
 void ConnectionPool::RemoveReceiver(std::shared_ptr<TcpClientConnection> conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
-  ClientID client_id = conn->GetClientID();
+  const ClientID client_id = conn->GetClientId();
   if (message_receive_connections_.count(client_id) != 0) {
     Remove(message_receive_connections_, client_id, conn);
   }
@@ -68,7 +68,7 @@ void ConnectionPool::ReleaseSender(ConnectionType type,
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? available_message_send_connections_
                                 : available_transfer_send_connections_;
-  Return(conn_map, conn->GetClientID(), conn);
+  Return(conn_map, conn->GetClientId(), conn);
 }
 
 void ConnectionPool::Add(ReceiverMapType &conn_map, const ClientID &client_id,
