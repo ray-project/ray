@@ -18,6 +18,7 @@ from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
 from ray.rllib.agents.es import utils
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,22 @@ class Worker(object):
             self.sess, self.env.action_space, self.env.observation_space,
             self.preprocessor, config["observation_filter"], config["model"],
             **policy_params)
+
+    @property
+    def filters(self):
+        return {"default": self.policy.get_filter()}
+
+    def sync_filters(self, new_filters):
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -207,6 +224,7 @@ class ESAgent(Agent):
                 num_episodes += sum(len(pair) for pair in result.noisy_lengths)
                 num_timesteps += sum(
                     sum(pair) for pair in result.noisy_lengths)
+
         return results, num_episodes, num_timesteps
 
     def _train(self):
@@ -274,6 +292,11 @@ class ESAgent(Agent):
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
 
+        # Now sync the filters
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)
+
         info = {
             "weights_norm": np.square(theta).sum(),
             "grad_norm": np.square(g).sum(),
@@ -299,12 +322,17 @@ class ESAgent(Agent):
     def __getstate__(self):
         return {
             "weights": self.policy.get_weights(),
+            "filter": self.policy.get_filter(),
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
-        self.policy.set_weights(state["weights"])
         self.episodes_so_far = state["episodes_so_far"]
+        self.policy.set_weights(state["weights"])
+        self.policy.set_filter(state["filter"])
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)
 
     def compute_action(self, observation):
         return self.policy.compute(observation, update=False)[0]

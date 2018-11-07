@@ -102,5 +102,11 @@ class GenericPolicy(object):
     def set_weights(self, x):
         self.variables.set_flat(x)
 
+    def set_filter(self, obs_filter):
+        self.observation_filter = obs_filter
+
+    def get_filter(self):
+        return self.observation_filter
+
     def get_weights(self):
         return self.variables.get_flat()
