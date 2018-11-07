@@ -21,7 +21,7 @@ def start_connected_cluster():
         connect=True,
         head_node_args={
             "resources": dict(CPU=1),
-            "internal_config": json.dumps({
+            "_internal_config": json.dumps({
                 "num_heartbeats_timeout": 10
             })
         })
@@ -49,7 +49,7 @@ def test_internal_config():
         connect=True,
         head_node_args={
             "resources": dict(CPU=1),
-            "internal_config": json.dumps({
+            "_internal_config": json.dumps({
                 "num_heartbeats_timeout": 20
             })
         })
