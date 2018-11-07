@@ -314,7 +314,7 @@ class Worker(object):
                                        "of their fields. This behavior may "
                                        "be incorrect in some cases.".format(
                                            type(e.example_object)))
-                    logger.warning(warning_message)
+                    logger.debug(warning_message)
                 except (serialization.RayNotDictionarySerializable,
                         serialization.CloudPickleError,
                         pickle.pickle.PicklingError, Exception):
