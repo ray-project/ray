@@ -1,20 +1,11 @@
-.. Keep this in sync with ray/python/ray/tune/examples/README.rst
+.. Keep this in sync with ray/doc/tune-examples.rst
 
 Tune Examples
 =============
 
 In our repository, we provide a variety of examples for the various use cases and features of Tune.
 
-.. important::
-
-    If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
-
-Tutorial
---------
-
-To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tune.ipynb>`__.
-
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTune.ipynb>`__.
+If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
 
 General Examples
@@ -67,5 +58,3 @@ Contributed Examples
    A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
 - `genetic_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/genetic_example.py>`__:
    Optimizing the michalewicz function using the contributed GeneticSearch search algorithm with AsyncHyperBandScheduler.
-
-
