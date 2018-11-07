@@ -152,9 +152,10 @@ def _configure_key_pair(config):
 
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
+    require_public_ips = config["provider"].get("require_public_ips", True)
     subnets = sorted(
-        (s for s in ec2.subnets.all()
-         if s.state == "available" and s.map_public_ip_on_launch),
+        (s for s in ec2.subnets.all() if s.state == "available" and (
+            not require_public_ips or s.map_public_ip_on_launch)),
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
     if not subnets:
@@ -162,7 +163,8 @@ def _configure_subnet(config):
             "No usable subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch.")
+            "on instance launch unless you set 'require_public_ips': False in "
+            "the 'provider' config.")
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(',')
         subnets = [s for s in subnets if s.availability_zone in azs]
