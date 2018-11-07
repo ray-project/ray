@@ -508,7 +508,7 @@ class StandardAutoscaler(object):
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
             process_runner=self.process_runner,
-            use_internal_ip=self.config["provider"].get("use_internal_ips"))
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
