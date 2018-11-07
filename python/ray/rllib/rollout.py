@@ -93,7 +93,11 @@ def run(args, parser):
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
 
-    env = agent.local_evaluator.env
+
+    if hasattr(agent, "local_evaluator"):
+        env = agent.local_evaluator.env
+    else:
+        env = ModelCatalog.get_preprocessor_as_wrapper(gym.make(args.env))
     if args.out is not None:
         rollouts = []
     steps = 0
