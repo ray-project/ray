@@ -8,6 +8,7 @@ import argparse
 import yaml
 
 import ray
+from ray.test.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -114,12 +115,15 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
 
     if args.ray_num_local_schedulers:
-        ray.worker._init(
-            start_ray_local=True,
-            num_local_schedulers=args.ray_num_local_schedulers,
-            object_store_memory=args.ray_object_store_memory,
-            num_cpus=args.ray_num_cpus,
-            num_gpus=args.ray_num_gpus)
+        cluster = Cluster()
+        for _ in range(args.ray_num_local_schedulers):
+            cluster.add_node(
+                resources={
+                    "num_cpus": args.ray_num_cpus,
+                    "num_gpus": args.ray_num_gpus,
+                },
+                object_store_memory=args.ray_object_store_memory)
+        ray.init(redis_address=cluster.redis_address)
     else:
         ray.init(
             redis_address=args.redis_address,
