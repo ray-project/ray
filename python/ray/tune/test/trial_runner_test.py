@@ -977,7 +977,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             "resources": Resources(cpu=1, gpu=0),
         }
-        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        trials = [Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
 
