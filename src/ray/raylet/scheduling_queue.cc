@@ -93,9 +93,9 @@ bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id,
   }
 
   auto list_iterator = task_found_iterator->second;
-    // Resource bookkeeping
+  // Resource bookkeeping
   current_resource_load_.SubtractResourcesStrict(
-    list_iterator->GetTaskSpecification().GetRequiredResources());
+      list_iterator->GetTaskSpecification().GetRequiredResources());
   if (removed_tasks) {
     removed_tasks->push_back(std::move(*list_iterator));
   }
