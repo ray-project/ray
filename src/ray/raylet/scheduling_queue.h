@@ -223,9 +223,10 @@ class SchedulingQueue {
     ///
     /// \param task_id The task ID for the task to remove from the queue.
     /// \param removed_tasks If the task specified by task_id is successfully
-    //  removed from the queue, the task data is appended to the vector.
+    ///  removed from the queue, the task data is appended to the vector. Can
+    ///  be a nullptr, in which case nothing is appended.
     /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
+    bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
 
     /// \brief Check if the queue contains a specific task id.
     ///
@@ -237,11 +238,17 @@ class SchedulingQueue {
     /// \return A list of tasks contained in this queue.
     const std::list<Task> &GetTasks() const;
 
+    /// \brief Get the total resources required by the tasks in the queue.
+    /// \return Total resources required by the tasks in the queue.
+    const ResourceSet &GetCurrentResourceLoad() const;
+
    private:
-    // A list of tasks.
+    /// A list of tasks.
     std::list<Task> task_list_;
-    // A hash to speed up looking up a task.
+    /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+    /// Aggregate resources of all the tasks in this queue.
+    ResourceSet current_resource_load_;
   };
 
  private:
@@ -265,12 +272,6 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
-
-  /// \brief Return all resource demand associated with the specified task queue.
-  ///
-  /// \param task_queue The task queue for which aggregate resource demand is calculated.
-  /// \return Aggregate resource demand.
-  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
 };
 
 }  // namespace raylet

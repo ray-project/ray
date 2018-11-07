@@ -159,12 +159,13 @@ class TrainMNIST(Trainable):
         self._train_iteration()
         return self._test()
 
-    def _save(self, path):
-        torch.save(self.model.state_dict(), os.path.join(path, "model.pth"))
-        return path
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        torch.save(self.model.state_dict(), checkpoint_path)
+        return checkpoint_path
 
-    def _restore(self, path):
-        self.model.load_state_dict(os.path.join(path, "model.pth"))
+    def _restore(self, checkpoint_path):
+        self.model.load_state_dict(checkpoint_path)
 
 
 if __name__ == '__main__':

@@ -233,12 +233,12 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
     read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
   }
 
-  uint64_t start_ms = current_time_ms();
+  int64_t start_ms = current_time_ms();
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
-  uint64_t interval = current_time_ms() - start_ms;
+  int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_
-                     << " took " << interval << " ms ";
+                     << " took " << interval << " ms.";
   }
 }
 

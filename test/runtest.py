@@ -2,8 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 import re
+import setproctitle
 import string
 import subprocess
 import sys
@@ -16,6 +18,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.test.cluster_utils
 import ray.test.test_utils
 
 
@@ -1034,6 +1037,58 @@ def test_profiling_api(shutdown_only):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+
+@pytest.fixture()
+def ray_start_cluster():
+    cluster = ray.test.cluster_utils.Cluster()
+    yield cluster
+
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_object_transfer_dump(ray_start_cluster):
+    cluster = ray_start_cluster
+
+    num_nodes = 3
+    for i in range(num_nodes):
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote
+    def f(x):
+        return
+
+    # These objects will live on different nodes.
+    object_ids = [
+        f._submit(args=[1], resources={str(i): 1}) for i in range(num_nodes)
+    ]
+
+    # Broadcast each object from each machine to each other machine.
+    for object_id in object_ids:
+        ray.get([
+            f._submit(args=[object_id], resources={str(i): 1})
+            for i in range(num_nodes)
+        ])
+
+    # The profiling information only flushes once every second.
+    time.sleep(1.1)
+
+    transfer_dump = ray.global_state.chrome_tracing_object_transfer_dump()
+    # Make sure the transfer dump can be serialized with JSON.
+    json.loads(json.dumps(transfer_dump))
+    assert len(transfer_dump) >= num_nodes**2
+    assert len({
+        event["pid"]
+        for event in transfer_dump if event["name"] == "transfer_receive"
+    }) == num_nodes
+    assert len({
+        event["pid"]
+        for event in transfer_dump if event["name"] == "transfer_send"
+    }) == num_nodes
 
 
 def test_identical_function_names(shutdown_only):
@@ -2297,6 +2352,26 @@ def test_wait_reconstruction(shutdown_only):
         ray.pyarrow.plasma.ObjectID(x_id.id()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
+
+
+def test_ray_setproctitle(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class UniqueName(object):
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:f()"
+
+    @ray.remote
+    def unique_1():
+        assert setproctitle.getproctitle() == "ray_worker:runtest.unique_1()"
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.remote())
+    ray.get(unique_1.remote())
 
 
 @pytest.mark.skipif(
