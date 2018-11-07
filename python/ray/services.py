@@ -888,6 +888,8 @@ def start_raylet(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        config (dict|None): Optional Raylet configuration that will
+            override defaults in RayConfig.
         redis_password (str): The password of the redis server.
 
     Returns:
@@ -1215,6 +1217,8 @@ def start_raylet_monitor(redis_address,
             Python process that imported services exits. This is True by
             default.
         redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
