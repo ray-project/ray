@@ -247,7 +247,7 @@ class SchedulingQueue {
     std::list<Task> task_list_;
     /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-    /// Aggregate resources in this queue.
+    /// Aggregate resources of all the tasks in this queue.
     ResourceSet current_resource_load_;
   };
 
