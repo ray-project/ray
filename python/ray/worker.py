@@ -1791,12 +1791,6 @@ def print_error_messages(worker):
     worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
     num_errors_received = 0
 
-    # Keep a set of all the error messages that we've seen so far in order to
-    # avoid printing the same error message repeatedly. This is especially
-    # important when running a script inside of a tool like screen where
-    # scrolling is difficult.
-    old_error_messages = set()
-
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
         error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
@@ -1804,11 +1798,7 @@ def print_error_messages(worker):
             if error_applies_to_driver(error_key, worker=worker):
                 error_message = ray.utils.decode(
                     worker.redis_client.hget(error_key, "message"))
-                if error_message not in old_error_messages:
-                    logger.error(error_message)
-                    old_error_messages.add(error_message)
-                else:
-                    logger.error("Suppressing duplicate error message.")
+                logger.error(error_message)
             num_errors_received += 1
 
     try:
@@ -1819,12 +1809,7 @@ def print_error_messages(worker):
                     if error_applies_to_driver(error_key, worker=worker):
                         error_message = ray.utils.decode(
                             worker.redis_client.hget(error_key, "message"))
-                        if error_message not in old_error_messages:
-                            logger.error(error_message)
-                            old_error_messages.add(error_message)
-                        else:
-                            logger.error(
-                                "Suppressing duplicate error message.")
+                        logger.error(error_message)
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -1933,8 +1918,9 @@ def connect(info,
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
-                info["redis_address"], info["node_ip_address"],
-                [log_stdout_file, log_stderr_file])
+                info["redis_address"],
+                info["node_ip_address"], [log_stdout_file, log_stderr_file],
+                password=redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(

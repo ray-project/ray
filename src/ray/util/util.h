@@ -47,11 +47,11 @@ class InitShutdownRAII {
   /// function when it is out of scope.
   ///
   /// \param init_func The init function.
-  /// \param shuntdown_func The shutdown function.
-  /// \param args The auguments for the init function.
+  /// \param shutdown_func The shutdown function.
+  /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shuntdown_func, Args &&... args)
-      : shutdown_(shuntdown_func) {
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+      : shutdown_(shutdown_func) {
     init_func(args...);
   }
 
