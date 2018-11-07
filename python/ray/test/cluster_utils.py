@@ -37,7 +37,10 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                ray.init(redis_address=self.redis_address)
+                redis_password = head_node_args.get("redis_password")
+                ray.init(
+                    redis_address=self.redis_address,
+                    redis_password=redis_password)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.

@@ -36,6 +36,9 @@ PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
+# Max bytes to allocate to plasma unless overriden by the user
+MAX_DEFAULT_MEM = 20 * 1000 * 1000 * 1000
+
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
 # important because it determines the order in which these processes will be
@@ -1009,6 +1012,14 @@ def determine_plasma_store_config(object_store_memory=None,
     # Choose a default object store size.
     if object_store_memory is None:
         object_store_memory = int(system_memory * 0.4)
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > MAX_DEFAULT_MEM:
+            logger.warning(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    MAX_DEFAULT_MEM // 1e9) +
+                "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start.")
+            object_store_memory = MAX_DEFAULT_MEM
 
     if plasma_directory is not None:
         plasma_directory = os.path.abspath(plasma_directory)
@@ -1225,6 +1236,8 @@ def start_raylet_monitor(redis_address,
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
+    if redis_password:
+        command += [redis_password]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_MONITOR].append(p)

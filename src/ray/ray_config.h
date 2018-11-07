@@ -125,7 +125,7 @@ class RayConfig {
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
         num_heartbeats_warning_(5),
-        initial_reconstruction_timeout_milliseconds_(200),
+        initial_reconstruction_timeout_milliseconds_(10000),
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),

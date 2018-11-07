@@ -102,6 +102,30 @@ def test_submitting_many_tasks(ray_start_sharded):
     assert ray.services.all_processes_alive()
 
 
+def test_submitting_many_actors_to_one(ray_start_sharded):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Worker(object):
+        def __init__(self, actor):
+            self.actor = actor
+
+        def ping(self):
+            return ray.get(self.actor.ping.remote())
+
+    a = Actor.remote()
+    workers = [Worker.remote(a) for _ in range(100)]
+    for _ in range(10):
+        out = ray.get([w.ping.remote() for w in workers])
+        assert out == [None for _ in workers]
+
+
 def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
@@ -225,6 +249,7 @@ def ray_start_reconstruction(request):
     ray.shutdown()
 
 
+@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -266,6 +291,7 @@ def test_simple(ray_start_reconstruction):
         del values
 
 
+@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -322,6 +348,7 @@ def test_recursive(ray_start_reconstruction):
         del values
 
 
+@pytest.mark.skip("Add this test back once reconstruction is faster.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
