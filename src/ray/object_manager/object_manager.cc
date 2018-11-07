@@ -536,23 +536,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
-  } else {
-    // Wait may complete during the execution of any one of the following calls to
-    // SubscribeObjectLocations, so copy the object ids that need to be iterated over.
-    // Order matters for test purposes.
-    std::vector<ObjectID> ordered_remaining_object_ids;
-    for (const auto &object_id : wait_state.object_id_order) {
-      if (wait_state.remaining.count(object_id) > 0) {
-        ordered_remaining_object_ids.push_back(object_id);
-      }
-    }
-    for (const auto &object_id : ordered_remaining_object_ids) {
-      if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
-        // This is possible if an object's location is obtained immediately,
-        // within the current callstack. In this case, WaitComplete has been
-        // invoked already, so we're done.
-        return;
-      }
+    return;
+  }
+
+  // There are objects remaining whose locations we don't know. Request their
+  // locations from the object directory.
+  for (const auto &object_id : wait_state.object_id_order) {
+    if (wait_state.remaining.count(object_id) > 0) {
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
@@ -575,6 +565,10 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             }
           }));
     }
+
+    // If a timeout was provided, then set a timer. If we don't find locations
+    // for enough objects by the time the timer expires, then we will return
+    // from the Wait.
     if (wait_state.timeout_ms != -1) {
       auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
       wait_state.timeout_timer->expires_from_now(timeout);
