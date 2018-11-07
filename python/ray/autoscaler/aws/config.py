@@ -152,7 +152,7 @@ def _configure_key_pair(config):
 
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
-    use_internal_ips = config["provider"].get("use_internal_ips")
+    use_internal_ips = config["provider"].get("use_internal_ips", False)
     subnets = sorted(
         (s for s in ec2.subnets.all() if s.state == "available" and (
             use_internal_ips or s.map_public_ip_on_launch)),
