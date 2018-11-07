@@ -315,10 +315,8 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
 }
 
 void ObjectManager::HandleSendFinished(const ObjectID &object_id,
-                                       const ClientID &client_id,
-                                       uint64_t chunk_index,
-                                       double start_time,
-                                       double end_time,
+                                       const ClientID &client_id, uint64_t chunk_index,
+                                       double start_time, double end_time,
                                        ray::Status status) {
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
@@ -330,17 +328,15 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
   profile_event.end_time = end_time;
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() +
-                             "\"," + std::to_string(chunk_index) + ",\"" +
-                             status.ToString() + "\"]";
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+                             std::to_string(chunk_index) + ",\"" + status.ToString() +
+                             "\"]";
   profile_events_.push_back(profile_event);
 }
 
 void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
-                                          const ClientID &client_id,
-                                          uint64_t chunk_index,
-                                          double start_time,
-                                          double end_time,
+                                          const ClientID &client_id, uint64_t chunk_index,
+                                          double start_time, double end_time,
                                           ray::Status status) {
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
@@ -352,9 +348,9 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_event.end_time = end_time;
   // Encode the object ID, client ID, chunk index, and status as a json list,
   // which will be parsed by the reader of the profile table.
-  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() +
-                             "\"," + std::to_string(chunk_index) + ",\"" +
-                             status.ToString() + "\"]";
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+                             std::to_string(chunk_index) + ",\"" + status.ToString() +
+                             "\"]";
   profile_events_.push_back(profile_event);
 }
 
@@ -407,17 +403,16 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         // will have already been evicted. It's also possible that the
         // object could be in the process of being transferred to this
         // object manager from another object manager.
-        ray::Status status = ExecuteSendObject(client_id, object_id, data_size,
-                                               metadata_size, chunk_index,
-                                               connection_info);
+        ray::Status status = ExecuteSendObject(
+            client_id, object_id, data_size, metadata_size, chunk_index, connection_info);
 
         // Notify the main thread that we have finished sending the chunk.
-        main_service_->post([this, object_id, client_id, chunk_index, start_time,
-                             status]() {
-          double end_time = current_sys_time_seconds();
-          HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
-                             status);
-        });
+        main_service_->post(
+            [this, object_id, client_id, chunk_index, start_time, status]() {
+              double end_time = current_sys_time_seconds();
+              HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
+                                 status);
+            });
       });
     }
   } else {
@@ -801,7 +796,6 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
     });
 
   });
-
 }
 
 ray::Status ObjectManager::ExecuteReceiveObject(
