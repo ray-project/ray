@@ -93,7 +93,6 @@ def run(args, parser):
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
 
-
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
     else:
