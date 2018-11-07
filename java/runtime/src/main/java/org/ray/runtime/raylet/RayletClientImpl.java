@@ -44,7 +44,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs, UniqueId currentTaskId) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
+      timeoutMs, UniqueId currentTaskId) {
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
@@ -87,7 +88,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
+      UniqueId currentTaskId) {
     if (RayLog.core.isInfoEnabled()) {
       RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);

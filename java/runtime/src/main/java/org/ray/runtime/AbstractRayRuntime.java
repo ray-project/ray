@@ -189,7 +189,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
     // TODO(swang): If we are not on the main thread, then we should generate a
     // random task ID to pass to the backend.
-    return rayletClient.wait(waitList, numReturns, timeoutMs, workerContext.getCurrentTask().taskId);
+    return rayletClient.wait(waitList, numReturns, timeoutMs,
+        workerContext.getCurrentTask().taskId);
   }
 
   @Override

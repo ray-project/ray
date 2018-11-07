@@ -66,7 +66,8 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
+      UniqueId currentTaskId) {
 
   }
 
@@ -81,7 +82,8 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs, UniqueId currentTaskId) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
+      timeoutMs, UniqueId currentTaskId) {
     return new WaitResult<T>(
         waitFor,
         ImmutableList.of()
