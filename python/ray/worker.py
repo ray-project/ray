@@ -1607,7 +1607,7 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
-        internal_config (str): JSON configuration for overriding
+        _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
