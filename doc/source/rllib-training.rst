@@ -51,7 +51,7 @@ An example of evaluating a previously trained DQN agent is as follows:
 
     python ray/python/ray/rllib/rollout.py \
           ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
-          --run DQN --env CartPole-v0
+          --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
