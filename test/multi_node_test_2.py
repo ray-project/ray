@@ -46,6 +46,7 @@ def start_connected_longer_cluster():
     yield g
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    g.shutdown()
 
 
 def test_cluster():
