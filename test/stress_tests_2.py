@@ -11,9 +11,8 @@ import warnings
 import ray
 from ray.test.cluster_utils import Cluster
 
-
-if (multiprocessing.cpu_count() < 40 or
-        ray.utils.get_system_memory() < 50 * 10**9):
+if (multiprocessing.cpu_count() < 40
+        or ray.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
 
@@ -59,15 +58,19 @@ def test_object_broadcast(ray_start_cluster):
         # Broadcast an object to all machines.
         x_id = ray.put(x)
         object_ids.append(x_id)
-        ray.get([f._submit(args=[x_id], resources={str(i % num_nodes): 1})
-                 for i in range(10 * num_nodes)])
+        ray.get([
+            f._submit(args=[x_id], resources={str(i % num_nodes): 1})
+            for i in range(10 * num_nodes)
+        ])
 
     for _ in range(3):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
         object_ids.append(x_id)
-        ray.get([f._submit(args=[x_id], resources={str(i % num_nodes): 1})
-                 for i in range(10 * num_nodes)])
+        ray.get([
+            f._submit(args=[x_id], resources={str(i % num_nodes): 1})
+            for i in range(10 * num_nodes)
+        ])
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
@@ -86,8 +89,8 @@ def test_object_broadcast(ray_start_cluster):
         # warning.
         if len(relevant_events) > num_nodes - 1:
             warnings.warn("This object was trasnferred {} times, when only {} "
-                          "transfers were required."
-                          .format(len(relevant_events), num_nodes - 1))
+                          "transfers were required.".format(
+                              len(relevant_events), num_nodes - 1))
         # Each object should not have been broadcast more than once from every
         # machine to every other machine.
         assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
@@ -108,10 +111,10 @@ def test_actor_broadcast(ray_start_cluster):
         def set_weights(self, x):
             pass
 
-    actors = [Actor._submit(
-                  args=[], kwargs={},
-                  resources={str(i % num_nodes): 1})
-              for i in range(100)]
+    actors = [
+        Actor._submit(args=[], kwargs={}, resources={str(i % num_nodes): 1})
+        for i in range(100)
+    ]
 
     # Wait for the actors to start up.
     ray.get([a.ready.remote() for a in actors])
@@ -142,8 +145,8 @@ def test_actor_broadcast(ray_start_cluster):
         # warning.
         if len(relevant_events) > num_nodes - 1:
             warnings.warn("This object was trasnferred {} times, when only {} "
-                          "transfers were required."
-                          .format(len(relevant_events), num_nodes - 1))
+                          "transfers were required.".format(
+                              len(relevant_events), num_nodes - 1))
         # Each object should not have been broadcast more than once from every
         # machine to every other machine.
         assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
