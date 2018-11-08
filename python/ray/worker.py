@@ -1293,7 +1293,8 @@ def _init(address_info=None,
           driver_id=None,
           plasma_store_socket_name=None,
           raylet_socket_name=None,
-          temp_dir=None):
+          temp_dir=None,
+          _internal_config=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1355,6 +1356,8 @@ def _init(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1427,7 +1430,8 @@ def _init(address_info=None,
             include_webui=include_webui,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir)
+            temp_dir=temp_dir,
+            _internal_config=_internal_config)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1468,6 +1472,9 @@ def _init(address_info=None,
         if raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+        if _internal_config is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "_internal_config must not be provided.")
 
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
@@ -1530,6 +1537,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         _internal_config=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1601,6 +1609,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -1658,7 +1668,8 @@ def init(redis_address=None,
         driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        _internal_config=_internal_config)
     for hook in _post_init_hooks:
         hook()
     return ret
