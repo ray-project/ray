@@ -143,8 +143,8 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
-  /// \return Void.
-  void AssignTask(Task &task);
+  /// \return true, if tasks was executed, false otherwise.
+  bool AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param The worker that fiished the task.
@@ -200,8 +200,8 @@ class NodeManager {
   /// task_queue contains only the newly added tasks to the ready queue;
   /// Otherwise, task_queue points to entire ready queue.
   ///
-  /// \param task_queue Tasks to be dispatched, a subset from ready queue.
-  void DispatchTasks(const std::list<Task> &task_queue);
+  /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
+  void DispatchTasks(const std::list<Task> &ready_tasks);
   /// Handle a worker becoming blocked in a `ray.get`.
   ///
   /// \param worker The worker that is blocked.

@@ -477,16 +477,14 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks(const std::list<Task> &task_queue) {
+void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
 
-  // Since task_queue can be &local_queues_.GetReadyTasks(), and this
-  // list is modified by the code below, create a copy.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  auto ready_tasks = task_queue;
   // Return if there are no tasks to schedule.
   if (ready_tasks.empty()) {
     return;
   }
+
+  std::unordered_set<TaskID> removed_task_ids = {};
 
   for (const auto &task : ready_tasks) {
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -496,10 +494,14 @@ void NodeManager::DispatchTasks(const std::list<Task> &task_queue) {
       continue;
     }
     // We have enough resources for this task. Assign task.
-    // TODO(atumanov): perform the task state/queue transition inside AssignTask.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    auto dispatched_task = local_queues_.RemoveTask(task.GetTaskSpecification().TaskId());
-    AssignTask(dispatched_task);
+    // (AssignTask() takes a non-const so copy task in a non-const variable.)
+    Task task_dispatched = task;
+    if (AssignTask(task_dispatched)) {
+      removed_task_ids.insert(task.GetTaskSpecification().TaskId());
+    }
+  }
+  if (!removed_task_ids.empty()) {
+    local_queues_.RemoveTasks(removed_task_ids);
   }
 }
 
@@ -1222,14 +1224,14 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-void NodeManager::AssignTask(Task &task) {
+bool NodeManager::AssignTask(Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
       // Drop tasks that have already been executed.
-      return;
+      return true;
     }
   }
 
@@ -1242,11 +1244,7 @@ void NodeManager::AssignTask(Task &task) {
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
-    // Queue this task for future assignment. The task will be assigned to a
-    // worker once one becomes available.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-    return;
+    return false;
   }
 
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
@@ -1315,17 +1313,16 @@ void NodeManager::AssignTask(Task &task) {
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+          return true;
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
           // We failed to send the task to the worker, so disconnect the worker.
           ProcessDisconnectClientMessage(worker->Connection());
-          // Queue this task for future assignment. The task will be assigned to a
-          // worker once one becomes available.
-          // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          AssignTask(task);
+          return AssignTask(task);
         }
       });
+
+  return true;
 }
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
