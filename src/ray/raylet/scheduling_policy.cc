@@ -121,10 +121,10 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
     std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
     std::vector<ClientID> &remote_client_ids) {
-  // Shuffle the nodes to prevent infinite forwarding loops.
-  const unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  auto rng = std::default_random_engine(seed);
-  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), rng);
+//   Shuffle the nodes to prevent infinite forwarding loops.
+//  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), gen_);
+  std::list<ClientID> remote_client_ids_list(remote_client_ids.begin(),
+                                             remote_client_ids.end());
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
 
@@ -134,18 +134,26 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
     const auto &placement_resources = spec.GetRequiredPlacementResources();
     // Find the first node that can accommodate the resources.
     // NOTE(ujvl): this does not distribute tasks evenly across nodes.
-    for (auto &client_id : remote_client_ids) {
+    for (const auto &it = remote_client_ids_list.begin();
+         it != remote_client_ids_list.end(); ) {
+      ClientID client_id = *it;
+    //for (const auto &client_id : remote_client_ids_list) {
       const auto &remote_scheduling_resources = cluster_resources[client_id];
       if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
         decision[spec.TaskId()] = client_id;
+        // Update load for the destination raylet.
         ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
         new_load.AddResources(spec.GetRequiredResources());
         cluster_resources[client_id].SetLoadResources(std::move(new_load));
+        // Move this client id to the end of the list.
+        remote_client_ids_list.splice(remote_client_ids_list.end(), remote_client_ids_list, it);
         break;
       }
     }
   }
 
+  return decision;
+#if 0
   // Check if we can forward a single ready task to each node.
   for (auto &client_id : remote_client_ids) {
     const auto &remote_scheduling_resources = cluster_resources[client_id];
@@ -167,6 +175,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
     }
   }
   return decision;
+#endif
 }
 
 SchedulingPolicy::~SchedulingPolicy() {}
