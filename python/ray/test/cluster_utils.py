@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import logging
 import time
 
@@ -41,6 +42,7 @@ class Cluster(object):
                 ray.init(
                     redis_address=self.redis_address,
                     redis_password=redis_password)
+        atexit.register(self.shutdown)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
