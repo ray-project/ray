@@ -978,9 +978,9 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 2
             },
-            "resources": Resources(cpu=1),
+            "resources": Resources(cpu=1, gpu=0),
         }
-        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        trials = [Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
 
@@ -993,7 +993,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertRaises(TuneError, runner.step)
-
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
@@ -1425,6 +1424,7 @@ class TrialRunnerTest(unittest.TestCase):
 
         class FinishFastAlg(SuggestionAlgorithm):
             _index = 0
+
             def next_trials(self):
                 trials = []
                 self._index += 1

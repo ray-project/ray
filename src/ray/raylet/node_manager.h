@@ -104,8 +104,15 @@ class NodeManager {
   /// \param client_data Data associated with the removed client.
   /// \return Void.
   void ClientRemoved(const ClientTableDataT &client_data);
+
   /// Send heartbeats to the GCS.
   void Heartbeat();
+
+  /// Get profiling information from the object manager and push it to the GCS.
+  ///
+  /// \return Void.
+  void GetObjectManagerProfileInfo();
+
   /// Handler for a heartbeat notification from the GCS.
   ///
   /// \param client The GCS client.
@@ -339,6 +346,9 @@ class NodeManager {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The timer used to get profiling information from the object manager and
+  /// push it to the GCS.
+  boost::asio::steady_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;

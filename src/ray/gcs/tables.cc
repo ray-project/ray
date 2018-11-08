@@ -421,15 +421,14 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
-const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const {
+void ClientTable::GetClient(const ClientID &client_id,
+                            ClientTableDataT &client_info) const {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
-    return entry->second;
+    client_info = entry->second;
   } else {
-    // If the requested client was not found, return a reference to the nil
-    // client entry.
-    return client_cache_.at(ClientID::nil());
+    client_info.client_id = ClientID::nil().binary();
   }
 }
 
