@@ -41,13 +41,14 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlo
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeReconstructObjects
+ * Method:    nativeFetchOrReconstruct
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(JNIEnv *, jclass,
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(JNIEnv *, jclass,
                                                                       jlong, jobjectArray,
-                                                                      jboolean);
+                                                                      jboolean,
+                                                                      jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -55,7 +56,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(JNIEnv *, 
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *, jclass, jlong);
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -65,7 +66,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
 JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, jlong,
                                                               jobjectArray, jint, jint,
-                                                              jboolean);
+                                                              jboolean, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
