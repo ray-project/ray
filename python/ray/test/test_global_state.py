@@ -2,17 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import pytest
-
 try:
     import pytest_timeout
 except ModuleNotFoundError as e:
     pytest_timeout = None
-
 import time
-import os
-import yaml
-import tempfile
 
 import ray
 from ray.test.cluster_utils import Cluster
@@ -30,19 +26,13 @@ def ray_start():
 @pytest.fixture
 def cluster_start():
     # Start the Ray processes.
-    memory_config = yaml.dump({"num_heartbeats_timeout": 10})
-    buff = tempfile.NamedTemporaryFile(mode='w+', delete=False)
-    path = buff.name
-    buff.write(memory_config)
-    buff.close()
     cluster = Cluster(
         initialize_head=True, connect=True,
         head_node_args={
             "resources": dict(CPU=1),
-            "config_file": path})
+            "_internal_config": json.dumps(
+                {"num_heartbeats_timeout": 10})})
     yield cluster
-    os.unlink(path)
-    # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
 
@@ -98,14 +88,14 @@ def test_add_remove_cluster_resources(cluster_start):
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
     nodes += [cluster.add_node(resources=dict(CPU=1))]
-    cluster.wait_for_nodes()
+    assert cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
     cluster.remove_node(nodes.pop())
-    cluster.wait_for_nodes()
+    assert cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
     for i in range(5):
         nodes += [cluster.add_node(resources=dict(CPU=1))]
-    cluster.wait_for_nodes()
+    assert cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 6

@@ -118,6 +118,9 @@ class Cluster(object):
 
         Args:
             retries (int): Number of times to retry checking client table.
+
+        Returns:
+            True if successfully registered nodes as expected.
         """
 
         for i in range(retries):
