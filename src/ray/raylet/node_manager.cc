@@ -1244,6 +1244,7 @@ bool NodeManager::AssignTask(Task &task) {
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
+    // Tell DispatchTasks() not to remove this task from ready queue.
     return false;
   }
 
@@ -1309,9 +1310,7 @@ bool NodeManager::AssignTask(Task &task) {
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          if (!local_queues_.HasTask(spec.TaskId())) {
-            local_queues_.QueueRunningTasks(std::vector<Task>({task})); 
-          }
+          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
@@ -1320,7 +1319,11 @@ bool NodeManager::AssignTask(Task &task) {
           // Queue this task for future assignment. The task will be assigned to a
           // worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+          if (!local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
+            // Make sure we don't insert a duplicate task; this could happen
+            // if AssignTask() is recursivelly called on same task.
+            local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+          }
           // We failed to send the task to the worker, so disconnect the worker.
           ProcessDisconnectClientMessage(worker->Connection());
           AssignTask(task);
