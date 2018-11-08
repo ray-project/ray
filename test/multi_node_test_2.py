@@ -57,7 +57,15 @@ def test_cluster():
     assert node2.all_processes_alive()
     g.remove_node(node2)
     g.remove_node(node)
-    assert not any(node.any_processes_alive() for node in g.list_all_nodes())
+    assert not any(n.any_processes_alive() for n in [node, node2])
+
+
+def test_shutdown():
+    g = Cluster(initialize_head=False)
+    node = g.add_node()
+    node2 = g.add_node()
+    g.shutdown()
+    assert not any(n.any_processes_alive() for n in [node, node2])
 
 
 def test_internal_config(start_connected_longer_cluster):
