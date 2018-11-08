@@ -1046,7 +1046,6 @@ def ray_start_cluster():
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    cluster.shutdown()
 
 
 def test_object_transfer_dump(ray_start_cluster):
