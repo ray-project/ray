@@ -25,7 +25,7 @@ function usage()
 # Determine how many parallel jobs to use for make based on the number of cores
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
-  PARALLEL=$(nproc)
+  PARALLEL=$(nproc --all)
 elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
 else
