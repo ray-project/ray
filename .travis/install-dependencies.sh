@@ -20,6 +20,12 @@ fi
 if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool python-dev python-numpy python-pip unzip
+  # Install LLVM.
+  wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
+  sudo apt-add-repository -y \
+       "deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-6.0 main"
+  sudo apt-get update -qq
+  sudo apt-get install -q clang-6.0
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -29,6 +35,12 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip
+  # Install LLVM.
+  wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
+  sudo apt-add-repository -y \
+       "deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-6.0 main"
+  sudo apt-get update -qq
+  sudo apt-get install -q clang-6.0
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -62,7 +74,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison llvm > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -90,7 +102,7 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison llvm > /dev/null
   # We use true to avoid exiting with an error code because the brew install can
   # fail if a package is already installed.
   true
