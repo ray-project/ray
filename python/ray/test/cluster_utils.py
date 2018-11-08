@@ -119,12 +119,17 @@ class Cluster(object):
 
         Args:
             retries (int): Number of times to retry checking client table.
+
+        Returns:
+            True if successfully registered nodes as expected.
         """
+
         for i in range(retries):
             if not ray.is_initialized() or not self._check_registered_nodes():
                 time.sleep(0.1)
             else:
-                break
+                return True
+        return False
 
     def _check_registered_nodes(self):
         registered = len([
