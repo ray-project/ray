@@ -1309,7 +1309,9 @@ bool NodeManager::AssignTask(Task &task) {
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+          if (!local_queues_.HasTask(spec.TaskId())) {
+            local_queues_.QueueRunningTasks(std::vector<Task>({task})); 
+          }
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
