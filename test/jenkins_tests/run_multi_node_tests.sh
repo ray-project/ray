@@ -359,6 +359,8 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
 
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA python -m pytest /ray/test/stress_tests_2.py
+
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
