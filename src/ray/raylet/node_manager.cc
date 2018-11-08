@@ -484,6 +484,7 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
     return;
   }
 
+  // Remember ids of the task we need to remove from ready queue.
   std::unordered_set<TaskID> removed_task_ids = {};
 
   for (const auto &task : ready_tasks) {
@@ -497,6 +498,10 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
     // (AssignTask() takes a non-const so copy task in a non-const variable.)
     Task task_dispatched = task;
     if (AssignTask(task_dispatched)) {
+      // We were successful in assigning this task on a local worker, so
+      // remember to remove it from ready queue. If for some reason the
+      // scheduling of this task fails later, we will add it back to the
+      // ready queue.
       removed_task_ids.insert(task.GetTaskSpecification().TaskId());
     }
   }
@@ -1231,6 +1236,7 @@ bool NodeManager::AssignTask(Task &task) {
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
       // Drop tasks that have already been executed.
+      // DispatchTasks() will remove this task as we retun "true".
       return true;
     }
   }
@@ -1245,6 +1251,7 @@ bool NodeManager::AssignTask(Task &task) {
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
     // Tell DispatchTasks() not to remove this task from ready queue.
+    // Need to wait for a worker to become available.
     return false;
   }
 
@@ -1316,8 +1323,9 @@ bool NodeManager::AssignTask(Task &task) {
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-          // Queue this task for future assignment. The task will be assigned to a
-          // worker once one becomes available.
+          // Queue this task for future assignment. We need to do this since
+          // DispatchTasks() removed it from the ready queue. The task will be
+          // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
           if (!local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
             // Make sure we don't insert a duplicate task; this could happen
@@ -1330,6 +1338,8 @@ bool NodeManager::AssignTask(Task &task) {
         }
       });
 
+  // We assigned this task to a worker. Tell DesignTasks() to remove it
+  // from the ready queue.
   return true;
 }
 

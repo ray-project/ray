@@ -143,7 +143,7 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
-  /// \return true, if tasks was executed, false otherwise.
+  /// \return true, if tasks was assigned to a worker, false otherwise.
   bool AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
   ///
