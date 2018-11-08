@@ -1235,8 +1235,7 @@ bool NodeManager::AssignTask(Task &task) {
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      // Drop tasks that have already been executed.
-      // DispatchTasks() will remove this task as we retun "true".
+      // This actor has been already assigned, so ignore it.
       return true;
     }
   }
@@ -1250,8 +1249,7 @@ bool NodeManager::AssignTask(Task &task) {
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
-    // Tell DispatchTasks() not to remove this task from ready queue.
-    // Need to wait for a worker to become available.
+    // We couldn't assign this task, as no worker available.
     return false;
   }
 
@@ -1338,8 +1336,9 @@ bool NodeManager::AssignTask(Task &task) {
         }
       });
 
-  // We assigned this task to a worker. Tell DesignTasks() to remove it
-  // from the ready queue.
+  // We assigned this task to a worker.
+  // (Note this means that we sent the task to the worker. The assignment
+  //  might still faiil if the worker fails in the meantime, for instance.)
   return true;
 }
 
