@@ -1313,12 +1313,15 @@ bool NodeManager::AssignTask(Task &task) {
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
-          return true;
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+          // Queue this task for future assignment. The task will be assigned to a
+          // worker once one becomes available.
+          // (See design_docs/task_states.rst for the state transition diagram.)
+          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
           // We failed to send the task to the worker, so disconnect the worker.
           ProcessDisconnectClientMessage(worker->Connection());
-          return AssignTask(task);
+          AssignTask(task);
         }
       });
 
