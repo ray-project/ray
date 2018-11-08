@@ -1,7 +1,7 @@
-.. Keep this in sync with ray/doc/tune-examples.rst
-
 Tune Examples
 =============
+
+.. Keep this in sync with ray/doc/tune-examples.rst
 
 In our repository, we provide a variety of examples for the various use cases and features of Tune.
 
