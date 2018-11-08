@@ -14,7 +14,7 @@ class RayConfig {
 
   int64_t ray_protocol_version() const { return ray_protocol_version_; }
 
-  uint64_t handler_warning_timeout_ms() const { return handler_warning_timeout_ms_; }
+  int64_t handler_warning_timeout_ms() const { return handler_warning_timeout_ms_; }
 
   int64_t heartbeat_timeout_milliseconds() const {
     return heartbeat_timeout_milliseconds_;
@@ -230,7 +230,7 @@ class RayConfig {
 
   /// The duration that a single handler on the event loop can take before a
   /// warning is logged that the handler is taking too long.
-  uint64_t handler_warning_timeout_ms_;
+  int64_t handler_warning_timeout_ms_;
 
   /// The duration between heartbeats. These are sent by the plasma manager and
   /// local scheduler.

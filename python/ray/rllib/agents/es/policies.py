@@ -82,3 +82,9 @@ class GenericPolicy(object):
 
     def get_weights(self):
         return self.variables.get_flat()
+
+    def get_filter(self):
+        return self.observation_filter
+
+    def set_filter(self, observation_filter):
+        self.observation_filter = observation_filter
