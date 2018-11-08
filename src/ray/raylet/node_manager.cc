@@ -636,7 +636,10 @@ void NodeManager::ProcessDisconnectClientMessage(
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
     while (!worker->GetBlockedTaskIds().empty()) {
-      HandleTaskUnblocked(client, *worker->GetBlockedTaskIds().begin());
+      // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
+      // not safe to pass in the iterator directly.
+      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+      HandleTaskUnblocked(client, task_id);
     }
   }
 
