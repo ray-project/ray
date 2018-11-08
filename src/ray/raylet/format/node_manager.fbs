@@ -37,7 +37,7 @@ enum MessageType:int {
   ExecuteTask,
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a local scheduler.
-  ReconstructObjects,
+  FetchOrReconstruct,
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
@@ -150,11 +150,18 @@ table ForwardTaskRequest {
   uncommitted_tasks: [Task];
 }
 
-table ReconstructObjects {
+table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
+  // The current task ID. If fetch_only is false, then this task is blocked.
+  task_id: string;
+}
+
+table NotifyUnblocked {
+  // The current task ID. This task is no longer blocked.
+  task_id: string;
 }
 
 table WaitRequest {
@@ -166,6 +173,9 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  task_id: string;
 }
 
 table WaitReply {

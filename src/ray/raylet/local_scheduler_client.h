@@ -96,19 +96,22 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn);
  * @param conn The connection information.
  * @param object_ids The IDs of the objects to reconstruct.
  * @param fetch_only Only fetch objects, do not reconstruct them.
+ * @param current_task_id The task that needs the objects.
  * @return Void.
  */
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID> &object_ids,
-                                         bool fetch_only = false);
+void local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
+                                          const std::vector<ObjectID> &object_ids,
+                                          bool fetch_only, const TaskID &current_task_id);
 
 /**
  * Notify the local scheduler that this client (worker) is no longer blocked.
  *
  * @param conn The connection information.
+ * @param current_task_id The task that is no longer blocked.
  * @return Void.
  */
-void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
+void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
+                                      const TaskID &current_task_id);
 
 // /**
 //  * Get an actor's current task frontier.
@@ -140,11 +143,13 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
 /// \param timeout_milliseconds Duration, in milliseconds, to wait before
 /// returning.
 /// \param wait_local Whether to wait for objects to appear on this node.
+/// \param current_task_id The task that called wait.
 /// \return A pair with the first element containing the object ids that were
 /// found, and the second element the objects that were not found.
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
-    int num_returns, int64_t timeout_milliseconds, bool wait_local);
+    int num_returns, int64_t timeout_milliseconds, bool wait_local,
+    const TaskID &current_task_id);
 
 /// Push an error to the relevant driver.
 ///
