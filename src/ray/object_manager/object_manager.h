@@ -10,7 +10,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/asio/steady_timer.hpp>
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"
@@ -50,6 +49,14 @@ struct ObjectManagerConfig {
   /// Negative: waiting infinitely.
   /// 0: giving up retrying immediately.
   int push_timeout_ms;
+};
+
+struct LocalObjectInfo {
+  /// Information from the object store about the object.
+  object_manager::protocol::ObjectInfoT object_info;
+  /// A map from the ID of a remote object manager to the timestamp of when
+  /// the object was last pushed to that object manager (if a push took place).
+  std::unordered_map<ClientID, int64_t> recent_pushes;
 };
 
 class ObjectManagerInterface {
@@ -392,8 +399,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
-  /// Cache of locally available objects.
-  std::unordered_map<ObjectID, object_manager::protocol::ObjectInfoT> local_objects_;
+  /// Mapping from locally available objects to information about those objects
+  /// including when the object was last pushed to other object managers.
+  std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
@@ -403,15 +411,6 @@ class ObjectManager : public ObjectManagerInterface {
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
-  /// A mapping from remote client to a list of the objects that have recently
-  /// been transferred to that client. We only keep track of a bounded number of
-  /// recent pushes.
-  std::unordered_map<ClientID, std::deque<ObjectID>> recent_pushes_;
-  /// The timer used to periodically remove elements from recent_pushes_. This
-  /// ensures that the object manager will eventually be able to send the same
-  /// object to other remote node managers.
-  boost::asio::steady_timer recent_pushes_timer_;
-
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   std::unordered_map<
@@ -419,6 +418,8 @@ class ObjectManager : public ObjectManagerInterface {
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
+  /// The objects that this object manager is currently trying to fetch from
+  /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
 
   /// Profiling events that are to be batched together and added to the profile

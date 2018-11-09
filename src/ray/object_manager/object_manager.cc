@@ -22,8 +22,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_(),
-      recent_pushes_timer_(main_service) {
+      connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -34,10 +33,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
-
-  // Start the timer that clears objects clearly from the list of recently
-  // transferred objects.
-  ForgetRecentPushes();
 }
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -52,8 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_(),
-      recent_pushes_timer_(main_service) {
+      connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
@@ -65,10 +59,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
-
-  // Start the timer that clears objects clearly from the list of recently
-  // transferred objects.
-  ForgetRecentPushes();
 }
 
 ObjectManager::~ObjectManager() { StopIOService(); }
@@ -104,7 +94,7 @@ void ObjectManager::HandleObjectAdded(
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   RAY_CHECK(local_objects_.count(object_id) == 0);
-  local_objects_[object_id] = object_info;
+  local_objects_[object_id].object_info = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 
@@ -357,13 +347,6 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
-  auto &recent_pushes = recent_pushes_[client_id];
-  if (std::find(recent_pushes.begin(), recent_pushes.end(), object_id) !=
-      recent_pushes.end()) {
-    // We recently pushed this object to the client, so ignore this Push.
-    return;
-  }
-
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
     auto &clients = unfulfilled_push_requests_[object_id];
@@ -396,22 +379,34 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     return;
   }
 
-  // Keep track of the fact that we're attempting to push this object to the
-  // remote object manager. Note that it's possible that the transfer will fail,
-  // but the object ID will eventually be cleared out of this list by the
-  // recent_pushes_timer_ timer.
-  recent_pushes.push_back(object_id);
-  if (static_cast<int64_t>(recent_pushes.size()) >
-      RayConfig::instance().object_manager_num_recent_pushes()) {
-    recent_pushes.pop_front();
+  // If we've pushed this same object to this same object manager recently, then
+  // don't do it again. Otherwise do it.
+  auto &recent_pushes = local_objects_[object_id].recent_pushes;
+  auto it = recent_pushes.find(client_id);
+  if (it == recent_pushes.end()) {
+    // We haven't pushed this specific object to this specific object manager
+    // yet (or if we have then the object must have been evicted and recreated
+    // locally).
+    recent_pushes[client_id] = current_time_ms();
+  } else {
+    // We've already pushed this object to this object manager, but if that
+    // happened long ago, push it again.
+    int64_t current_time = current_time_ms();
+    if (current_time - it->second <=
+        RayConfig::instance().object_manager_repeated_push_delay_ms()) {
+      // We pushed this object to the object manager recently, so don't do it
+      // again.
+      return;
+    } else {
+      it->second = current_time;
+    }
   }
-  RAY_CHECK(static_cast<int64_t>(recent_pushes.size()) <=
-            RayConfig::instance().object_manager_num_recent_pushes());
 
   RemoteConnectionInfo connection_info(client_id);
   object_directory_->LookupRemoteConnectionInfo(connection_info);
   if (connection_info.Connected()) {
-    const object_manager::protocol::ObjectInfoT &object_info = local_objects_[object_id];
+    const object_manager::protocol::ObjectInfoT &object_info =
+        local_objects_[object_id].object_info;
     uint64_t data_size =
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
@@ -516,24 +511,6 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
                    << config_.max_sends;
   }
   return status;
-}
-
-void ObjectManager::ForgetRecentPushes() {
-  // For each remote manager, forget about one object pushed to that object
-  // manager.
-  for (auto &pair : recent_pushes_) {
-    if (pair.second.size() > 0) {
-      pair.second.pop_front();
-    }
-  }
-
-  // Reset the timer.
-  recent_pushes_timer_.expires_from_now(std::chrono::milliseconds(
-      RayConfig::instance().object_manager_recent_pushes_timer_period_ms()));
-  recent_pushes_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    ForgetRecentPushes();
-  });
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
@@ -792,10 +769,8 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
-  const ClientID client_id = conn->GetClientId();
   connection_pool_.RemoveReceiver(conn);
 
-  recent_pushes_.erase(client_id);
   // We don't need to clean up unfulfilled_push_requests_ because the
   // unfulfilled push timers will fire and clean it up.
 }

@@ -102,14 +102,9 @@ class RayConfig {
 
   int object_manager_push_timeout_ms() const { return object_manager_push_timeout_ms_; }
 
-  int object_manager_num_recent_pushes() const {
-    return object_manager_num_recent_pushes_;
+  int object_manager_repeated_push_delay_ms() const {
+    return object_manager_repeated_push_delay_ms_;
   }
-
-  int object_manager_recent_pushes_timer_period_ms() const {
-    return object_manager_recent_pushes_timer_period_ms_;
-  }
-
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
   }
@@ -191,6 +186,8 @@ class RayConfig {
         object_manager_push_timeout_ms_ = pair.second;
       } else if (pair.first == "object_manager_default_chunk_size") {
         object_manager_default_chunk_size_ = pair.second;
+      } else if (pair.first == "object_manager_repeated_push_delay_ms") {
+        object_manager_repeated_push_delay_ms_ = pair.second;
       } else {
         RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
       }
@@ -234,8 +231,7 @@ class RayConfig {
         node_manager_forward_task_retry_timeout_milliseconds_(1000),
         object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
-        object_manager_num_recent_pushes_(20),
-        object_manager_recent_pushes_timer_period_ms_(3000),
+        object_manager_repeated_push_delay_ms_(60000),
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1),
         initialized_(false) {}
@@ -358,14 +354,9 @@ class RayConfig {
   /// 0: giving up retrying immediately.
   int object_manager_push_timeout_ms_;
 
-  /// This is the maximum number of objects that each object manager will
-  /// remember pushing to each other object manager in order to suppress
-  /// duplicate pushes.
-  int object_manager_num_recent_pushes_;
-
-  /// The period of the timer that will be used to make the object manager
-  /// forget about objects that it has recently pushed to other object managers.
-  int object_manager_recent_pushes_timer_period_ms_;
+  /// The period of time that an object manager will wait before pushing the
+  /// same object again to a specific object manager.
+  int object_manager_repeated_push_delay_ms_;
 
   /// Default chunk size for multi-chunk transfers to use in the object manager.
   /// In the object manager, no single thread is permitted to transfer more
