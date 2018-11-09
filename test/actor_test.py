@@ -923,6 +923,7 @@ def test_actor_different_numbers_of_gpus(shutdown_only):
     assert ready_ids == []
 
 
+@pytest.mark.timeout(60)
 def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
     num_local_schedulers = 10
     num_gpus_per_scheduler = 10

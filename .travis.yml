@@ -50,6 +50,7 @@ matrix:
         - cd doc
         - pip install -q -r requirements-doc.txt
         - pip install yapf==0.23.0
+        - pip install pytest-timeout
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
