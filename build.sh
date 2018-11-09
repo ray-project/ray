@@ -101,10 +101,6 @@ fi
 
 pushd "$BUILD_DIR"
 
-# avoid the command failed and exits
-# and cmake will check some directories to determine whether some targets built
-make clean || true
-
 cmake -GNinja \
       -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
@@ -112,5 +108,7 @@ cmake -GNinja \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
+ninja arrow_ep
 ninja
+
 popd
