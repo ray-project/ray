@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
+import json
 import multiprocessing
 import numpy as np
 import pytest
@@ -31,6 +32,16 @@ def ray_start_cluster():
     num_nodes = 5
     cluster = create_cluster(num_nodes)
     yield cluster, num_nodes
+
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture()
+def ray_start_empty_cluster():
+    cluster = Cluster()
+    yield cluster
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -192,3 +203,67 @@ def test_actor_broadcast(ray_start_cluster):
             # receiver.
             send_counts[(event["pid"], event["tid"])] += 1
         assert all(value == 1 for value in send_counts.values())
+
+
+# The purpose of this test is to make sure that an object that was already been
+# transferred to a node can be transferred again.
+def test_object_transfer_retry(ray_start_empty_cluster):
+    cluster = ray_start_empty_cluster
+
+    repeated_push_delay = 4
+
+    config = json.dumps(
+        {"object_manager_repeated_push_delay_ms": repeated_push_delay * 1000})
+    cluster.add_node(_internal_config=config)
+    cluster.add_node(resources={"GPU": 1}, _internal_config=config)
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote(num_gpus=1)
+    def f(size):
+        return np.zeros(size, dtype=np.uint8)
+
+    x_ids = [f.remote(10**i) for i in [1, 2, 3, 4, 5, 6, 7]]
+    assert not any([ray.worker.global_worker.plasma_client.contains(
+                        ray.pyarrow.plasma.ObjectID(x_id.id()))
+                    for x_id in x_ids])
+
+    start_time = time.time()
+
+    # Get the objects locally to cause them to be transferred.
+    xs = ray.get(x_ids)
+
+    # Cause all objects to be flushed.
+    del xs
+    x = np.zeros(10**7, dtype=np.uint8)
+    for _ in range(10):
+        ray.put(x)
+    assert not any([ray.worker.global_worker.plasma_client.contains(
+                        ray.pyarrow.plasma.ObjectID(x_id.id()))
+                    for x_id in x_ids])
+
+    end_time = time.time()
+
+    # Get the objects again and make sure they get transferred.
+    xs = ray.get(x_ids)
+
+    end_transfer_time = time.time()
+
+    # Make sure that the object was retransferred before the object manager
+    # repeated push delay expired.
+    assert end_time - start_time <= repeated_push_delay, (
+        "This test didn't really fail, but the timing is such that it is not "
+        "testing the thing it should be testing.")
+    # We should have had to wait for the repeated push delay.
+    assert end_transfer_time - start_time >= repeated_push_delay
+
+    # Flush the objects again and wait longer than the repeated push delay and
+    # make sure that the objects are transferred again.
+    del xs
+    for _ in range(10):
+        ray.put(x)
+    assert not any([ray.worker.global_worker.plasma_client.contains(
+                        ray.pyarrow.plasma.ObjectID(x_id.id()))
+                    for x_id in x_ids])
+
+    time.sleep(repeated_push_delay)
+    xs = ray.get(x_ids)

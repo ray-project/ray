@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -418,6 +419,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
   std::vector<ProfileEventT> profile_events_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 }  // namespace ray
