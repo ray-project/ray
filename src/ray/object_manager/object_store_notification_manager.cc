@@ -47,7 +47,9 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error.value() != boost::system::errc::success) {
-    RAY_LOG(FATAL) << boost_to_ray_status(error).ToString();
+    RAY_LOG(FATAL)
+        << "Problem communicating with the object store from raylet, check logs or "
+        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
   }
 
   const auto &object_info =

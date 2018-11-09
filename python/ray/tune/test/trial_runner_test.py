@@ -970,6 +970,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.RUNNING)
 
+    def testMultiStepRun2(self):
+        """Checks that runner.step throws when overstepping."""
+        ray.init(num_cpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertRaises(TuneError, runner.step)
+
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())
@@ -991,6 +1015,12 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+
+    def testThrowOnOverstep(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        runner.step()
+        self.assertRaises(TuneError, runner.step)
 
     def testFailureRecoveryDisabled(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -1390,17 +1420,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(runner.is_finished())
 
     def testSearchAlgFinishes(self):
-        """SearchAlg changing state in `next_trials` does not crash."""
+        """Empty SearchAlg changing state in `next_trials` does not crash."""
 
         class FinishFastAlg(SuggestionAlgorithm):
-            def next_trials(self):
-                self._finished = True
-                return []
+            _index = 0
 
-        ray.init(num_cpus=4, num_gpus=2)
+            def next_trials(self):
+                trials = []
+                self._index += 1
+
+                for trial in self._trial_generator:
+                    trials += [trial]
+                    break
+
+                if self._index > 4:
+                    self._finished = True
+                return trials
+
+            def _suggest(self, trial_id):
+                return {}
+
+        ray.init(num_cpus=2)
         experiment_spec = {
             "run": "__fake",
-            "num_samples": 3,
+            "num_samples": 2,
             "stop": {
                 "training_iteration": 1
             }
@@ -1410,9 +1453,20 @@ class TrialRunnerTest(unittest.TestCase):
         searcher.add_configurations(experiments)
 
         runner = TrialRunner(search_alg=searcher)
-        runner.step()  # This should not fail
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This launches a new run
+        runner.step()  # This launches a 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the first run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # this converts self._finished to True
         self.assertTrue(searcher.is_finished())
-        self.assertTrue(runner.is_finished())
+        self.assertRaises(TuneError, runner.step)
 
 
 if __name__ == "__main__":

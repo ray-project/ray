@@ -648,7 +648,8 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client
   ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
   ASSERT_EQ(data.is_insertion, is_insertion);
 
-  auto cached_client = client->client_table().GetClient(added_id);
+  ClientTableDataT cached_client;
+  client->client_table().GetClient(added_id, cached_client);
   ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
   ASSERT_EQ(cached_client.is_insertion, is_insertion);
 }

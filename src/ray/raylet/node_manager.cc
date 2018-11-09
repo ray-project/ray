@@ -50,6 +50,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
@@ -61,7 +62,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
-          std::make_shared<ObjectDirectory>(gcs_client),
+          std::make_shared<ObjectDirectory>(io_service, gcs_client),
           gcs_client_->task_reconstruction_log()),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
@@ -174,6 +175,9 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   Heartbeat();
+  // Start the timer that gets object manager profiling information and sends it
+  // to the GCS.
+  GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
 }
@@ -280,6 +284,34 @@ void NodeManager::Heartbeat() {
   });
 }
 
+void NodeManager::GetObjectManagerProfileInfo() {
+  int64_t start_time_ms = current_time_ms();
+
+  auto profile_info = object_manager_.GetAndResetProfilingInfo();
+
+  if (profile_info.profile_events.size() > 0) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = CreateProfileTableData(fbb, &profile_info);
+    fbb.Finish(message);
+    auto profile_message = flatbuffers::GetRoot<ProfileTableData>(fbb.GetBufferPointer());
+
+    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(*profile_message));
+  }
+
+  // Reset the timer.
+  object_manager_profile_timer_.expires_from_now(heartbeat_period_);
+  object_manager_profile_timer_.async_wait(
+      [this](const boost::system::error_code &error) {
+        RAY_CHECK(!error);
+        GetObjectManagerProfileInfo();
+      });
+
+  int64_t interval = current_time_ms() - start_time_ms;
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
+    RAY_LOG(WARNING) << "GetObjectManagerProfileInfo handler took " << interval << " ms.";
+  }
+}
+
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
 
@@ -304,14 +336,13 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // Establish a new NodeManager connection to this GCS client.
-  auto client_info = gcs_client_->client_table().GetClient(client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id << " at "
-                 << client_info.node_manager_address << ":"
-                 << client_info.node_manager_port;
+                 << client_data.node_manager_address << ":"
+                 << client_data.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
   auto status =
-      TcpConnect(socket, client_info.node_manager_address, client_info.node_manager_port);
+      TcpConnect(socket, client_data.node_manager_address, client_data.node_manager_port);
   // A disconnected client has 2 entries in the client table (one for being
   // inserted and one for being removed). When a new raylet starts, ClientAdded
   // will be called with the disconnected client's first entry, which will cause
@@ -1555,8 +1586,6 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
 
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
-
-  auto client_info = gcs_client_->client_table().GetClient(node_id);
 
   // Lookup remote server connection for this node_id and use it to send the request.
   auto it = remote_server_connections_.find(node_id);
