@@ -121,23 +121,21 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
     std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
     std::vector<ClientID> &remote_client_ids) {
-//   Shuffle the nodes to prevent infinite forwarding loops.
-//  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), gen_);
+  // Shuffle the nodes to prevent forwarding cycles.
+  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), gen_);
   std::list<ClientID> remote_client_ids_list(remote_client_ids.begin(),
                                              remote_client_ids.end());
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
 
-  // Check if we can accommodate all infeasible tasks.
+  // Try to accommodate all infeasible tasks and load-balance across nodes.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
     const auto &placement_resources = spec.GetRequiredPlacementResources();
     // Find the first node that can accommodate the resources.
-    // NOTE(ujvl): this does not distribute tasks evenly across nodes.
-    for (const auto &it = remote_client_ids_list.begin();
-         it != remote_client_ids_list.end(); ) {
-      ClientID client_id = *it;
-    //for (const auto &client_id : remote_client_ids_list) {
+    for (auto it = remote_client_ids_list.begin();
+         it != remote_client_ids_list.end(); ++it) {
+      const ClientID client_id = *it;
       const auto &remote_scheduling_resources = cluster_resources[client_id];
       if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
         decision[spec.TaskId()] = client_id;
@@ -146,34 +144,44 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
         new_load.AddResources(spec.GetRequiredResources());
         cluster_resources[client_id].SetLoadResources(std::move(new_load));
         // Move this client id to the end of the list.
-        remote_client_ids_list.splice(remote_client_ids_list.end(), remote_client_ids_list, it);
+        remote_client_ids_list.splice(remote_client_ids_list.end(),
+                                      remote_client_ids_list,
+                                      it);
         break;
       }
     }
   }
 
-  return decision;
-#if 0
-  // Check if we can forward a single ready task to each node.
-  for (auto &client_id : remote_client_ids) {
-    const auto &remote_scheduling_resources = cluster_resources[client_id];
-    for (const auto &task : scheduling_queue_.GetReadyTasks()) {
-      const auto &spec = task.GetTaskSpecification();
+  // Try to distribute up to n tasks over n nodes.
+  size_t num_forwarded = 0;
+  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
+    const auto &spec = task.GetTaskSpecification();
+    const auto &placement_resources = spec.GetRequiredPlacementResources();
+    for (auto it = remote_client_ids_list.begin();
+         it != remote_client_ids_list.end(); ++it) {
+      ClientID client_id = *it;
+      const auto &remote_scheduling_resources = cluster_resources[client_id];
       if (!spec.IsActorTask()) {
         const auto &task_id = spec.TaskId();
-        // Skip over tasks already assigned.
-        if (decision.find(task_id) == decision.end() &&
-            spec.GetRequiredPlacementResources().IsSubset(
-            remote_scheduling_resources.GetTotalResources())) {
+        if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
           decision[task_id] = client_id;
           ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
           new_load.AddResources(spec.GetRequiredResources());
           cluster_resources[client_id].SetLoadResources(std::move(new_load));
+          // Move this client id to the end of the list.
+          remote_client_ids_list.splice(remote_client_ids_list.end(),
+                                        remote_client_ids_list,
+                                        it);
+          num_forwarded++;
           break;
         }
       }
     }
+    if (num_forwarded == remote_client_ids.size()) {
+      break;
+    }
   }
+
   return decision;
 #endif
 }
