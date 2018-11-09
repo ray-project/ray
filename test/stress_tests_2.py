@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import defaultdict
 import multiprocessing
 import numpy as np
 import pytest
@@ -38,7 +39,6 @@ def ray_start_cluster():
 
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
-@pytest.mark.skip("This test does not work yet.")
 def test_object_broadcast(ray_start_cluster):
     cluster, num_nodes = ray_start_cluster
 
@@ -83,17 +83,38 @@ def test_object_broadcast(ray_start_cluster):
             if event["cat"] == "transfer_send"
             and event["args"][0] == x_id.hex() and event["args"][2] == 1
         ]
+
+        # NOTE: Each event currently appears twice because we duplicate the
+        # send and receive boxes to underline them with a box (black if it is a
+        # send and gray if it is a receive). So we need to remove these extra
+        # boxes here.
+        deduplicated_relevant_events = [
+            event for event in relevant_events if event["cname"] != "black"
+        ]
+        assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
+        relevant_events = deduplicated_relevant_events
+
         # Each object must have been broadcast to each remote machine.
         assert len(relevant_events) >= num_nodes - 1
         # If more object transfers than necessary have been done, print a
         # warning.
         if len(relevant_events) > num_nodes - 1:
-            warnings.warn("This object was trasnferred {} times, when only {} "
+            warnings.warn("This object was transferred {} times, when only {} "
                           "transfers were required.".format(
                               len(relevant_events), num_nodes - 1))
         # Each object should not have been broadcast more than once from every
-        # machine to every other machine.
+        # machine to every other machine. Also, a pair of machines should not
+        # both have sent the object to each other.
         assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
+
+        # Make sure that no object was sent multiple times between the same
+        # pair of object managers.
+        send_counts = defaultdict(int)
+        for event in relevant_events:
+            # The pid identifies the sender and the tid identifies the
+            # receiver.
+            send_counts[(event["pid"], event["tid"])] += 1
+        assert all([value == 1 for value in send_counts.values()])
 
 
 # When submitting an actor method, we try to pre-emptively push its arguments
@@ -139,14 +160,35 @@ def test_actor_broadcast(ray_start_cluster):
             if event["cat"] == "transfer_send"
             and event["args"][0] == x_id.hex() and event["args"][2] == 1
         ]
+
+        # NOTE: Each event currently appears twice because we duplicate the
+        # send and receive boxes to underline them with a box (black if it is a
+        # send and gray if it is a receive). So we need to remove these extra
+        # boxes here.
+        deduplicated_relevant_events = [
+            event for event in relevant_events if event["cname"] != "black"
+        ]
+        assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
+        relevant_events = deduplicated_relevant_events
+
         # Each object must have been broadcast to each remote machine.
         assert len(relevant_events) >= num_nodes - 1
         # If more object transfers than necessary have been done, print a
         # warning.
         if len(relevant_events) > num_nodes - 1:
-            warnings.warn("This object was trasnferred {} times, when only {} "
+            warnings.warn("This object was transferred {} times, when only {} "
                           "transfers were required.".format(
                               len(relevant_events), num_nodes - 1))
         # Each object should not have been broadcast more than once from every
-        # machine to every other machine.
+        # machine to every other machine. Also, a pair of machines should not
+        # both have sent the object to each other.
         assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
+
+        # Make sure that no object was sent multiple times between the same
+        # pair of object managers.
+        send_counts = defaultdict(int)
+        for event in relevant_events:
+            # The pid identifies the sender and the tid identifies the
+            # receiver.
+            send_counts[(event["pid"], event["tid"])] += 1
+        assert all([value == 1 for value in send_counts.values()])
