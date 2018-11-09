@@ -38,9 +38,9 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                self.connect(head_node_args.get("redis_password"))
+                self.connect()
 
-    def connect(self, redis_password=None):
+    def connect(self):
         assert self.redis_address is not None
         assert not self.connected
         ray.init(
@@ -78,6 +78,7 @@ class Cluster(object):
                 include_webui=False,
                 **node_kwargs)
             self.redis_address = address_info["redis_address"]
+            self.redis_password = node_kwargs.get("redis_password")
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
