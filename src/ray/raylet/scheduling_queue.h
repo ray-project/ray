@@ -14,12 +14,26 @@ namespace raylet {
 
 enum class TaskState {
   INIT,
+  // The task may be placed on a node.
   PLACEABLE,
+  // The task has been placed on a node and is waiting for some object
+  // dependencies to become local.
   WAITING,
+  // The task has been placed on a node, all dependencies are satisfied, and is
+  // waiting for resources to run.
   READY,
+  // The task is running on a worker. The task may also be blocked in a ray.get
+  // or ray.wait call, in which case it also has state BLOCKED.
   RUNNING,
+  // The task is running but blocked in a ray.get or ray.wait call. Tasks that
+  // were explicitly assigned by us may be both BLOCKED and RUNNING, while
+  // tasks that were created out-of-band (e.g., the application created
+  // multiple threads) are only BLOCKED.
   BLOCKED,
+  // The task is a driver task.
   DRIVER,
+  // The task has resources that cannot be satisfied by any node, as far as we
+  // know.
   INFEASIBLE
 };
 
@@ -86,10 +100,12 @@ class SchedulingQueue {
 
   /// Get the tasks in the blocked state.
   ///
-  /// \return A const reference to the queue of tasks that have been dispatched
-  /// to a worker but are blocked on a data dependency discovered to be missing
-  /// at runtime.
-  const std::list<Task> &GetBlockedTasks() const;
+  /// \return A const reference to the tasks that are are blocked on a data
+  /// dependency discovered to be missing at runtime. These include RUNNING
+  /// tasks that were explicitly assigned to a worker by us, as well as tasks
+  /// that were created out-of-band (e.g., the application created
+  // multiple threads) are only BLOCKED.
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
 
   /// Get the set of driver task IDs.
   ///
@@ -143,12 +159,19 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
-  /// Queue tasks in the blocked state. These are tasks that have been
+  /// Add a task ID in the blocked state. These are tasks that have been
   /// dispatched to a worker but are blocked on a data dependency that was
   /// discovered to be missing at runtime.
   ///
-  /// \param tasks The tasks to queue.
-  void QueueBlockedTasks(const std::vector<Task> &tasks);
+  /// \param task_id The task to mark as blocked.
+  void AddBlockedTaskId(const TaskID &task_id);
+
+  /// Remove a task ID in the blocked state. These are tasks that have been
+  /// dispatched to a worker but were blocked on a data dependency that was
+  /// discovered to be missing at runtime.
+  ///
+  /// \param task_id The task to mark as unblocked.
+  void RemoveBlockedTaskId(const TaskID &task_id);
 
   /// Add a driver task ID. This is an empty task used to represent a driver.
   ///
@@ -223,9 +246,10 @@ class SchedulingQueue {
     ///
     /// \param task_id The task ID for the task to remove from the queue.
     /// \param removed_tasks If the task specified by task_id is successfully
-    //  removed from the queue, the task data is appended to the vector.
+    ///  removed from the queue, the task data is appended to the vector. Can
+    ///  be a nullptr, in which case nothing is appended.
     /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id, std::vector<Task> &removed_tasks);
+    bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
 
     /// \brief Check if the queue contains a specific task id.
     ///
@@ -237,11 +261,17 @@ class SchedulingQueue {
     /// \return A list of tasks contained in this queue.
     const std::list<Task> &GetTasks() const;
 
+    /// \brief Get the total resources required by the tasks in the queue.
+    /// \return Total resources required by the tasks in the queue.
+    const ResourceSet &GetCurrentResourceLoad() const;
+
    private:
-    // A list of tasks.
+    /// A list of tasks.
     std::list<Task> task_list_;
-    // A hash to speed up looking up a task.
+    /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+    /// Aggregate resources of all the tasks in this queue.
+    ResourceSet current_resource_load_;
   };
 
  private:
@@ -258,19 +288,13 @@ class SchedulingQueue {
   TaskQueue running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
-  TaskQueue blocked_tasks_;
+  std::unordered_set<TaskID> blocked_task_ids_;
   /// Tasks that require resources that are not available on any of the nodes
   /// in the cluster.
   TaskQueue infeasible_tasks_;
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
-
-  /// \brief Return all resource demand associated with the specified task queue.
-  ///
-  /// \param task_queue The task queue for which aggregate resource demand is calculated.
-  /// \return Aggregate resource demand.
-  ResourceSet GetQueueResources(const TaskQueue &task_queue) const;
 };
 
 }  // namespace raylet

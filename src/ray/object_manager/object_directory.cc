@@ -2,8 +2,9 @@
 
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
-    : gcs_client_(gcs_client) {}
+ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
+                                 std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
+    : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
 
@@ -61,6 +62,8 @@ void ObjectDirectory::RegisterBackend() {
     // empty, since this may indicate that the objects have been evicted from
     // all nodes.
     for (const auto &callback_pair : callbacks) {
+      // It is safe to call the callback directly since this is already running
+      // in the subscription callback stack.
       callback_pair.second(client_id_vec, object_id);
     }
   };
@@ -102,38 +105,32 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   return status;
 };
 
-ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
-                                            const InfoSuccessCallback &success_callback,
-                                            const InfoFailureCallback &fail_callback) {
-  const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
-  ClientID result_client_id = ClientID::from_binary(data.client_id);
-  if (result_client_id == ClientID::nil() || !data.is_insertion) {
-    fail_callback();
-  } else {
-    const auto &info =
-        RemoteConnectionInfo(client_id, data.node_manager_address,
-                             static_cast<uint16_t>(data.object_manager_port));
-    success_callback(info);
-  }
-  return ray::Status::OK();
-}
-
-void ObjectDirectory::RunFunctionForEachClient(
-    const InfoSuccessCallback &client_function) {
-  const auto &clients = gcs_client_->client_table().GetAllClients();
-  for (const auto &client_pair : clients) {
-    const ClientTableDataT &data = client_pair.second;
-    if (client_pair.first == ClientID::nil() ||
-        client_pair.first == gcs_client_->client_table().GetLocalClientId() ||
-        !data.is_insertion) {
-      continue;
-    } else {
-      const auto &info =
-          RemoteConnectionInfo(client_pair.first, data.node_manager_address,
-                               static_cast<uint16_t>(data.object_manager_port));
-      client_function(info);
+void ObjectDirectory::LookupRemoteConnectionInfo(
+    RemoteConnectionInfo &connection_info) const {
+  ClientTableDataT client_data;
+  gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
+  ClientID result_client_id = ClientID::from_binary(client_data.client_id);
+  if (!result_client_id.is_nil()) {
+    RAY_CHECK(result_client_id == connection_info.client_id);
+    if (client_data.is_insertion) {
+      connection_info.ip = client_data.node_manager_address;
+      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port);
     }
   }
+}
+
+std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
+  std::vector<RemoteConnectionInfo> remote_connections;
+  const auto &clients = gcs_client_->client_table().GetAllClients();
+  for (const auto &client_pair : clients) {
+    RemoteConnectionInfo info(client_pair.first);
+    LookupRemoteConnectionInfo(info);
+    if (info.Connected() &&
+        info.client_id != gcs_client_->client_table().GetLocalClientId()) {
+      remote_connections.push_back(info);
+    }
+  }
+  return remote_connections;
 }
 
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
@@ -156,7 +153,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // have been evicted from all nodes.
   std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
                                       listener_state.current_object_locations.end());
-  callback(client_id_vec, object_id);
+  io_service_.post(
+      [callback, client_id_vec, object_id]() { callback(client_id_vec, object_id); });
   return status;
 }
 
@@ -187,6 +185,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         std::unordered_set<ClientID> client_ids;
         std::vector<ClientID> locations_vector = UpdateObjectLocations(
             client_ids, location_history, gcs_client_->client_table());
+        // It is safe to call the callback directly since this is already running
+        // in the GCS client's lookup callback stack.
         callback(locations_vector, object_id);
       });
   return status;

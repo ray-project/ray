@@ -258,7 +258,10 @@ ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  RAY_CHECK(type == static_cast<int64_t>(MessageType::ExecuteTask));
+  if (type != static_cast<int64_t>(MessageType::ExecuteTask)) {
+    RAY_LOG(FATAL) << "Problem communicating with raylet from worker: check logs or "
+                      "dmesg for previous errors.";
+  }
 
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
@@ -301,31 +304,39 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
                 &conn->write_mutex);
 }
 
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID> &object_ids,
-                                         bool fetch_only) {
+void local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
+                                          const std::vector<ObjectID> &object_ids,
+                                          bool fetch_only,
+                                          const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
-  auto message =
-      ray::protocol::CreateReconstructObjects(fbb, object_ids_message, fetch_only);
+  auto message = ray::protocol::CreateFetchOrReconstruct(
+      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  write_message(conn->conn, static_cast<int64_t>(MessageType::ReconstructObjects),
+  write_message(conn->conn, static_cast<int64_t>(MessageType::FetchOrReconstruct),
                 fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
   /* TODO(swang): Propagate the error. */
 }
 
-void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
-  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked), 0, NULL,
-                &conn->write_mutex);
+void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
+                                      const TaskID &current_task_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  fbb.Finish(message);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked),
+                fbb.GetSize(), fbb.GetBufferPointer(), &conn->write_mutex);
 }
 
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
-    int num_returns, int64_t timeout_milliseconds, bool wait_local) {
+    int num_returns, int64_t timeout_milliseconds, bool wait_local,
+    const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
-      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local);
+      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   int64_t type;
   int64_t reply_size;
@@ -338,8 +349,11 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     // Read result.
     read_message(conn->conn, &type, &reply_size, &reply);
   }
-  RAY_CHECK(static_cast<ray::protocol::MessageType>(type) ==
-            ray::protocol::MessageType::WaitReply);
+  if (static_cast<ray::protocol::MessageType>(type) !=
+      ray::protocol::MessageType::WaitReply) {
+    RAY_LOG(FATAL) << "Problem communicating with raylet from worker: check logs or "
+                      "dmesg for previous errors.";
+  }
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;

@@ -104,8 +104,15 @@ class NodeManager {
   /// \param client_data Data associated with the removed client.
   /// \return Void.
   void ClientRemoved(const ClientTableDataT &client_data);
+
   /// Send heartbeats to the GCS.
   void Heartbeat();
+
+  /// Get profiling information from the object manager and push it to the GCS.
+  ///
+  /// \return Void.
+  void GetObjectManagerProfileInfo();
+
   /// Handler for a heartbeat notification from the GCS.
   ///
   /// \param client The GCS client.
@@ -202,33 +209,31 @@ class NodeManager {
   ///
   /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
   void DispatchTasks(const std::list<Task> &ready_tasks);
-  /// Handle a worker becoming blocked in a `ray.get`.
-  ///
-  /// \param worker The worker that is blocked.
-  /// \return Void.
-  void HandleWorkerBlocked(std::shared_ptr<Worker> worker);
-  /// Handle a worker exiting a `ray.get`.
-  ///
-  /// \param worker The worker that is unblocked.
-  /// \return Void.
-  void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
 
-  /// Handle a client that is blocked. This could be a worker or a driver. This
-  /// can be triggered when a client starts a get call or a wait call.
+  /// Handle a task that is blocked. This could be a task assigned to a worker,
+  /// an out-of-band task (e.g., a thread created by the application), or a
+  /// driver task. This can be triggered when a client starts a get call or a
+  /// wait call.
   ///
-  /// \param client The client that is blocked.
+  /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param current_task_id The task that is blocked.
   /// \return Void.
-  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids);
+  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                         const std::vector<ObjectID> &required_object_ids,
+                         const TaskID &current_task_id);
 
-  /// Handle a client that is unblocked. This could be a worker or a driver.
-  /// This can be triggered when a client is finished with a get call or a wait
-  /// call. It is ok to call this even if the client is not actually blocked.
+  /// Handle a task that is unblocked. This could be a task assigned to a
+  /// worker, an out-of-band task (e.g., a thread created by the application),
+  /// or a driver task. This can be triggered when a client finishes a get call
+  /// or a wait call. The given task must be blocked, via a previous call to
+  /// HandleTaskBlocked.
   ///
-  /// \param client The client that is unblocked.
+  /// \param client The client that is executing the unblocked task.
+  /// \param current_task_id The task that is unblocked.
   /// \return Void.
-  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const TaskID &current_task_id);
 
   /// Kill a worker.
   ///
@@ -318,12 +323,12 @@ class NodeManager {
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
-  /// Process client message of ReconstructObjects
+  /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessReconstructObjectsMessage(
+  void ProcessFetchOrReconstructMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
@@ -352,6 +357,9 @@ class NodeManager {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The timer used to get profiling information from the object manager and
+  /// push it to the GCS.
+  boost::asio::steady_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;

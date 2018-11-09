@@ -6,6 +6,14 @@ Tune is a scalable framework for hyperparameter search with a focus on deep lear
 User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
 
 
+Tutorial
+--------
+
+To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tune.ipynb>`__.
+
+(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTune.ipynb>`__.
+
+
 Citing Tune
 -----------
 

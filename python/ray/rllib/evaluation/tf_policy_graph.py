@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import tensorflow as tf
 import numpy as np
 
@@ -10,6 +11,8 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+
+logger = logging.getLogger(__name__)
 
 
 class TFPolicyGraph(PolicyGraph):
@@ -115,6 +118,9 @@ class TFPolicyGraph(PolicyGraph):
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
+
+        logger.debug("Created {} with loss inputs: {}".format(
+            self, self._loss_input_dict))
 
     def build_compute_actions(self,
                               builder,

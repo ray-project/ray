@@ -204,12 +204,14 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    const ClientTableDataT &data = gcs_client_2->client_table().GetClient(client_id_1);
+    ClientTableDataT data;
+    gcs_client_2->client_table().GetClient(client_id_1, data);
     RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
-    const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+    ClientTableDataT data2;
+    gcs_client_1->client_table().GetClient(client_id_2, data2);
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;

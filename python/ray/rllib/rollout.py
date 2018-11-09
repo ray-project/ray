@@ -12,7 +12,6 @@ import pickle
 import gym
 import ray
 from ray.rllib.agents.agent import get_agent_class
-from ray.rllib.agents.dqn.common.wrappers import wrap_dqn
 from ray.rllib.models import ModelCatalog
 
 EXAMPLE_USAGE = """
@@ -54,7 +53,7 @@ def create_parser(parser_creator=None):
         const=True,
         help="Surpress rendering of the environment.")
     parser.add_argument(
-        "--steps", default=None, help="Number of steps to roll out.")
+        "--steps", default=10000, help="Number of steps to roll out.")
     parser.add_argument("--out", default=None, help="Output filename.")
     parser.add_argument(
         "--config",
@@ -66,28 +65,36 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    if not args.config:
+    config = args.config
+    if not config:
         # Load configuration from file
         config_dir = os.path.dirname(args.checkpoint)
         config_path = os.path.join(config_dir, "params.json")
+        if not os.path.exists(config_path):
+            config_path = os.path.join(config_dir, "../params.json")
+        if not os.path.exists(config_path):
+            raise ValueError(
+                "Could not find params.json in either the checkpoint dir or "
+                "its parent directory.")
         with open(config_path) as f:
-            args.config = json.load(f)
+            config = json.load(f)
+        if "num_workers" in config:
+            config["num_workers"] = min(2, config["num_workers"])
 
     if not args.env:
-        if not args.config.get("env"):
+        if not config.get("env"):
             parser.error("the following arguments are required: --env")
-        args.env = args.config.get("env")
+        args.env = config.get("env")
 
     ray.init()
 
     cls = get_agent_class(args.run)
-    agent = cls(env=args.env, config=args.config)
+    agent = cls(env=args.env, config=config)
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
 
-    if args.run == "DQN":
-        env = gym.make(args.env)
-        env = wrap_dqn(env, args.config.get("model", {}))
+    if hasattr(agent, "local_evaluator"):
+        env = agent.local_evaluator.env
     else:
         env = ModelCatalog.get_preprocessor_as_wrapper(gym.make(args.env))
     if args.out is not None:

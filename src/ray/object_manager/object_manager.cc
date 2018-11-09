@@ -23,7 +23,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       config_(config),
-      object_directory_(new ObjectDirectory(gcs_client)),
+      object_directory_(new ObjectDirectory(main_service, gcs_client)),
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
@@ -263,29 +263,29 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   // TODO(hme): There is no cap on the number of pull request connections.
   connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id, &conn);
 
+  // Try to create a new connection to the remote object manager if one doesn't
+  // already exist.
   if (conn == nullptr) {
-    status = object_directory_->GetInformation(
-        client_id,
-        [this, object_id, client_id](const RemoteConnectionInfo &connection_info) {
-          std::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
-              ConnectionPool::ConnectionType::MESSAGE, connection_info);
-          if (async_conn == nullptr) {
-            return;
-          }
-          connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
-                                          client_id, async_conn);
-          PullSendRequest(object_id, async_conn);
-        },
-        []() {
-          RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
-        });
-  } else {
+    RemoteConnectionInfo connection_info(client_id);
+    object_directory_->LookupRemoteConnectionInfo(connection_info);
+    if (connection_info.Connected()) {
+      conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
+                                    connection_info);
+    } else {
+      RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
+    }
+  }
+
+  if (conn != nullptr) {
     PullSendRequest(object_id, conn);
   }
 }
 
 void ObjectManager::PullSendRequest(const ObjectID &object_id,
                                     std::shared_ptr<SenderConnection> &conn) {
+  // TODO(rkn): This would be a natural place to record a profile event
+  // indicating that a pull request was sent.
+
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -312,6 +312,46 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   if (iter->second.size() == 0) {
     unfulfilled_push_requests_.erase(iter);
   }
+}
+
+void ObjectManager::HandleSendFinished(const ObjectID &object_id,
+                                       const ClientID &client_id, uint64_t chunk_index,
+                                       double start_time, double end_time,
+                                       ray::Status status) {
+  if (!status.ok()) {
+    // TODO(rkn): What do we want to do if the send failed?
+  }
+
+  ProfileEventT profile_event;
+  profile_event.event_type = "transfer_send";
+  profile_event.start_time = start_time;
+  profile_event.end_time = end_time;
+  // Encode the object ID, client ID, chunk index, and status as a json list,
+  // which will be parsed by the reader of the profile table.
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+                             std::to_string(chunk_index) + ",\"" + status.ToString() +
+                             "\"]";
+  profile_events_.push_back(profile_event);
+}
+
+void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
+                                          const ClientID &client_id, uint64_t chunk_index,
+                                          double start_time, double end_time,
+                                          ray::Status status) {
+  if (!status.ok()) {
+    // TODO(rkn): What do we want to do if the send failed?
+  }
+
+  ProfileEventT profile_event;
+  profile_event.event_type = "transfer_receive";
+  profile_event.start_time = start_time;
+  profile_event.end_time = end_time;
+  // Encode the object ID, client ID, chunk index, and status as a json list,
+  // which will be parsed by the reader of the profile table.
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"," +
+                             std::to_string(chunk_index) + ",\"" + status.ToString() +
+                             "\"]";
+  profile_events_.push_back(profile_event);
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
@@ -347,40 +387,45 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     return;
   }
 
-  // TODO(hme): Cache this data in ObjectDirectory.
-  // Okay for now since the GCS client caches this data.
-  RAY_CHECK_OK(object_directory_->GetInformation(
-      client_id,
-      [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        const object_manager::protocol::ObjectInfoT &object_info =
-            local_objects_[object_id];
-        uint64_t data_size =
-            static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-        uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-        uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
-        for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-          send_service_.post([this, client_id, object_id, data_size, metadata_size,
-                              chunk_index, info]() {
-            // NOTE: When this callback executes, it's possible that the object
-            // will have already been evicted. It's also possible that the
-            // object could be in the process of being transferred to this
-            // object manager from another object manager.
-            ExecuteSendObject(client_id, object_id, data_size, metadata_size, chunk_index,
-                              info);
-          });
-        }
-      },
-      []() {
-        // Push is best effort, so do nothing here.
-        RAY_LOG(ERROR)
-            << "Failed to establish connection for Push with remote object manager.";
-      }));
+  RemoteConnectionInfo connection_info(client_id);
+  object_directory_->LookupRemoteConnectionInfo(connection_info);
+  if (connection_info.Connected()) {
+    const object_manager::protocol::ObjectInfoT &object_info = local_objects_[object_id];
+    uint64_t data_size =
+        static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+    uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+    uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+    for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+      send_service_.post([this, client_id, object_id, data_size, metadata_size,
+                          chunk_index, connection_info]() {
+        double start_time = current_sys_time_seconds();
+        // NOTE: When this callback executes, it's possible that the object
+        // will have already been evicted. It's also possible that the
+        // object could be in the process of being transferred to this
+        // object manager from another object manager.
+        ray::Status status = ExecuteSendObject(
+            client_id, object_id, data_size, metadata_size, chunk_index, connection_info);
+
+        // Notify the main thread that we have finished sending the chunk.
+        main_service_->post(
+            [this, object_id, client_id, chunk_index, start_time, status]() {
+              double end_time = current_sys_time_seconds();
+              HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
+                                 status);
+            });
+      });
+    }
+  } else {
+    // Push is best effort, so do nothing here.
+    RAY_LOG(ERROR)
+        << "Failed to establish connection for Push with remote object manager.";
+  }
 }
 
-void ObjectManager::ExecuteSendObject(const ClientID &client_id,
-                                      const ObjectID &object_id, uint64_t data_size,
-                                      uint64_t metadata_size, uint64_t chunk_index,
-                                      const RemoteConnectionInfo &connection_info) {
+ray::Status ObjectManager::ExecuteSendObject(
+    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
+    uint64_t metadata_size, uint64_t chunk_index,
+    const RemoteConnectionInfo &connection_info) {
   RAY_LOG(DEBUG) << "ExecuteSendObject " << client_id << " " << object_id << " "
                  << chunk_index;
   ray::Status status;
@@ -389,16 +434,15 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
   if (conn == nullptr) {
     conn =
         CreateSenderConnection(ConnectionPool::ConnectionType::TRANSFER, connection_info);
-    connection_pool_.RegisterSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
-    if (conn == nullptr) {
-      return;
+  }
+
+  if (conn != nullptr) {
+    status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
+    if (!status.ok()) {
+      CheckIOError(status, "Push");
     }
   }
-  status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
-  if (!status.ok()) {
-    CheckIOError(status, "Push");
-  }
+  return status;
 }
 
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
@@ -545,23 +589,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
-  } else {
-    // Wait may complete during the execution of any one of the following calls to
-    // SubscribeObjectLocations, so copy the object ids that need to be iterated over.
-    // Order matters for test purposes.
-    std::vector<ObjectID> ordered_remaining_object_ids;
-    for (const auto &object_id : wait_state.object_id_order) {
-      if (wait_state.remaining.count(object_id) > 0) {
-        ordered_remaining_object_ids.push_back(object_id);
-      }
-    }
-    for (const auto &object_id : ordered_remaining_object_ids) {
-      if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
-        // This is possible if an object's location is obtained immediately,
-        // within the current callstack. In this case, WaitComplete has been
-        // invoked already, so we're done.
-        return;
-      }
+    return;
+  }
+
+  // There are objects remaining whose locations we don't know. Request their
+  // locations from the object directory.
+  for (const auto &object_id : wait_state.object_id_order) {
+    if (wait_state.remaining.count(object_id) > 0) {
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
@@ -584,6 +618,10 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             }
           }));
     }
+
+    // If a timeout was provided, then set a timer. If we don't find locations
+    // for enough objects by the time the timer expires, then we will return
+    // from the Wait.
     if (wait_state.timeout_ms != -1) {
       auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
       wait_state.timeout_timer->expires_from_now(timeout);
@@ -643,19 +681,23 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
       SenderConnection::Create(*main_service_, info.client_id, info.ip, info.port);
   if (conn == nullptr) {
     RAY_LOG(ERROR) << "Failed to connect to remote object manager.";
-    return conn;
+  } else {
+    // Register the new connection.
+    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it if the client
+    // disconnects.
+    connection_pool_.RegisterSender(type, info.client_id, conn);
+    // Prepare client connection info buffer
+    flatbuffers::FlatBufferBuilder fbb;
+    bool is_transfer = (type == ConnectionPool::ConnectionType::TRANSFER);
+    auto message = object_manager_protocol::CreateConnectClientMessage(
+        fbb, to_flatbuf(fbb, client_id_), is_transfer);
+    fbb.Finish(message);
+    // Send synchronously.
+    // TODO(swang): Make this a WriteMessageAsync.
+    RAY_CHECK_OK(conn->WriteMessage(
+        static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
+        fbb.GetSize(), fbb.GetBufferPointer()));
   }
-  // Prepare client connection info buffer
-  flatbuffers::FlatBufferBuilder fbb;
-  bool is_transfer = (type == ConnectionPool::ConnectionType::TRANSFER);
-  auto message = object_manager_protocol::CreateConnectClientMessage(
-      fbb, fbb.CreateString(client_id_.binary()), is_transfer);
-  fbb.Finish(message);
-  // Send synchronously.
-  RAY_CHECK_OK(conn->WriteMessage(
-      static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
-      fbb.GetSize(), fbb.GetBufferPointer()));
-  // The connection is ready; return to caller.
   return conn;
 }
 
@@ -720,6 +762,14 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   auto pr = flatbuffers::GetRoot<object_manager_protocol::PullRequestMessage>(message);
   ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
   ClientID client_id = ClientID::from_binary(pr->client_id()->str());
+
+  ProfileEventT profile_event;
+  profile_event.event_type = "receive_pull_request";
+  profile_event.start_time = current_sys_time_seconds();
+  profile_event.end_time = profile_event.start_time;
+  profile_event.extra_data = "[\"" + object_id.hex() + "\",\"" + client_id.hex() + "\"]";
+  profile_events_.push_back(profile_event);
+
   Push(object_id, client_id);
   conn->ProcessMessages();
 }
@@ -729,20 +779,28 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
-  ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
+  const ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
-    ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
-                         chunk_index, *conn);
+    double start_time = current_sys_time_seconds();
+    const ClientID client_id = conn->GetClientID();
+    auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
+                                       chunk_index, *conn);
+    // Notify the main thread that we have finished receiving the object.
+    main_service_->post([this, object_id, client_id, chunk_index, start_time, status]() {
+      double end_time = current_sys_time_seconds();
+      HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
+                            status);
+    });
+
   });
 }
 
-void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
-                                         const ObjectID &object_id, uint64_t data_size,
-                                         uint64_t metadata_size, uint64_t chunk_index,
-                                         TcpClientConnection &conn) {
+ray::Status ObjectManager::ExecuteReceiveObject(
+    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
+    uint64_t metadata_size, uint64_t chunk_index, TcpClientConnection &conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
@@ -762,7 +820,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Create Chunk Failed index = " << chunk_index << ": "
+    RAY_LOG(DEBUG) << "Create Chunk Failed index = " << chunk_index << ": "
                    << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
@@ -780,6 +838,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
   conn.ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << "/" << config_.max_receives;
+
+  return chunk_status.second;
 }
 
 void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -808,25 +868,41 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
   flatbuffers::Offset<object_manager_protocol::FreeRequestMessage> request =
       object_manager_protocol::CreateFreeRequestMessage(fbb, to_flatbuf(fbb, object_ids));
   fbb.Finish(request);
-  auto function_on_client = [this, &fbb](const RemoteConnectionInfo &connection_info) {
+
+  const auto remote_connections = object_directory_->LookupAllRemoteConnections();
+  for (const auto &connection_info : remote_connections) {
     std::shared_ptr<SenderConnection> conn;
     connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE,
                                connection_info.client_id, &conn);
     if (conn == nullptr) {
       conn = CreateSenderConnection(ConnectionPool::ConnectionType::MESSAGE,
                                     connection_info);
-      connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
-                                      connection_info.client_id, conn);
     }
-    ray::Status status = conn->WriteMessage(
-        static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-        fbb.GetSize(), fbb.GetBufferPointer());
-    if (status.ok()) {
-      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+
+    if (conn != nullptr) {
+      // TODO(swang): Make this a WriteMessageAsync.
+      ray::Status status = conn->WriteMessage(
+          static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
+          fbb.GetSize(), fbb.GetBufferPointer());
+      if (status.ok()) {
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
+      }
     }
-    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it in "else".
-  };
-  object_directory_->RunFunctionForEachClient(function_on_client);
+  }
+}
+
+ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
+  ProfileTableDataT profile_info;
+  profile_info.component_type = "object_manager";
+  profile_info.component_id = client_id_.binary();
+
+  for (auto const &profile_event : profile_events_) {
+    profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
+  }
+
+  profile_events_.clear();
+
+  return profile_info;
 }
 
 }  // namespace ray

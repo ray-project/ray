@@ -8,6 +8,7 @@ import argparse
 import yaml
 
 import ray
+from ray.test.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -49,6 +50,17 @@ def create_parser(parser_creator=None):
         default=None,
         type=int,
         help="--num-gpus to pass to Ray."
+        " This only has an affect in local mode.")
+    parser.add_argument(
+        "--ray-num-local-schedulers",
+        default=None,
+        type=int,
+        help="Emulate multiple cluster nodes for debugging.")
+    parser.add_argument(
+        "--ray-object-store-memory",
+        default=None,
+        type=int,
+        help="--object-store-memory to pass to Ray."
         " This only has an affect in local mode.")
     parser.add_argument(
         "--experiment-name",
@@ -102,10 +114,22 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    ray.init(
-        redis_address=args.redis_address,
-        num_cpus=args.ray_num_cpus,
-        num_gpus=args.ray_num_gpus)
+    if args.ray_num_local_schedulers:
+        cluster = Cluster()
+        for _ in range(args.ray_num_local_schedulers):
+            cluster.add_node(
+                resources={
+                    "num_cpus": args.ray_num_cpus or 1,
+                    "num_gpus": args.ray_num_gpus or 0,
+                },
+                object_store_memory=args.ray_object_store_memory)
+        ray.init(redis_address=cluster.redis_address)
+    else:
+        ray.init(
+            redis_address=args.redis_address,
+            object_store_memory=args.ray_object_store_memory,
+            num_cpus=args.ray_num_cpus,
+            num_gpus=args.ray_num_gpus)
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
