@@ -335,13 +335,6 @@ class ObjectManager : public ObjectManagerInterface {
                              const ObjectBufferPool::ChunkInfo &chunk_info,
                              std::shared_ptr<SenderConnection> &conn);
 
-  /// Remove some elements from the list of recently pushed objects. This allows
-  /// the object manager to forget about objects it pushed so that it can push
-  /// them again. This is executed on the main service on a timer.
-  ///
-  /// \return Void.
-  void ForgetRecentPushes();
-
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will invoke the object receive on the receive_service_ thread pool.
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
