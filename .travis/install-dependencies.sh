@@ -19,7 +19,7 @@ fi
 
 if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool python-dev python-numpy python-pip unzip
+  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool python-dev python-numpy python-pip unzip ninja-build
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -28,7 +28,7 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip
+  sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip ninja-build
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -71,7 +71,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
-  sudo apt-get install -y cmake build-essential autoconf curl libtool unzip
+  sudo apt-get install -y cmake build-essential autoconf curl libtool unzip ninja-build
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda

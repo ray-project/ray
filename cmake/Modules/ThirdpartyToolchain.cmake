@@ -133,6 +133,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     ExternalProject_Add(pyarrow_ext
       PREFIX external/pyarrow
       DEPENDS arrow_ep
+      UPDATE_COMMAND ""
       DOWNLOAD_COMMAND ""
       BUILD_IN_SOURCE 1
       CONFIGURE_COMMAND cd ${ARROW_SOURCE_DIR}/python && ${CMAKE_COMMAND} -E env ${pyarrow_ENV} ${PYTHON_EXECUTABLE} setup.py build
