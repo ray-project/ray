@@ -36,7 +36,7 @@ def fetch(oids):
     local_sched_client = ray.worker.global_worker.local_scheduler_client
     for o in oids:
         ray_obj_id = ray.ObjectID(o)
-        local_sched_client.reconstruct_objects([ray_obj_id], True)
+        local_sched_client.fetch_or_reconstruct([ray_obj_id], True)
 
 
 def run_timeline(sess, ops, feed_dict=None, write_timeline=False, name=""):

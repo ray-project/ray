@@ -175,6 +175,12 @@ class ObjectManager : public ObjectManagerInterface {
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Return profiling information and reset the profiling information.
+  ///
+  /// \return All profiling information that has accumulated since the last call
+  /// to this method.
+  ProfileTableDataT GetAndResetProfilingInfo();
+
  private:
   friend class TestObjectManager;
 
@@ -252,17 +258,55 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
+  ///
+  /// \param object_id The ID of the object request.
+  /// \param conn The connection to the remote object manager.
+  /// \return Void.
   void PullSendRequest(const ObjectID &object_id,
                        std::shared_ptr<SenderConnection> &conn);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
+  /// This is used to notify the main thread that the sending of a chunk has
+  /// completed.
+  ///
+  /// \param object_id The ID of the object that was sent.
+  /// \param client_id The ID of the client that the chunk was sent to.
+  /// \param chunk_index The index of the chunk.
+  /// \param start_time_us The time when the object manager began sending the
+  /// chunk.
+  /// \param end_time_us The time when the object manager finished sending the
+  /// chunk.
+  /// \param status The status of the send (e.g., did it succeed or fail).
+  /// \return Void.
+  void HandleSendFinished(const ObjectID &object_id, const ClientID &client_id,
+                          uint64_t chunk_index, double start_time_us, double end_time_us,
+                          ray::Status status);
+
+  /// This is used to notify the main thread that the receiving of a chunk has
+  /// completed.
+  ///
+  /// \param object_id The ID of the object that was received.
+  /// \param client_id The ID of the client that the chunk was received from.
+  /// \param chunk_index The index of the chunk.
+  /// \param start_time_us The time when the object manager began receiving the
+  /// chunk.
+  /// \param end_time_us The time when the object manager finished receiving the
+  /// chunk.
+  /// \param status The status of the receive (e.g., did it succeed or fail).
+  /// \return Void.
+  void HandleReceiveFinished(const ObjectID &object_id, const ClientID &client_id,
+                             uint64_t chunk_index, double start_time_us,
+                             double end_time_us, ray::Status status);
+
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
-  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-                         const RemoteConnectionInfo &connection_info);
+  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                                uint64_t data_size, uint64_t metadata_size,
+                                uint64_t chunk_index,
+                                const RemoteConnectionInfo &connection_info);
+
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on send_service_ thread pool.
@@ -280,10 +324,11 @@ class ObjectManager : public ObjectManagerInterface {
   /// This will invoke the object receive on the receive_service_ thread pool.
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
+
   /// Execute a receive on the receive_service_ thread pool.
-  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                            uint64_t data_size, uint64_t metadata_size,
-                            uint64_t chunk_index, TcpClientConnection &conn);
+  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                                   uint64_t data_size, uint64_t metadata_size,
+                                   uint64_t chunk_index, TcpClientConnection &conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -351,6 +396,10 @@ class ObjectManager : public ObjectManagerInterface {
       unfulfilled_push_requests_;
 
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  /// Profiling events that are to be batched together and added to the profile
+  /// table in the GCS.
+  std::vector<ProfileEventT> profile_events_;
 };
 
 }  // namespace ray

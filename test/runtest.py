@@ -2,8 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 import re
+import setproctitle
 import string
 import subprocess
 import sys
@@ -16,6 +18,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.test.cluster_utils
 import ray.test.test_utils
 
 
@@ -1036,6 +1039,58 @@ def test_profiling_api(shutdown_only):
             break
 
 
+@pytest.fixture()
+def ray_start_cluster():
+    cluster = ray.test.cluster_utils.Cluster()
+    yield cluster
+
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_object_transfer_dump(ray_start_cluster):
+    cluster = ray_start_cluster
+
+    num_nodes = 3
+    for i in range(num_nodes):
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote
+    def f(x):
+        return
+
+    # These objects will live on different nodes.
+    object_ids = [
+        f._submit(args=[1], resources={str(i): 1}) for i in range(num_nodes)
+    ]
+
+    # Broadcast each object from each machine to each other machine.
+    for object_id in object_ids:
+        ray.get([
+            f._submit(args=[object_id], resources={str(i): 1})
+            for i in range(num_nodes)
+        ])
+
+    # The profiling information only flushes once every second.
+    time.sleep(1.1)
+
+    transfer_dump = ray.global_state.chrome_tracing_object_transfer_dump()
+    # Make sure the transfer dump can be serialized with JSON.
+    json.loads(json.dumps(transfer_dump))
+    assert len(transfer_dump) >= num_nodes**2
+    assert len({
+        event["pid"]
+        for event in transfer_dump if event["name"] == "transfer_receive"
+    }) == num_nodes
+    assert len({
+        event["pid"]
+        for event in transfer_dump if event["name"] == "transfer_send"
+    }) == num_nodes
+
+
 def test_identical_function_names(shutdown_only):
     # Define a bunch of remote functions and make sure that we don't
     # accidentally call an older version.
@@ -1116,7 +1171,9 @@ def test_illegal_api_calls(shutdown_only):
 
 
 def test_multithreading(shutdown_only):
-    ray.init(num_cpus=1)
+    # This test requires at least 2 CPUs to finish since the worker does not
+    # relase resources when joining the threads.
+    ray.init(num_cpus=2)
 
     @ray.remote
     def f():
@@ -1141,10 +1198,36 @@ def test_multithreading(shutdown_only):
     def test_multi_threading_in_worker():
         test_multi_threading()
 
+    def block(args, n):
+        ray.wait(args, num_returns=n)
+        ray.get(args[:n])
+
+    @ray.remote
+    class MultithreadedActor(object):
+        def __init__(self):
+            pass
+
+        def spawn(self):
+            objects = [f.remote() for _ in range(1000)]
+            self.threads = [
+                threading.Thread(target=block, args=(objects, n))
+                for n in [1, 5, 10, 100, 1000]
+            ]
+
+            [thread.start() for thread in self.threads]
+
+        def join(self):
+            [thread.join() for thread in self.threads]
+
     # test multi-threading in the driver
     test_multi_threading()
     # test multi-threading in the worker
     ray.get(test_multi_threading_in_worker.remote())
+
+    # test multi-threading in the actor
+    a = MultithreadedActor.remote()
+    ray.get(a.spawn.remote())
+    ray.get(a.join.remote())
 
 
 def test_free_objects_multi_node(shutdown_only):
@@ -2297,6 +2380,26 @@ def test_wait_reconstruction(shutdown_only):
         ray.pyarrow.plasma.ObjectID(x_id.id()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
+
+
+def test_ray_setproctitle(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class UniqueName(object):
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == "ray_UniqueName:f()"
+
+    @ray.remote
+    def unique_1():
+        assert setproctitle.getproctitle() == "ray_worker:runtest.unique_1()"
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.remote())
+    ray.get(unique_1.remote())
 
 
 @pytest.mark.skipif(

@@ -37,7 +37,10 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                ray.init(redis_address=self.redis_address)
+                redis_password = head_node_args.get("redis_password")
+                ray.init(
+                    redis_address=self.redis_address,
+                    redis_password=redis_password)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -108,15 +111,17 @@ class Cluster(object):
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self, retries=20):
+    def wait_for_nodes(self, retries=30):
         """Waits for all nodes to be registered with global state.
+
+        By default, waits for 3 seconds.
 
         Args:
             retries (int): Number of times to retry checking client table.
         """
         for i in range(retries):
             if not ray.is_initialized() or not self._check_registered_nodes():
-                time.sleep(0.3)
+                time.sleep(0.1)
             else:
                 break
 

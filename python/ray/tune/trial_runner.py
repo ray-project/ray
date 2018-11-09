@@ -108,16 +108,14 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        if self.is_finished():
+            raise TuneError("Called step when all trials finished?")
         self.trial_executor.on_step_begin()
         next_trial = self._get_next_trial()
         if next_trial is not None:
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
-        elif self.is_finished():
-            # We check `is_finished` again here because the experiment
-            # may have finished while getting the next trial.
-            pass
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
@@ -137,7 +135,6 @@ class TrialRunner(object):
                     raise TuneError(
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
-            raise TuneError("Called step when all trials finished?")
 
         if self._server:
             self._process_requests()
@@ -306,13 +303,15 @@ class TrialRunner(object):
 
         Args:
             blocking (bool): Blocks until either a trial is available
-                or the Runner finishes (i.e., timeout or search algorithm
-                finishes).
+                or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()
+            # Checking `is_finished` instead of _search_alg.is_finished
+            # is fine because blocking only occurs if all trials are
+            # finished and search_algorithm is not yet finished
             while (not trials and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")

@@ -193,13 +193,19 @@ def cli(logging_level, logging_format):
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process")
+@click.option(
+    "--internal-config",
+    default=None,
+    type=str,
+    help="Do NOT use this. This is for debugging/development purposes ONLY.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
           num_workers, num_cpus, num_gpus, resources, head, no_ui, block,
           plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir):
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -269,7 +275,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             autoscaling_config=autoscaling_config,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir)
+            temp_dir=temp_dir,
+            _internal_config=internal_config)
         logger.info(address_info)
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
@@ -348,7 +355,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             huge_pages=huge_pages,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir)
+            temp_dir=temp_dir,
+            _internal_config=internal_config)
         logger.info(address_info)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
@@ -388,6 +396,12 @@ def stop():
             "grep -v grep | awk '{ print $2 }') 2> /dev/null"
         ],
         shell=True)
+    subprocess.call(
+        [
+            "kill -9 $(ps aux | grep ' ray_' | "
+            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the Ray log monitor process and kill it.
     subprocess.call(
@@ -405,7 +419,7 @@ def stop():
             if "/tmp/ray" in server["notebook_dir"]
         ]
         subprocess.call(
-            ["kill {} 2> /dev/null".format(" ".join(pids))], shell=True)
+            ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
     except ImportError:
         pass
 
@@ -591,7 +605,7 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep default_worker.py | grep -v grep | grep -v raylet/raylet
+    ps aux | grep ' ray_' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";

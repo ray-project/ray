@@ -36,6 +36,9 @@ PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
+# Max bytes to allocate to plasma unless overriden by the user
+MAX_DEFAULT_MEM = 20 * 1000 * 1000 * 1000
+
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
 # important because it determines the order in which these processes will be
@@ -857,6 +860,7 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  cleanup=True,
+                 config=None,
                  redis_password=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -887,11 +891,16 @@ def start_raylet(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        config (dict|None): Optional Raylet configuration that will
+            override defaults in RayConfig.
         redis_password (str): The password of the redis server.
 
     Returns:
         The raylet socket name.
     """
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
@@ -903,11 +912,8 @@ def start_raylet(redis_address,
         1, min(multiprocessing.cpu_count(), static_resources["CPU"]))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
-    resource_argument = ",".join([
-        "{},{}".format(resource_name, resource_value)
-        for resource_name, resource_value in zip(static_resources.keys(),
-                                                 static_resources.values())
-    ])
+    resource_argument = ",".join(
+        ["{},{}".format(*kv) for kv in static_resources.items()])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
@@ -945,6 +951,7 @@ def start_raylet(redis_address,
         str(num_workers),
         str(maximum_startup_concurrency),
         resource_argument,
+        config_str,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
         redis_password or "",
@@ -1005,6 +1012,14 @@ def determine_plasma_store_config(object_store_memory=None,
     # Choose a default object store size.
     if object_store_memory is None:
         object_store_memory = int(system_memory * 0.4)
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > MAX_DEFAULT_MEM:
+            logger.warning(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    MAX_DEFAULT_MEM // 1e9) +
+                "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start.")
+            object_store_memory = MAX_DEFAULT_MEM
 
     if plasma_directory is not None:
         plasma_directory = os.path.abspath(plasma_directory)
@@ -1198,7 +1213,8 @@ def start_raylet_monitor(redis_address,
                          stdout_file=None,
                          stderr_file=None,
                          cleanup=True,
-                         redis_password=None):
+                         redis_password=None,
+                         config=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1212,10 +1228,16 @@ def start_raylet_monitor(redis_address,
             Python process that imported services exits. This is True by
             default.
         redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port]
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
+    if redis_password:
+        command += [redis_password]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_MONITOR].append(p)
@@ -1246,7 +1268,8 @@ def start_ray_processes(address_info=None,
                         autoscaling_config=None,
                         plasma_store_socket_name=None,
                         raylet_socket_name=None,
-                        temp_dir=None):
+                        temp_dir=None,
+                        _internal_config=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -1311,6 +1334,8 @@ def start_ray_processes(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1321,6 +1346,8 @@ def start_ray_processes(address_info=None,
 
     logger.info("Process STDOUT and STDERR is being redirected to {}.".format(
         get_logs_dir_path()))
+
+    config = json.loads(_internal_config) if _internal_config else None
 
     if resources is None:
         resources = {}
@@ -1382,7 +1409,8 @@ def start_ray_processes(address_info=None,
             stdout_file=monitor_stdout_file,
             stderr_file=monitor_stderr_file,
             cleanup=cleanup,
-            redis_password=redis_password)
+            redis_password=redis_password,
+            config=config)
     if redis_shards == []:
         # Get redis shards from primary redis instance.
         redis_ip_address, redis_port = redis_address.split(":")
@@ -1460,7 +1488,8 @@ def start_ray_processes(address_info=None,
                 stdout_file=raylet_stdout_file,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
-                redis_password=redis_password))
+                redis_password=redis_password,
+                config=config))
 
     # Try to start the web UI.
     if include_webui:
@@ -1493,7 +1522,8 @@ def start_ray_node(node_ip_address,
                    huge_pages=False,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
-                   temp_dir=None):
+                   temp_dir=None,
+                   _internal_config=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1537,6 +1567,8 @@ def start_ray_node(node_ip_address,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1564,7 +1596,8 @@ def start_ray_node(node_ip_address,
         huge_pages=huge_pages,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        _internal_config=_internal_config)
 
 
 def start_ray_head(address_info=None,
@@ -1591,7 +1624,8 @@ def start_ray_head(address_info=None,
                    autoscaling_config=None,
                    plasma_store_socket_name=None,
                    raylet_socket_name=None,
-                   temp_dir=None):
+                   temp_dir=None,
+                   _internal_config=None):
     """Start Ray in local mode.
 
     Args:
@@ -1652,6 +1686,8 @@ def start_ray_head(address_info=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1684,4 +1720,5 @@ def start_ray_head(address_info=None,
         autoscaling_config=autoscaling_config,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir)
+        temp_dir=temp_dir,
+        _internal_config=_internal_config)
