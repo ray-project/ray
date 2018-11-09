@@ -105,11 +105,12 @@ pushd "$BUILD_DIR"
 # and cmake will check some directories to determine whether some targets built
 make clean || true
 
-cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
+cmake -GNinja \
+      -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
       -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
-make -j${PARALLEL}
+ninja
 popd
