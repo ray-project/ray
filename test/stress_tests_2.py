@@ -114,7 +114,7 @@ def test_object_broadcast(ray_start_cluster):
             # The pid identifies the sender and the tid identifies the
             # receiver.
             send_counts[(event["pid"], event["tid"])] += 1
-        assert all([value == 1 for value in send_counts.values()])
+        assert all(value == 1 for value in send_counts.values())
 
 
 # When submitting an actor method, we try to pre-emptively push its arguments
@@ -191,4 +191,4 @@ def test_actor_broadcast(ray_start_cluster):
             # The pid identifies the sender and the tid identifies the
             # receiver.
             send_counts[(event["pid"], event["tid"])] += 1
-        assert all([value == 1 for value in send_counts.values()])
+        assert all(value == 1 for value in send_counts.values())
