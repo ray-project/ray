@@ -69,6 +69,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
+            "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
         },
         REQUIRED),
 
