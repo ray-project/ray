@@ -1,7 +1,9 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
-#include <stdint.h>
+#include <unordered_map>
+
+#include "ray/util/logging.h"
 
 class RayConfig {
  public:
@@ -12,7 +14,7 @@ class RayConfig {
 
   int64_t ray_protocol_version() const { return ray_protocol_version_; }
 
-  uint64_t handler_warning_timeout_ms() const { return handler_warning_timeout_ms_; }
+  int64_t handler_warning_timeout_ms() const { return handler_warning_timeout_ms_; }
 
   int64_t heartbeat_timeout_milliseconds() const {
     return heartbeat_timeout_milliseconds_;
@@ -102,6 +104,86 @@ class RayConfig {
 
   int num_workers_per_process() const { return num_workers_per_process_; }
 
+  void initialize(const std::unordered_map<std::string, int> &config_map) {
+    RAY_CHECK(!initialized_);
+    for (auto const &pair : config_map) {
+      // We use a big chain of if else statements because C++ doesn't allow
+      // switch statements on strings.
+      if (pair.first == "ray_protocol_version") {
+        ray_protocol_version_ = pair.second;
+      } else if (pair.first == "handler_warning_timeout_ms") {
+        handler_warning_timeout_ms_ = pair.second;
+      } else if (pair.first == "heartbeat_timeout_milliseconds") {
+        heartbeat_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "num_heartbeats_timeout") {
+        num_heartbeats_timeout_ = pair.second;
+      } else if (pair.first == "num_heartbeats_warning") {
+        num_heartbeats_warning_ = pair.second;
+      } else if (pair.first == "initial_reconstruction_timeout_milliseconds") {
+        initial_reconstruction_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "get_timeout_milliseconds") {
+        get_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "worker_get_request_size") {
+        worker_get_request_size_ = pair.second;
+      } else if (pair.first == "worker_fetch_request_size") {
+        worker_fetch_request_size_ = pair.second;
+      } else if (pair.first == "max_lineage_size") {
+        max_lineage_size_ = pair.second;
+      } else if (pair.first == "actor_max_dummy_objects") {
+        actor_max_dummy_objects_ = pair.second;
+      } else if (pair.first == "num_connect_attempts") {
+        num_connect_attempts_ = pair.second;
+      } else if (pair.first == "connect_timeout_milliseconds") {
+        connect_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "local_scheduler_fetch_timeout_milliseconds") {
+        local_scheduler_fetch_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "local_scheduler_reconstruction_timeout_milliseconds") {
+        local_scheduler_reconstruction_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "max_num_to_reconstruct") {
+        max_num_to_reconstruct_ = pair.second;
+      } else if (pair.first == "local_scheduler_fetch_request_size") {
+        local_scheduler_fetch_request_size_ = pair.second;
+      } else if (pair.first == "kill_worker_timeout_milliseconds") {
+        kill_worker_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "manager_timeout_milliseconds") {
+        manager_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "buf_size") {
+        buf_size_ = pair.second;
+      } else if (pair.first == "max_time_for_handler_milliseconds") {
+        max_time_for_handler_milliseconds_ = pair.second;
+      } else if (pair.first == "size_limit") {
+        size_limit_ = pair.second;
+      } else if (pair.first == "num_elements_limit") {
+        num_elements_limit_ = pair.second;
+      } else if (pair.first == "max_time_for_loop") {
+        max_time_for_loop_ = pair.second;
+      } else if (pair.first == "redis_db_connect_retries") {
+        redis_db_connect_retries_ = pair.second;
+      } else if (pair.first == "redis_db_connect_wait_milliseconds") {
+        redis_db_connect_wait_milliseconds_ = pair.second;
+      } else if (pair.first == "plasma_default_release_delay") {
+        plasma_default_release_delay_ = pair.second;
+      } else if (pair.first == "L3_cache_size_bytes") {
+        L3_cache_size_bytes_ = pair.second;
+      } else if (pair.first == "max_tasks_to_spillback") {
+        max_tasks_to_spillback_ = pair.second;
+      } else if (pair.first == "actor_creation_num_spillbacks_warning") {
+        actor_creation_num_spillbacks_warning_ = pair.second;
+      } else if (pair.first == "node_manager_forward_task_retry_timeout_milliseconds") {
+        node_manager_forward_task_retry_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "object_manager_pull_timeout_ms") {
+        object_manager_pull_timeout_ms_ = pair.second;
+      } else if (pair.first == "object_manager_push_timeout_ms") {
+        object_manager_push_timeout_ms_ = pair.second;
+      } else if (pair.first == "object_manager_default_chunk_size") {
+        object_manager_default_chunk_size_ = pair.second;
+      } else {
+        RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
+      }
+    }
+    initialized_ = true;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -138,7 +220,8 @@ class RayConfig {
         object_manager_pull_timeout_ms_(100),
         object_manager_push_timeout_ms_(10000),
         object_manager_default_chunk_size_(1000000),
-        num_workers_per_process_(1) {}
+        num_workers_per_process_(1),
+        initialized_(false) {}
 
   ~RayConfig() {}
 
@@ -147,7 +230,7 @@ class RayConfig {
 
   /// The duration that a single handler on the event loop can take before a
   /// warning is logged that the handler is taking too long.
-  uint64_t handler_warning_timeout_ms_;
+  int64_t handler_warning_timeout_ms_;
 
   /// The duration between heartbeats. These are sent by the plasma manager and
   /// local scheduler.
@@ -263,6 +346,10 @@ class RayConfig {
 
   /// Number of workers per process
   int num_workers_per_process_;
+
+  /// Whether the initialization of the instance has been called before.
+  /// The RayConfig instance can only (and must) be initialized once.
+  bool initialized_;
 };
 
 #endif  // RAY_CONFIG_H

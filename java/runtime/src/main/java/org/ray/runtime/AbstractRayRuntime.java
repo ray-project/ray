@@ -88,6 +88,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
+    // TODO(swang): If we are not on the main thread, then we should generate a
+    // random task ID to pass to the backend.
     UniqueId taskId = workerContext.getCurrentTask().taskId;
 
     try {
@@ -97,7 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       List<List<UniqueId>> fetchBatches =
           splitIntoBatches(objectIds, FETCH_BATCH_SIZE);
       for (List<UniqueId> batch : fetchBatches) {
-        rayletClient.reconstructObjects(batch, true);
+        rayletClient.fetchOrReconstruct(batch, true, taskId);
       }
 
       // Get the objects. We initially try to get the objects immediately.
@@ -122,7 +124,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
 
         for (List<UniqueId> batch : reconstructBatches) {
-          rayletClient.reconstructObjects(batch, false);
+          rayletClient.fetchOrReconstruct(batch, false, taskId);
         }
 
         List<Pair<T, GetStatus>> results = objectStoreProxy
@@ -157,7 +159,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       // If there were objects that we weren't able to get locally, let the local
       // scheduler know that we're now unblocked.
       if (wasBlocked) {
-        rayletClient.notifyUnblocked();
+        rayletClient.notifyUnblocked(taskId);
       }
     }
   }
@@ -185,7 +187,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    return rayletClient.wait(waitList, numReturns, timeoutMs);
+    // TODO(swang): If we are not on the main thread, then we should generate a
+    // random task ID to pass to the backend.
+    return rayletClient.wait(waitList, numReturns, timeoutMs,
+        workerContext.getCurrentTask().taskId);
   }
 
   @Override

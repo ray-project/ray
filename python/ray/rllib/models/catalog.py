@@ -203,6 +203,9 @@ class ModelCatalog(object):
             model = LSTM(copy, obs_space, num_outputs, options, state_in,
                          seq_lens)
 
+        logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
+            model, input_dict, obs_space, state_in, seq_lens, model.outputs,
+            model.state_out))
         return model
 
     @staticmethod
@@ -282,11 +285,15 @@ class ModelCatalog(object):
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
-            return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
+            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
+        else:
+            cls = get_preprocessor(env.observation_space)
+            prep = cls(env.observation_space, options)
 
-        preprocessor = get_preprocessor(env.observation_space)
-        return preprocessor(env.observation_space, options)
+        logger.debug("Created preprocessor {}: {} -> {}".format(
+            prep, env.observation_space, prep.shape))
+        return prep
 
     @staticmethod
     def get_preprocessor_as_wrapper(env, options=None):

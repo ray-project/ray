@@ -584,24 +584,78 @@ class GlobalState(object):
             for component_id in component_identifiers_binary
         }
 
-    def chrome_tracing_dump(self,
-                            include_task_data=False,
-                            filename=None,
-                            open_browser=False):
+    def _seconds_to_microseconds(self, time_in_seconds):
+        """A helper function for converting seconds to microseconds."""
+        time_in_microseconds = 10**6 * time_in_seconds
+        return time_in_microseconds
+
+    # Colors are specified at
+    # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
+    _default_color_mapping = defaultdict(
+        lambda: "generic_work", {
+            "worker_idle": "cq_build_abandoned",
+            "task": "rail_response",
+            "task:deserialize_arguments": "rail_load",
+            "task:execute": "rail_animation",
+            "task:store_outputs": "rail_idle",
+            "wait_for_function": "detailed_memory_dump",
+            "ray.get": "good",
+            "ray.put": "terrible",
+            "ray.wait": "vsync_highlight_color",
+            "submit_task": "background_memory_dump",
+            "fetch_and_run_function": "detailed_memory_dump",
+            "register_remote_function": "detailed_memory_dump",
+        })
+
+    # These colors are for use in Chrome tracing.
+    _chrome_tracing_colors = [
+        "thread_state_uninterruptible",
+        "thread_state_iowait",
+        "thread_state_running",
+        "thread_state_runnable",
+        "thread_state_sleeping",
+        "thread_state_unknown",
+        "background_memory_dump",
+        "light_memory_dump",
+        "detailed_memory_dump",
+        "vsync_highlight_color",
+        "generic_work",
+        "good",
+        "bad",
+        "terrible",
+        # "black",
+        # "grey",
+        # "white",
+        "yellow",
+        "olive",
+        "rail_response",
+        "rail_animation",
+        "rail_idle",
+        "rail_load",
+        "startup",
+        "heap_dump_stack_frame",
+        "heap_dump_object_type",
+        "heap_dump_child_node_arrow",
+        "cq_build_running",
+        "cq_build_passed",
+        "cq_build_failed",
+        "cq_build_abandoned",
+        "cq_build_attempt_runnig",
+        "cq_build_attempt_passed",
+        "cq_build_attempt_failed",
+    ]
+
+    def chrome_tracing_dump(self, filename=None):
         """Return a list of profiling events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
-        using json.dumps, and then load go to chrome://tracing in the Chrome
-        web browser and load the dumped file. Make sure to enable "Flow events"
-        in the "View Options" menu.
+        by passing in "filename" or using using json.dump, and then load go to
+        chrome://tracing in the Chrome web browser and load the dumped file.
+        Make sure to enable "Flow events" in the "View Options" menu.
 
         Args:
-            include_task_data: If true, we will include more task metadata such
-                as the task specifications in the json.
             filename: If a filename is provided, the timeline is dumped to that
                 file.
-            open_browser: If true, we will attempt to automatically open the
-                timeline visualization in Chrome.
 
         Returns:
             If filename is not provided, this returns a list of profiling
@@ -612,38 +666,15 @@ class GlobalState(object):
         # TODO(rkn): This should support viewing just a window of time or a
         # limited number of events.
 
-        if include_task_data:
-            raise NotImplementedError("This flag has not been implented yet.")
-
-        if open_browser:
-            raise NotImplementedError("This flag has not been implented yet.")
-
         profile_table = self.profile_table()
         all_events = []
 
-        # Colors are specified at
-        # https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html.  # noqa: E501
-        default_color_mapping = defaultdict(
-            lambda: "generic_work", {
-                "worker_idle": "cq_build_abandoned",
-                "task": "rail_response",
-                "task:deserialize_arguments": "rail_load",
-                "task:execute": "rail_animation",
-                "task:store_outputs": "rail_idle",
-                "wait_for_function": "detailed_memory_dump",
-                "ray.get": "good",
-                "ray.put": "terrible",
-                "ray.wait": "vsync_highlight_color",
-                "submit_task": "background_memory_dump",
-                "fetch_and_run_function": "detailed_memory_dump",
-                "register_remote_function": "detailed_memory_dump",
-            })
-
-        def seconds_to_microseconds(time_in_seconds):
-            time_in_microseconds = 10**6 * time_in_seconds
-            return time_in_microseconds
-
         for component_id_hex, component_events in profile_table.items():
+            # Only consider workers and drivers.
+            component_type = component_events[0]["component_type"]
+            if component_type not in ["worker", "driver"]:
+                continue
+
             for event in component_events:
                 new_event = {
                     # The category of the event.
@@ -657,14 +688,14 @@ class GlobalState(object):
                     "tid": event["component_type"] + ":" +
                     event["component_id"],
                     # The start time in microseconds.
-                    "ts": seconds_to_microseconds(event["start_time"]),
+                    "ts": self._seconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": seconds_to_microseconds(event["end_time"] -
-                                                   event["start_time"]),
+                    "dur": self._seconds_to_microseconds(event["end_time"] -
+                                                         event["start_time"]),
                     # What is this?
                     "ph": "X",
                     # This is the name of the color to display the box in.
-                    "cname": default_color_mapping[event["event_type"]],
+                    "cname": self._default_color_mapping[event["event_type"]],
                     # The extra user-defined data.
                     "args": event["extra_data"],
                 }
@@ -677,6 +708,97 @@ class GlobalState(object):
                     new_event["name"] = event["extra_data"]["name"]
 
                 all_events.append(new_event)
+
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+        else:
+            return all_events
+
+    def chrome_tracing_object_transfer_dump(self, filename=None):
+        """Return a list of transfer events that can viewed as a timeline.
+
+        To view this information as a timeline, simply dump it as a json file
+        by passing in "filename" or using using json.dump, and then load go to
+        chrome://tracing in the Chrome web browser and load the dumped file.
+        Make sure to enable "Flow events" in the "View Options" menu.
+
+        Args:
+            filename: If a filename is provided, the timeline is dumped to that
+                file.
+
+        Returns:
+            If filename is not provided, this returns a list of profiling
+                events. Each profile event is a dictionary.
+        """
+        client_id_to_address = {}
+        for client_info in ray.global_state.client_table():
+            client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
+                client_info["NodeManagerAddress"],
+                client_info["ObjectManagerPort"])
+
+        all_events = []
+
+        for key, items in self.profile_table().items():
+            # Only consider object manager events.
+            if items[0]["component_type"] != "object_manager":
+                continue
+
+            for event in items:
+                if event["event_type"] == "transfer_send":
+                    object_id, remote_client_id, _, _ = event["extra_data"]
+
+                elif event["event_type"] == "transfer_receive":
+                    object_id, remote_client_id, _, _ = event["extra_data"]
+
+                elif event["event_type"] == "receive_pull_request":
+                    object_id, remote_client_id = event["extra_data"]
+
+                else:
+                    assert False, "This should be unreachable."
+
+                # Choose a color by reading the first couple of hex digits of
+                # the object ID as an integer and turning that into a color.
+                object_id_int = int(object_id[:2], 16)
+                color = self._chrome_tracing_colors[object_id_int % len(
+                    self._chrome_tracing_colors)]
+
+                new_event = {
+                    # The category of the event.
+                    "cat": event["event_type"],
+                    # The string displayed on the event.
+                    "name": event["event_type"],
+                    # The identifier for the group of rows that the event
+                    # appears in.
+                    "pid": client_id_to_address[key],
+                    # The identifier for the row that the event appears in.
+                    "tid": client_id_to_address[remote_client_id],
+                    # The start time in microseconds.
+                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    # The duration in microseconds.
+                    "dur": self._seconds_to_microseconds(event["end_time"] -
+                                                         event["start_time"]),
+                    # What is this?
+                    "ph": "X",
+                    # This is the name of the color to display the box in.
+                    "cname": color,
+                    # The extra user-defined data.
+                    "args": event["extra_data"],
+                }
+                all_events.append(new_event)
+
+                # Add another box with a color indicating whether it was a send
+                # or a receive event.
+                if event["event_type"] == "transfer_send":
+                    additional_event = new_event.copy()
+                    additional_event["cname"] = "black"
+                    all_events.append(additional_event)
+                elif event["event_type"] == "transfer_receive":
+                    additional_event = new_event.copy()
+                    additional_event["cname"] = "grey"
+                    all_events.append(additional_event)
+                else:
+                    pass
 
         if filename is not None:
             with open(filename, "w") as outfile:

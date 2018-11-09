@@ -24,6 +24,8 @@ from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
+logger = logging.getLogger(__name__)
+
 
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
@@ -300,6 +302,9 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess)
+
+        logger.debug("Created evaluator with env {} ({}), policies {}".format(
+            self.async_env, self.env, self.policy_map))
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}

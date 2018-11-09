@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 13 || argc == 14);
+  RAY_CHECK(argc == 14 || argc == 15);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -32,13 +32,29 @@ int main(int argc, char *argv[]) {
   int num_initial_workers = std::stoi(argv[8]);
   int maximum_startup_concurrency = std::stoi(argv[9]);
   const std::string static_resource_list = std::string(argv[10]);
-  const std::string python_worker_command = std::string(argv[11]);
-  const std::string java_worker_command = std::string(argv[12]);
-  const std::string redis_password = (argc == 14 ? std::string(argv[13]) : "");
+  const std::string config_list = std::string(argv[11]);
+  const std::string python_worker_command = std::string(argv[12]);
+  const std::string java_worker_command = std::string(argv[13]);
+  const std::string redis_password = (argc == 15 ? std::string(argv[14]) : "");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
+  std::unordered_map<std::string, int> raylet_config;
+
+  // Parse the configuration list.
+  std::istringstream config_string(config_list);
+  std::string config_name;
+  std::string config_value;
+
+  while (std::getline(config_string, config_name, ',')) {
+    RAY_CHECK(std::getline(config_string, config_value, ','));
+    // TODO(rkn): The line below could throw an exception. What should we do about this?
+    raylet_config[config_name] = std::stoi(config_value);
+  }
+
+  RayConfig::instance().initialize(raylet_config);
+
   // Parse the resource list.
   std::istringstream resource_string(static_resource_list);
   std::string resource_name;
@@ -49,6 +65,7 @@ int main(int argc, char *argv[]) {
     // TODO(rkn): The line below could throw an exception. What should we do about this?
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
+
   node_manager_config.resource_config =
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
