@@ -85,7 +85,7 @@ class Experiment(object):
                  repeat=1,
                  num_samples=1,
                  local_dir=None,
-                 upload_dir="",
+                 upload_dir=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  max_failures=3,
@@ -97,7 +97,7 @@ class Experiment(object):
             "trial_resources": trial_resources,
             "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
-            "upload_dir": upload_dir,
+            "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,
