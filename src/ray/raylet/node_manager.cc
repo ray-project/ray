@@ -1321,24 +1321,20 @@ bool NodeManager::AssignTask(Task &task) {
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+          // We failed to send the task to the worker, so disconnect the worker.
+          ProcessDisconnectClientMessage(worker->Connection());
           // Queue this task for future assignment. We need to do this since
           // DispatchTasks() removed it from the ready queue. The task will be
           // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          if (!local_queues_.HasTask(task.GetTaskSpecification().TaskId())) {
-            // Make sure we don't insert a duplicate task; this could happen
-            // if AssignTask() is recursivelly called on same task.
-            local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          }
-          // We failed to send the task to the worker, so disconnect the worker.
-          ProcessDisconnectClientMessage(worker->Connection());
-          AssignTask(task);
+          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+          DispatchTasks({task});
         }
       });
 
   // We assigned this task to a worker.
   // (Note this means that we sent the task to the worker. The assignment
-  //  might still faiil if the worker fails in the meantime, for instance.)
+  //  might still fail if the worker fails in the meantime, for instance.)
   return true;
 }
 
@@ -1473,7 +1469,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
     local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
 
-    // Optionally, make sure that the remaining tasks are all WAITING.
+    // Make sure that the remaining tasks are all WAITING.
     auto ready_task_id_set_copy = ready_task_id_set;
     local_queues_.FilterState(ready_task_id_set_copy, TaskState::WAITING);
     RAY_CHECK(ready_task_id_set_copy.empty());
