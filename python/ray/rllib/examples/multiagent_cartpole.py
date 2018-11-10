@@ -21,7 +21,7 @@ import tensorflow.contrib.slim as slim
 
 import ray
 from ray import tune
-from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
+from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune import run_experiments
@@ -84,11 +84,11 @@ if __name__ == "__main__":
             "model": {
                 "custom_model": ["model1", "model2"][i % 2],
             },
-            "gamma": random.choice([0.99]),
+            "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
         }
-        return (VTracePolicyGraph, obs_space, act_space, config)
+        return (PPOPolicyGraph, obs_space, act_space, config)
 
-    # Setup VTrace with an ensemble of `num_policies` different policy graphs
+    # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {
         "policy_{}".format(i): gen_policy(i)
         for i in range(args.num_policies)
@@ -97,14 +97,13 @@ if __name__ == "__main__":
 
     run_experiments({
         "test": {
-            "run": "IMPALA",
+            "run": "PPO",
             "env": "multi_cartpole",
             "stop": {
                 "training_iteration": args.num_iters
             },
             "config": {
-                "num_workers": 1,
-                "num_gpus": 0,
+                "simple_optimizer": True,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(
