@@ -509,7 +509,6 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 }
 
 void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
-
   // Return if there are no tasks to schedule.
   if (ready_tasks.empty()) {
     return;
