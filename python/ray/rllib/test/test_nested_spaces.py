@@ -165,12 +165,14 @@ class NestedSpacesTest(unittest.TestCase):
 
     def testInvalidModel2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
-        self.assertRaises(ValueError, lambda: PGAgent(
-            env="CartPole-v0", config={
-                "model": {
-                    "custom_model": "invalid2",
-                },
-            }))
+        self.assertRaisesRegexp(
+            ValueError, "Expected output.*",
+            lambda: PGAgent(
+                env="CartPole-v0", config={
+                    "model": {
+                        "custom_model": "invalid2",
+                    },
+                }))
 
     def doTestNestedDict(self, make_env):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
