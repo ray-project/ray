@@ -62,6 +62,7 @@ class Model(object):
             self.seq_lens = tf.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
 
+        self._num_outputs = num_outputs
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
@@ -72,7 +73,6 @@ class Model(object):
         except NotImplementedError:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
-        self._num_outputs = num_outputs
 
         if options.get("free_log_std", False):
             log_std = tf.get_variable(
