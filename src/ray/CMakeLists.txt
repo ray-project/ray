@@ -91,7 +91,7 @@ ADD_RAY_LIB(ray
 
 add_custom_target(copy_redis ALL)
 foreach(file "redis-cli" "redis-server")
-add_custom_command(TARGET copy_redis POST_BUILD
+add_custom_command(TARGET copy_redis
                    COMMAND ${CMAKE_COMMAND} -E
                       copy ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/redis/src/${file}
                            ${CMAKE_BINARY_DIR}/src/ray/thirdparty/redis/src/${file})
