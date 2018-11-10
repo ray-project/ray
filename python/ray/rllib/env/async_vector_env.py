@@ -214,12 +214,14 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.action_space = vector_env.action_space
         self.observation_space = vector_env.observation_space
         self.num_envs = vector_env.num_envs
-        self.new_obs = self.vector_env.vector_reset()
+        self.new_obs = None  # lazily initialized
         self.cur_rewards = [None for _ in range(self.num_envs)]
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
 
     def poll(self):
+        if self.new_obs is None:
+            self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
         dones = dict(enumerate(self.cur_dones))
