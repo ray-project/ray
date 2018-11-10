@@ -150,8 +150,8 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
-  /// \return Void.
-  void AssignTask(Task &task);
+  /// \return true, if tasks was assigned to a worker, false otherwise.
+  bool AssignTask(const Task &task);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param The worker that fiished the task.
@@ -195,34 +195,45 @@ class NodeManager {
 
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
-  void DispatchTasks();
-  /// Handle a worker becoming blocked in a `ray.get`.
   ///
-  /// \param worker The worker that is blocked.
-  /// \return Void.
-  void HandleWorkerBlocked(std::shared_ptr<Worker> worker);
-  /// Handle a worker exiting a `ray.get`.
+  /// This function is called in one of the following cases:
+  ///   (1) A set of new tasks is added to the ready queue.
+  ///   (2) New resources are becoming available on the local node.
+  ///   (3) A new worker becomes available.
+  /// Note in case (1) we only need to look at the new tasks added to the
+  /// ready queue, as we know that the old tasks in the ready queue cannot
+  /// be scheduled (We checked those tasks last time new resources or
+  /// workers became available, and nothing changed since then.) In this case,
+  /// task_queue contains only the newly added tasks to the ready queue;
+  /// Otherwise, task_queue points to entire ready queue.
   ///
-  /// \param worker The worker that is unblocked.
-  /// \return Void.
-  void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
+  /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
+  void DispatchTasks(const std::list<Task> &ready_tasks);
 
-  /// Handle a client that is blocked. This could be a worker or a driver. This
-  /// can be triggered when a client starts a get call or a wait call.
+  /// Handle a task that is blocked. This could be a task assigned to a worker,
+  /// an out-of-band task (e.g., a thread created by the application), or a
+  /// driver task. This can be triggered when a client starts a get call or a
+  /// wait call.
   ///
-  /// \param client The client that is blocked.
+  /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param current_task_id The task that is blocked.
   /// \return Void.
-  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids);
+  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                         const std::vector<ObjectID> &required_object_ids,
+                         const TaskID &current_task_id);
 
-  /// Handle a client that is unblocked. This could be a worker or a driver.
-  /// This can be triggered when a client is finished with a get call or a wait
-  /// call. It is ok to call this even if the client is not actually blocked.
+  /// Handle a task that is unblocked. This could be a task assigned to a
+  /// worker, an out-of-band task (e.g., a thread created by the application),
+  /// or a driver task. This can be triggered when a client finishes a get call
+  /// or a wait call. The given task must be blocked, via a previous call to
+  /// HandleTaskBlocked.
   ///
-  /// \param client The client that is unblocked.
+  /// \param client The client that is executing the unblocked task.
+  /// \param current_task_id The task that is unblocked.
   /// \return Void.
-  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const TaskID &current_task_id);
 
   /// Kill a worker.
   ///
@@ -312,12 +323,12 @@ class NodeManager {
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
-  /// Process client message of ReconstructObjects
+  /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessReconstructObjectsMessage(
+  void ProcessFetchOrReconstructMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
