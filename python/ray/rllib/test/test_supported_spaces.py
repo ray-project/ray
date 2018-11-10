@@ -109,6 +109,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
+
 #    def testAll(self):
 #        return
 #        stats = {}
@@ -175,10 +176,8 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sgd_minibatch_size": 1,
                 "simple_optimizer": True,
             })
-        check_support_multiagent(
-            "PG", {"num_workers": 1, "optimizer": {}})
+        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
         check_support_multiagent("DDPG", {"timesteps_per_iteration": 1})
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":

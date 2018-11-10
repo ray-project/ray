@@ -52,9 +52,12 @@ def add_time_dimension(padded_inputs, seq_lens):
     return tf.reshape(padded_inputs, new_shape)
 
 
-def chop_into_sequences(
-        episode_ids, agent_indices, feature_columns, state_columns,
-        max_seq_len, dynamic_max=True):
+def chop_into_sequences(episode_ids,
+                        agent_indices,
+                        feature_columns,
+                        state_columns,
+                        max_seq_len,
+                        dynamic_max=True):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:

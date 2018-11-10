@@ -14,7 +14,8 @@ class LSTMUtilsTest(unittest.TestCase):
         f = [[101, 102, 103, 201, 202, 203, 204, 205],
              [[101], [102], [103], [201], [202], [203], [204], [205]]]
         s = [[209, 208, 207, 109, 108, 107, 106, 105]]
-        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s, 4)
+        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s,
+                                                      4)
         self.assertEqual([f.tolist() for f in f_pad], [
             [101, 102, 103, 0, 201, 202, 203, 204, 205, 0, 0, 0],
             [[101], [102], [103], [0], [201], [202], [203], [204], [205], [0],
@@ -40,7 +41,8 @@ class LSTMUtilsTest(unittest.TestCase):
         agent_ids = [2, 2, 2]
         f = [[1, 1, 1]]
         s = [[1, 1, 1]]
-        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s, 4)
+        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s,
+                                                      4)
         self.assertEqual([f.tolist() for f in f_pad], [[1, 0, 1, 1]])
         self.assertEqual([s.tolist() for s in s_init], [[1, 1]])
         self.assertEqual(seq_lens.tolist(), [1, 2])

@@ -101,7 +101,6 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 
 
 def make_multiagent(env_name):
-
     class MultiEnv(MultiAgentEnv):
         def __init__(self, num):
             self.agents = [gym.make(env_name) for _ in range(num)]
