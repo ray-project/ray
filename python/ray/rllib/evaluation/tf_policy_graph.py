@@ -168,7 +168,7 @@ class TFPolicyGraph(PolicyGraph):
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}
         meets_divisibility_reqs = (
-            len(batch["eps_id"]) % self._batch_divisibility_req == 0
+            len(batch["obs"]) % self._batch_divisibility_req == 0
             and max(batch["agent_index"]) == 0)  # not multiagent
 
         # Simple case: not RNN nor do we need to pad
