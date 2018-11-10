@@ -185,6 +185,21 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
 
+    def testUploadDirNone(self):
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "upload_dir": None,
+                "config": {
+                    "a": "b"
+                },
+            }
+        })
+        self.assertFalse(trial.upload_dir)
+
     def testLogdirStartingWithTilde(self):
         local_dir = '~/ray_results/local_dir'
 
