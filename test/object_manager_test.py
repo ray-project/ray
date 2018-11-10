@@ -268,3 +268,40 @@ def test_object_transfer_retry(ray_start_empty_cluster):
 
     time.sleep(repeated_push_delay)
     ray.get(x_ids)
+
+
+# The purpose of this test is to make sure we can transfer many objects. In the
+# past, this has caused failures in which object managers create too many open
+# files and run out of resources.
+def test_many_small_transfers(ray_start_cluster):
+    cluster, num_nodes = ray_start_cluster
+
+    @ray.remote
+    def f(*args):
+        pass
+
+    # This function creates 1000 objects on each machine and then transfers
+    # each object to every other machine.
+    def do_transfers():
+        id_lists = []
+        for i in range(num_nodes):
+            id_lists.append([
+                f._submit(args=[], kwargs={}, resources={str(i): 1})
+                for _ in range(1000)
+            ])
+        ids = []
+        for i in range(num_nodes):
+            for j in range(num_nodes):
+                if i == j:
+                    continue
+                ids.append(
+                    f._submit(
+                        args=id_lists[j], kwargs={}, resources={str(i): 1}))
+
+        # Wait for all of the transfers to finish.
+        ray.get(ids)
+
+    do_transfers()
+    do_transfers()
+    do_transfers()
+    do_transfers()
