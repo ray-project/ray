@@ -52,15 +52,19 @@ def add_time_dimension(padded_inputs, seq_lens):
     return tf.reshape(padded_inputs, new_shape)
 
 
-def chop_into_sequences(episode_ids, feature_columns, state_columns,
-                        max_seq_len):
+def chop_into_sequences(
+        episode_ids, agent_indices, feature_columns, state_columns,
+        max_seq_len, dynamic_max=True):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:
         episode_ids (list): List of episode ids for each step.
+        agent_indices (list): List of agent ids for each step. Note that this
+            has to be combined with episode_ids for uniqueness.
         feature_columns (list): List of arrays containing features.
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.
+        dynamic_max (bool): Whether to dynamically shrink the max seq len.
 
     Returns:
         f_pad (list): Padded feature columns. These will be of shape
@@ -88,19 +92,21 @@ def chop_into_sequences(episode_ids, feature_columns, state_columns,
     prev_id = None
     seq_lens = []
     seq_len = 0
-    for eps_id in episode_ids:
-        if (prev_id is not None and eps_id != prev_id) or \
+    unique_ids = np.add(episode_ids, agent_indices)
+    for uid in unique_ids:
+        if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:
             seq_lens.append(seq_len)
             seq_len = 0
         seq_len += 1
-        prev_id = eps_id
+        prev_id = uid
     if seq_len:
         seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(episode_ids)
+    assert sum(seq_lens) == len(unique_ids)
 
     # Dynamically shrink max len as needed to optimize memory usage
-    max_seq_len = max(seq_lens)
+    if dynamic_max:
+        max_seq_len = max(seq_lens)
 
     feature_sequences = []
     for f in feature_columns:
@@ -113,7 +119,7 @@ def chop_into_sequences(episode_ids, feature_columns, state_columns,
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(episode_ids), f
+        assert i == len(unique_ids), f
         feature_sequences.append(f_pad)
 
     initial_states = []

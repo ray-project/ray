@@ -10,10 +10,11 @@ from ray.rllib.models.lstm import chop_into_sequences
 class LSTMUtilsTest(unittest.TestCase):
     def testBasic(self):
         eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
+        agent_ids = [1, 1, 1, 1, 1, 1, 1, 1]
         f = [[101, 102, 103, 201, 202, 203, 204, 205],
              [[101], [102], [103], [201], [202], [203], [204], [205]]]
         s = [[209, 208, 207, 109, 108, 107, 106, 105]]
-        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, f, s, 4)
+        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s, 4)
         self.assertEqual([f.tolist() for f in f_pad], [
             [101, 102, 103, 0, 201, 202, 203, 204, 205, 0, 0, 0],
             [[101], [102], [103], [0], [201], [202], [203], [204], [205], [0],
@@ -22,11 +23,24 @@ class LSTMUtilsTest(unittest.TestCase):
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 
+    def testMultiAgent(self):
+        eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
+        agent_ids = [1, 1, 2, 1, 1, 2, 2, 3]
+        f = [[101, 102, 103, 201, 202, 203, 204, 205],
+             [[101], [102], [103], [201], [202], [203], [204], [205]]]
+        s = [[209, 208, 207, 109, 108, 107, 106, 105]]
+        f_pad, s_init, seq_lens = chop_into_sequences(
+            eps_ids, agent_ids, f, s, 4, dynamic_max=False)
+        self.assertEqual(seq_lens.tolist(), [2, 1, 2, 2, 1])
+        self.assertEqual(len(f_pad[0]), 20)
+        self.assertEqual(len(s_init[0]), 5)
+
     def testDynamicMaxLen(self):
         eps_ids = [5, 2, 2]
+        agent_ids = [2, 2, 2]
         f = [[1, 1, 1]]
         s = [[1, 1, 1]]
-        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, f, s, 4)
+        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids, agent_ids, f, s, 4)
         self.assertEqual([f.tolist() for f in f_pad], [[1, 0, 1, 1]])
         self.assertEqual([s.tolist() for s in s_init], [[1, 1]])
         self.assertEqual(seq_lens.tolist(), [1, 2])
