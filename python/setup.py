@@ -45,6 +45,7 @@ ray_ui_files = [
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
+    "ray/autoscaler/local/example-full.yaml",
 ]
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
