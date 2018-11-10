@@ -14,7 +14,8 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE, EPISODES_TOTAL)
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -419,9 +420,25 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
 
-        def train3(config, reporter):
+        def train2(config, reporter):
             for i in range(10):
                 reporter(timesteps_total=5)
+
+        [trial2] = run_experiments({
+            "foo": {
+                "run": train2,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
+
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_this_iter=0, episodes_this_iter=0)
 
         [trial3] = run_experiments({
             "foo": {
@@ -431,8 +448,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
-        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
-        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 0)
+        self.assertEqual(trial3.last_result[EPISODES_TOTAL], 0)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
