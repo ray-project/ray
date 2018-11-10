@@ -1298,11 +1298,13 @@ bool NodeManager::AssignTask(const Task &task) {
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
+  // Give the callback a copy of the task so it can modify it.
+  Task assigned_task(task);
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, task](ray::Status status) mutable {
+      fbb.GetBufferPointer(), [this, worker, assigned_task](ray::Status status) mutable {
         if (status.ok()) {
-          auto spec = task.GetTaskSpecification();
+          auto spec = assigned_task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
@@ -1325,21 +1327,20 @@ bool NodeManager::AssignTask(const Task &task) {
             // updates are reflected in the task table.
             // (SetExecutionDependencies takes a non-const so copy task in a
             //  on-const variable.)
-            Task task_dispatched = task;
-            task_dispatched.SetExecutionDependencies({execution_dependency});
+            assigned_task.SetExecutionDependencies({execution_dependency});
             // Extend the frontier to include the executing task.
             actor_entry->second.ExtendFrontier(spec.ActorHandleId(),
                                                spec.ActorDummyObject());
           }
           // We started running the task, so the task is ready to write to GCS.
-          if (!lineage_cache_.AddReadyTask(task)) {
+          if (!lineage_cache_.AddReadyTask(assigned_task)) {
             RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
                                                             "This is most likely due to "
                                                             "reconstruction.";
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+          local_queues_.QueueRunningTasks(std::vector<Task>({assigned_task}));
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
@@ -1351,8 +1352,8 @@ bool NodeManager::AssignTask(const Task &task) {
           // DispatchTasks() removed it from the ready queue. The task will be
           // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          DispatchTasks({task});
+          local_queues_.QueueReadyTasks(std::vector<Task>({assigned_task}));
+          DispatchTasks({assigned_task});
         }
       });
 
