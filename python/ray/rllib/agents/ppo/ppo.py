@@ -89,8 +89,7 @@ class PPOAgent(Agent):
                 "num_cpus": self.config["num_cpus_per_worker"],
                 "num_gpus": self.config["num_gpus_per_worker"]
             })
-        if (self.config["simple_optimizer"]
-                or self.config["multiagent"]["policy_graphs"]):
+        if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
@@ -127,6 +126,10 @@ class PPOAgent(Agent):
                 and not self.config["use_gae"]):
             raise ValueError(
                 "Episode truncation is not supported without a value function")
+        if (self.config["multiagent"]["policy_graphs"]
+                and not self.config["simple_optimizer"]):
+            logger.warn("forcing simple_optimizer=True in multi-agent mode")
+            self.config["simple_optimizer"] = True
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
