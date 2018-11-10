@@ -121,8 +121,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     list(APPEND build_ray_file_list "${CMAKE_BINARY_DIR}/${file}")
   endforeach()
 
-  add_custom_target(copy_ray_files DEPENDS copy_redis ${build_ray_file_list} ray_redis_module)
-  add_dependencies(copy_ray_files copy_redis)
+  add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list} copy_redis ray_redis_module)
   add_dependencies(copy_ray copy_ray_files)
 
   # Make sure that the Python extensions are built before copying the files.
