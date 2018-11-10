@@ -42,7 +42,8 @@ class PGPolicyGraph(TFPolicyGraph):
         # Setup policy loss
         actions = ModelCatalog.get_action_placeholder(action_space)
         advantages = tf.placeholder(tf.float32, [None], name="adv")
-        loss = PGLoss(action_dist, actions, advantages).loss
+        loss = (
+            self.model.loss() + PGLoss(action_dist, actions, advantages).loss)
 
         # Mapping from sample batch keys to placeholders. These keys will be
         # read from postprocessed sample batches and fed into the specified

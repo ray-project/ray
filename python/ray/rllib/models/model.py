@@ -144,6 +144,18 @@ class Model(object):
         return tf.reshape(
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
+    def loss(self):
+        """Builds any built-in (self-supervised) loss for the model.
+
+        For example, this can be used to incorporate auto-encoder style losses.
+        Note that this loss has to be included in the policy graph loss to have
+        an effect, which may not be the case for all algorithms.
+
+        Returns:
+            Scalar tensor for the self-supervised loss.
+        """
+        return tf.constant(0.0)
+
 
 def _restore_original_dimensions(input_dict, obs_space):
     if hasattr(obs_space, "original_space"):

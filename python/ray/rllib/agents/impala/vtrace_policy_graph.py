@@ -167,7 +167,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.ones_like(rewards)
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-        self.loss = VTraceLoss(
+        self.loss = self.model.loss() + VTraceLoss(
             actions=to_batches(actions)[:-1],
             actions_logp=to_batches(action_dist.logp(actions))[:-1],
             actions_entropy=to_batches(action_dist.entropy())[:-1],
