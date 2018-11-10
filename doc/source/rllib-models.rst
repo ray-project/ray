@@ -94,7 +94,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
             an effect, which may not be the case for all algorithms.
 
             Returns:
-                Scalar tensor for the self-supervised loss.
+                Tensor of size [BATCH_SIZE] for the self-supervised loss.
             """
             return tf.constant(0.0)
 
