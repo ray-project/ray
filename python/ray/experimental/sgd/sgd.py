@@ -186,7 +186,7 @@ def _average_gradients(grads):
 
 def _simple_sgd_step(actors):
     if len(actors) == 1:
-        return ray.get(actors[0].compute_apply.remote())
+        return {"loss": ray.get(actors[0].compute_apply.remote())}
 
     start = time.time()
     fetches = ray.get([a.compute_gradients.remote() for a in actors])
