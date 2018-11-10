@@ -73,9 +73,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         advantages = tf.placeholder(tf.float32, [None], name="advantages")
         self.v_target = tf.placeholder(tf.float32, [None], name="v_target")
         self.loss = self.model.loss() + A3CLoss(
-            action_dist, actions, advantages, self.v_target,
-            self.vf, self.config["vf_loss_coeff"],
-            self.config["entropy_coeff"])
+            action_dist, actions, advantages, self.v_target, self.vf,
+            self.config["vf_loss_coeff"], self.config["entropy_coeff"])
 
         # Initialize TFPolicyGraph
         loss_in = [
