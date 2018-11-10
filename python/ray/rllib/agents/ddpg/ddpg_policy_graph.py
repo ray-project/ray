@@ -86,6 +86,7 @@ class QNetwork(object):
                 q_out, num_outputs=hidden, activation_fn=activation)
         self.value = layers.fully_connected(
             q_out, num_outputs=1, activation_fn=None)
+        self.model = model
 
 
 class ActorCriticLoss(object):
@@ -258,7 +259,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.total_loss,
+            loss=q_t.model.loss() + self.loss.total_loss,
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 

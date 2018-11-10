@@ -149,7 +149,7 @@ class Model(object):
 
         For example, this can be used to incorporate auto-encoder style losses.
         Note that this loss has to be included in the policy graph loss to have
-        an effect, which may not be the case for all algorithms.
+        an effect.
 
         Returns:
             Tensor of size [BATCH_SIZE] for the self-supervised loss.
