@@ -62,7 +62,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison ninja > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
