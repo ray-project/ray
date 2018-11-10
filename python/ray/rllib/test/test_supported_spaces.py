@@ -109,54 +109,53 @@ class ModelSupportedSpaces(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-
-#    def testAll(self):
-#        return
-#        stats = {}
-#        check_support("IMPALA", {"num_gpus": 0}, stats)
-#        check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
-#        check_support("DQN", {"timesteps_per_iteration": 1}, stats)
-#        check_support("A3C", {
-#            "num_workers": 1,
-#            "optimizer": {
-#                "grads_per_step": 1
-#            }
-#        }, stats)
-#        check_support(
-#            "PPO", {
-#                "num_workers": 1,
-#                "num_sgd_iter": 1,
-#                "train_batch_size": 10,
-#                "sample_batch_size": 10,
-#                "sgd_minibatch_size": 1,
-#                "model": {
-#                    "squash_to_range": True
-#                },
-#            },
-#            stats,
-#            check_bounds=True)
-#        check_support(
-#            "ES", {
-#                "num_workers": 1,
-#                "noise_size": 10000000,
-#                "episodes_per_batch": 1,
-#                "train_batch_size": 1
-#            }, stats)
-#        check_support(
-#            "ARS", {
-#                "num_workers": 1,
-#                "noise_size": 10000000,
-#                "num_rollouts": 1,
-#                "rollouts_used": 1
-#            }, stats)
-#        check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
-#        num_unexpected_errors = 0
-#        for (alg, a_name, o_name), stat in sorted(stats.items()):
-#            if stat not in ["ok", "unsupported"]:
-#                num_unexpected_errors += 1
-#            print(alg, "action_space", a_name, "obs_space", o_name, "result",
-#                  stat)
-#        self.assertEqual(num_unexpected_errors, 0)
+    def testAll(self):
+        return
+        stats = {}
+        check_support("IMPALA", {"num_gpus": 0}, stats)
+        check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
+        check_support("DQN", {"timesteps_per_iteration": 1}, stats)
+        check_support("A3C", {
+            "num_workers": 1,
+            "optimizer": {
+                "grads_per_step": 1
+            }
+        }, stats)
+        check_support(
+            "PPO", {
+                "num_workers": 1,
+                "num_sgd_iter": 1,
+                "train_batch_size": 10,
+                "sample_batch_size": 10,
+                "sgd_minibatch_size": 1,
+                "model": {
+                    "squash_to_range": True
+                },
+            },
+            stats,
+            check_bounds=True)
+        check_support(
+            "ES", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "episodes_per_batch": 1,
+                "train_batch_size": 1
+            }, stats)
+        check_support(
+            "ARS", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "num_rollouts": 1,
+                "rollouts_used": 1
+            }, stats)
+        check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
+        num_unexpected_errors = 0
+        for (alg, a_name, o_name), stat in sorted(stats.items()):
+            if stat not in ["ok", "unsupported"]:
+                num_unexpected_errors += 1
+            print(alg, "action_space", a_name, "obs_space", o_name, "result",
+                  stat)
+        self.assertEqual(num_unexpected_errors, 0)
 
     def testMultiAgent(self):
         check_support_multiagent("IMPALA", {"num_gpus": 0})
@@ -176,8 +175,10 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sgd_minibatch_size": 1,
                 "simple_optimizer": True,
             })
-        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
+        check_support_multiagent(
+            "PG", {"num_workers": 1, "optimizer": {}})
         check_support_multiagent("DDPG", {"timesteps_per_iteration": 1})
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":

@@ -29,7 +29,7 @@ from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--num-agents", type=int, default=1)
+parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
 
