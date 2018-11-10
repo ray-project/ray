@@ -110,7 +110,6 @@ class ModelSupportedSpaces(unittest.TestCase):
         ray.shutdown()
 
     def testAll(self):
-        return
         stats = {}
         check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
