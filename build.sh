@@ -109,6 +109,7 @@ cmake -GNinja \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
 ninja arrow_ep
+ninja copy_redis
 ninja
 
 popd
