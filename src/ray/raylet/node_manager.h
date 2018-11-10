@@ -151,7 +151,7 @@ class NodeManager {
   ///
   /// \param task The task in question.
   /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(Task &task);
+  bool AssignTask(const Task &task);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param The worker that fiished the task.

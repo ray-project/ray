@@ -526,9 +526,7 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
       continue;
     }
     // We have enough resources for this task. Assign task.
-    // (AssignTask() takes a non-const so copy task in a non-const variable.)
-    Task task_dispatched = task;
-    if (AssignTask(task_dispatched)) {
+    if (AssignTask(task)) {
       // We were successful in assigning this task on a local worker, so
       // remember to remove it from ready queue. If for some reason the
       // scheduling of this task fails later, we will add it back to the
@@ -1252,7 +1250,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-bool NodeManager::AssignTask(Task &task) {
+bool NodeManager::AssignTask(const Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.
@@ -1325,7 +1323,10 @@ bool NodeManager::AssignTask(Task &task) {
             // we may lose updates that are in flight to the task table. We only
             // guarantee deterministic reconstruction ordering for tasks whose
             // updates are reflected in the task table.
-            task.SetExecutionDependencies({execution_dependency});
+            // (SetExecutionDependencies takes a non-const so copy task in a
+            //  on-const variable.)
+            Task task_dispatched = task;
+            task_dispatched.SetExecutionDependencies({execution_dependency});
             // Extend the frontier to include the executing task.
             actor_entry->second.ExtendFrontier(spec.ActorHandleId(),
                                                spec.ActorDummyObject());
