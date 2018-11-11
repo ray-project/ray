@@ -19,10 +19,6 @@ DEFAULT_CONFIG = {
     "grad_clip": 40.0,
     # Learning rate
     "lr": 0.0001,
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
-    # Whether to place workers on GPUs
-    "use_gpu_for_workers": False,
     # Model and preprocessor options
     "model": {
         # (Image statespace) - Converts image to Channels = 1
@@ -48,19 +44,6 @@ class BCAgent(Agent):
     _agent_name = "BC"
     _default_config = DEFAULT_CONFIG
     _allow_unknown_configs = True
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        if cf["use_gpu_for_workers"]:
-            num_gpus_per_worker = cf["gpu_fraction"]
-        else:
-            num_gpus_per_worker = 0
-        return Resources(
-            cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=num_gpus_per_worker * cf["num_workers"])
 
     def _init(self):
         self.local_evaluator = BCEvaluator(self.env_creator, self.config,

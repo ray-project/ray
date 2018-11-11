@@ -10,7 +10,6 @@ from ray.tune.trial import Resources
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
-        "gpu": False,
         "sample_batch_size": 20,
         "min_iter_time_s": 10,
         "sample_async": False,
@@ -28,12 +27,3 @@ class A2CAgent(A3CAgent):
         return SyncSamplesOptimizer(self.local_evaluator,
                                     self.remote_evaluators,
                                     self.config["optimizer"])
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["gpu_fraction"] if cf["gpu"] else 0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)

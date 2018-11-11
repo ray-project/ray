@@ -169,11 +169,6 @@ class ESAgent(Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
-
     def _init(self):
         policy_params = {"action_noise_std": 0.01}
 

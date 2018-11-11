@@ -31,11 +31,6 @@ class PGAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PGPolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
-
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)

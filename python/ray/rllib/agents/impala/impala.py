@@ -36,8 +36,6 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    "num_cpus_per_worker": 1,
-    "num_gpus_per_worker": 0,
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
@@ -76,15 +74,6 @@ class ImpalaAgent(Agent):
     _agent_name = "IMPALA"
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"] and cf["num_gpus"] * cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         for k in OPTIMIZER_SHARED_CONFIGS:

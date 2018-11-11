@@ -29,8 +29,6 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": -0.01,
-    # Whether to place workers on GPUs
-    "use_gpu_for_workers": False,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
@@ -47,15 +45,6 @@ class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
     _policy_graph = A3CPolicyGraph
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
         if self.config["use_pytorch"]:

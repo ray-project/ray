@@ -47,12 +47,6 @@ DEFAULT_CONFIG = with_common_config({
     "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
-    # Number of GPUs to use for SGD
-    "num_gpus": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
@@ -70,15 +64,6 @@ class PPOAgent(Agent):
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         self._validate_config()
