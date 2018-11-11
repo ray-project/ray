@@ -239,7 +239,7 @@ class Agent(Trainable):
     def _validate_config(config):
         if "gpu" in config:
             raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=1` "
+                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
                 "instead.")
         if "gpu_fraction" in config:
             raise ValueError(

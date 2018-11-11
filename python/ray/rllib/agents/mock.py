@@ -16,7 +16,8 @@ class _MockAgent(Agent):
     _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
-        "test_variable": 1
+        "test_variable": 1,
+        "num_workers": 0,
     })
 
     def _init(self):
@@ -65,6 +66,7 @@ class _SigmoidFakeData(_MockAgent):
         "offset": 0,
         "iter_time": 10,
         "iter_timesteps": 1,
+        "num_workers": 0,
     })
 
     def _train(self):
@@ -87,7 +89,8 @@ class _ParameterTuningAgent(_MockAgent):
         "dummy_param": 10,
         "dummy_param2": 15,
         "iter_time": 10,
-        "iter_timesteps": 1
+        "iter_timesteps": 1,
+        "num_workers": 0,
     })
 
     def _train(self):
