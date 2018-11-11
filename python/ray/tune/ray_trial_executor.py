@@ -257,7 +257,7 @@ class RayTrialExecutor(TrialExecutor):
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
         else:
-            return ""
+            return "Resources requested: ?"
 
     def resource_string(self):
         """Returns a string describing the total resources available."""
