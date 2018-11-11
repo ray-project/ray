@@ -91,7 +91,9 @@ class DistributedSGD(object):
 
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
-        logger.info("Creating SGD workers ({} total)".format(num_workers))
+        logger.info(
+            "Creating SGD workers ({} total, {} devices per worker)".format(
+                num_workers, devices_per_worker))
         for worker_index in range(num_workers):
             self.workers.append(
                 RemoteSGDWorker.remote(
@@ -143,7 +145,15 @@ class DistributedSGD(object):
         out = []
         for r in results:
             out.extend(r)
-        return r
+        return out
+
+    def for_model(self, fn):
+        """Apply the given function to a single model replica.
+
+        Returns:
+            Result from applying the function.
+        """
+        return ray.get(self.workers[0].for_model.remote(fn))
 
     def step(self, fetch_stats=False):
         """Run a single SGD step.
@@ -176,7 +186,7 @@ def _average_gradients(grads):
 
 def _simple_sgd_step(actors):
     if len(actors) == 1:
-        return ray.get(actors[0].compute_apply.remote())
+        return {"loss": ray.get(actors[0].compute_apply.remote())}
 
     start = time.time()
     fetches = ray.get([a.compute_gradients.remote() for a in actors])
@@ -193,18 +203,18 @@ def _simple_sgd_step(actors):
     start = time.time()
     ray.get([a.apply_gradients.remote(avg_grad) for a in actors])
     logger.debug("apply all grads time {}".format(time.time() - start))
-    return np.mean(losses)
+    return {"loss": np.mean(losses)}
 
 
 def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
     # Preallocate object ids that actors will write gradient shards to
     grad_shard_oids_list = [[np.random.bytes(20) for _ in ps_list]
                             for _ in actors]
-    logger.info("Generated grad oids")
+    logger.debug("Generated grad oids")
 
     # Preallocate object ids that param servers will write new weights to
     accum_shard_ids = [np.random.bytes(20) for _ in ps_list]
-    logger.info("Generated accum oids")
+    logger.debug("Generated accum oids")
 
     # Kick off the fused compute grad / update weights tf run for each actor
     losses = []
@@ -214,7 +224,7 @@ def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
                 grad_shard_oids,
                 accum_shard_ids,
                 write_timeline=write_timeline))
-    logger.info("Launched all ps_compute_applys on all actors")
+    logger.debug("Launched all ps_compute_applys on all actors")
 
     # Issue prefetch ops
     for j, (ps, weight_shard_oid) in list(
@@ -224,7 +234,7 @@ def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
             to_fetch.append(grad_shard_oids[j])
         random.shuffle(to_fetch)
         ps.prefetch.remote(to_fetch)
-    logger.info("Launched all prefetch ops")
+    logger.debug("Launched all prefetch ops")
 
     # Aggregate the gradients produced by the actors. These operations
     # run concurrently with the actor methods above.
@@ -233,11 +243,11 @@ def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
             enumerate(zip(ps_list, accum_shard_ids)))[::-1]:
         ps.add_spinwait.remote([gs[j] for gs in grad_shard_oids_list])
         ps_gets.append(ps.get.remote(weight_shard_oid))
-    logger.info("Launched all aggregate ops")
+    logger.debug("Launched all aggregate ops")
 
     if write_timeline:
         timelines = [ps.get_timeline.remote() for ps in ps_list]
-        logger.info("launched timeline gets")
+        logger.debug("Launched timeline gets")
         timelines = ray.get(timelines)
         t0 = timelines[0]
         for t in timelines[1:]:
@@ -247,6 +257,6 @@ def _distributed_sgd_step(actors, ps_list, fetch_stats, write_timeline):
         # Wait for at least the ps gets to finish
         ray.get(ps_gets)
     if fetch_stats:
-        return np.mean(ray.get(losses))
+        return {"loss": np.mean(ray.get(losses))}
     else:
         return None
