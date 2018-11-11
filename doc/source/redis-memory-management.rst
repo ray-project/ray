@@ -1,4 +1,4 @@
-Redis Memory Management (EXPERIMENTAL)
+Redis Memory Management (Experimental)
 ======================================
 
 Ray stores metadata associated with tasks and objects in one or more Redis
