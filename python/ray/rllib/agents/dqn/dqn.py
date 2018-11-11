@@ -148,10 +148,7 @@ class DQNAgent(Agent):
         def create_remote_evaluators():
             return self.make_remote_evaluators(
                 self.env_creator, self._policy_graph,
-                self.config["num_workers"], {
-                    "num_cpus": self.config["num_cpus_per_worker"],
-                    "num_gpus": self.config["num_gpus_per_worker"]
-                })
+                self.config["num_workers"])
 
         if self.config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()

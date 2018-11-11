@@ -68,10 +68,7 @@ class PPOAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+            self.env_creator, self._policy_graph, self.config["num_workers"])
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {

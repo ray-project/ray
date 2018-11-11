@@ -55,8 +55,7 @@ class A3CAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"],
-            {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
+            self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = self._make_optimizer()
 
     def _make_optimizer(self):

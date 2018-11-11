@@ -33,8 +33,7 @@ class PGAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"],
-            {})
+            self.env_creator, self._policy_graph, self.config["num_workers"])
         self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
                                               self.remote_evaluators,
                                               self.config["optimizer"])

@@ -85,8 +85,7 @@ class ImpalaAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"],
-            {"num_cpus": 1})
+            self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])

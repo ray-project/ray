@@ -186,8 +186,7 @@ class Agent(Trainable):
     def make_remote_evaluators(self,
                                env_creator,
                                policy_graph,
-                               count,
-                               remote_args=None):
+                               count):
         """Convenience method to return a number of remote evaluators."""
 
         if remote_args is None:
