@@ -263,8 +263,8 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a string describing the total resources available."""
 
         if self._resources_initialized:
-            return "{} CPUs, {} GPUs".format(
-                self._avail_resources.cpu, self._avail_resources.gpu)
+            return "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
+                                             self._avail_resources.gpu)
         else:
             return "? CPUs, ? GPUs"
 
