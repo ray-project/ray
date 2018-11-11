@@ -29,6 +29,8 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+        if ray.is_initialized():
+            self._update_avail_resources()
 
     def _setup_runner(self, trial):
         cls = ray.remote(
