@@ -37,6 +37,75 @@ enum class TaskState {
   INFEASIBLE
 };
 
+class QueueReadyMetadata {
+public:
+
+  /// \brief Aggregate resources from the other set into this set, adding any missing
+  /// resource labels to this set.
+  ///
+  /// \param resources: The resource set to add.
+  /// \return Void.
+  void AddResources(const ResourceSet &resources);
+  /// \brief Subtract a set of resources from the current set of resources, only if
+  /// resource labels match.
+  ///
+  /// \param resources: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void RemoveResources(const ResourceSet &resources);
+  /// \brief Get the total resources required by the tasks in the queue.
+  ///
+  /// \return Total resources required by the tasks in the queue.
+  const ResourceSet &GetCurrentResourceLoad() const;
+
+private:
+  /// Aggregate resources of all the tasks in this queue.
+  ResourceSet current_resource_load_;
+};
+
+/*
+class ReadyQueueMetadata {
+ public:
+  /// Creating metadata for ready queue.
+  ReadyQueueMetadata() {
+    count_ = 0;
+  };
+
+  /// Destructor for ready queue's metadata.
+  ~ReadyQueueMetadata() {};
+
+  /// \brief Add task resource info to metadata.
+  ///
+  /// \param Resource set to be added.
+  void AddTask(const ResourceSet &resource_set) {
+    if (min_resources_set_.Contains(resource_set)) {
+      if (min_resource_set_ == resource_set) {
+        count_++;
+      } else {
+        count_ = 1;
+      }
+    }
+  };
+
+  /// \brief Remove resource info from metadata.
+  ///
+  /// \param Resource set to be removed.
+  void RemoveTask(const ResourceSet &resource_set) {
+    if (min_resource_set_ == resource_set) {
+      count_--;
+    }
+  };
+
+  const ResourceSet &GetMinResourceSet(void) {
+    return min_resource_set_;
+  }
+
+ private:
+  ResourceSet min_resource_set_;
+  int count_;
+};
+*/
+
+
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues.
@@ -234,7 +303,7 @@ class SchedulingQueue {
     /// \param task_id The task ID for the task to append.
     /// \param task The task to append to the queue.
     /// \return Whether the append operation succeeds.
-    bool AppendTask(const TaskID &task_id, const Task &task);
+    bool AppendTask(const TaskID &task_id, const Task &task, bool is_ready_queue);
 
     /// \brief Remove a task from queue.
     ///
@@ -249,7 +318,9 @@ class SchedulingQueue {
     ///  removed from the queue, the task data is appended to the vector. Can
     ///  be a nullptr, in which case nothing is appended.
     /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
+    bool RemoveTask(const TaskID &task_id,
+                    std::vector<Task> *removed_tasks = nullptr,
+                    bool is_ready_queue = false);
 
     /// \brief Check if the queue contains a specific task id.
     ///
@@ -262,6 +333,7 @@ class SchedulingQueue {
     const std::list<Task> &GetTasks() const;
 
     /// \brief Get the total resources required by the tasks in the queue.
+    ///
     /// \return Total resources required by the tasks in the queue.
     const ResourceSet &GetCurrentResourceLoad() const;
 
@@ -270,9 +342,10 @@ class SchedulingQueue {
     std::list<Task> task_list_;
     /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-    /// Aggregate resources of all the tasks in this queue.
-    ResourceSet current_resource_load_;
+    /// Metadata associated to readsy queue.
+    QueueReadyMetadata ready_tasks_metadata_;
   };
+
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
@@ -295,6 +368,8 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
+  /// XXX
+  // ReadyQueueMetadata ready_tasks_metadata_;
 };
 
 }  // namespace raylet
