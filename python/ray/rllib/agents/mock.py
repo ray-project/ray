@@ -6,18 +6,18 @@ import os
 import pickle
 import numpy as np
 
-from ray.rllib.agents.agent import Agent
+from ray.rllib.agents.agent import Agent, with_common_config
 
 
 class _MockAgent(Agent):
     """Mock agent for use in tests"""
 
     _agent_name = "MockAgent"
-    _default_config = {
+    _default_config = with_common_config({
         "mock_error": False,
         "persistent_error": False,
         "test_variable": 1
-    }
+    })
 
     def _init(self):
         self.info = None
@@ -59,13 +59,13 @@ class _SigmoidFakeData(_MockAgent):
     This can be helpful for evaluating early stopping algorithms."""
 
     _agent_name = "SigmoidFakeData"
-    _default_config = {
+    _default_config = with_common_config({
         "width": 100,
         "height": 100,
         "offset": 0,
         "iter_time": 10,
         "iter_timesteps": 1,
-    }
+    })
 
     def _train(self):
         i = max(0, self.iteration - self.config["offset"])
@@ -82,13 +82,13 @@ class _SigmoidFakeData(_MockAgent):
 class _ParameterTuningAgent(_MockAgent):
 
     _agent_name = "ParameterTuningAgent"
-    _default_config = {
+    _default_config = with_common_config({
         "reward_amt": 10,
         "dummy_param": 10,
         "dummy_param2": 15,
         "iter_time": 10,
         "iter_timesteps": 1
-    }
+    })
 
     def _train(self):
         return dict(
