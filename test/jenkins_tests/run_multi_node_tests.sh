@@ -335,15 +335,15 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
         --batch-size=1 --strategy=ps
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=20 \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=1 --devices-per-worker=1 --strategy=ps
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=20 \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=2 --devices-per-worker=2 --strategy=ps
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=20 \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=2 --devices-per-worker=2 --strategy=ps --tune
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
