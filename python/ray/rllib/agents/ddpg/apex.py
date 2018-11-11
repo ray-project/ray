@@ -16,7 +16,7 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
                 "debug": False
             }),
         "n_step": 3,
-        "num_gpus": 1,
+        "num_gpus": 0,
         "num_workers": 32,
         "buffer_size": 2000000,
         "learning_starts": 50000,
