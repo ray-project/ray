@@ -945,14 +945,12 @@ class Worker(object):
             }
             if task.actor_id().id() == NIL_ACTOR_ID:
                 title = "ray_worker:{}()".format(function_name)
-                next_title = "ray_worker"
             else:
                 actor = self.actors[task.actor_id().id()]
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
-                next_title = "ray_{}".format(actor.__class__.__name__)
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                with _changeproctitle(title, next_title):
+                with _changeproctitle(title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
                 with self.state_lock:
@@ -2165,10 +2163,11 @@ def disconnect(worker=global_worker):
 
 
 @contextmanager
-def _changeproctitle(title, next_title):
+def _changeproctitle(title):
+    old_title = setproctitle.getproctitle()
     setproctitle.setproctitle(title)
     yield
-    setproctitle.setproctitle(next_title)
+    setproctitle.setproctitle(old_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
