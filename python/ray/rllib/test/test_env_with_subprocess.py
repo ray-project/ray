@@ -1,26 +1,20 @@
-"""Example of how to write an env that launches a subprocess.
-
-When the process exists, the subprocess's entire process group is killed via
-a hook to avoid leaking resources.
-"""
+"""Tests that envs clean up after themselves on agent exit."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from gym.spaces import Discrete
-import atexit
 import gym
-import os
-import signal
 import subprocess
+import time
 
 import ray
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
-# Dummy command to run as a subprocess
-SLEEP_CMD = "sleep 12345"
+# Dummy command to run as a subprocess with a unique name
+UNIQUE_CMD = "sleep {}".format(str(time.time()))
 
 
 class EnvWithSubprocess(gym.Env):
@@ -29,24 +23,7 @@ class EnvWithSubprocess(gym.Env):
     def __init__(self):
         self.action_space = Discrete(2)
         self.observation_space = Discrete(2)
-
-        # We use os.setsid so that the process becomes a group leader. This
-        # allows us to easily kill its children as well via os.killpg().
-        self.subproc = subprocess.Popen(
-            SLEEP_CMD, preexec_fn=os.setsid, shell=True)
-
-        # Cleanup function to run on exit
-        def cleanup():
-            print("Killing child process group")
-            os.killpg(os.getpgid(self.subproc.pid), signal.SIGKILL)
-            # Note that this isn't sufficient to kill nested child processes:
-            # self.subproc.kill()
-
-        atexit.register(cleanup)
-
-        # Patch _exit to handle normal exits as well
-        real_os_exit = os._exit
-        os._exit = lambda a: [cleanup(), real_os_exit(a)]
+        self.subproc = subprocess.Popen(UNIQUE_CMD, shell=True)
 
     def reset(self):
         return [0]
@@ -58,7 +35,7 @@ class EnvWithSubprocess(gym.Env):
 def leaked_processes():
     """Returns whether any subprocesses were leaked."""
     result = subprocess.check_output(
-        "ps aux | grep '{}' | grep -v grep || true".format(SLEEP_CMD),
+        "ps aux | grep '{}' | grep -v grep || true".format(UNIQUE_CMD),
         shell=True)
     return result
 

@@ -902,6 +902,10 @@ class Worker(object):
         self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
+        # Set the process group id. This ensures that child processes spawned
+        # by this actor can be killed with this actor easily on termination.
+        os.setpgid(os.getpid(), os.getpid())
+
         key = b"ActorClass:" + class_id
 
         # Wait for the actor class key to have been imported by the import
