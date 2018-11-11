@@ -40,8 +40,6 @@ DEFAULT_CONFIG = with_common_config({
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -146,9 +144,9 @@ class DQNAgent(Agent):
             self.env_creator, self._policy_graph)
 
         def create_remote_evaluators():
-            return self.make_remote_evaluators(
-                self.env_creator, self._policy_graph,
-                self.config["num_workers"])
+            return self.make_remote_evaluators(self.env_creator,
+                                               self._policy_graph,
+                                               self.config["num_workers"])
 
         if self.config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()

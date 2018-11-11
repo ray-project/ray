@@ -183,18 +183,14 @@ class Agent(Trainable):
                     }
                 }))
 
-    def make_remote_evaluators(self,
-                               env_creator,
-                               policy_graph,
-                               count):
+    def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
 
-        if remote_args is None:
-            remote_args = {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"],
-                "resources": self.config["custom_resources_per_worker"],
-            }
+        remote_args = {
+            "num_cpus": self.config["num_cpus_per_worker"],
+            "num_gpus": self.config["num_gpus_per_worker"],
+            "resources": self.config["custom_resources_per_worker"],
+        }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
