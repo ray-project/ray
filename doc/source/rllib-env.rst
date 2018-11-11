@@ -218,19 +218,22 @@ Implementing a centralized critic that takes as input the observations and actio
 
 2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
 
-Agent-Driven
-------------
+Interfacing with External Agents
+--------------------------------
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time.
+In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
 
 RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
 For example, ServingEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
 
-Offline Data
-~~~~~~~~~~~~
+Logging off-policy actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ServingEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
+
+Data ingest
+~~~~~~~~~~~
 
 The ``log_action`` API of ServingEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ServingEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
 
