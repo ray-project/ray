@@ -188,8 +188,20 @@ class _SafeFallbackEncoder(json.JSONEncoder):
             return str(value)  # give up, just stringify it (ok for logs)
 
 
+def _reduce_mean_result_dict(result):
+    """Reduce arrays and lists to their mean values when being displayed to console
+    instead of displaying the entire array. Useful when collecting histogram data.
+    """
+    if isinstance(result, (np.ndarray, list)):
+        return np.mean(result)
+    elif not isinstance(result, dict):
+        return result
+    else:
+        return {key: _reduce_mean_result_dict(val) for key, val in result.items()}
+
+
 def pretty_print(result):
-    result = result.copy()
+    result = _reduce_mean_result_dict(result.copy())
     result.update(config=None)  # drop config from pretty print
     out = {}
     for k, v in result.items():
