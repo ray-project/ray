@@ -12,6 +12,11 @@ ray.tune
     :members:
     :private-members:
 
+
+.. autoclass:: ray.tune.function_runner.StatusReporter
+    :members: __call__
+
+
 ray.tune.schedulers
 -------------------
 
