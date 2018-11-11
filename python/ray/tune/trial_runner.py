@@ -225,13 +225,12 @@ class TrialRunner(object):
             total_gb = psutil.virtual_memory().total / 1e9
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
             if used_gb > total_gb * 0.9:
-                warn = (
-                    ": ***LOW MEMORY*** less than 10% of the memory on "
-                    "this node is available for use. This can cause "
-                    "unexpected crashes. Consider "
-                    "reducing the memory used by your application "
-                    "or reducing the Ray object store size by setting "
-                    "`object_store_memory` when starting Ray.")
+                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
+                        "this node is available for use. This can cause "
+                        "unexpected crashes. Consider "
+                        "reducing the memory used by your application "
+                        "or reducing the Ray object store size by setting "
+                        "`object_store_memory` when starting Ray.")
             else:
                 warn = ""
             return "Memory usage on this node: {}/{} GB{}".format(
