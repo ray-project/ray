@@ -74,8 +74,10 @@ class RunningStat(object):
     def push(self, x):
         x = np.asarray(x)
         # Unvectorized update of the running statistics.
-        assert x.shape == self._M.shape, ("x.shape = {}, self.shape = {}, {}"
-                                          .format(x.shape, self._M.shape, x))
+        if x.shape != self._M.shape:
+            raise ValueError(
+                "Unexpected input shape {}, expected {}, value = {}".format(
+                    x.shape, self._M.shape, x))
         n1 = self._n
         self._n += 1
         if self._n == 1:
