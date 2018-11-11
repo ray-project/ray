@@ -216,7 +216,28 @@ class TrialRunner(object):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         messages.append(self.trial_executor.debug_string())
+        messages.append(self._memory_debug_string())
         return messages
+
+    def _memory_debug_string(self):
+        try:
+            import psutil
+            total_gb = psutil.virtual_memory().total / 1e9
+            used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            if used_gb > total_gb * 0.9:
+                warn = (
+                    ": ***LOW MEMORY*** less than 10% of the memory on "
+                    "this node is available for use. This can cause "
+                    "unexpected crashes. Consider "
+                    "reducing the memory used by your application "
+                    "or reducing the Ray object store size by setting "
+                    "`object_store_memory` when starting Ray.")
+            else:
+                warn = ""
+            return "Memory usage on this node: {}/{} GB{}".format(
+                round(used_gb, 1), round(total_gb, 1), warn)
+        except ImportError:
+            return "Unknown (`pip install psutil` to resolve)"
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
