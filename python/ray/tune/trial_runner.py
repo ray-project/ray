@@ -221,7 +221,7 @@ class TrialRunner(object):
 
     def _memory_debug_string(self):
         try:
-            import psutil
+            import sutil
             total_gb = psutil.virtual_memory().total / 1e9
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
             if used_gb > total_gb * 0.9:
@@ -237,7 +237,7 @@ class TrialRunner(object):
             return "Memory usage on this node: {}/{} GB{}".format(
                 round(used_gb, 1), round(total_gb, 1), warn)
         except ImportError:
-            return "Unknown (`pip install psutil` to resolve)"
+            return "Unknown memory usage (`pip install psutil` to resolve)"
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
