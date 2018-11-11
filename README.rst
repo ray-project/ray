@@ -39,6 +39,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
 - `Ray RLlib`_: Scalable Reinforcement Learning
+- `Distributed Training <http://ray.readthedocs.io/en/latest/distributed_sgd.html>`__
 
 .. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
 .. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
