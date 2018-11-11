@@ -793,7 +793,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 
   if (!required_object_ids.empty()) {
     const TaskID task_id = from_flatbuf(*message->task_id());
-    HandleTaskBlocked(client, required_object_ids, task_id);
+    HandleTaskBlocked(client, required_object_ids, task_id, /*request_transfer=*/true);
   }
 }
 
@@ -819,7 +819,10 @@ void NodeManager::ProcessWaitRequestMessage(
   const TaskID &current_task_id = from_flatbuf(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    HandleTaskBlocked(client, required_object_ids, current_task_id);
+    // Mark the task as blocked, but don't request transfer since the client is
+    // only requesting that the object be local somewhere.
+    HandleTaskBlocked(client, required_object_ids, current_task_id,
+                      /*request_transfer=*/false);
   }
 
   ray::Status status = object_manager_.Wait(
@@ -1111,7 +1114,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                                     const std::vector<ObjectID> &required_object_ids,
-                                    const TaskID &current_task_id) {
+                                    const TaskID &current_task_id,
+                                    bool request_transfer) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -1154,7 +1158,8 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the ray.get. These objects will
   // be fetched and/or reconstructed as necessary, until the objects become
   // local or are unsubscribed.
-  task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids);
+  task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids,
+                                                 request_transfer);
 }
 
 void NodeManager::HandleTaskUnblocked(
@@ -1222,9 +1227,17 @@ void NodeManager::HandleTaskUnblocked(
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
+  const TaskSpecification &spec = task.GetTaskSpecification();
   // Subscribe to the task's dependencies.
-  bool args_ready = task_dependency_manager_.SubscribeDependencies(
-      task.GetTaskSpecification().TaskId(), task.GetDependencies());
+  bool object_args_ready = task_dependency_manager_.SubscribeDependencies(
+      spec.TaskId(), spec.GetDependencies(), /*request_transfer=*/true);
+  // Don't request transfer of the task's execution dependencies, since they
+  // are dummy objects and have no data.
+  bool execution_dependencies_ready = task_dependency_manager_.SubscribeDependencies(
+      spec.TaskId(), task.GetTaskExecutionSpec().ExecutionDependencies(),
+      /*request_transfer=*/false);
+  bool args_ready = object_args_ready && execution_dependencies_ready;
+
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
   // (See design_docs/task_states.rst for the state transition diagram.)

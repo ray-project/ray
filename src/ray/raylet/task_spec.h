@@ -153,6 +153,11 @@ class TaskSpecification {
   flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const;
 
+  /// Get the task's object dependencies.
+  ///
+  /// \return The object dependencies. These are immutable.
+  const std::vector<ObjectID> &GetDependencies() const;
+
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
   UniqueID DriverId() const;
@@ -204,12 +209,15 @@ class TaskSpecification {
   const uint8_t *data() const;
   /// Get the size in bytes of the task specification.
   size_t size() const;
+
+  /// The task specification data.
+  std::vector<uint8_t> spec_;
   /// Field storing required resources. Initalized in constructor.
   ResourceSet required_resources_;
   /// Field storing required placement resources. Initalized in constructor.
   ResourceSet required_placement_resources_;
-  /// The task specification data.
-  std::vector<uint8_t> spec_;
+  /// A cache of the task's object dependencies. Initialized in constructor.
+  std::vector<ObjectID> arguments_;
 };
 
 }  // namespace raylet

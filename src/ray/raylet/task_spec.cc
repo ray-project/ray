@@ -44,6 +44,17 @@ void TaskSpecification::AssignSpecification(const uint8_t *spec, size_t spec_siz
   }
   required_resources_ = ResourceSet(required_resources);
   required_placement_resources_ = ResourceSet(required_placement_resources);
+
+  for (int i = 0; i < NumArgs(); ++i) {
+    int count = ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      arguments_.push_back(ArgId(i, j));
+    }
+  }
+}
+
+const std::vector<ObjectID> &TaskSpecification::GetDependencies() const {
+  return arguments_;
 }
 
 TaskSpecification::TaskSpecification(const flatbuffers::String &string) {

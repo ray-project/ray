@@ -21,7 +21,9 @@ bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
-bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const {
+bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id,
+                                                bool *transfer_required) const {
+  *transfer_required = false;
   const TaskID task_id = ComputeTaskId(object_id);
   auto task_entry = required_tasks_.find(task_id);
   // If there are no subscribed tasks that are dependent on the object, then do
@@ -29,7 +31,8 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const
   if (task_entry == required_tasks_.end()) {
     return false;
   }
-  if (task_entry->second.count(object_id) == 0) {
+  const auto object_dependency_it = task_entry->second.find(object_id);
+  if (object_dependency_it == task_entry->second.end()) {
     return false;
   }
   // If the object is already local, then the dependency is fulfilled. Do
@@ -42,25 +45,32 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const
   if (pending_tasks_.count(task_id) == 1) {
     return false;
   }
+  if (object_dependency_it->second.num_tasks_requiring_transfer > 0) {
+    *transfer_required = true;
+  }
   return true;
 }
 
 void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
-  bool required = CheckObjectRequired(object_id);
+  bool transfer_required;
+  bool required = CheckObjectRequired(object_id, &transfer_required);
   // If the object is required, then try to make the object available locally.
   if (required) {
     auto inserted = required_objects_.insert(object_id);
     if (inserted.second) {
       // If we haven't already, request the object manager to pull it from a
       // remote node.
-      RAY_CHECK_OK(object_manager_.Pull(object_id));
+      if (transfer_required) {
+        RAY_CHECK_OK(object_manager_.Pull(object_id));
+      }
       reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
     }
   }
 }
 
 void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &object_id) {
-  bool required = CheckObjectRequired(object_id);
+  bool transfer_required;
+  bool required = CheckObjectRequired(object_id, &transfer_required);
   // If the object is no longer required, then cancel the object.
   if (!required) {
     auto it = required_objects_.find(object_id);
@@ -85,7 +95,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
-      for (auto &dependent_task_id : object_entry->second) {
+      for (auto &dependent_task_id : object_entry->second.dependent_tasks) {
         auto &task_entry = task_dependencies_[dependent_task_id];
         task_entry.num_missing_dependencies--;
         // If the dependent task now has all of its arguments ready, it's ready
@@ -117,7 +127,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
-      for (auto &dependent_task_id : object_entry->second) {
+      for (auto &dependent_task_id : object_entry->second.dependent_tasks) {
         auto &task_entry = task_dependencies_[dependent_task_id];
         // If the dependent task had all of its arguments ready, it was ready to
         // run but must be switched to waiting since one of its arguments is now
@@ -140,12 +150,13 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
 }
 
 bool TaskDependencyManager::SubscribeDependencies(
-    const TaskID &task_id, const std::vector<ObjectID> &required_objects) {
+    const TaskID &task_id, const std::vector<ObjectID> &required_objects,
+    bool request_transfer) {
   auto &task_entry = task_dependencies_[task_id];
 
   // Record the task's dependencies.
   for (const auto &object_id : required_objects) {
-    auto inserted = task_entry.object_dependencies.insert(object_id);
+    auto inserted = task_entry.object_dependencies.insert({object_id, request_transfer});
     if (inserted.second) {
       // Get the ID of the task that creates the dependency.
       TaskID creating_task_id = ComputeTaskId(object_id);
@@ -156,7 +167,15 @@ bool TaskDependencyManager::SubscribeDependencies(
       }
       // Add the subscribed task to the mapping from object ID to list of
       // dependent tasks.
-      required_tasks_[creating_task_id][object_id].push_back(task_id);
+      required_tasks_[creating_task_id][object_id].dependent_tasks.insert(task_id);
+      if (request_transfer) {
+        required_tasks_[creating_task_id][object_id].num_tasks_requiring_transfer++;
+      }
+    } else {
+      RAY_CHECK(inserted.first->second == request_transfer)
+          << "Task can only request transfer of an object dependency if it previously "
+             "requested it, or vice versa. UnsubscribeDependencies must be called first "
+             "if the transfer request for this object changes.";
     }
   }
 
@@ -179,19 +198,25 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   task_dependencies_.erase(it);
 
   // Remove the task's dependencies.
-  for (const auto &object_id : task_entry.object_dependencies) {
+  for (const auto &object_dependency : task_entry.object_dependencies) {
+    const ObjectID &object_id = object_dependency.first;
+    const bool &required_transfer = object_dependency.second;
     // Remove the task from the list of tasks that are dependent on this
     // object.
     // Get the ID of the task that creates the dependency.
     TaskID creating_task_id = ComputeTaskId(object_id);
     auto creating_task_entry = required_tasks_.find(creating_task_id);
-    std::vector<TaskID> &dependent_tasks = creating_task_entry->second[object_id];
-    auto it = std::find(dependent_tasks.begin(), dependent_tasks.end(), task_id);
-    RAY_CHECK(it != dependent_tasks.end());
-    dependent_tasks.erase(it);
+    auto &dependent_tasks = creating_task_entry->second[object_id].dependent_tasks;
+    auto erased = dependent_tasks.erase(task_id);
+    RAY_CHECK(erased == 1);
+
+    if (required_transfer) {
+      creating_task_entry->second[object_id].num_tasks_requiring_transfer--;
+    }
     // If the unsubscribed task was the only task dependent on the object, then
     // erase the object entry.
     if (dependent_tasks.empty()) {
+      RAY_CHECK(creating_task_entry->second[object_id].num_tasks_requiring_transfer == 0);
       creating_task_entry->second.erase(object_id);
       // Remove the task that creates this object if there are no more object
       // dependencies created by the task.
@@ -203,8 +228,8 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
 
   // These dependencies are no longer required by the given task. Cancel any
   // in-progress operations to make them local.
-  for (const auto &object_id : task_entry.object_dependencies) {
-    HandleRemoteDependencyCanceled(object_id);
+  for (const auto &object_dependency : task_entry.object_dependencies) {
+    HandleRemoteDependencyCanceled(object_dependency.first);
   }
 }
 

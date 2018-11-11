@@ -51,10 +51,13 @@ class TaskDependencyManager {
   ///
   /// \param task_id The ID of the task whose dependencies to subscribe to.
   /// \param required_objects The objects required by the task.
+  /// \param request_transfer Whether the task requires transfer of these
+  /// dependencies.
   /// \return Whether all of the given dependencies for the given task are
   /// local.
   bool SubscribeDependencies(const TaskID &task_id,
-                             const std::vector<ObjectID> &required_objects);
+                             const std::vector<ObjectID> &required_objects,
+                             bool request_transfer);
 
   /// Unsubscribe from the object dependencies required by this task. If the
   /// objects were remote and are no longer required by any subscribed task,
@@ -112,13 +115,20 @@ class TaskDependencyManager {
   void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
 
  private:
-  using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
+  struct ObjectDependencies {
+    // The tasks dependent on a particular object.
+    std::unordered_set<ray::TaskID> dependent_tasks;
+    // The number of tasks out of the above that require the object to be
+    // local.
+    int64_t num_tasks_requiring_transfer;
+  };
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
-    /// the task is ready to execute.
-    std::unordered_set<ObjectID> object_dependencies;
+    /// the task is ready to execute. The bool is a flag of whether the task
+    /// requires the object to be local.
+    std::unordered_map<ObjectID, bool> object_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
     int64_t num_missing_dependencies;
@@ -143,7 +153,7 @@ class TaskDependencyManager {
   /// transfer or reconstruction. These are objects for which: (1) there is a
   /// subscribed task dependent on it, (2) the object is not local, and (3) the
   /// task that creates the object is not pending execution locally.
-  bool CheckObjectRequired(const ObjectID &object_id) const;
+  bool CheckObjectRequired(const ObjectID &object_id, bool *transfer_required) const;
   /// If the given object is required, then request that the object be made
   /// available through object transfer or reconstruction.
   void HandleRemoteDependencyRequired(const ObjectID &object_id);
@@ -180,8 +190,10 @@ class TaskDependencyManager {
   /// All tasks whose outputs are required by a subscribed task. This is a
   /// mapping from task ID to information about the objects that the task
   /// creates, either by return value or by `ray.put`. For each object, we
-  /// store the IDs of the subscribed tasks that are dependent on the object.
-  std::unordered_map<ray::TaskID, ObjectDependencyMap> required_tasks_;
+  /// store the IDs of the subscribed tasks that are dependent on the object
+  /// and whether the object is required to be local.
+  std::unordered_map<ray::TaskID, std::unordered_map<ObjectID, ObjectDependencies>>
+      required_tasks_;
   /// Objects that are required by a subscribed task, are not local, and are
   /// not created by a pending task. For these objects, there are pending
   /// operations to make the object available.

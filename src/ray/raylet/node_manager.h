@@ -205,10 +205,12 @@ class NodeManager {
   /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
+  /// \param request_transfer Whether the client requests transfer of the
+  /// objects.
   /// \return Void.
   void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                          const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id);
+                         const TaskID &current_task_id, bool request_transfer);
 
   /// Handle a task that is unblocked. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
