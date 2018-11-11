@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from ray.rllib.agents.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
 
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported

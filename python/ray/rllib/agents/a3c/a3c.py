@@ -7,8 +7,6 @@ import time
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
 
 # yapf: disable
 # __sphinx_doc_begin__

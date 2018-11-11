@@ -12,12 +12,10 @@ import time
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
 from ray.rllib.agents.es import utils
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)

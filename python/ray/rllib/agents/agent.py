@@ -17,6 +17,7 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
+from ray.tune.trial import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -182,7 +183,10 @@ class Agent(Trainable):
                     }
                 }))
 
-    def make_remote_evaluators(self, env_creator, policy_graph, count,
+    def make_remote_evaluators(self,
+                               env_creator,
+                               policy_graph,
+                               count,
                                remote_args=None):
         """Convenience method to return a number of remote evaluators."""
 

@@ -7,8 +7,6 @@ from ray.rllib.agents.agent import Agent
 from ray.rllib.agents.bc.bc_evaluator import BCEvaluator, \
     GPURemoteBCEvaluator, RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
