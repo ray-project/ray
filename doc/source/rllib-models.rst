@@ -91,10 +91,10 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 
             For example, this can be used to incorporate auto-encoder style losses.
             Note that this loss has to be included in the policy graph loss to have
-            an effect.
+            an effect (done for built-in algorithms).
 
             Returns:
-                Tensor of size [BATCH_SIZE] for the self-supervised loss.
+                Scalar tensor for the self-supervised loss.
             """
             return tf.constant(0.0)
 
