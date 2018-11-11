@@ -221,7 +221,7 @@ class TrialRunner(object):
 
     def _memory_debug_string(self):
         try:
-            import sutil
+            import psutil
             total_gb = psutil.virtual_memory().total / 1e9
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
             if used_gb > total_gb * 0.9:
