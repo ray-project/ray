@@ -27,19 +27,23 @@ def ray_start():
 def cluster_start():
     # Start the Ray processes.
     cluster = Cluster(
-        initialize_head=True, connect=True,
+        initialize_head=True,
+        connect=True,
         head_node_args={
             "resources": dict(CPU=1),
-            "_internal_config": json.dumps(
-                {"num_heartbeats_timeout": 10})})
+            "_internal_config": json.dumps({
+                "num_heartbeats_timeout": 10
+            })
+        })
     yield cluster
     ray.shutdown()
     cluster.shutdown()
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
-@pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
-    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(10)
 def test_replenish_resources(ray_start):
     cluster_resources = ray.global_state.cluster_resources()
@@ -59,11 +63,13 @@ def test_replenish_resources(ray_start):
     assert resources_reset
 
 
-@pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
-    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(10)
 def test_uses_resources(ray_start):
     cluster_resources = ray.global_state.cluster_resources()
+
     @ray.remote
     def cpu_task():
         time.sleep(1)
@@ -79,8 +85,9 @@ def test_uses_resources(ray_start):
     assert resource_used
 
 
-@pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
-    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(20)
 def test_add_remove_cluster_resources(cluster_start):
     """Tests that Global State API is consistent with actual cluster."""
