@@ -42,7 +42,6 @@ TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
 # yapf: enable
 
-
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_RESULT_DIR")
                        or os.path.expanduser("~/ray_results"))
