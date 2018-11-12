@@ -249,3 +249,31 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
 
     with pytest.raises(TuneError):
         runner.step()
+
+
+def test_cluster_down(start_connected_emptyhead_cluster):
+    """Removing a node in full cluster causes Trial to be requeued."""
+    cluster = start_connected_emptyhead_cluster
+    node = cluster.add_node(resources=dict(CPU=1))
+
+    runner = TrialRunner(BasicVariantGenerator())
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 5
+        },
+        "checkpoint_freq": 1,
+        "max_failures": 1
+    }
+
+    tune.register_trainable("test", _Train)
+    trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
+    for t in trials:
+        runner.add_trial(t)
+
+    runner.step()  # start
+    runner.step()  # 1 result
+    checkpoint = runner.checkpoint()
+    cluster.shutdown()
+    _start_new_cluster()
+    runner = TrialRunner.from_checkpoint(checkpoint)
+    runner.step()
