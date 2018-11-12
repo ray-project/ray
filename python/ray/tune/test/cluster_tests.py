@@ -186,7 +186,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     runner.step()  # Recovery step
 
     # TODO(rliaw): This assertion is not critical but will not pass
-    #   because checkpoint handling is clean and should be refactored
+    #   because checkpoint handling is messy and should be refactored
     #   rather than hotfixed.
     # assert t.last_result is None, "Trial result not restored correctly."
     for i in range(3):
