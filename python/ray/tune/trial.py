@@ -85,9 +85,10 @@ class Checkpoint(object):
     MEMORY = "memory"
     DISK = "disk"
 
-    def __init__(self, storage, value):
+    def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
+        self.last_result = last_result
 
     @staticmethod
     def from_object(value=None):
