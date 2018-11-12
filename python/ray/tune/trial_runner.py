@@ -93,8 +93,7 @@ class TrialRunner(object):
         self._queue_trials = queue_trials
         self._checkpoints = {}
 
-
-    def save(self, checkpoint_dir, force=False):
+    def save(self, checkpoint_dir):
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
@@ -122,7 +121,6 @@ class TrialRunner(object):
 
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]
-
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
