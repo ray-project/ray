@@ -71,19 +71,19 @@ class UnifiedLogger(Logger):
         self._log_syncer = get_syncer(self.logdir, self.uri)
 
     def on_result(self, result):
-        for logger in self._loggers:
-            logger.on_result(result)
+        for _logger in self._loggers:
+            _logger.on_result(result)
         self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_if_needed()
 
     def close(self):
-        for logger in self._loggers:
-            logger.close()
+        for _logger in self._loggers:
+            _logger.close()
         self._log_syncer.sync_now(force=True)
 
     def flush(self):
-        for logger in self._loggers:
-            logger.flush()
+        for _logger in self._loggers:
+            _logger.flush()
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
 
@@ -99,7 +99,7 @@ class _JsonLogger(Logger):
         with open(config_out, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=_SafeFallbackEncoder)
         local_file = os.path.join(self.logdir, "result.json")
-        self.local_out = open(local_file, "w")
+        self.local_out = open(local_file, "a")
 
     def on_result(self, result):
         json.dump(result, self, cls=_SafeFallbackEncoder)
@@ -107,6 +107,9 @@ class _JsonLogger(Logger):
 
     def write(self, b):
         self.local_out.write(b)
+        self.local_out.flush()
+
+    def flush(self):
         self.local_out.flush()
 
     def close(self):
@@ -128,6 +131,7 @@ def to_tf_values(result, path):
 
 class _TFLogger(Logger):
     def _init(self):
+        # TODO(rliaw): Implement a proper resume functionality for this.
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
@@ -135,7 +139,8 @@ class _TFLogger(Logger):
         for k in [
                 "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
         ]:
-            del tmp[k]  # not useful to tf log these
+            if k in tmp:
+                del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
         t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
@@ -158,14 +163,20 @@ class _VisKitLogger(Logger):
     def _init(self):
         """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
-        self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
+        progress_file = os.path.join(self.logdir, "progress.csv")
+        self._continuing = os.path.exists(progress_file)
+        self._file = open(progress_file, "a")
         self._csv_out = None
 
     def on_result(self, result):
         if self._csv_out is None:
             self._csv_out = csv.DictWriter(self._file, result.keys())
-            self._csv_out.writeheader()
+            if not self._continuing:
+                self._csv_out.writeheader()
         self._csv_out.writerow(result.copy())
+
+    def flush(self):
+        self._file.flush()
 
     def close(self):
         self._file.close()
