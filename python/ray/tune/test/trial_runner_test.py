@@ -435,7 +435,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
         self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
 
-
         def train3(config, reporter):
             for i in range(10):
                 reporter(timesteps_this_iter=0, episodes_this_iter=0)
