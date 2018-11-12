@@ -284,10 +284,10 @@ class Trial(object):
         a pre-existing checkpoint.
         """
         if self.checkpoint_freq > 0:
-            # Edge case of begin ning trial
-            if (self.last_result is None or self.checkpoint_freq >
-                    self.last_result[TRAINING_ITERATION]):
-                return True
+            # Edge case of beginning trial
+            if (self.last_result is None or
+                self.checkpoint_freq > self.last_result[TRAINING_ITERATION]):
+               return True
         return self.has_checkpoint()
 
     def update_last_result(self, result, terminate=False):
