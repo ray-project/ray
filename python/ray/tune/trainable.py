@@ -167,7 +167,7 @@ class Trainable(object):
             self._timesteps_total += result[TIMESTEPS_THIS_ITER]
             self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
 
-        # self._timesteps_total should only be tracked if increments provided
+        # self._episodes_total should only be tracked if increments provided
         if result.get(EPISODES_THIS_ITER):
             if self._episodes_total is None:
                 self._episodes_total = 0

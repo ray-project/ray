@@ -305,6 +305,17 @@ During training, Tune will automatically fill certain fields if not already prov
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+The following fields will automatically show up on the console output, if provided:
+
+1. ``episode_reward_mean``
+2. ``mean_loss``
+3. ``mean_accuracy``
+4. ``timesteps_this_iter`` (aggregated into ``timesteps_total``).
+
+.. code-block:: bash
+
+    Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
+
 
 
 Logging and Visualizing Results
