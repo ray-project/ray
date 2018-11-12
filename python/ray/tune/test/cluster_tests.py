@@ -35,11 +35,8 @@ class _Train(tune.Trainable):
         self.state = state
 
 
-@pytest.fixture
-def start_connected_cluster():
-    # Start the Ray processes.
-
-    cluster = Cluster(
+def _start_new_cluster():
+    return Cluster(
         initialize_head=True,
         connect=True,
         head_node_args={
@@ -48,6 +45,12 @@ def start_connected_cluster():
                 "num_heartbeats_timeout": 10
             })
         })
+
+
+@pytest.fixture
+def start_connected_cluster():
+    # Start the Ray processes.
+    cluster = _start_new_cluster()
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -74,8 +77,10 @@ def start_connected_emptyhead_cluster():
     cluster.shutdown()
 
 
-@pytest.mark.skipif(pytest_timeout is None, reason="Timeout package"
-                    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package"
+    " not installed; skipping test that may hang.")
 @pytest.mark.timeout(10, method="thread")
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
@@ -116,8 +121,10 @@ def test_counting_resources(start_connected_cluster):
 
 
 @pytest.mark.skip("Add this test once reconstruction is fixed")
-@pytest.mark.skipif(pytest_timeout is None, reason="Timeout package"
-                    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package"
+    " not installed; skipping test that may hang.")
 @pytest.mark.timeout(10, method="thread")
 def test_remove_node_before_result(start_connected_cluster):
     """Removing a node should cause a Trial to be requeued."""
@@ -125,11 +132,7 @@ def test_remove_node_before_result(start_connected_cluster):
     node = cluster.add_node(resources=dict(CPU=1))
 
     runner = TrialRunner(BasicVariantGenerator())
-    kwargs = {
-        "stopping_criterion": {
-            "training_iteration": 3
-        }
-    }
+    kwargs = {"stopping_criterion": {"training_iteration": 3}}
 
     tune.register_trainable("test", _Train)
     trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
@@ -258,9 +261,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_cluster_down(start_connected_emptyhead_cluster):
+def test_cluster_down_simple():
     """Removing a node in full cluster causes Trial to be requeued."""
-    cluster = start_connected_emptyhead_cluster
+    cluster = _start_new_cluster()
     node = cluster.add_node(resources=dict(CPU=1))
 
     runner = TrialRunner(BasicVariantGenerator())
@@ -279,8 +282,11 @@ def test_cluster_down(start_connected_emptyhead_cluster):
 
     runner.step()  # start
     runner.step()  # 1 result
-    checkpoint = runner.checkpoint()
+    checkpoint_dir = runner.save()
     cluster.shutdown()
-    _start_new_cluster()
-    runner = TrialRunner.from_checkpoint(checkpoint)
+    ray.shutdown()
+
+    cluster = _start_new_cluster()
+    runner = TrialRunner(BasicVariantGenerator())
+    runner.restore(checkpoint_dir)
     runner.step()

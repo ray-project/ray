@@ -188,3 +188,12 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
+
+    def recreate_trial_from_checkpoint(self, checkpoint):
+        """Restores a trial to its checkpointed state."""
+        assert checkpoint.storage == Checkpoint.DISK
+        with open(os.path.join(checkpoint.value, "trial.ckpt"), "rb") as f:
+            trial = pickle.load(f)
+        if trial.status == Trial.RUNNING:
+            trial.status = Trial.PENDING
+        return trial

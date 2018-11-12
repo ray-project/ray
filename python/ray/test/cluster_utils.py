@@ -39,6 +39,7 @@ class Cluster(object):
             if connect:
                 redis_password = head_node_args.get("redis_password")
                 output_info = ray.init(
+                    ignore_reinit_error=True,
                     redis_address=self.redis_address,
                     redis_password=redis_password)
                 logger.info(output_info)

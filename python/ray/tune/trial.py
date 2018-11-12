@@ -326,3 +326,22 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
+
+    def __getstate__(self):
+        if not self._checkpoint.storage == Checkpoint.DISK:
+            raise ValueError("Most recent checkpoint cannot be in-memory.")
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        if state["result_logger"]:
+            state["result_logger"].flush()
+            state["_logger_started"] = True
+
+        state["result_logger"] = None
+        state["runner"] = None
+        return state
+
+    def __setstate__(self, state):
+        logger_started = state.pop("_logger_started")
+        self.__dict__.update(state)
+        if logger_started:
+            self.init_logger()
