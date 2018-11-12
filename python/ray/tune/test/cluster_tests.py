@@ -115,6 +115,7 @@ def test_counting_resources(start_connected_cluster):
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
 
+# TODO: Emable this after reconstruction is in.
 # @pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
 #     " not installed; skipping test that may hang.")
 # @pytest.mark.timeout(10, method="thread")
