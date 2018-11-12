@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import json
-import tempfile
 import time
 import pytest
 try:
@@ -16,10 +14,9 @@ from ray.test.cluster_utils import Cluster
 import ray
 from ray import tune
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.suggest import grid_search, BasicVariantGenerator
+from ray.tune.suggest import BasicVariantGenerator
 
 
 class _Train(tune.Trainable):
@@ -77,11 +74,12 @@ def start_connected_emptyhead_cluster():
     cluster.shutdown()
 
 
-@pytest.mark.skipif(pytest_timeout==None, reason="Timeout package"\
-    " not installed; skipping test that may hang.")
+@pytest.mark.skipif(pytest_timeout is None, reason="Timeout package"
+                    " not installed; skipping test that may hang.")
 @pytest.mark.timeout(10, method="thread")
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
+
     cluster = start_connected_cluster
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
@@ -210,7 +208,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     runner.add_trial(t3)
     runner.step()  # start
     runner.step()  # 1 result
-    node4 = cluster.add_node(resources=dict(CPU=1))
+    cluster.add_node(resources=dict(CPU=1))
     cluster.remove_node(node3)
     assert cluster.wait_for_nodes()
     runner.step()  # Error handling step
