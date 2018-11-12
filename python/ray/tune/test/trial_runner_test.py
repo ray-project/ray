@@ -14,8 +14,8 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE, EPISODES_TOTAL)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
+                             EPISODES_TOTAL)
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
