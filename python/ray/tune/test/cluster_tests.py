@@ -43,11 +43,14 @@ def start_connected_cluster():
     # Start the Ray processes.
 
     cluster = Cluster(
-        initialize_head=True, connect=True,
+        initialize_head=True,
+        connect=True,
         head_node_args={
             "resources": dict(CPU=1),
-            "_internal_config": json.dumps(
-                {"num_heartbeats_timeout": 10})})
+            "_internal_config": json.dumps({
+                "num_heartbeats_timeout": 10
+            })
+        })
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -59,11 +62,14 @@ def start_connected_emptyhead_cluster():
     """Starts head with no resources."""
 
     cluster = Cluster(
-        initialize_head=True, connect=True,
+        initialize_head=True,
+        connect=True,
         head_node_args={
             "resources": dict(CPU=0),
-            "_internal_config": json.dumps(
-                {"num_heartbeats_timeout": 10})})
+            "_internal_config": json.dumps({
+                "num_heartbeats_timeout": 10
+            })
+        })
     tune.register_trainable("test", _Train)
     yield cluster
     # The code after the yield will run as teardown code.
@@ -83,13 +89,8 @@ def test_counting_resources(start_connected_cluster):
     assert cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
-
     runner = TrialRunner(BasicVariantGenerator())
-    kwargs = {
-        "stopping_criterion": {
-            "training_iteration": 10
-        }
-    }
+    kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
     tune.register_trainable("test", _Train)
     trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
@@ -205,10 +206,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     assert t2.status == Trial.TERMINATED
 
     # Test recovery of trial that won't be checkpointed
-    t3 = Trial("test", **{
-        "stopping_criterion": {
-            "training_iteration": 3
-        }})
+    t3 = Trial("test", **{"stopping_criterion": {"training_iteration": 3}})
     runner.add_trial(t3)
     runner.step()  # start
     runner.step()  # 1 result
