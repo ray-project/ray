@@ -85,6 +85,29 @@ const ResourceSet &QueueReadyMetadata::GetCurrentResourceLoad() const {
   return current_resource_load_;
 }
 
+void QueueReadyMetadata::AddTask(const ResourceSet &resources) {
+  if (min_task_count_ <= 0) {
+    min_task_resources_ = resources;
+    min_task_count_= 1;
+    return;
+  }
+  if (resources.IsSubset(min_task_resources_)) {
+    if (min_task_resources_.IsSubset(resources)) {
+      // resources == min_task_resources_
+      min_task_count_++;
+    } else {
+      min_task_resources_ = resources;
+      min_task_count_= 1;
+    }
+  }
+};
+
+void QueueReadyMetadata::RemoveTask(const ResourceSet &resources) {
+  if (min_task_resources_ == resources) {
+    min_task_count_--;
+  }
+};
+
 SchedulingQueue::TaskQueue::~TaskQueue() {
   task_map_.clear();
   task_list_.clear();
@@ -98,7 +121,9 @@ bool SchedulingQueue::TaskQueue::AppendTask(const TaskID &task_id,
   task_map_[task_id] = list_iterator;
   if (is_ready_queue) {
     // Resource bookkeeping
-    ready_tasks_metadata_.AddResources(task.GetTaskSpecification().GetRequiredResources());
+    const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+    ready_tasks_metadata_.AddResources(task_resources);
+    ready_tasks_metadata_.AddTask(task_resources);
   }
   return true;
 }
@@ -114,14 +139,20 @@ bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id,
   auto list_iterator = task_found_iterator->second;
   if (is_ready_queue) {
     // Resource bookkeeping
-    ready_tasks_metadata_.RemoveResources(
-        list_iterator->GetTaskSpecification().GetRequiredResources());
+    const auto &task_resources =
+      list_iterator->GetTaskSpecification().GetRequiredResources();
+    ready_tasks_metadata_.RemoveResources(task_resources);
+    ready_tasks_metadata_.RemoveTask(task_resources);
   }
   if (removed_tasks) {
     removed_tasks->push_back(std::move(*list_iterator));
   }
   task_map_.erase(task_found_iterator);
   task_list_.erase(list_iterator);
+  if (is_ready_queue && (ready_tasks_metadata_.GetMinTaskCount() <= 0)) {
+    // Need to recompute the minimium resources.
+    RecomputeMinResources();
+  }
   return true;
 }
 
@@ -132,6 +163,24 @@ bool SchedulingQueue::TaskQueue::HasTask(const TaskID &task_id) const {
 const ResourceSet &SchedulingQueue::TaskQueue::GetCurrentResourceLoad() const {
   return ready_tasks_metadata_.GetCurrentResourceLoad();
 }
+
+void SchedulingQueue::TaskQueue::RecomputeMinResources() {
+  for (const auto &task : task_list_) {
+    ready_tasks_metadata_.AddTask(task.GetTaskSpecification().GetRequiredResources());
+  };
+};
+
+bool SchedulingQueue::TaskQueue::CanScheduleMinTask(const ResourceIdSet &local_available_resources) {
+  if (ready_tasks_metadata_.GetMinTaskCount() <= 0) {
+    return true; // XXX
+  }
+  if (local_available_resources.Contains(ready_tasks_metadata_.GetMinTaskResources())) {
+    return true;
+  } else {
+    return false;
+  }
+};
+
 
 const std::list<Task> &SchedulingQueue::TaskQueue::GetTasks() const { return task_list_; }
 

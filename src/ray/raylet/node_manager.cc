@@ -518,6 +518,9 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
   std::unordered_set<TaskID> removed_task_ids = {};
 
   for (const auto &task : ready_tasks) {
+    //if (!local_queues_.GetReadyQueue().CanScheduleMinTask(local_available_resources_)) {
+    //  break;
+    //}
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!local_available_resources_.Contains(task_resources)) {
       // Not enough local resources for this task right now, skip this task.

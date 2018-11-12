@@ -39,6 +39,11 @@ enum class TaskState {
 
 class QueueReadyMetadata {
 public:
+  /// Create metadata for ready queue.
+  QueueReadyMetadata() {}
+
+  /// Destructor for metadata of ready queue.
+  virtual ~QueueReadyMetadata() {}
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
@@ -56,54 +61,27 @@ public:
   ///
   /// \return Total resources required by the tasks in the queue.
   const ResourceSet &GetCurrentResourceLoad() const;
+  /// \brief Add task resource info to metadata.
+  ///
+  /// \param Resource set to be added.
+  void AddTask(const ResourceSet &resources);
+  /// \brief Remove resource info from metadata.
+  ///
+  /// \param Resource set to be removed.
+  void RemoveTask(const ResourceSet &resources);
+
+  const ResourceSet &GetMinTaskResources() { return min_task_resources_;};
+
+  const int &GetMinTaskCount() { return min_task_count_;};
 
 private:
   /// Aggregate resources of all the tasks in this queue.
   ResourceSet current_resource_load_;
+  /// Minimum resources requested by a task in tyhe ready queue.
+  ResourceSet min_task_resources_;
+  /// Count of tasks which requests the lowest quantity of resources.
+  int min_task_count_ = 0;
 };
-
-/*
-class ReadyQueueMetadata {
- public:
-  /// Creating metadata for ready queue.
-  ReadyQueueMetadata() {
-    count_ = 0;
-  };
-
-  /// Destructor for ready queue's metadata.
-  ~ReadyQueueMetadata() {};
-
-  /// \brief Add task resource info to metadata.
-  ///
-  /// \param Resource set to be added.
-  void AddTask(const ResourceSet &resource_set) {
-    if (min_resources_set_.Contains(resource_set)) {
-      if (min_resource_set_ == resource_set) {
-        count_++;
-      } else {
-        count_ = 1;
-      }
-    }
-  };
-
-  /// \brief Remove resource info from metadata.
-  ///
-  /// \param Resource set to be removed.
-  void RemoveTask(const ResourceSet &resource_set) {
-    if (min_resource_set_ == resource_set) {
-      count_--;
-    }
-  };
-
-  const ResourceSet &GetMinResourceSet(void) {
-    return min_resource_set_;
-  }
-
- private:
-  ResourceSet min_resource_set_;
-  int count_;
-};
-*/
 
 
 /// \class SchedulingQueue
@@ -337,6 +315,14 @@ class SchedulingQueue {
     /// \return Total resources required by the tasks in the queue.
     const ResourceSet &GetCurrentResourceLoad() const;
 
+    void RecomputeMinResources();
+
+    bool CanScheduleMinTask(const ResourceIdSet &local_available_resources);
+
+    const QueueReadyMetadata &GetQueueReadyMetadata() const {
+      return ready_tasks_metadata_;
+    }
+
    private:
     /// A list of tasks.
     std::list<Task> task_list_;
@@ -346,6 +332,8 @@ class SchedulingQueue {
     QueueReadyMetadata ready_tasks_metadata_;
   };
 
+ /// XXX
+ const TaskQueue &GetReadyQueue() const { return ready_tasks_; };
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
@@ -368,8 +356,6 @@ class SchedulingQueue {
   /// The set of currently running driver tasks. These are empty tasks that are
   /// started by a driver process on initialization.
   std::unordered_set<TaskID> driver_task_ids_;
-  /// XXX
-  // ReadyQueueMetadata ready_tasks_metadata_;
 };
 
 }  // namespace raylet
