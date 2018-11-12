@@ -137,6 +137,63 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   ASSERT_EQ(ready_task_ids.front(), task_id);
 }
 
+TEST_F(TaskDependencyManagerTest, TestNoTransfer) {
+  // Create a task with 3 arguments.
+  int num_arguments = 3;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < num_arguments; i++) {
+    arguments.push_back(ObjectID::from_random());
+  }
+  TaskID task_id = TaskID::from_random();
+  // No objects have been registered in the task dependency manager, so all
+  // arguments should be remote.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Pull(argument_id)).Times(0);
+    EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
+  }
+  // Subscribe to the task's dependencies.
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments,
+                                                              /*request_transfer=*/false);
+  ASSERT_FALSE(ready);
+
+  // Create a second task that is dependent one of the same arguments, but that
+  // now requires transfer.
+  const ObjectID &argument_id = arguments.front();
+  TaskID task_id2 = TaskID::from_random();
+  // Transfer of the object should now be triggered, but not reconstruction
+  // since the first task already triggered it.
+  EXPECT_CALL(object_manager_mock_, Pull(argument_id));
+  EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id))
+      .Times(0);
+  ready = task_dependency_manager_.SubscribeDependencies(task_id2, {argument_id},
+                                                         /*request_transfer=*/true);
+  ASSERT_FALSE(ready);
+
+  // Create a third task that is dependent on the same argument and also requires
+  // transfer.
+  TaskID task_id3 = TaskID::from_random();
+  // Neither transfer nor reconstruction should be triggered since the previous
+  // tasks already triggered them.
+  EXPECT_CALL(object_manager_mock_, Pull(argument_id)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id))
+      .Times(0);
+  ready = task_dependency_manager_.SubscribeDependencies(task_id3, {argument_id},
+                                                         /*request_transfer=*/true);
+  ASSERT_FALSE(ready);
+
+  // Cancel all the tasks. Object transfer should be canceled once for the one
+  // argument that required transfer. Reconstruction should be canceled for
+  // all arguments.
+  EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
+  }
+
+  task_dependency_manager_.UnsubscribeDependencies(task_id2);
+  task_dependency_manager_.UnsubscribeDependencies(task_id3);
+  task_dependency_manager_.UnsubscribeDependencies(task_id);
+}
+
 TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
   // Create a task with 3 arguments.
   TaskID task_id = TaskID::from_random();

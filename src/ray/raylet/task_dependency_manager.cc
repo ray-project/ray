@@ -52,11 +52,11 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id,
 }
 
 void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
-  bool transfer_required;
+  bool transfer_required = false;
   bool required = CheckObjectRequired(object_id, &transfer_required);
   // If the object is required, then try to make the object available locally.
   if (required) {
-    auto inserted = required_objects_.insert(object_id);
+    auto inserted = required_objects_.insert({object_id, transfer_required});
     if (inserted.second) {
       // If we haven't already, request the object manager to pull it from a
       // remote node.
@@ -64,18 +64,33 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
         RAY_CHECK_OK(object_manager_.Pull(object_id));
       }
       reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
+    } else {
+      auto it = inserted.first;
+      bool transfer_was_requested = it->second;
+      if (!transfer_was_requested && transfer_required) {
+        RAY_CHECK_OK(object_manager_.Pull(object_id));
+      }
+      it->second = transfer_required;
     }
   }
 }
 
 void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &object_id) {
-  bool transfer_required;
+  bool transfer_required = false;
   bool required = CheckObjectRequired(object_id, &transfer_required);
   // If the object is no longer required, then cancel the object.
-  if (!required) {
-    auto it = required_objects_.find(object_id);
-    if (it != required_objects_.end()) {
-      object_manager_.CancelPull(object_id);
+  auto it = required_objects_.find(object_id);
+  if (it != required_objects_.end()) {
+    bool transfer_was_requested = it->second;
+    if (required) {
+      if (transfer_was_requested && !transfer_required) {
+        object_manager_.CancelPull(object_id);
+      }
+      it->second = transfer_required;
+    } else {
+      if (transfer_was_requested) {
+        object_manager_.CancelPull(object_id);
+      }
       reconstruction_policy_.Cancel(object_id);
       required_objects_.erase(it);
     }
@@ -338,7 +353,7 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
   // TODO: the size of required_objects_ could be large, consider to add
   // an index if this turns out to be a perf problem.
   for (auto it = required_objects_.begin(); it != required_objects_.end();) {
-    const auto object_id = *it;
+    const auto &object_id = it->first;
     TaskID creating_task_id = ComputeTaskId(object_id);
     if (task_ids.find(creating_task_id) != task_ids.end()) {
       object_manager_.CancelPull(object_id);

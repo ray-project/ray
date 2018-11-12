@@ -126,8 +126,8 @@ class TaskDependencyManager {
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
-    /// the task is ready to execute. The bool is a flag of whether the task
-    /// requires the object to be local.
+    /// the task is ready to execute. For each object, we store a flag for
+    /// whether the task requires the object to be local.
     std::unordered_map<ObjectID, bool> object_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
@@ -195,9 +195,9 @@ class TaskDependencyManager {
   std::unordered_map<ray::TaskID, std::unordered_map<ObjectID, ObjectDependencies>>
       required_tasks_;
   /// Objects that are required by a subscribed task, are not local, and are
-  /// not created by a pending task. For these objects, there are pending
-  /// operations to make the object available.
-  std::unordered_set<ray::ObjectID> required_objects_;
+  /// not created by a pending task. For each object, we store a flag for
+  /// whether at least one task requires the object to be local.
+  std::unordered_map<ray::ObjectID, bool> required_objects_;
   /// The set of locally available objects.
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these
