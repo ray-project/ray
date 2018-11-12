@@ -277,6 +277,14 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def should_recover(self):
+        if self.last_result is None:
+            return True
+        elif (self.checkpoint_freq > 0 and
+              self.checkpoint_freq > self.last_result[TRAINING_ITERATION]):
+               return True
+        return self.has_checkpoint()
+
     def update_last_result(self, result, terminate=False):
         if terminate:
             result.update(done=True)
