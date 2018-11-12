@@ -70,8 +70,10 @@ class TrialExecutor(object):
             error_msg (str): Optional error message.
         """
         self.stop_trial(
-            trial, error=error_msg is not None,
-            error_msg=error_msg, stop_logger=False)
+            trial,
+            error=error_msg is not None,
+            error_msg=error_msg,
+            stop_logger=False)
         trial.result_logger.flush()
         if self.has_resources(trial.resources):
             self.start_trial(trial)
