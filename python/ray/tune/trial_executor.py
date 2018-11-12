@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import traceback
 
 from ray.tune.trial import Trial, Checkpoint
 
