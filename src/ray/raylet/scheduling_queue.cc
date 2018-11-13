@@ -109,10 +109,6 @@ bool TaskQueue::HasTask(const TaskID &task_id) const {
   return task_map_.find(task_id) != task_map_.end();
 }
 
-// const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
-//   return ready_tasks_metadata_.GetCurrentResourceLoad();
-// }
-
 const std::list<Task> &TaskQueue::GetTasks() const { return task_list_; }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
@@ -264,8 +260,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the queues.
-  RemoveTasksFromQueue(methods_waiting_for_actor_creation_, task_ids,
-                       removed_tasks);
+  RemoveTasksFromQueue(methods_waiting_for_actor_creation_, task_ids, removed_tasks);
   RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
