@@ -543,6 +543,46 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--stop",
+    is_flag=True,
+    default=False,
+    help="Stop the cluster after the command finishes running.")
+@click.option(
+    "--start",
+    is_flag=True,
+    default=False,
+    help="Start the cluster if needed.")
+@click.option(
+    "--screen",
+    is_flag=True,
+    default=False,
+    help="Run the command in a screen.")
+@click.option(
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+@click.option(
+    "--port-forward", required=False, type=int, help="Port to forward.")
+@click.argument("script", required=True, type=str)
+@click.argument("script_args", required=False, type=str, nargs=-1)
+def submit(cluster_config_file, screen, tmux, stop, start,
+                   cluster_name, port_forward, script, script_args)
+    """Uploads and executes script on cluster"""
+    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+    submit_cluster(cluster_config_file, screen, tmux, stop, start,
+                   cluster_name, port_forward, script, script_args)
+    if tmux:
+        logger.info("Use `ray attach {} --tmux` "
+                    "to check on command status.".format(cluster_config_file))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
     "--stop",
@@ -625,6 +665,7 @@ cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
 cli.add_command(rsync_down)
 cli.add_command(rsync_up)
+cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)

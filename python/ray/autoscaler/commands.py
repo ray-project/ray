@@ -235,6 +235,49 @@ def attach_cluster(config_file, start, use_tmux, override_cluster_name, new):
     exec_cluster(config_file, cmd, False, False, False, start,
                  override_cluster_name, None)
 
+def submit_cluster(config_file, script, script_args, screen, tmux, stop, start,
+                   override_cluster_name, port_forward):
+    """Runs a command on the specified cluster.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        script: Script to run
+        script_args (list): Arguments to script
+        screen: whether to run in a screen
+        tmux: whether to run in a tmux session
+        stop: whether to stop the cluster after command run
+        start: whether to start the cluster if it isn't up
+        override_cluster_name: set the name of the cluster
+        port_forward: port to forward
+    """
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    head_node = _get_head_node(
+        config, config_file, override_cluster_name, create_if_needed=start)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+
+    updater.rsync_up(script, target, check_error=False)
+    cmd = " ".join(["python", target] + script_args)
+    if stop:
+        cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
+                "--workers-only; sudo shutdown -h now")
+    _exec(
+        updater,
+        cmd,
+        screen,
+        tmux,
+        expect_error=stop,
+        port_forward=port_forward)
+
 
 def exec_cluster(config_file, cmd, screen, tmux, stop, start,
                  override_cluster_name, port_forward):
