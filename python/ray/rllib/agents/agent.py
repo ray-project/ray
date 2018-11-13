@@ -158,9 +158,10 @@ class Agent(Trainable):
             policy_graph,
             0,
             # important: allow local tf to use more CPUs for optimization
-            merge_dicts(
-                self.config,
-                {"tf_session_args": self.config["driver_tf_session_args"]}))
+            merge_dicts(self.config, {
+                "tf_session_args":
+                self.config["local_evaluator_tf_session_args"]
+            }))
 
     def make_remote_evaluators(self, env_creator, policy_graph, count,
                                remote_args):
