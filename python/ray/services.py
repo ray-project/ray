@@ -975,7 +975,8 @@ def start_raylet(redis_address,
         modified_env = os.environ.copy()
         modified_env["LD_PRELOAD"] = os.environ["RAYLET_PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["RAYLET_PERFTOOLS_LOGFILE"]
-        pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file, env=modified_env)
+        pid = subprocess.Popen(
+            command, stdout=stdout_file, stderr=stderr_file, env=modified_env)
     else:
         pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
 
