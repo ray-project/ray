@@ -92,6 +92,7 @@ ExternalProject_Add(arrow_ep
   DEPENDS flatbuffers boost glog
   GIT_REPOSITORY ${arrow_URL}
   GIT_TAG ${arrow_TAG}
+  UPDATE_COMMAND ""
   ${ARROW_CONFIGURE}
   BUILD_BYPRODUCTS "${ARROW_SHARED_LIB}" "${ARROW_STATIC_LIB}")
 
