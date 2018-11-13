@@ -51,35 +51,49 @@ public:
   /// \param resources: The resource set to add.
   /// \return Void.
   void AddResources(const ResourceSet &resources);
+
   /// \brief Subtract a set of resources from the current set of resources, only if
   /// resource labels match.
   ///
   /// \param resources: The resource set to subtract from the current resource set.
   /// \return Void.
   void RemoveResources(const ResourceSet &resources);
+
   /// \brief Get the total resources required by the tasks in the queue.
   ///
   /// \return Total resources required by the tasks in the queue.
   const ResourceSet &GetCurrentResourceLoad() const;
-  /// \brief Add task resource info to metadata.
-  ///
-  /// \param Resource set to be added.
-  void AddTask(const ResourceSet &resources);
-  /// \brief Remove resource info from metadata.
-  ///
-  /// \param Resource set to be removed.
-  void RemoveTask(const ResourceSet &resources);
 
-  const ResourceSet &GetMinTaskResources() { return min_task_resources_;};
+  /// \brief Update the min  resources required by a task in the ready queue,
+  //  when a new task is added to the queue.
+  ///
+  /// \param resources: Resource requirements of the new task being added.
+  void UpdateMinTaskOnAdd(const ResourceSet &resources);
 
-  const int &GetMinTaskCount() { return min_task_count_;};
+  /// \brief Update the min resources required by a task in the ready queue,
+  //  when a task is removed from the queue.
+  ///
+  /// \param resources: Resource requirements of the new task being removed.
+  void UpdateMinTaskOnRemove(const ResourceSet &resources);
+
+  /// \brief Get resources of the task with the minimum resource requirements
+  /// in the ready queue.
+  ///
+  /// \return: Minimum resources required by any task in the ready queue.
+  const ResourceSet &GetMinTaskResources() const { return min_task_resources_;};
+
+  /// \brief Get number of tasks with minimum resource requirements in the
+  /// ready queue.
+  ///
+  /// \return Number of tasks with minimum resource requirements.
+  const int &GetMinTaskCount() const { return min_task_count_;};
 
 private:
   /// Aggregate resources of all the tasks in this queue.
   ResourceSet current_resource_load_;
-  /// Minimum resources requested by a task in tyhe ready queue.
+  /// Minimum resources requested by any task in tyhe ready queue.
   ResourceSet min_task_resources_;
-  /// Count of tasks which requests the lowest quantity of resources.
+  /// Count of tasks which the minimum resource requirements in the ready queue.
   int min_task_count_ = 0;
 };
 
@@ -315,10 +329,20 @@ class SchedulingQueue {
     /// \return Total resources required by the tasks in the queue.
     const ResourceSet &GetCurrentResourceLoad() const;
 
+    /// \brief Recompute the resources of the tasks with minimum requirements
+    /// in the ready queue.
     void RecomputeMinResources();
 
-    bool CanScheduleMinTask(const ResourceIdSet &local_available_resources);
+    /// \brief Check whether any of the tasks in the ready queue can be scheduled.
+    ///
+    /// \param local_available_resources: resources available on local node.
+    /// \return True if there is at least a task that can be scheduled, i.e.
+    /// whose requirements can be satisfied by the local node; false otherwise.
+    const bool CanScheduleMinTask(const ResourceIdSet &local_available_resources) const;
 
+    /// \brief Return metadata associated with the ready queue.
+    ///
+    /// \return Metadata associated with the ready queue.
     const QueueReadyMetadata &GetQueueReadyMetadata() const {
       return ready_tasks_metadata_;
     }
@@ -332,8 +356,10 @@ class SchedulingQueue {
     QueueReadyMetadata ready_tasks_metadata_;
   };
 
- /// XXX
- const TaskQueue &GetReadyQueue() const { return ready_tasks_; };
+  /// \brief Het ready queue.
+  ///
+  /// \return Ready queue.
+  const TaskQueue &GetReadyQueue() const { return ready_tasks_; };
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
