@@ -37,44 +37,67 @@ enum class TaskState {
   INFEASIBLE
 };
 
-class ReadyQueueMetadata {
+class TaskQueue {
+ public:
+  /// Creating a task queue.
+  TaskQueue() {}
+
+  /// Destructor for task queue.
+  ~TaskQueue();
+
+  /// \brief Append a task to queue.
+  ///
+  /// \param task_id The task ID for the task to append.
+  /// \param task The task to append to the queue.
+  /// \return Whether the append operation succeeds.
+  bool AppendTask(const TaskID &task_id, const Task &task);
+
+  /// \brief Remove a task from queue.
+  ///
+  /// \param task_id The task ID for the task to remove from the queue.
+  /// \param removed_tasks If the task specified by task_id is successfully
+  ///  removed from the queue, the task data is appended to the vector. Can
+  ///  be a nullptr, in which case nothing is appended.
+  /// \return Whether the removal succeeds.
+  bool RemoveTask(const TaskID &task_id,
+                  std::vector<Task> *removed_tasks = nullptr);
+
+  /// \brief Check if the queue contains a specific task id.
+  ///
+  /// \param task_id The task ID for the task.
+  /// \return Whether the task_id exists in this queue.
+  bool HasTask(const TaskID &task_id) const;
+
+  /// \brief Remove the task list of the queue.
+  /// \return A list of tasks contained in this queue.
+  const std::list<Task> &GetTasks() const;
+
+  /// \brief Recompute the resources of the tasks with minimum requirements
+  /// in the ready queue.
+  void RecomputeMinResources();
+
+protected:
+ /// A list of tasks.
+ std::list<Task> task_list_;
+ /// A hash to speed up looking up a task.
+ std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+};
+
+class ReadyQueue : public TaskQueue {
 public:
-  /// Create metadata for ready queue.
-  ReadyQueueMetadata() {}
+  bool AppendTask(const TaskID &task_id, const Task &task);
 
-  /// Destructor for metadata of ready queue.
-  virtual ~ReadyQueueMetadata() {}
+  bool RemoveTask(const TaskID &task_id,
+                  std::vector<Task> *removed_tasks = nullptr);
 
-  /// \brief Aggregate resources from the other set into this set, adding any missing
-  /// resource labels to this set.
+  /// \brief Check whether any of the tasks in the ready queue can be scheduled.
   ///
-  /// \param resources: The resource set to add.
-  /// \return Void.
-  void UpdateSumOnAdd(const ResourceSet &resources);
+  /// \param local_available_resources: resources available on local node.
+  /// \return True if there is at least a task that can be scheduled, i.e.
+  /// whose requirements can be satisfied by the local node; false otherwise.
+  const bool CanScheduleMinTask(const ResourceIdSet &local_available_resources) const;
 
-  /// \brief Subtract a set of resources from the current set of resources, only if
-  /// resource labels match.
-  ///
-  /// \param resources: The resource set to subtract from the current resource set.
-  /// \return Void.
-  void UpdateSumOnRemove(const ResourceSet &resources);
-
-  /// \brief Get the total resources required by the tasks in the queue.
-  ///
-  /// \return Total resources required by the tasks in the queue.
-  const ResourceSet &GetCurrentResourceLoad() const;
-
-  /// \brief Update the min  resources required by a task in the ready queue,
-  //  when a new task is added to the queue.
-  ///
-  /// \param resources: Resource requirements of the new task being added.
-  void UpdateMinOnAdd(const ResourceSet &resources);
-
-  /// \brief Update the min resources required by a task in the ready queue,
-  //  when a task is removed from the queue.
-  ///
-  /// \param resources: Resource requirements of the new task being removed.
-  void UpdateMinOnRemove(const ResourceSet &resources);
+  const ResourceSet &GetCurrentResourceLoad() const { return current_resource_load_; }
 
   /// \brief Get resources of the task with the minimum resource requirements
   /// in the ready queue.
@@ -87,6 +110,22 @@ public:
   ///
   /// \return Number of tasks with minimum resource requirements.
   const int &GetMinTaskCount() const { return min_task_count_;};
+
+  /// \brief Update the min  resources required by a task in the ready queue,
+  ///  when a new task is added to the queue.
+  ///
+  /// \param resources: Resource requirements of the new task being added.
+  void UpdateMinOnAdd(const ResourceSet &resources);
+
+  /// \brief Update the min resources required by a task in the ready queue,
+  ///  when a task is removed from the queue.
+  ///
+  /// \param resources: Resource requirements of the new task being removed.
+  void UpdateMinOnRemove(const ResourceSet &resources);
+
+  /// \brief Recompute the resources of the tasks with minimum requirements
+  /// in the ready queue.
+  void RecomputeMinResources();
 
 private:
   /// Aggregate resources of all the tasks in this queue.
@@ -282,84 +321,10 @@ class SchedulingQueue {
   /// for debugging purposes.
   const std::string ToString() const;
 
-  class TaskQueue {
-   public:
-    /// Creating a task queue.
-    TaskQueue() {}
-
-    /// Destructor for task queue.
-    ~TaskQueue();
-
-    /// \brief Append a task to queue.
-    ///
-    /// \param task_id The task ID for the task to append.
-    /// \param task The task to append to the queue.
-    /// \return Whether the append operation succeeds.
-    bool AppendTask(const TaskID &task_id, const Task &task, bool is_ready_queue);
-
-    /// \brief Remove a task from queue.
-    ///
-    /// \param task_id The task ID for the task to remove from the queue.
-    /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id);
-
-    /// \brief Remove a task from queue.
-    ///
-    /// \param task_id The task ID for the task to remove from the queue.
-    /// \param removed_tasks If the task specified by task_id is successfully
-    ///  removed from the queue, the task data is appended to the vector. Can
-    ///  be a nullptr, in which case nothing is appended.
-    /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id,
-                    std::vector<Task> *removed_tasks = nullptr,
-                    bool is_ready_queue = false);
-
-    /// \brief Check if the queue contains a specific task id.
-    ///
-    /// \param task_id The task ID for the task.
-    /// \return Whether the task_id exists in this queue.
-    bool HasTask(const TaskID &task_id) const;
-
-    /// \brief Remove the task list of the queue.
-    /// \return A list of tasks contained in this queue.
-    const std::list<Task> &GetTasks() const;
-
-    /// \brief Get the total resources required by the tasks in the queue.
-    ///
-    /// \return Total resources required by the tasks in the queue.
-    const ResourceSet &GetCurrentResourceLoad() const;
-
-    /// \brief Recompute the resources of the tasks with minimum requirements
-    /// in the ready queue.
-    void RecomputeMinResources();
-
-    /// \brief Check whether any of the tasks in the ready queue can be scheduled.
-    ///
-    /// \param local_available_resources: resources available on local node.
-    /// \return True if there is at least a task that can be scheduled, i.e.
-    /// whose requirements can be satisfied by the local node; false otherwise.
-    const bool CanScheduleMinTask(const ResourceIdSet &local_available_resources) const;
-
-    /// \brief Return metadata associated with the ready queue.
-    ///
-    /// \return Metadata associated with the ready queue.
-    const ReadyQueueMetadata &GetReadyQueueMetadata() const {
-      return ready_tasks_metadata_;
-    }
-
-   private:
-    /// A list of tasks.
-    std::list<Task> task_list_;
-    /// A hash to speed up looking up a task.
-    std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-    /// Metadata associated to ready queue.
-    ReadyQueueMetadata ready_tasks_metadata_;
-  };
-
   /// \brief Get the ready queue.
   ///
   /// \return Ready queue.
-  const TaskQueue &GetReadyQueue() const { return ready_tasks_; };
+  const ReadyQueue &GetReadyQueue() const { return ready_tasks_; };
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
@@ -370,7 +335,7 @@ class SchedulingQueue {
   /// waiting to be scheduled.
   TaskQueue placeable_tasks_;
   /// Tasks ready for dispatch, but that are waiting for a worker.
-  TaskQueue ready_tasks_;
+  ReadyQueue ready_tasks_;
   /// Tasks that are running on a worker.
   TaskQueue running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data

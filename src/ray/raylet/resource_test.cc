@@ -34,25 +34,25 @@ TEST(ResourceTest, TestSchedulingQueue) {
   auto task = CreateTask(requirements);
   auto task_id = task.GetTaskSpecification().TaskId();
   queues.QueueReadyTasks({task});
-  auto rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs, rmq.GetMinTaskResources());
+  auto rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs, rq.GetMinTaskResources());
 
   auto task1 = CreateTask(requirements);
   auto task_id1 = task1.GetTaskSpecification().TaskId();
   queues.QueueReadyTasks({task1});
-  rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 2);
-  ASSERT_EQ(rs, rmq.GetMinTaskResources());
+  rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 2);
+  ASSERT_EQ(rs, rq.GetMinTaskResources());
 
   std::unordered_map<std::string, double> requirements2 = {{"CPU", 2}};
   auto rs2 = ResourceSet(requirements2);
   auto task2 = CreateTask(requirements2);
   const auto task_id2 = task2.GetTaskSpecification().TaskId();
   queues.QueueReadyTasks({task2});
-  rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs2, rmq.GetMinTaskResources());
+  rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs2, rq.GetMinTaskResources());
 
   std::unordered_map<std::string, double> available = {{"CPU", 2}, {"GPU", 1}};
   auto rs_available = ResourceSet(available);
@@ -62,9 +62,9 @@ TEST(ResourceTest, TestSchedulingQueue) {
   std::unordered_set<TaskID> removed_tasks = {};
   removed_tasks.insert(task_id2);
   queues.RemoveTasks(removed_tasks);
-  rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 2);
-  ASSERT_EQ(rs, rmq.GetMinTaskResources());
+  rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 2);
+  ASSERT_EQ(rs, rq.GetMinTaskResources());
 
   schedule_flag = queues.GetReadyQueue().CanScheduleMinTask(rs_available);
   ASSERT_EQ(schedule_flag, false);
@@ -72,47 +72,47 @@ TEST(ResourceTest, TestSchedulingQueue) {
   removed_tasks = {};
   removed_tasks.insert(task_id);
   queues.RemoveTasks(removed_tasks);
-  rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs, rmq.GetMinTaskResources());
+  rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs, rq.GetMinTaskResources());
 
   removed_tasks = {};
   removed_tasks.insert(task_id1);
   queues.RemoveTasks(removed_tasks);
-  rmq = queues.GetReadyQueue().GetReadyQueueMetadata();
-  ASSERT_EQ(rmq.GetMinTaskCount(), 0);
+  rq = queues.GetReadyQueue();
+  ASSERT_EQ(rq.GetMinTaskCount(), 0);
 }
 
 
 TEST(ResourceTest, TestReadyQueueMetadata) {
-  ReadyQueueMetadata rmq;
+  ReadyQueue rq;
 
   auto rs = ResourceSet({{"CPU", 2}, {"GPU", 2}});
-  rmq.UpdateMinOnAdd(rs);
+  rq.UpdateMinOnAdd(rs);
 
-  rmq.UpdateMinOnAdd(rs);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 2);
-  ASSERT_EQ(rs, rmq.GetMinTaskResources());
+  rq.UpdateMinOnAdd(rs);
+  ASSERT_EQ(rq.GetMinTaskCount(), 2);
+  ASSERT_EQ(rs, rq.GetMinTaskResources());
 
   auto rs1 = ResourceSet({{"CPU", 2}, {"GPU", 1}});
-  rmq.UpdateMinOnAdd(rs1);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs1, rmq.GetMinTaskResources());
+  rq.UpdateMinOnAdd(rs1);
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs1, rq.GetMinTaskResources());
 
   auto rs2 = ResourceSet({{"CPU", 2}});
-  rmq.UpdateMinOnAdd(rs2);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs2, rmq.GetMinTaskResources());
+  rq.UpdateMinOnAdd(rs2);
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs2, rq.GetMinTaskResources());
 
-  rmq.UpdateMinOnRemove(rs);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs2, rmq.GetMinTaskResources());
+  rq.UpdateMinOnRemove(rs);
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
+  ASSERT_EQ(rs2, rq.GetMinTaskResources());
 
-  rmq.UpdateMinOnRemove(rs1);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 1);
+  rq.UpdateMinOnRemove(rs1);
+  ASSERT_EQ(rq.GetMinTaskCount(), 1);
 
-  rmq.UpdateMinOnRemove(rs2);
-  ASSERT_EQ(rmq.GetMinTaskCount(), 0);
+  rq.UpdateMinOnRemove(rs2);
+  ASSERT_EQ(rq.GetMinTaskCount(), 0);
 }
 
 
