@@ -37,13 +37,13 @@ enum class TaskState {
   INFEASIBLE
 };
 
-class QueueReadyMetadata {
+class ReadyQueueMetadata {
 public:
   /// Create metadata for ready queue.
-  QueueReadyMetadata() {}
+  ReadyQueueMetadata() {}
 
   /// Destructor for metadata of ready queue.
-  virtual ~QueueReadyMetadata() {}
+  virtual ~ReadyQueueMetadata() {}
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
@@ -343,7 +343,7 @@ class SchedulingQueue {
     /// \brief Return metadata associated with the ready queue.
     ///
     /// \return Metadata associated with the ready queue.
-    const QueueReadyMetadata &GetQueueReadyMetadata() const {
+    const ReadyQueueMetadata &GetReadyQueueMetadata() const {
       return ready_tasks_metadata_;
     }
 
@@ -353,7 +353,7 @@ class SchedulingQueue {
     /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
     /// Metadata associated to ready queue.
-    QueueReadyMetadata ready_tasks_metadata_;
+    ReadyQueueMetadata ready_tasks_metadata_;
   };
 
   /// \brief Get the ready queue.

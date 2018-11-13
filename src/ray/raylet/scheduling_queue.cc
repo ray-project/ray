@@ -73,19 +73,19 @@ namespace ray {
 
 namespace raylet {
 
-void QueueReadyMetadata::UpdateSumOnAdd(const ResourceSet &resources) {
+void ReadyQueueMetadata::UpdateSumOnAdd(const ResourceSet &resources) {
   current_resource_load_.AddResources(resources);
 }
 
-void QueueReadyMetadata::UpdateSumOnRemove(const ResourceSet &resources) {
+void ReadyQueueMetadata::UpdateSumOnRemove(const ResourceSet &resources) {
   current_resource_load_.SubtractResourcesStrict(resources);
 }
 
-const ResourceSet &QueueReadyMetadata::GetCurrentResourceLoad() const {
+const ResourceSet &ReadyQueueMetadata::GetCurrentResourceLoad() const {
   return current_resource_load_;
 }
 
-void QueueReadyMetadata::UpdateMinOnAdd(const ResourceSet &resources) {
+void ReadyQueueMetadata::UpdateMinOnAdd(const ResourceSet &resources) {
   if (min_task_count_ <= 0) {
     min_task_resources_ = resources;
     min_task_count_= 1;
@@ -102,7 +102,7 @@ void QueueReadyMetadata::UpdateMinOnAdd(const ResourceSet &resources) {
   }
 };
 
-void QueueReadyMetadata::UpdateMinOnRemove(const ResourceSet &resources) {
+void ReadyQueueMetadata::UpdateMinOnRemove(const ResourceSet &resources) {
   if (min_task_resources_ == resources) {
     min_task_count_--;
   }
