@@ -423,11 +423,23 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
+  // Extract decision for this local scheduler.
+  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  std::unordered_set<TaskID> local_task_ids;
+  for (const auto &task_id : decision) {
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto task = local_queues_.RemoveTask(task_id);
+    // Since we are spilling back from the ready and waiting queues, we need
+    // to unsubscribe the dependencies.
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    // Attempt to forward the task. If this fails to forward the task,
+    // the task will be resubmit locally.
+    ForwardTaskOrResubmit(task, client_id);
+  }
 }
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  std::vector<ClientID> client_ids(heartbeat_batch.batch.size());
   // Update load information provided by each heartbeat.
   for (const auto &heartbeat_data : heartbeat_batch.batch) {
     const ClientID &client_id = ClientID::from_binary(heartbeat_data->client_id);
@@ -436,27 +448,6 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_
       continue;
     }
     HeartbeatAdded(client_id, *heartbeat_data);
-    client_ids.push_back(client_id);
-  }
-  // Extract decision for this local scheduler.
-  auto decision = scheduling_policy_.SpillOver(cluster_resource_map_, client_ids);
-  std::unordered_set<TaskID> local_task_ids;
-  for (const auto &task_client_pair : decision) {
-    const TaskID &task_id = task_client_pair.first;
-    const ClientID &client_id = task_client_pair.second;
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    TaskState state;
-    const auto task = local_queues_.RemoveTask(task_id, &state);
-    // Since we are spilling back from the ready and waiting queues, we need
-    // to unsubscribe the dependencies.
-    if (state != TaskState::INFEASIBLE) {
-      // Don't unsubscribe for infeasible tasks because we never subscribed in
-      // the first place.
-      task_dependency_manager_.UnsubscribeDependencies(task_id);
-    }
-    // Attempt to forward the task. If this fails to forward the task,
-    // the task will be resubmit locally.
-    ForwardTaskOrResubmit(task, client_id);
   }
 }
 

@@ -118,72 +118,39 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   return decision;
 }
 
-std::unordered_map<TaskID, ClientID> SchedulingPolicy::SpillOver(
-    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-    std::vector<ClientID> &remote_client_ids) {
-  // Shuffle the nodes to prevent forwarding cycles.
-  std::shuffle(remote_client_ids.begin(), remote_client_ids.end(), gen_);
-  std::list<ClientID> remote_client_ids_list(remote_client_ids.begin(),
-                                             remote_client_ids.end());
+std::vector<TaskID> SchedulingPolicy::SpillOver(
+    SchedulingResources &remote_scheduling_resources) const {
   // The policy decision to be returned.
-  std::unordered_map<TaskID, ClientID> decision;
+  std::vector<TaskID> decision;
 
-  // Try to accommodate all infeasible tasks and load-balance across nodes.
+  ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
+
+  // Check if we can accommodate infeasible tasks.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
     const auto &placement_resources = spec.GetRequiredPlacementResources();
-    // Find the first node that can accommodate the resources.
-    for (auto it = remote_client_ids_list.begin();
-         it != remote_client_ids_list.end(); ++it) {
-      const ClientID client_id = *it;
-      const auto &remote_scheduling_resources = cluster_resources[client_id];
-      if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
-        decision[spec.TaskId()] = client_id;
-        // Update load for the destination raylet.
-        ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
+    if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
+      decision.push_back(spec.TaskId());
+      new_load.AddResources(spec.GetRequiredResources());
+    }
+  }
+
+  // Try to accommodate up to a single ready task.
+  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
+    const auto &spec = task.GetTaskSpecification();
+    if (!spec.IsActorTask()) {
+      // Make sure the node has enough available resources to prevent forwarding cycles.
+      if (spec.GetRequiredPlacementResources().IsSubset(
+          remote_scheduling_resources.GetAvailableResources())) {
+        decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());
-        cluster_resources[client_id].SetLoadResources(std::move(new_load));
-        // Move this client id to the end of the list.
-        remote_client_ids_list.splice(remote_client_ids_list.end(),
-                                      remote_client_ids_list,
-                                      it);
         break;
       }
     }
   }
-
-  // Try to distribute up to n tasks over n nodes.
-  size_t num_forwarded = 0;
-  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
-    const auto &spec = task.GetTaskSpecification();
-    const auto &placement_resources = spec.GetRequiredPlacementResources();
-    for (auto it = remote_client_ids_list.begin();
-         it != remote_client_ids_list.end(); ++it) {
-      ClientID client_id = *it;
-      const auto &remote_scheduling_resources = cluster_resources[client_id];
-      if (!spec.IsActorTask()) {
-        const auto &task_id = spec.TaskId();
-        if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
-          decision[task_id] = client_id;
-          ResourceSet new_load(cluster_resources[client_id].GetLoadResources());
-          new_load.AddResources(spec.GetRequiredResources());
-          cluster_resources[client_id].SetLoadResources(std::move(new_load));
-          // Move this client id to the end of the list.
-          remote_client_ids_list.splice(remote_client_ids_list.end(),
-                                        remote_client_ids_list,
-                                        it);
-          num_forwarded++;
-          break;
-        }
-      }
-    }
-    if (num_forwarded == remote_client_ids.size()) {
-      break;
-    }
-  }
+  remote_scheduling_resources.SetLoadResources(std::move(new_load));
 
   return decision;
-#endif
 }
 
 SchedulingPolicy::~SchedulingPolicy() {}
