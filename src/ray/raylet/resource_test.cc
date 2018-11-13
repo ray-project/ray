@@ -13,23 +13,6 @@ namespace ray {
 
 namespace raylet {
 
-void TestTaskReturnId(const TaskID &task_id, int64_t return_index) {
-  // Round trip test for computing the object ID for a task's return value,
-  // then computing the task ID that created the object.
-  ObjectID return_id = ComputeReturnId(task_id, return_index);
-  ASSERT_EQ(ComputeTaskId(return_id), task_id);
-  ASSERT_EQ(ComputeObjectIndex(return_id), return_index);
-}
-
-void TestTaskPutId(const TaskID &task_id, int64_t put_index) {
-  // Round trip test for computing the object ID for a task's put value, then
-  // computing the task ID that created the object.
-  ObjectID put_id = ComputePutId(task_id, put_index);
-  ASSERT_EQ(ComputeTaskId(put_id), task_id);
-  ASSERT_EQ(ComputeObjectIndex(put_id), -1 * put_index);
-}
-
-
 Task CreateTask(std::unordered_map<std::string, double> required_resources) {
   std::vector<std::shared_ptr<TaskArgument>> arguments;
   std::vector<ObjectID> references = {};
@@ -97,53 +80,6 @@ TEST(ResourceTest, TestSchedulingQueue) {
   removed_tasks.insert(task_id1);
   queues.RemoveTasks(removed_tasks);
   qrm = queues.GetReadyQueue().GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 0);
-}
-
-TEST(ResourceTest, TestTaskQueue) {
-  SchedulingQueue::TaskQueue task_queue;
-
-  std::unordered_map<std::string, double> requirements = {{"CPU", 2}, {"GPU", 2}};
-  auto rs = ResourceSet(requirements);
-
-  auto task = CreateTask(requirements);
-  auto task_id = task.GetTaskSpecification().TaskId();
-  task_queue.AppendTask(task_id, task, true);
-  auto qrm = task_queue.GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs, qrm.GetMinTaskResources());
-
-  auto task1 = CreateTask(requirements);
-  auto task_id1 = task1.GetTaskSpecification().TaskId();
-  task_queue.AppendTask(task_id1, task1, true);
-  qrm = task_queue.GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 2);
-  ASSERT_EQ(rs, qrm.GetMinTaskResources());
-
-  std::unordered_map<std::string, double> requirements2 = {{"CPU", 2}};
-  auto rs2 = ResourceSet(requirements2);
-  auto task2 = CreateTask(requirements2);
-  auto task_id2 = task2.GetTaskSpecification().TaskId();
-  task_queue.AppendTask(task_id2, task2, true);
-  qrm = task_queue.GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs2, qrm.GetMinTaskResources());
-
-  std::vector<Task> removed_tasks;
-  bool flag = task_queue.RemoveTask(task_id2, &removed_tasks, true);
-  ASSERT_EQ(flag, true);
-  ASSERT_EQ(removed_tasks.size(), 1);
-  qrm = task_queue.GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 2);
-  ASSERT_EQ(rs, qrm.GetMinTaskResources());
-
-  task_queue.RemoveTask(task_id, &removed_tasks, true);
-  qrm = task_queue.GetQueueReadyMetadata();
-  ASSERT_EQ(qrm.GetMinTaskCount(), 1);
-  ASSERT_EQ(rs, qrm.GetMinTaskResources());
-
-  task_queue.RemoveTask(task_id1, &removed_tasks, true);
-  qrm = task_queue.GetQueueReadyMetadata();
   ASSERT_EQ(qrm.GetMinTaskCount(), 0);
 }
 
