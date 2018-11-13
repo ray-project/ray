@@ -272,7 +272,7 @@ def submit_cluster(config_file, screen, tmux, stop, start,
 
     target = os.path.join("~", os.path.basename(script))
     updater.rsync_up(script, target, check_error=False)
-    cmd = " ".join(["python", target] + script_args)
+    cmd = " ".join(["python", target] + list(script_args))
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
                 "--workers-only; sudo shutdown -h now")
