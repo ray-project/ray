@@ -250,7 +250,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_nested_spaces.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_serving_env.py
+    python /ray/python/ray/rllib/test/test_external_env.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
