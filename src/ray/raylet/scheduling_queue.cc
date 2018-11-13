@@ -73,11 +73,11 @@ namespace ray {
 
 namespace raylet {
 
-void QueueReadyMetadata::AddResources(const ResourceSet &resources) {
+void QueueReadyMetadata::UpdateSumOnAdd(const ResourceSet &resources) {
   current_resource_load_.AddResources(resources);
 }
 
-void QueueReadyMetadata::RemoveResources(const ResourceSet &resources) {
+void QueueReadyMetadata::UpdateSumOnRemove(const ResourceSet &resources) {
   current_resource_load_.SubtractResourcesStrict(resources);
 }
 
@@ -85,7 +85,7 @@ const ResourceSet &QueueReadyMetadata::GetCurrentResourceLoad() const {
   return current_resource_load_;
 }
 
-void QueueReadyMetadata::UpdateMinTaskOnAdd(const ResourceSet &resources) {
+void QueueReadyMetadata::UpdateMinOnAdd(const ResourceSet &resources) {
   if (min_task_count_ <= 0) {
     min_task_resources_ = resources;
     min_task_count_= 1;
@@ -102,7 +102,7 @@ void QueueReadyMetadata::UpdateMinTaskOnAdd(const ResourceSet &resources) {
   }
 };
 
-void QueueReadyMetadata::UpdateMinTaskOnRemove(const ResourceSet &resources) {
+void QueueReadyMetadata::UpdateMinOnRemove(const ResourceSet &resources) {
   if (min_task_resources_ == resources) {
     min_task_count_--;
   }
@@ -122,8 +122,8 @@ bool SchedulingQueue::TaskQueue::AppendTask(const TaskID &task_id,
   if (is_ready_queue) {
     // Resource bookkeeping
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
-    ready_tasks_metadata_.AddResources(task_resources);
-    ready_tasks_metadata_.UpdateMinTaskOnAdd(task_resources);
+    ready_tasks_metadata_.UpdateSumOnAdd(task_resources);
+    ready_tasks_metadata_.UpdateMinOnAdd(task_resources);
   }
   return true;
 }
@@ -141,8 +141,8 @@ bool SchedulingQueue::TaskQueue::RemoveTask(const TaskID &task_id,
     // Resource bookkeeping
     const auto &task_resources =
       list_iterator->GetTaskSpecification().GetRequiredResources();
-    ready_tasks_metadata_.RemoveResources(task_resources);
-    ready_tasks_metadata_.UpdateMinTaskOnRemove(task_resources);
+    ready_tasks_metadata_.UpdateSumOnRemove(task_resources);
+    ready_tasks_metadata_.UpdateMinOnRemove(task_resources);
   }
   if (removed_tasks) {
     removed_tasks->push_back(std::move(*list_iterator));
@@ -167,19 +167,13 @@ const ResourceSet &SchedulingQueue::TaskQueue::GetCurrentResourceLoad() const {
 
 void SchedulingQueue::TaskQueue::RecomputeMinResources() {
   for (const auto &task : task_list_) {
-    ready_tasks_metadata_.UpdateMinTaskOnAdd(task.GetTaskSpecification().GetRequiredResources());
+    ready_tasks_metadata_.UpdateMinOnAdd(task.GetTaskSpecification().GetRequiredResources());
   };
 };
 
 const bool SchedulingQueue::TaskQueue::CanScheduleMinTask(const ResourceIdSet &local_available_resources) const {
-  if (ready_tasks_metadata_.GetMinTaskCount() <= 0) {
-    return true; // XXX
-  }
-  if (local_available_resources.Contains(ready_tasks_metadata_.GetMinTaskResources())) {
-    return true;
-  } else {
-    return false;
-  }
+  RAY_CHECK(ready_tasks_metadata_.GetMinTaskCount() > 0);
+  return local_available_resources.Contains(ready_tasks_metadata_.GetMinTaskResources());
 };
 
 

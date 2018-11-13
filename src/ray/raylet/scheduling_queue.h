@@ -50,14 +50,14 @@ public:
   ///
   /// \param resources: The resource set to add.
   /// \return Void.
-  void AddResources(const ResourceSet &resources);
+  void UpdateSumOnAdd(const ResourceSet &resources);
 
   /// \brief Subtract a set of resources from the current set of resources, only if
   /// resource labels match.
   ///
   /// \param resources: The resource set to subtract from the current resource set.
   /// \return Void.
-  void RemoveResources(const ResourceSet &resources);
+  void UpdateSumOnRemove(const ResourceSet &resources);
 
   /// \brief Get the total resources required by the tasks in the queue.
   ///
@@ -68,13 +68,13 @@ public:
   //  when a new task is added to the queue.
   ///
   /// \param resources: Resource requirements of the new task being added.
-  void UpdateMinTaskOnAdd(const ResourceSet &resources);
+  void UpdateMinOnAdd(const ResourceSet &resources);
 
   /// \brief Update the min resources required by a task in the ready queue,
   //  when a task is removed from the queue.
   ///
   /// \param resources: Resource requirements of the new task being removed.
-  void UpdateMinTaskOnRemove(const ResourceSet &resources);
+  void UpdateMinOnRemove(const ResourceSet &resources);
 
   /// \brief Get resources of the task with the minimum resource requirements
   /// in the ready queue.

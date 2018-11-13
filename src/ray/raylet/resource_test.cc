@@ -152,30 +152,30 @@ TEST(ResourceTest, TestQueueReadyMetadata) {
   QueueReadyMetadata qrm;
 
   auto rs = ResourceSet({{"CPU", 2}, {"GPU", 2}});
-  qrm.UpdateMinTaskOnAdd(rs);
+  qrm.UpdateMinOnAdd(rs);
 
-  qrm.UpdateMinTaskOnAdd(rs);
+  qrm.UpdateMinOnAdd(rs);
   ASSERT_EQ(qrm.GetMinTaskCount(), 2);
   ASSERT_EQ(rs, qrm.GetMinTaskResources());
 
   auto rs1 = ResourceSet({{"CPU", 2}, {"GPU", 1}});
-  qrm.UpdateMinTaskOnAdd(rs1);
+  qrm.UpdateMinOnAdd(rs1);
   ASSERT_EQ(qrm.GetMinTaskCount(), 1);
   ASSERT_EQ(rs1, qrm.GetMinTaskResources());
 
   auto rs2 = ResourceSet({{"CPU", 2}});
-  qrm.UpdateMinTaskOnAdd(rs2);
+  qrm.UpdateMinOnAdd(rs2);
   ASSERT_EQ(qrm.GetMinTaskCount(), 1);
   ASSERT_EQ(rs2, qrm.GetMinTaskResources());
 
-  qrm.UpdateMinTaskOnRemove(rs);
+  qrm.UpdateMinOnRemove(rs);
   ASSERT_EQ(qrm.GetMinTaskCount(), 1);
   ASSERT_EQ(rs2, qrm.GetMinTaskResources());
 
-  qrm.UpdateMinTaskOnRemove(rs1);
+  qrm.UpdateMinOnRemove(rs1);
   ASSERT_EQ(qrm.GetMinTaskCount(), 1);
 
-  qrm.UpdateMinTaskOnRemove(rs2);
+  qrm.UpdateMinOnRemove(rs2);
   ASSERT_EQ(qrm.GetMinTaskCount(), 0);
 }
 
