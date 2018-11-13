@@ -83,7 +83,7 @@ COMMON_CONFIG = {
     "synchronize_filters": True,
     # Configure TF for single-process operation by default
     "tf_session_args": {
-        # note: parallelism_threads is overriden by `driver_tf_session_args`
+        # note: overriden by `local_evaluator_tf_session_args`
         "intra_op_parallelism_threads": 2,
         "inter_op_parallelism_threads": 2,
         "gpu_options": {
@@ -95,8 +95,8 @@ COMMON_CONFIG = {
         },
         "allow_soft_placement": True,  # required by PPO multi-gpu
     },
-    # Override the following tf session args on the local driver
-    "driver_tf_session_args": {
+    # Override the following tf session args on the local evaluator
+    "local_evaluator_tf_session_args": {
         # Allow a higher level of parallelism by default, but not unlimited
         # since that can cause crashes with many concurrent drivers.
         "intra_op_parallelism_threads": 8,
