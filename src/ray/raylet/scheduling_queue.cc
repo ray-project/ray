@@ -93,7 +93,7 @@ void QueueReadyMetadata::UpdateMinOnAdd(const ResourceSet &resources) {
   }
   if (resources.IsSubset(min_task_resources_)) {
     if (min_task_resources_.IsSubset(resources)) {
-      // In this case, resources == min_task_resources._
+      // In this case, resources == min_task_resources_.
       min_task_count_++;
     } else {
       min_task_resources_ = resources;
