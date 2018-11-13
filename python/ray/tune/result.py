@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import os
 
+# yapf: disable
+# __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
@@ -37,6 +39,8 @@ TIME_TOTAL_S = "time_total_s"
 
 # (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
+# __sphinx_doc_end__
+# yapf: enable
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_RESULT_DIR")
