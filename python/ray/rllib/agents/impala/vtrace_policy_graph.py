@@ -185,13 +185,12 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
 
-        # Compute KL divergence metrics
+        # KL divergence between worker and learner logits for debugging
         model_dist = Categorical(self.model.outputs)
         behaviour_dist = Categorical(behaviour_logits)
         self.KLs = model_dist.kl(behaviour_dist)
         self.mean_KL = tf.reduce_mean(self.KLs)
         self.max_KL = tf.reduce_max(self.KLs)
-        self.min_KL = tf.reduce_min(self.KLs)
         self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
 
         # Initialize TFPolicyGraph
@@ -235,9 +234,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.vtrace_returns.vs, [-1]),
                     tf.reshape(to_batches(values)[:-1], [-1])),
-                "KLs": self.KLs,
                 "mean_KL": self.mean_KL,
-                "min_KL": self.min_KL,
                 "max_KL": self.max_KL,
                 "median_KL": self.median_KL,
             },
