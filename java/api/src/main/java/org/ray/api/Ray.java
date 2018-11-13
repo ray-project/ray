@@ -42,6 +42,7 @@ public final class Ray extends RayCall {
    */
   public static void shutdown() {
     runtime.shutdown();
+    runtime = null;
   }
 
   /**
