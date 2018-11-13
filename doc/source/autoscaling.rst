@@ -76,6 +76,12 @@ You can use ``ray exec`` to conveniently run commands on clusters. Note that scr
     # Run a command in a screen (experimental)
     $ ray exec cluster.yaml 'echo "hello world"' --screen
 
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments.
+
+    # Run a Python script in a detached tmux session
+    $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+
+
 Attaching to the cluster
 ------------------------
 

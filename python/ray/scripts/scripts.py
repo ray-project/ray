@@ -10,7 +10,8 @@ import subprocess
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
                                      create_or_update_cluster, rsync,
-                                     teardown_cluster, get_head_node_ip)
+                                     teardown_cluster, get_head_node_ip,
+                                     submit_cluster)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -568,8 +569,10 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
-@click.argument("script", required=True, type=str)
-@click.argument("script_args", required=False, type=str, nargs=-1)
+@click.argument("script", required=True, type=str,
+                help="Python script to execute.")
+@click.argument("script_args", required=False, type=str, nargs=-1,
+                help="Arguments to pass into the Python script")
 def submit(cluster_config_file, screen, tmux, stop, start,
                    cluster_name, port_forward, script, script_args)
     """Uploads and executes script on cluster"""
