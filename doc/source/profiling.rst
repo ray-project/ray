@@ -19,7 +19,7 @@ Launching the to-profile binary
 
 If you want to launch Ray in profiling mode, define the following variables:
 
-.. code-block::bash
+.. code-block:: bash
 
   export RAYLET_PERFTOOLS_PATH=/usr/lib/libprofiler.so
   export RAYLET_PERFTOOLS_LOGFILE=/tmp/pprof.out
