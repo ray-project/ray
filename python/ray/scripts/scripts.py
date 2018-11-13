@@ -569,12 +569,10 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
-@click.argument("script", required=True, type=str,
-                help="Python script to execute.")
-@click.argument("script_args", required=False, type=str, nargs=-1,
-                help="Arguments to pass into the Python script")
+@click.argument("script", required=True, type=str)
+@click.argument("script_args", required=False, type=str, nargs=-1)
 def submit(cluster_config_file, screen, tmux, stop, start,
-                   cluster_name, port_forward, script, script_args)
+                   cluster_name, port_forward, script, script_args):
     """Uploads and executes script on cluster"""
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     submit_cluster(cluster_config_file, screen, tmux, stop, start,
