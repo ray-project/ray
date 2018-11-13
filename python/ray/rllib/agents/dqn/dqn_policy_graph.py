@@ -28,6 +28,7 @@ class QNetwork(object):
                  v_min=-10.0,
                  v_max=10.0,
                  sigma0=0.5):
+        self.model = model
         with tf.variable_scope("action_value"):
             action_out = model.last_layer
             for i in range(len(hiddens)):
@@ -274,7 +275,7 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values, q_logits, q_dist = self._build_q_network(
+            q_values, q_logits, q_dist, _ = self._build_q_network(
                 self.cur_observations, observation_space)
             self.q_func_vars = _scope_vars(scope.name)
 
@@ -294,12 +295,12 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t, q_logits_t, q_dist_t = self._build_q_network(
+            q_t, q_logits_t, q_dist_t, model = self._build_q_network(
                 self.obs_t, observation_space)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, q_logits_tp1, q_dist_tp1 = self._build_q_network(
+            q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
                 self.obs_tp1, observation_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
@@ -313,7 +314,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                    q_dist_tp1_using_online_net = self._build_q_network(
+                    q_dist_tp1_using_online_net, _ = self._build_q_network(
                         self.obs_tp1, observation_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
@@ -359,7 +360,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.loss,
+            loss=model.loss() + self.loss.loss,
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
@@ -371,7 +372,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
             self.config["v_min"], self.config["v_max"], self.config["sigma0"])
-        return qnet.value, qnet.logits, qnet.dist
+        return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
         return QValuePolicy(q_values, self.cur_observations, self.num_actions,

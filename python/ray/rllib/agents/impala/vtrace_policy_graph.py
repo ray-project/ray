@@ -203,7 +203,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
-            loss=self.loss.total_loss,
+            loss=self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,

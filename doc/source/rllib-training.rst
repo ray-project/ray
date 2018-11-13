@@ -300,7 +300,7 @@ Custom metrics can be accessed and visualized like any other training result:
 REST API
 --------
 
-In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-env.html#agent-driven>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:

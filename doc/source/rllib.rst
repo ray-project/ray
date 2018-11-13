@@ -38,8 +38,7 @@ Environments
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent <rllib-env.html#multi-agent>`__
-* `Agent-Driven <rllib-env.html#agent-driven>`__
-* `Offline Data Ingest <rllib-env.html#offline-data>`__ 
+* `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
 Algorithms
