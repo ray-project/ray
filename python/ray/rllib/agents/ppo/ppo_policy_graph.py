@@ -230,7 +230,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=obs_ph,
             action_sampler=self.sampler,
-            loss=self.loss_obj.loss,
+            loss=self.model.loss() + self.loss_obj.loss,
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,

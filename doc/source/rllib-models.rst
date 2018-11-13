@@ -30,7 +30,7 @@ The following is a list of the built-in model hyperparameters:
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -85,6 +85,18 @@ Custom models should subclass the common RLlib `model class <https://github.com/
             """
             return tf.reshape(
                 linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
+
+        def loss(self):
+            """Builds any built-in (self-supervised) loss for the model.
+
+            For example, this can be used to incorporate auto-encoder style losses.
+            Note that this loss has to be included in the policy graph loss to have
+            an effect (done for built-in algorithms).
+
+            Returns:
+                Scalar tensor for the self-supervised loss.
+            """
+            return tf.constant(0.0)
 
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
