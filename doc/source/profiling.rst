@@ -14,54 +14,20 @@ symbolize on Mac OS have failed.
 
   sudo apt-get install google-perftools libgoogle-perftools-dev
 
-Changes to compilation and linking
-----------------------------------
-
-Let's say we want to profile the ``plasma_manager``.  Change the link
-instruction in ``src/plasma/CMakeLists.txt`` from
-
-.. code-block:: cmake
-
-  target_link_libraries(plasma_manager common ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread)
-
-to additionally include ``-lprofiler``:
-
-.. code-block:: cmake
-
-  target_link_libraries(plasma_manager common ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread -lprofiler)
-
-Additionally, add ``-g -ggdb`` to ``CMAKE_C_FLAGS`` and ``CMAKE_CXX_FLAGS`` to
-enable the debug symbols.  (Keeping ``-O3`` seems okay.)
-
-Recompile.
-
 Launching the to-profile binary
 -------------------------------
 
-In various places, instead of launching the target binary via
-``plasma_manager <args>``, it must be launched with
+If you want to launch Ray in profiling mode, define the following variables:
 
-.. code-block:: bash
+.. code-block::bash
 
-  LD_PRELOAD=/usr/lib/libprofiler.so CPUPROFILE=/tmp/pprof.out plasma_manager <args>
+  export RAYLET_PERFTOOLS_PATH=/usr/lib/libprofiler.so
+  export RAYLET_PERFTOOLS_LOGFILE=/tmp/pprof.out
 
-In practice, this means modifying ``python/ray/plasma/plasma.py`` so that the
-manager is launched with a command that passes a ``modified_env`` into
-``Popen``.
-
-.. code-block:: python
-
-  modified_env = os.environ.copy()
-  modified_env["LD_PRELOAD"] = "/usr/lib/libprofiler.so"
-  modified_env["CPUPROFILE"] = "/tmp/pprof.out"
-
-  process = subprocess.Popen(command,
-                             stdout=stdout_file,
-                             stderr=stderr_file,
-                             env=modified_env)
 
 The file ``/tmp/pprof.out`` will be empty until you let the binary run the
-target workload for a while and then ``kill`` it.
+target workload for a while and then ``kill`` it via ``ray stop`` or by
+letting the driver exit.
 
 Visualizing the CPU profile
 ---------------------------
@@ -72,14 +38,14 @@ zoomable ``.svg`` image displaying the call graph annotated with hot paths.
 .. code-block:: bash
 
   # Use the appropriate path.
-  PLASMA_MANAGER=ray/python/ray/core/src/plasma/plasma_manager
+  RAYLET=ray/python/ray/core/src/ray/raylet/raylet
 
-  google-pprof -svg $PLASMA_MANAGER /tmp/pprof.out > /tmp/pprof.svg
+  google-pprof -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
   # Then open the .svg file with Chrome.
 
   # If you realize the call graph is too large, use -focus=<some function> to zoom
   # into subtrees.
-  google-pprof -focus=epoll_wait -svg $PLASMA_MANAGER /tmp/pprof.out > /tmp/pprof.svg
+  google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 
 Here's a snapshot of an example svg output, taken from the official
 documentation:
