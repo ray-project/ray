@@ -313,7 +313,8 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // easily have multiple log events with the same message.
     if(flags != REDISMODULE_ZADD_ADDED) {
       // Store the value into a unique new key for now.
-      RedisModuleString *new_id = RedisString_Format(ctx, "%S:%d", id, index);
+      std::string postfix = std::to_string(index);
+      RedisModuleString *new_id = RedisString_Format(ctx, "%S:%b", id, postfix.data(), postfix.size());
       RedisModuleKey *new_key = OpenPrefixedKey(
           ctx, prefix_str, new_id, REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str);
       RedisModule_ZsetAdd(new_key, index, data, &flags);
