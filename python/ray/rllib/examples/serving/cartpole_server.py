@@ -14,19 +14,19 @@ import numpy as np
 
 import ray
 from ray.rllib.agents.dqn import DQNAgent
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
 SERVER_ADDRESS = "localhost"
-SERVER_PORT = 8900
+SERVER_PORT = 9900
 CHECKPOINT_FILE = "last_checkpoint.out"
 
 
-class CartpoleServing(ServingEnv):
+class CartpoleServing(ExternalEnv):
     def __init__(self):
-        ServingEnv.__init__(
+        ExternalEnv.__init__(
             self, spaces.Discrete(2),
             spaces.Box(low=-10, high=10, shape=(4, ), dtype=np.float32))
 

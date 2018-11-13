@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -20,7 +20,7 @@ class AsyncVectorEnv(object):
 
         gym.Env => rllib.VectorEnv => rllib.AsyncVectorEnv
         rllib.MultiAgentEnv => rllib.AsyncVectorEnv
-        rllib.ServingEnv => rllib.AsyncVectorEnv
+        rllib.ExternalEnv => rllib.AsyncVectorEnv
 
     Attributes:
         action_space (gym.Space): Action space. This must be defined for
@@ -70,11 +70,11 @@ class AsyncVectorEnv(object):
             if isinstance(env, MultiAgentEnv):
                 env = _MultiAgentEnvToAsync(
                     make_env=make_env, existing_envs=[env], num_envs=num_envs)
-            elif isinstance(env, ServingEnv):
+            elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
-                        "ServingEnv does not currently support num_envs > 1.")
-                env = _ServingEnvToAsync(env)
+                        "ExternalEnv does not currently support num_envs > 1.")
+                env = _ExternalEnvToAsync(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToAsync(env)
             else:
@@ -145,40 +145,40 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
-class _ServingEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of ServingEnv to AsyncVectorEnv."""
+class _ExternalEnvToAsync(AsyncVectorEnv):
+    """Internal adapter of ExternalEnv to AsyncVectorEnv."""
 
-    def __init__(self, serving_env, preprocessor=None):
-        self.serving_env = serving_env
+    def __init__(self, external_env, preprocessor=None):
+        self.external_env = external_env
         self.prep = preprocessor
-        self.action_space = serving_env.action_space
+        self.action_space = external_env.action_space
         if preprocessor:
             self.observation_space = preprocessor.observation_space
         else:
-            self.observation_space = serving_env.observation_space
-        serving_env.start()
+            self.observation_space = external_env.observation_space
+        external_env.start()
 
     def poll(self):
-        with self.serving_env._results_avail_condition:
+        with self.external_env._results_avail_condition:
             results = self._poll()
             while len(results[0]) == 0:
-                self.serving_env._results_avail_condition.wait()
+                self.external_env._results_avail_condition.wait()
                 results = self._poll()
-                if not self.serving_env.isAlive():
+                if not self.external_env.isAlive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.serving_env._max_concurrent_episodes
+        limit = self.external_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This ServingEnv "
-             "was created with max_concurrent={}".format(limit))
+            ("Too many concurrent episodes, were some leaked? This "
+             "ExternalEnv was created with max_concurrent={}".format(limit))
         return results
 
     def _poll(self):
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
         off_policy_actions = {}
-        for eid, episode in self.serving_env._episodes.copy().items():
+        for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
             if episode.cur_done:
-                del self.serving_env._episodes[eid]
+                del self.external_env._episodes[eid]
             if data:
                 if self.prep:
                     all_obs[eid] = self.prep.transform(data["obs"])
@@ -197,7 +197,7 @@ class _ServingEnvToAsync(AsyncVectorEnv):
 
     def send_actions(self, action_dict):
         for eid, action in action_dict.items():
-            self.serving_env._episodes[eid].action_queue.put(
+            self.external_env._episodes[eid].action_queue.put(
                 action[_DUMMY_AGENT_ID])
 
 
