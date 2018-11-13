@@ -85,8 +85,20 @@ protected:
 
 class ReadyQueue : public TaskQueue {
 public:
+  /// \brief Append a task to the ready queue.
+  ///
+  /// \param task_id The task ID for the task to append.
+  /// \param task The task to append to the queue.
+  /// \return Whether the append operation succeeds.
   bool AppendTask(const TaskID &task_id, const Task &task);
 
+  /// \brief Remove a task from the ready queue.
+  ///
+  /// \param task_id The task ID for the task to remove from the queue.
+  /// \param removed_tasks If the task specified by task_id is successfully
+  ///  removed from the queue, the task data is appended to the vector. Can
+  ///  be a nullptr, in which case nothing is appended.
+  /// \return Whether the removal succeeds.
   bool RemoveTask(const TaskID &task_id,
                   std::vector<Task> *removed_tasks = nullptr);
 

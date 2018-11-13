@@ -82,7 +82,7 @@ TaskQueue::~TaskQueue() {
 }
 
 bool TaskQueue::AppendTask(const TaskID &task_id,
-                                            const Task &task) {
+                           const Task &task) {
   RAY_CHECK(task_map_.find(task_id) == task_map_.end());
   auto list_iterator = task_list_.insert(task_list_.end(), task);
   task_map_[task_id] = list_iterator;
@@ -90,7 +90,7 @@ bool TaskQueue::AppendTask(const TaskID &task_id,
 }
 
 bool TaskQueue::RemoveTask(const TaskID &task_id,
-                          std::vector<Task> *removed_tasks) {
+                           std::vector<Task> *removed_tasks) {
   auto task_found_iterator = task_map_.find(task_id);
   if (task_found_iterator == task_map_.end()) {
     return false;
