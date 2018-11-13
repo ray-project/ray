@@ -352,11 +352,11 @@ class SchedulingQueue {
     std::list<Task> task_list_;
     /// A hash to speed up looking up a task.
     std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-    /// Metadata associated to readsy queue.
+    /// Metadata associated to ready queue.
     QueueReadyMetadata ready_tasks_metadata_;
   };
 
-  /// \brief Het ready queue.
+  /// \brief Get the ready queue.
   ///
   /// \return Ready queue.
   const TaskQueue &GetReadyQueue() const { return ready_tasks_; };
