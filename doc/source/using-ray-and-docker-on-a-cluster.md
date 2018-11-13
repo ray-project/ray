@@ -1,4 +1,4 @@
-# Using Ray and Docker on a Cluster (EXPERIMENTAL)
+# Using Ray and Docker on a Cluster (Experimental)
 
 Packaging and deploying an application using Docker can provide certain advantages. It can make managing dependencies easier, help ensure that each cluster node receives a uniform configuration, and facilitate swapping hardware resources between applications.
 
