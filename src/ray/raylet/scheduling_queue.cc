@@ -113,9 +113,10 @@ const std::list<Task> &TaskQueue::GetTasks() const { return task_list_; }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
   bool result = TaskQueue::AppendTask(task_id, task);
-  // Resource bookkeeping
   const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+  // Update sum resources.
   current_resource_load_.AddResources(task_resources);
+  // Update min resources.
   UpdateMinOnAdd(task_resources);
   return result;
 }
