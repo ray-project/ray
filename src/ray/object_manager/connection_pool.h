@@ -113,6 +113,7 @@ class ConnectionPool {
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
               std::shared_ptr<TcpClientConnection> &conn);
 
+  /// Removes the given sender for ClientID from the given map.
   void Remove(SenderMapType &conn_map, const ClientID &client_id,
               const std::shared_ptr<SenderConnection> &conn);
 

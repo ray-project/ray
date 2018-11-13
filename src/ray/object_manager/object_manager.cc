@@ -6,15 +6,6 @@ namespace asio = boost::asio;
 
 namespace object_manager_protocol = ray::object_manager::protocol;
 
-namespace {
-
-void CheckIOError(ray::Status &status, const std::string &operation) {
-  RAY_CHECK(status.IsIOError());
-  RAY_LOG(ERROR) << "Failed to contact remote object manager during " << operation;
-}
-
-}  // namespace
-
 namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -295,7 +286,8 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
       fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
         if (!status.ok()) {
-          CheckIOError(status, "Pull");
+          RAY_CHECK(status.IsIOError())
+              << "Failed to contact remote object manager during Pull";
           connection_pool_.RemoveSender(conn);
         }
       });
@@ -439,7 +431,9 @@ ray::Status ObjectManager::ExecuteSendObject(
   if (conn != nullptr) {
     status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
     if (!status.ok()) {
-      CheckIOError(status, "Push");
+      RAY_CHECK(status.IsIOError())
+          << "Failed to contact remote object manager during Push";
+      connection_pool_.RemoveSender(conn);
     }
   }
   return status;
@@ -882,7 +876,8 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
           static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
           fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
             if (!status.ok()) {
-              CheckIOError(status, "Free");
+              RAY_CHECK(status.IsIOError())
+                  << "Failed to contact remote object manager during Free";
               connection_pool_.RemoveSender(conn);
             }
           });
