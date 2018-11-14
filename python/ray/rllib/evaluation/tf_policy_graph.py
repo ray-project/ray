@@ -80,8 +80,8 @@ class TFPolicyGraph(PolicyGraph):
                 models/lstm.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
             batch_divisibility_req (int): pad all agent experiences batches to
-                multiples of this value. This only has an effect if not already
-                using a LSTM model.
+                multiples of this value. This only has an effect if not using
+                a LSTM model.
         """
 
         self.observation_space = observation_space
