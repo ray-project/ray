@@ -40,7 +40,7 @@ void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_
 
 void ConnectionPool::RemoveSender(const std::shared_ptr<SenderConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
-  ClientID client_id = conn->GetClientID();
+  const ClientID client_id = conn->GetClientId();
   if (message_send_connections_.count(client_id) != 0) {
     Remove(message_send_connections_, client_id, conn);
   }
