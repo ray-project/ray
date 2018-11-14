@@ -107,7 +107,7 @@ class ObjectDirectoryInterface {
   /// Returns debug string for class.
   ///
   /// \return string.
-  virtual std::string DebugString() const;
+  virtual std::string DebugString() const = 0;
 };
 
 /// Ray ObjectDirectory declaration.
