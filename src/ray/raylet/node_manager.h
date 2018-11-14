@@ -210,8 +210,6 @@ class NodeManager {
   /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
   void DispatchTasks(const std::list<Task> &ready_tasks);
 
-  void DispatchTasks(ReadyQueue& ready_queue);
-
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
   /// driver task. This can be triggered when a client starts a get call or a

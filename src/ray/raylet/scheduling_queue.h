@@ -168,11 +168,11 @@ class SchedulingQueue {
 
   /// Get the queue of tasks in the ready state.
   ///
+  /// \param resources If provided, only return tasks that are runnable given
+  ///        these resources.
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
-  ReadyQueue &GetReadyQueue();
-
-  std::list<Task> GetReadyTasks() const;
+  std::list<Task> GetReadyTasks(const ResourceIdSet* resources = nullptr) const;
 
   /// Get the queue of tasks in the running state.
   ///
