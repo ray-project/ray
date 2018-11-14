@@ -1,3 +1,5 @@
+#include <fstream>
+
 #include "ray/raylet/node_manager.h"
 
 #include "ray/common/common_protocol.h"
@@ -50,6 +52,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      debug_dump_period_(config.debug_dump_period_ms),
       object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
@@ -174,7 +177,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  last_debug_log_at_ms_ = current_time_ms();
+  last_debug_dump_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -277,9 +280,10 @@ void NodeManager::Heartbeat() {
   }
   RAY_CHECK_OK(status);
 
-  if (now_ms - last_debug_log_at_ms_ > 5000) {
-    RAY_LOG(INFO) << DebugString();
-    last_debug_log_at_ms_ = now_ms;
+  if (debug_dump_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
+    DumpDebugState();
+    last_debug_dump_at_ms_ = now_ms;
   }
 
   // Reset the timer.
@@ -1659,6 +1663,14 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           on_error(status);
         }
       });
+}
+
+void NodeManager::DumpDebugState() {
+  std::fstream fs;
+  // TODO(ekl) should we make this path configurable?
+  fs.open("/tmp/ray/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs << DebugString();
+  fs.close();
 }
 
 std::string NodeManager::DebugString() const {

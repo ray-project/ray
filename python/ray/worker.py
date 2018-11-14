@@ -1652,7 +1652,7 @@ def init(redis_address=None,
         driver_id: The ID of driver.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
-        logging_level: Logging level, default will be loging.INFO.
+        logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default will be "%(message)s"
             which means only contains the message.
         plasma_store_socket_name (str): If provided, it will specify the socket
