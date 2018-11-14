@@ -70,12 +70,14 @@ void ObjectStoreNotificationManager::ProcessStoreAdd(
   for (auto &handler : add_handlers_) {
     handler(object_info);
   }
+  num_adds_processed_++;
 }
 
 void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
   for (auto &handler : rem_handlers_) {
     handler(object_id);
   }
+  num_removes_processed_++;
 }
 
 void ObjectStoreNotificationManager::SubscribeObjAdded(
@@ -86,6 +88,13 @@ void ObjectStoreNotificationManager::SubscribeObjAdded(
 void ObjectStoreNotificationManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
   rem_handlers_.push_back(std::move(callback));
+}
+
+std::string ObjectStoreNotificationManager::DebugString() const {
+  std::string result = "ObjectStoreNotificationManager:\n";
+  result += "\n- num adds processed: " + num_adds_processed_;
+  result += "\n- num removes processed: " + num_removes_processed_;
+  return result;
 }
 
 }  // namespace ray

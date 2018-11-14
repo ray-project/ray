@@ -103,6 +103,11 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  virtual std::string DebugString() const;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -139,6 +144,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
+
+  std::string DebugString() const;
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);

@@ -368,6 +368,8 @@ class NodeManager {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
+  /// The time that the last debug string was logged to the console.
+  uint64_t last_debug_log_at_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.

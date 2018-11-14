@@ -107,4 +107,18 @@ void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
   RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }
 
+std::string ConnectionPool::DebugString() const {
+  std::string result = "ConnectionPool:\n";
+  result += "\n- num message send connections: " + message_send_connections_.size();
+  result += "\n- num transfer send connections: " + transfer_send_connections_.size();
+  result += "\n- num avail message send connections: " +
+            available_transfer_send_connections_.size();
+  result += "\n- num avail transfer send connections: " +
+            available_transfer_send_connections_.size();
+  result += "\n- num message receive connections: " + message_receive_connections_.size();
+  result +=
+      "\n- num transfer receive connections: " + transfer_receive_connections_.size();
+  return result;
+}
+
 }  // namespace ray

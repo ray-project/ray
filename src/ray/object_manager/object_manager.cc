@@ -905,4 +905,18 @@ ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
   return profile_info;
 }
 
+std::string ObjectManager::DebugString() const {
+  std::string result = "ObjectManager:\n";
+  result += "\n" + object_directory_->DebugString();
+  result += "\n" + store_notification_.DebugString();
+  result += "\n" + buffer_pool_.DebugString();
+  result += "\n" + connection_pool_.DebugString();
+  result += "\n- num local objects: " + local_objects_.size();
+  result += "\n- num active wait requests: " + active_wait_requests_.size();
+  result += "\n- num unfulfilled push requests: " + unfulfilled_push_requests_.size();
+  result += "\n- num pull requests: " + pull_requests_.size();
+  result += "\n- num buffered profile events: " + profile_events_.size();
+  return result;
+}
+
 }  // namespace ray

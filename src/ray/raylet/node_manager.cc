@@ -174,6 +174,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
+  last_debug_log_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -234,6 +235,7 @@ void NodeManager::Heartbeat() {
   if (interval > RayConfig::instance().num_heartbeats_warning() *
                      RayConfig::instance().heartbeat_timeout_milliseconds()) {
     RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
+    RAY_LOG(WARNING) << DebugString();
   }
   last_heartbeat_at_ms_ = now_ms;
 
@@ -275,6 +277,11 @@ void NodeManager::Heartbeat() {
     RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
   }
   RAY_CHECK_OK(status);
+
+  if (now_ms - last_debug_log_at_ms_ > 5000) {
+    RAY_LOG(INFO) << DebugString();
+    last_debug_log_at_ms_ = now_ms;
+  }
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -1656,41 +1663,35 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
 }
 
 std::string NodeManager::DebugString() const {
-  std::string cluster_resources_debug_string = "";
-  std::string remote_clients_debug_string = "";
-  std::string remote_connections_debug_string = "";
-  std::string actor_registry_debug_string = "";
+  std::string cluster_resources_debug_string = "ClusterResources:";
+  std::string remote_clients_debug_string = "NumRemoteClients: " + remote_clients_.size();
+  std::string remote_connections_debug_string = "RemoteConnections:";
+  std::string actor_registry_debug_string = "ActorRegistry:";
   for (auto &pair : cluster_resource_map_) {
     cluster_resources_debug_string +=
-        pair.first.hex() + ": " + pair.second.DebugString() + "\n";
-  }
-  for (auto &client : remote_clients_) {
-    if (remote_clients_debug_string.length() > 0) {
-      remote_clients_debug_string += ", ";
-    }
-    remote_clients_debug_string += client.hex();
+        "\n" + pair.first.hex() + ": " + pair.second.DebugString();
   }
   for (auto &pair : remote_server_connections_) {
     remote_connections_debug_string +=
-        pair.first.hex() + ": " + pair.second->DebugString() + "\n";
+        "\n" + pair.first.hex() + ": " + pair.second->DebugString();
   }
   for (auto &pair : actor_registry_) {
     actor_registry_debug_string +=
-        pair.first.hex() + ": " + pair.second.DebugString() + "\n";
+        "\n" + pair.first.hex() + ": " + pair.second.DebugString();
   }
-  std::string result = "";
-  result += "ObjectManager:\n" + object_manager_.DebugString();
-  result += "\nGCSClient:\n" + gcs_client_->DebugString();
-  result += "\nLocalResources:\n" + local_resources_.DebugString();
-  result += "\nClusterResources:\n" + cluster_resources_debug_string;
-  result += "\nWorkerPool:\n" + worker_pool_.DebugString();
-  result += "\nSchedulingQueue:\n" + local_queues_.DebugString();
-  result += "\nReconstruction:\n" + reconstruction_policy_.DebugString();
-  result += "\nTaskDependencyManager:\n" + task_dependency_manager_.DebugString();
-  result += "\nLineageCache:\n" + lineage_cache_.DebugString();
-  result += "\nRemoteClients:\n" + remote_clients_debug_string;
-  result += "\nRemoteConnections:\n" + remote_connections_debug_string;
-  result += "\nActorRegistry:\n" + actor_registry_debug_string;
+  std::string result = "NodeManager:";
+  result += "\n" + object_manager_.DebugString();
+  result += "\n" + gcs_client_->DebugString();
+  result += "\n" + local_resources_.DebugString();
+  result += "\n" + cluster_resources_debug_string;
+  result += "\n" + worker_pool_.DebugString();
+  result += "\n" + local_queues_.DebugString();
+  result += "\n" + reconstruction_policy_.DebugString();
+  result += "\n" + task_dependency_manager_.DebugString();
+  result += "\n" + lineage_cache_.DebugString();
+  result += "\n" + remote_clients_debug_string;
+  result += "\n" + remote_connections_debug_string;
+  result += "\n" + actor_registry_debug_string;
   return result;
 }
 

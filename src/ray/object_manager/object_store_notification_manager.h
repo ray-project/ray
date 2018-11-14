@@ -46,6 +46,11 @@ class ObjectStoreNotificationManager {
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Async loop for handling object store notifications.
   void NotificationWait();
@@ -63,6 +68,8 @@ class ObjectStoreNotificationManager {
   plasma::PlasmaClient store_client_;
   int c_socket_;
   int64_t length_;
+  int64_t num_adds_processed_;
+  int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
 };

@@ -184,7 +184,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const;
 
  private:
   friend class TestObjectManager;
