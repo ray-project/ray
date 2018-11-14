@@ -36,6 +36,12 @@ class RayOutOfMemoryError(Exception):
 
 
 class MemoryMonitor(object):
+    """Helper class for raising errors on low memory.
+
+    This presents a much cleaner error message to users than what would happen
+    if we actually ran out of memory.
+    """
+
     def __init__(self, error_threshold=0.95, check_interval=1):
         # Note: it takes ~50us to check the memory usage through psutil, so
         # throttle this check at most once a second or so.
