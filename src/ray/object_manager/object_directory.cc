@@ -193,10 +193,11 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
 }
 
 std::string ObjectDirectory::DebugString() const {
-  std::string result = "ObjectDirectory:\n";
-  result += "\n- num listeners: " + listeners_.size();
-  result += "\n- num eviction entries: " + object_evictions_.size();
-  return result;
+  std::stringstream result;
+  result << "ObjectDirectory:";
+  result << "\n- num listeners: " << listeners_.size();
+  result << "\n- num eviction entries: " << object_evictions_.size();
+  return result.str();
 }
 
 }  // namespace ray

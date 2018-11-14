@@ -906,7 +906,7 @@ ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
 }
 
 std::string ObjectManager::DebugString() const {
-  std::string result = "ObjectManager:\n";
+  std::string result = "ObjectManager:";
   result += "\n" + object_directory_->DebugString();
   result += "\n" + store_notification_.DebugString();
   result += "\n" + buffer_pool_.DebugString();
