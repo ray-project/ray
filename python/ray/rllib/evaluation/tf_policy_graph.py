@@ -52,7 +52,8 @@ class TFPolicyGraph(PolicyGraph):
                  prev_action_input=None,
                  prev_reward_input=None,
                  seq_lens=None,
-                 max_seq_len=20):
+                 max_seq_len=20,
+                 batch_divisibility_req=1):
         """Initialize the policy graph.
 
         Arguments:
@@ -78,6 +79,9 @@ class TFPolicyGraph(PolicyGraph):
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 models/lstm.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
+            batch_divisibility_req (int): pad all agent experiences batches to
+                multiples of this value. This only has an effect if not using
+                a LSTM model.
         """
 
         self.observation_space = observation_space
@@ -97,6 +101,7 @@ class TFPolicyGraph(PolicyGraph):
             self._loss_input_dict["state_in_{}".format(i)] = ph
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
+        self._batch_divisibility_req = batch_divisibility_req
         self._optimizer = self.optimizer()
         self._grads_and_vars = [(g, v)
                                 for (g, v) in self.gradients(self._optimizer)
@@ -162,21 +167,37 @@ class TFPolicyGraph(PolicyGraph):
 
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}
+        if self._batch_divisibility_req > 1:
+            meets_divisibility_reqs = (
+                len(batch["obs"]) % self._batch_divisibility_req == 0
+                and max(batch["agent_index"]) == 0)  # not multiagent
+        else:
+            meets_divisibility_reqs = True
 
-        # Simple case
-        if not self._state_inputs:
+        # Simple case: not RNN nor do we need to pad
+        if not self._state_inputs and meets_divisibility_reqs:
             for k, ph in self._loss_inputs:
                 feed_dict[ph] = batch[k]
             return feed_dict
 
-        # RNN case
+        if self._state_inputs:
+            max_seq_len = self._max_seq_len
+            dynamic_max = True
+        else:
+            max_seq_len = self._batch_divisibility_req
+            dynamic_max = False
+
+        # RNN or multi-agent case
         feature_keys = [k for k, v in self._loss_inputs]
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
         feature_sequences, initial_states, seq_lens = chop_into_sequences(
-            batch["eps_id"], [batch[k] for k in feature_keys],
-            [batch[k] for k in state_keys], self._max_seq_len)
+            batch["eps_id"],
+            batch["agent_index"], [batch[k] for k in feature_keys],
+            [batch[k] for k in state_keys],
+            max_seq_len,
+            dynamic_max=dynamic_max)
         for k, v in zip(feature_keys, feature_sequences):
             feed_dict[self._loss_input_dict[k]] = v
         for k, v in zip(state_keys, initial_states):
