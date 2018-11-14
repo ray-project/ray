@@ -5,13 +5,13 @@ from __future__ import print_function
 import click
 import json
 import logging
+import os
 import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (attach_cluster, exec_cluster,
                                      create_or_update_cluster, rsync,
-                                     teardown_cluster, get_head_node_ip,
-                                     submit_cluster)
+                                     teardown_cluster, get_head_node_ip)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -571,12 +571,26 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.argument("script_args", required=False, type=str, nargs=-1)
-def submit(cluster_config_file, screen, tmux, stop, start,
-                   cluster_name, port_forward, script, script_args):
-    """Uploads and executes script on cluster"""
+def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
+           port_forward, script, script_args):
+    """Uploads and runs a script on the specified cluster.
+
+    The script is automatically synced to the following location:
+
+        os.path.join("~", os.path.basename(script))
+    """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
-    submit_cluster(cluster_config_file, screen, tmux, stop, start,
-                   cluster_name, port_forward, script, script_args)
+
+    if start:
+        create_or_update_cluster(cluster_config_file, None, None, False, False,
+                                 True, cluster_name)
+
+    target = os.path.join("~", os.path.basename(script))
+    rsync(cluster_config_file, script, target, cluster_name, down=False)
+
+    cmd = " ".join(["python", target] + list(script_args))
+    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
+                 cluster_name, port_forward)
     if tmux:
         logger.info("Use `ray attach {} --tmux` "
                     "to check on command status.".format(cluster_config_file))
