@@ -176,18 +176,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
             it->second.timer_set = false;
           }
         } else {
-          // New object locations were found.
-          if (!it->second.timer_set) {
-            // The timer was not set, which means that we weren't trying any
-            // clients. We now have some clients to try, so begin trying to
-            // Pull from one.  If we fail to receive an object within the pull
-            // timeout, then this will try the rest of the clients in the list
-            // in succession.
-            TryPull(object_id);
-          } else {
-            // TODO(rkn): We may want to immediately start trying to pull from
-            // another client here.
-          }
+          // New object locations were found, so begin trying to pull from a
+          // client. This will be called every time a new client location
+          // appears.
+          TryPull(object_id);
         }
       });
 }
