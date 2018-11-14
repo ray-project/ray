@@ -68,6 +68,8 @@ def chop_into_sequences(episode_ids,
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.
         dynamic_max (bool): Whether to dynamically shrink the max seq len.
+            For example, if max len is 20 and the actual max seq len in the
+            data is 7, it will be shrunk to 7.
 
     Returns:
         f_pad (list): Padded feature columns. These will be of shape
