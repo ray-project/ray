@@ -12,12 +12,10 @@ import time
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
 from ray.rllib.agents.es import utils
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -168,11 +166,6 @@ class ESAgent(Agent):
 
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
         policy_params = {"action_noise_std": 0.01}

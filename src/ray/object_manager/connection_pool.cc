@@ -38,6 +38,17 @@ void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_
   // Don't add to available connections. It will become available once it is released.
 }
 
+void ConnectionPool::RemoveSender(const std::shared_ptr<SenderConnection> &conn) {
+  std::unique_lock<std::mutex> guard(connection_mutex);
+  ClientID client_id = conn->GetClientID();
+  if (message_send_connections_.count(client_id) != 0) {
+    Remove(message_send_connections_, client_id, conn);
+  }
+  if (transfer_send_connections_.count(client_id) != 0) {
+    Remove(transfer_send_connections_, client_id, conn);
+  }
+}
+
 void ConnectionPool::GetSender(ConnectionType type, const ClientID &client_id,
                                std::shared_ptr<SenderConnection> *conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
@@ -72,6 +83,21 @@ void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
 
 void ConnectionPool::Remove(ReceiverMapType &conn_map, const ClientID &client_id,
                             std::shared_ptr<TcpClientConnection> &conn) {
+  auto it = conn_map.find(client_id);
+  if (it == conn_map.end()) {
+    return;
+  }
+  auto &connections = it->second;
+  int64_t pos =
+      std::find(connections.begin(), connections.end(), conn) - connections.begin();
+  if (pos >= static_cast<int64_t>(connections.size())) {
+    return;
+  }
+  connections.erase(connections.begin() + pos);
+}
+
+void ConnectionPool::Remove(SenderMapType &conn_map, const ClientID &client_id,
+                            const std::shared_ptr<SenderConnection> &conn) {
   auto it = conn_map.find(client_id);
   if (it == conn_map.end()) {
     return;
