@@ -55,8 +55,12 @@ class MemoryMonitor(object):
                 "debugging of memory-related crashes.")
 
     def raise_if_low_memory(self):
-        if not psutil or os.environ["RAY_DEBUG_DISABLE_MEMORY_MONITOR"]:
-            return
+        if not psutil:
+            return  # nothing we can do
+
+        if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
+            return  # escape hatch, not intended for user use
+
         if time.time() - self.last_checked > self.check_interval:
             self.last_checked = time.time()
             total_gb = psutil.virtual_memory().total / 1e9
