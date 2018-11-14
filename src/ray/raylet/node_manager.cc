@@ -1655,6 +1655,43 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
       });
 }
 
+std::string NodeManager::DebugString() const {
+    std::string cluster_resources_debug_string = "";
+    std::string remote_clients_debug_string = "";
+    std::string remote_connections_debug_string = "";
+    std::string actor_registry_debug_string = "";
+    for (auto& pair : cluster_resource_map_) {
+        cluster_resources_debug_string +=
+            pair.first.hex() + ": " + pair.second.DebugString() + "\n";
+    }
+    for (auto& client : remote_clients_) {
+        if (remote_clients_debug_string.length() > 0) {
+            remote_clients_debug_string += ", ";
+        }
+        remote_clients_debug_string += client.hex();
+    }
+    for (auto& pair : remote_server_connections_) {
+        remote_connections_debug_string +=
+            pair.first.hex() + ": " + pair.second->DebugString() + "\n";
+    }
+    for (auto& pair : actor_registry_) {
+        actor_registry_debug_string +=
+            pair.first.hex() + ": " + pair.second.DebugString() + "\n";
+    }
+    return "ObjectManager:\n" + object_manager_.DebugString() +
+        "\nGCSClient:\n" + gcs_client_->DebugString() +
+        "\nLocalResources:\n" + local_resources_.DebugString() +
+        "\nClusterResources:\n" + cluster_resources_debug_string;
+        "\nWorkerPool:\n" + worker_pool_.DebugString() +
+        "\nSchedulingQueue:\n" + local_queues_.DebugString() +
+        "\nReconstruction:\n" + reconstruction_policy_.DebugString() +
+        "\nTaskDependencyManager:\n" + task_dependency_manager_.DebugString() +
+        "\nLineageCache:\n" + lineage_cache_.DebugString() +
+        "\nRemoteClients:\n" + remote_clients_debug_string +
+        "\nRemoteConnections:\n" + remote_connections_debug_string +
+        "\nActorRegistry:\n" + actor_registry_debug_string;
+}
+
 }  // namespace raylet
 
 }  // namespace ray

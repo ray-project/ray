@@ -85,6 +85,11 @@ class ActorRegistration {
   /// \return Void.
   void MarkDead();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.

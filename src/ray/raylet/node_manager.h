@@ -92,6 +92,11 @@ class NodeManager {
   /// \return Status indicating whether this was done successfully or not.
   ray::Status RegisterGcs();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Methods for handling clients.
 

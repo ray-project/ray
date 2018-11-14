@@ -72,6 +72,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
     socket_.close(ec);
   }
 
+  std::string DebugString() const { return "TODO"; };
+
  protected:
   /// A private constructor for a server connection.
   ServerConnection(boost::asio::basic_stream_socket<T> &&socket);

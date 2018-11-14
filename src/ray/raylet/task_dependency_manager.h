@@ -111,6 +111,11 @@ class TaskDependencyManager {
   /// \param task_ids The collection of task IDs.
   void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
 

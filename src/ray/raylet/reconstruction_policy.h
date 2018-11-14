@@ -71,6 +71,11 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// this timeout, then objects that the task creates may be reconstructed.
   void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   struct ReconstructionTask {
     ReconstructionTask(boost::asio::io_service &io_service)

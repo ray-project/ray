@@ -274,6 +274,11 @@ class SchedulingQueue {
     ResourceSet current_resource_load_;
   };
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   /// Tasks that are destined for actors that have not yet been created.
   TaskQueue methods_waiting_for_actor_creation_;

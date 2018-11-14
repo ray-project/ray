@@ -374,6 +374,11 @@ class SchedulingResources {
   /// negative resources.
   bool Acquire(const ResourceSet &resources);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;

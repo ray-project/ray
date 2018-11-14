@@ -181,6 +181,11 @@ class ObjectManager : public ObjectManagerInterface {
   /// to this method.
   ProfileTableDataT GetAndResetProfilingInfo();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const { return "TODO"; };
+
  private:
   friend class TestObjectManager;
 
