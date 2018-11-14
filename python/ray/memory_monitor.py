@@ -4,15 +4,13 @@ from __future__ import print_function
 
 import logging
 import os
-import subprocess
-import sys
 import time
 
 try:
     import psutil
 except ImportError:
     psutil = None
-    
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,33 +20,33 @@ class RayOutOfMemoryError(Exception):
 
     @staticmethod
     def get_message(used_gb, total_gb, threshold):
-        try:
-            ps_output = subprocess.check_output(
-                "ps -eo pid,user,%mem,args --sort -%mem | "
-                "head -n 6 | cut -c-200",
-                shell=True)
-            ps_output = ps_output.decode(sys.stdout.encoding).strip()
-        except Exception as e:
-            ps_output = str(e)
-        return (
-            "More than {}% of the memory on ".format(
-                int(100 * threshold)) +
-            "node {} is used ({} / {} GB). ".format(
-                os.uname()[1], round(used_gb, 1), round(total_gb, 1)) +
-            "The top 5 memory consumers are:\n\n{}".format(ps_output))
+        pids = psutil.pids()
+        proc_stats = []
+        for pid in pids:
+            proc = psutil.Process(pid)
+            proc_stats.append((proc.memory_info().rss, pid, proc.cmdline()))
+        proc_str = "PID\tMEM\tCOMMAND"
+        for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:5]:
+            proc_str += "\n{}\t{}GB\t{}".format(
+                pid, round(rss / 1e9, 1), " ".join(cmdline)[:100].strip())
+        return ("More than {}% of the memory on ".format(int(
+            100 * threshold)) + "node {} is used ({} / {} GB). ".format(
+                os.uname()[1], round(used_gb, 2), round(total_gb, 1)) +
+                "The top 5 memory consumers are:\n\n{}".format(proc_str))
 
 
 class MemoryMonitor(object):
-    def __init__(self, error_threshold=0.95, check_interval=5):
-        self.error_threshold = error_threshold
-        self.last_checked = time.time()
+    def __init__(self, error_threshold=0.95, check_interval=1):
+        # Note: it takes ~50us to check the memory usage through psutil, so
+        # throttle this check at most once a second or so.
         self.check_interval = check_interval
+        self.last_checked = time.time()
+        self.error_threshold = error_threshold
         if not psutil:
             logger.warning(
                 "WARNING: Not monitoring node memory since `psutil` is not "
                 "installed. Install this with `pip install psutil` to enable "
                 "debugging of memory-related crashes.")
-            
 
     def raise_if_low_memory(self):
         if not psutil:
@@ -59,8 +57,8 @@ class MemoryMonitor(object):
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
-                    RayOutOfMemoryError.get_message(
-                        used_gb, total_gb, self.error_threshold))
+                    RayOutOfMemoryError.get_message(used_gb, total_gb,
+                                                    self.error_threshold))
             else:
-                logger.debug(
-                    "Memory usage is {} / {}".format(used_gb, total_gb))
+                logger.debug("Memory usage is {} / {}".format(
+                    used_gb, total_gb))
