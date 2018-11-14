@@ -86,6 +86,7 @@ class QNetwork(object):
                 q_out, num_outputs=hidden, activation_fn=activation)
         self.value = layers.fully_connected(
             q_out, num_outputs=1, activation_fn=None)
+        self.model = model
 
 
 class ActorCriticLoss(object):
@@ -198,17 +199,17 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_t = self._build_q_network(self.obs_t, observation_space,
-                                        self.act_t)
+            q_t, model = self._build_q_network(self.obs_t, observation_space,
+                                               self.act_t)
             self.q_func_vars = _scope_vars(scope.name)
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_tp0 = self._build_q_network(self.obs_t, observation_space,
-                                          output_actions)
+            q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
+                                             output_actions)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1 = self._build_q_network(self.obs_tp1, observation_space,
-                                          output_actions_estimated)
+            q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
+                                             output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
 
         self.loss = self._build_actor_critic_loss(q_t, q_tp1, q_tp0)
@@ -258,7 +259,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.total_loss,
+            loss=model.loss() + self.loss.total_loss,
             loss_inputs=self.loss_inputs)
         self.sess.run(tf.global_variables_initializer())
 
@@ -271,12 +272,13 @@ class DDPGPolicyGraph(TFPolicyGraph):
         self.update_target(tau=1.0)
 
     def _build_q_network(self, obs, obs_space, actions):
-        return QNetwork(
+        q_net = QNetwork(
             ModelCatalog.get_model({
                 "obs": obs
             }, obs_space, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
-            self.config["critic_hidden_activation"]).value
+            self.config["critic_hidden_activation"])
+        return q_net.value, q_net.model
 
     def _build_p_network(self, obs, obs_space):
         return PNetwork(

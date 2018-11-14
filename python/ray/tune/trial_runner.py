@@ -122,13 +122,13 @@ class TrialRunner(object):
                     if not self.has_resources(trial.resources):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster summary: {} "
+                             "trial requested {} but the cluster has only {}. "
                              "Pass `queue_trials=True` in "
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                  trial.resources.summary_string(),
-                                 self.trial_executor.debug_string(),
+                                 self.trial_executor.resource_string(),
                                  trial._get_trainable_cls().resource_help(
                                      trial.config)))
                 elif trial.status == Trial.PAUSED:
@@ -216,7 +216,27 @@ class TrialRunner(object):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         messages.append(self.trial_executor.debug_string())
+        messages.append(self._memory_debug_string())
         return messages
+
+    def _memory_debug_string(self):
+        try:
+            import psutil
+            total_gb = psutil.virtual_memory().total / 1e9
+            used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            if used_gb > total_gb * 0.9:
+                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
+                        "this node is available for use. This can cause "
+                        "unexpected crashes. Consider "
+                        "reducing the memory used by your application "
+                        "or reducing the Ray object store size by setting "
+                        "`object_store_memory` when calling `ray.init`.")
+            else:
+                warn = ""
+            return "Memory usage on this node: {}/{} GB{}".format(
+                round(used_gb, 1), round(total_gb, 1), warn)
+        except ImportError:
+            return "Unknown memory usage (`pip install psutil` to resolve)"
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""

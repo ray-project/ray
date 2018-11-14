@@ -11,8 +11,8 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
-from ray.rllib.env.async_vector_env import _ServingEnvToAsync
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.async_vector_env import _ExternalEnvToAsync
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
@@ -189,7 +189,7 @@ class ModelCatalog(object):
             seq_in (Tensor): Optional RNN sequence length tensor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
 
         assert isinstance(input_dict, dict)
@@ -241,7 +241,7 @@ class ModelCatalog(object):
             options (dict): Optional args to pass to the model constructor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
         from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
                                                     PyTorchFCNet)
@@ -270,7 +270,7 @@ class ModelCatalog(object):
         """Returns a suitable processor for the given environment.
 
         Args:
-            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
+            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
@@ -300,7 +300,7 @@ class ModelCatalog(object):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
-            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
+            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
@@ -313,8 +313,8 @@ class ModelCatalog(object):
             return _RLlibPreprocessorWrapper(env, preprocessor)
         elif isinstance(env, VectorEnv):
             return _RLlibVectorPreprocessorWrapper(env, preprocessor)
-        elif isinstance(env, ServingEnv):
-            return _ServingEnvToAsync(env, preprocessor)
+        elif isinstance(env, ExternalEnv):
+            return _ExternalEnvToAsync(env, preprocessor)
         else:
             raise ValueError("Don't know how to wrap {}".format(env))
 

@@ -99,7 +99,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run APEX \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "gpu": false, "min_iter_time_s": 1}'
+    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "num_gpus": 0, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -250,7 +250,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_nested_spaces.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_serving_env.py
+    python /ray/python/ray/rllib/test/test_external_env.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
@@ -263,6 +263,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     pytest /ray/python/ray/tune/test/cluster_tests.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/test/test_env_with_subprocess.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     /ray/python/ray/rllib/test/test_rollout.sh
@@ -329,13 +332,21 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/custom_metrics_and_callbacks.py --num-iters=2
 
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=simple
 
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=ps
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+        --num-workers=1 --devices-per-worker=1 --strategy=ps
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+        --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \

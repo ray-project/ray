@@ -8,9 +8,7 @@ from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
-from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -42,8 +40,6 @@ DEFAULT_CONFIG = with_common_config({
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
-    # Whether to use rllib or deepmind preprocessors
-    "preprocessor_pref": "deepmind",
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -98,16 +94,10 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 32,
 
     # === Parallelism ===
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
@@ -127,15 +117,6 @@ class DQNAgent(Agent):
     _agent_name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         # Update effective batch size to include n-step
@@ -163,12 +144,9 @@ class DQNAgent(Agent):
             self.env_creator, self._policy_graph)
 
         def create_remote_evaluators():
-            return self.make_remote_evaluators(
-                self.env_creator, self._policy_graph,
-                self.config["num_workers"], {
-                    "num_cpus": self.config["num_cpus_per_worker"],
-                    "num_gpus": self.config["num_gpus_per_worker"]
-                })
+            return self.make_remote_evaluators(self.env_creator,
+                                               self._policy_graph,
+                                               self.config["num_workers"])
 
         if self.config["optimizer_class"] != "AsyncReplayOptimizer":
             self.remote_evaluators = create_remote_evaluators()

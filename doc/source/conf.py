@@ -25,6 +25,8 @@ MOCK_MODULES = [
     "scipy.signal",
     "tensorflow",
     "tensorflow.contrib",
+    "tensorflow.contrib.all_reduce",
+    "tensorflow.contrib.all_reduce.python",
     "tensorflow.contrib.layers",
     "tensorflow.contrib.slim",
     "tensorflow.contrib.rnn",

@@ -143,6 +143,10 @@ class PolicyOptimizer(object):
         ])
         return local_result + remote_results
 
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
+
     @staticmethod
     def _check_not_multiagent(sample_batch):
         if isinstance(sample_batch, MultiAgentBatch):

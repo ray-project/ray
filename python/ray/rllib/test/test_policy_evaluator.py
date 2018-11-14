@@ -55,6 +55,18 @@ class BadPolicyGraph(PolicyGraph):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
+class FailOnStepEnv(gym.Env):
+    def __init__(self):
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        raise ValueError("kaboom")
+
+    def step(self, action):
+        raise ValueError("kaboom")
+
+
 class MockEnv(gym.Env):
     def __init__(self, episode_length, config=None):
         self.episode_length = episode_length
@@ -150,6 +162,11 @@ class TestPolicyEvaluator(unittest.TestCase):
         self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
         result2 = agent.train()
         self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
+
+    def testNoStepOnInit(self):
+        register_env("fail", lambda _: FailOnStepEnv())
+        pg = PGAgent(env="fail", config={"num_workers": 1})
+        self.assertRaises(Exception, lambda: pg.train())
 
     def testCallbacks(self):
         counts = Counter()
