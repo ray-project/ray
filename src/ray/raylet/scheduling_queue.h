@@ -85,13 +85,33 @@ class TaskQueue {
   ResourceSet current_resource_load_;
 };
 
-class ReadyQueue : public TaskQueue {
+class ReadyQueue {
+ public:
   bool AppendTask(const TaskID &task_id, const Task &task);
   bool RemoveTask(const TaskID &task_id,
                   std::vector<Task> *removed_tasks);
+  std::list<Task> GetTasks(const ResourceIdSet& resources);
+  bool HasTask(const TaskID &task_id) const {
+    return task_map_.find(task_id) != task_map_.end();
+  }
+  const ResourceSet &GetCurrentResourceLoad() const {
+    return current_resource_load_;
+  }
+  const std::list<Task> &GetTasks() const {
+    static std::list<Task> result;
+    result.clear();
+    for (auto& elem : task_map_) {
+      result.push_back(*elem.second);
+    }
+    return result;
+  }
 private:
   /// A list of tasks.
   std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
+  /// A hash to speed up looking up a task.
+  std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+  /// Aggregate resources of all the tasks in this queue.
+  ResourceSet current_resource_load_;
 };
 
 /// \class SchedulingQueue
@@ -147,7 +167,7 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
-  const std::list<Task> &GetReadyTasks() const;
+  ReadyQueue &GetReadyQueue();
 
   /// Get the queue of tasks in the running state.
   ///
@@ -287,7 +307,7 @@ class SchedulingQueue {
   /// waiting to be scheduled.
   TaskQueue placeable_tasks_;
   /// Tasks ready for dispatch, but that are waiting for a worker.
-  TaskQueue ready_tasks_;
+  ReadyQueue ready_tasks_;
   /// Tasks that are running on a worker.
   TaskQueue running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data

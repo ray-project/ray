@@ -133,6 +133,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
     }
   }
 
+  /*
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
@@ -144,6 +145,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
       }
     }
   }
+  */
   remote_scheduling_resources.SetLoadResources(std::move(new_load));
 
   return decision;
