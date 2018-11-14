@@ -158,7 +158,11 @@ class TrialExecutor(object):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-        pass
+        raise NotImplementedError
+
+    def resource_string(self):
+        """Returns a string describing the total resources available."""
+        raise NotImplementedError
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.

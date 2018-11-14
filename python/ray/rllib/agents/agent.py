@@ -17,6 +17,7 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.trainable import Trainable
+from ray.tune.trial import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -63,11 +64,25 @@ COMMON_CONFIG = {
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
 
+    # === Resources ===
+    # Number of actors used for parallelism
+    "num_workers": 2,
+    # Number of GPUs to allocate to the driver. Note that not all algorithms
+    # can take advantage of driver GPUs. This can be fraction (e.g., 0.3 GPUs).
+    "num_gpus": 0,
+    # Number of CPUs to allocate per worker.
+    "num_cpus_per_worker": 1,
+    # Number of GPUs to allocate per worker. This can be fractional.
+    "num_gpus_per_worker": 0,
+    # Any custom resources to allocate per worker.
+    "custom_resources_per_worker": {},
+    # Number of CPUs to allocate for the driver. Note: this only takes effect
+    # when running in Tune.
+    "num_cpus_for_driver": 1,
+
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
     "num_envs_per_worker": 1,
-    # Number of actors used for parallelism
-    "num_workers": 2,
     # Default sample batch size
     "sample_batch_size": 200,
     # Training batch size, if applicable. Should be >= sample_batch_size.
@@ -104,8 +119,6 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Allocate a fraction of a GPU instead of one (e.g., 0.3 GPUs)
-    "gpu_fraction": 1,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
@@ -149,6 +162,17 @@ class Agent(Trainable):
         "tf_session_args", "env_config", "model", "optimizer", "multiagent"
     ]
 
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        Agent._validate_config(cf)
+        # TODO(ekl): add custom resources here once tune supports them
+        return Resources(
+            cpu=cf["num_cpus_for_driver"],
+            gpu=cf["num_gpus"],
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
@@ -163,9 +187,14 @@ class Agent(Trainable):
                 config["local_evaluator_tf_session_args"]
             }))
 
-    def make_remote_evaluators(self, env_creator, policy_graph, count,
-                               remote_args):
+    def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
+
+        remote_args = {
+            "num_cpus": self.config["num_cpus_per_worker"],
+            "num_gpus": self.config["num_gpus_per_worker"],
+            "resources": self.config["custom_resources_per_worker"],
+        }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [
@@ -212,6 +241,21 @@ class Agent(Trainable):
                 "DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
+    @staticmethod
+    def _validate_config(config):
+        if "gpu" in config:
+            raise ValueError(
+                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
+                "instead.")
+        if "gpu_fraction" in config:
+            raise ValueError(
+                "The `gpu_fraction` config is deprecated, please use "
+                "`num_gpus=<fraction>` instead.")
+        if "use_gpu_for_workers" in config:
+            raise ValueError(
+                "The `use_gpu_for_workers` config is deprecated, please use "
+                "`num_gpus_per_worker=1` instead.")
+
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
 
@@ -224,6 +268,7 @@ class Agent(Trainable):
         """
 
         config = config or {}
+        Agent._validate_config(config)
 
         # Vars to synchronize to evaluators on each train call
         self.global_vars = {"timestep": 0}
@@ -370,6 +415,8 @@ class Agent(Trainable):
         if hasattr(self, "remote_evaluators"):
             for ev in self.remote_evaluators:
                 ev.__ray_terminate__.remote()
+        if hasattr(self, "optimizer"):
+            self.optimizer.stop()
 
     def __getstate__(self):
         state = {}
@@ -429,9 +476,6 @@ def get_agent_class(alg):
     elif alg == "A2C":
         from ray.rllib.agents import a3c
         return a3c.A2CAgent
-    elif alg == "BC":
-        from ray.rllib.agents import bc
-        return bc.BCAgent
     elif alg == "PG":
         from ray.rllib.agents import pg
         return pg.PGAgent

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from ray.rllib.agents.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -19,7 +18,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
                 "debug": False
             }),
         "n_step": 3,
-        "gpu": True,
+        "num_gpus": 1,
         "num_workers": 32,
         "buffer_size": 2000000,
         "learning_starts": 50000,
@@ -45,15 +44,6 @@ class ApexAgent(DQNAgent):
 
     _agent_name = "APEX"
     _default_config = APEX_DEFAULT_CONFIG
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
