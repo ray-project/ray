@@ -90,16 +90,10 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 256,
 
     # === Parallelism ===
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.

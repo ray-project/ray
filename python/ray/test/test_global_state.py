@@ -6,7 +6,7 @@ import json
 import pytest
 try:
     import pytest_timeout
-except ModuleNotFoundError as e:
+except ModuleNotFoundError:
     pytest_timeout = None
 import time
 

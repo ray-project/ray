@@ -49,9 +49,10 @@ class LearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stats = {}
+        self.stopped = False
 
     def run(self):
-        while True:
+        while not self.stopped:
             self.step()
 
     def step(self):
@@ -328,6 +329,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             train_timesteps += count
 
         return sample_timesteps, train_timesteps
+
+    def stop(self):
+        self.learner.stopped = True
 
     def stats(self):
         timing = {

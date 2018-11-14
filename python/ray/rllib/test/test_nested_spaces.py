@@ -17,7 +17,7 @@ from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
-from ray.rllib.test.test_serving_env import SimpleServing
+from ray.rllib.test.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 
 DICT_SPACE = spaces.Dict({

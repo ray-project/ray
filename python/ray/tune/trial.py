@@ -281,15 +281,10 @@ class Trial(object):
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
-        This is if a checkpoint frequency is set, or if there exists
-        a pre-existing checkpoint.
+        This is if a checkpoint frequency is set, which includes settings
+        where there may not yet be a checkpoint.
         """
-        if self.checkpoint_freq > 0:
-            # Edge case of beginning trial
-            if (self.checkpoint_freq > self.last_result[TRAINING_ITERATION]
-                    or self.last_result is None):
-                return True
-        return self.has_checkpoint()
+        return self.checkpoint_freq > 0
 
     def update_last_result(self, result, terminate=False):
         if terminate:
