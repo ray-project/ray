@@ -144,7 +144,6 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
       }
     }
   }
-
   remote_scheduling_resources.SetLoadResources(std::move(new_load));
 
   return decision;
