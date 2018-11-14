@@ -97,8 +97,8 @@ class ReadyQueue {
   const ResourceSet &GetCurrentResourceLoad() const {
     return current_resource_load_;
   }
-  const std::list<Task> &GetTasks() const {
-    static std::list<Task> result;
+  const std::list<Task> GetTasks() const {
+    std::list<Task> result;
     result.clear();
     for (auto& elem : task_map_) {
       result.push_back(*elem.second);
@@ -168,6 +168,8 @@ class SchedulingQueue {
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
   ReadyQueue &GetReadyQueue();
+
+  std::list<Task> GetReadyTasks() const;
 
   /// Get the queue of tasks in the running state.
   ///

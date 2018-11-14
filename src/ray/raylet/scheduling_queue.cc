@@ -159,7 +159,11 @@ const std::list<Task> &SchedulingQueue::GetPlaceableTasks() const {
   return placeable_tasks_.GetTasks();
 }
 
-ReadyQueue &SchedulingQueue::GetReadyQueue() {
+std::list<Task> SchedulingQueue::GetReadyTasks() const {
+  return ready_tasks_.GetTasks();
+}
+
+ReadyQueue &SchedulingQueue::GetReadyQueue(){
   return ready_tasks_;
 }
 
