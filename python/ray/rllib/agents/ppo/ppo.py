@@ -6,9 +6,7 @@ import logging
 
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
-from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +45,6 @@ DEFAULT_CONFIG = with_common_config({
     "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
-    # Number of GPUs to use for SGD
-    "num_gpus": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
@@ -71,24 +63,12 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
     def _init(self):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+            self.env_creator, self._policy_graph, self.config["num_workers"])
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {

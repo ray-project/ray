@@ -134,9 +134,10 @@ class LearnerThread(threading.Thread):
         self.grad_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
+        self.stopped = False
 
     def run(self):
-        while True:
+        while not self.stopped:
             self.step()
 
     def step(self):
@@ -298,6 +299,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 train_timesteps += count
 
         return sample_timesteps, train_timesteps
+
+    def stop(self):
+        for r in self.replay_actors:
+            r.__ray_terminate__.remote()
+        self.learner.stopped = True
 
     def stats(self):
         replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
