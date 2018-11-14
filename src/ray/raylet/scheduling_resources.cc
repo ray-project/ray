@@ -515,9 +515,8 @@ bool SchedulingResources::Acquire(const ResourceSet &resources) {
 
 std::string SchedulingResources::DebugString() const {
   std::stringstream result;
-  result << "Total: " << resources_total_.ToString();
-  result << ", Avail: " << resources_available_.ToString();
-  //    result << ", Load: " << resources_load_.ToString();
+  result << "\n- total: " << resources_total_.ToString();
+  result << "\n- avail: " << resources_available_.ToString();
   return result.str();
 };
 

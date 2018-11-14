@@ -1,5 +1,6 @@
-#include "ray/raylet/actor_registration.h"
+#include <sstream>
 
+#include "ray/raylet/actor_registration.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -40,6 +41,17 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
 bool ActorRegistration::IsAlive() const { return alive_; }
 
 void ActorRegistration::MarkDead() { alive_ = false; }
+
+std::string ActorRegistration::DebugString() const {
+  std::stringstream result;
+  if (alive_) {
+    result << "alive";
+  } else {
+    result << "dead";
+  }
+  result << ", num handles: " << frontier_.size();
+  return result.str();
+}
 
 }  // namespace raylet
 

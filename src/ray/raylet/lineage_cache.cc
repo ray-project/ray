@@ -1,3 +1,5 @@
+#include <sstream>
+
 #include "lineage_cache.h"
 
 namespace ray {
@@ -420,6 +422,16 @@ bool LineageCache::ContainsTask(const TaskID &task_id) const {
 }
 
 size_t LineageCache::NumEntries() const { return lineage_.GetEntries().size(); }
+
+std::string LineageCache::DebugString() const {
+  std::stringstream result;
+  result << "LineageCache:";
+  result << "\n- committed tasks: " << committed_tasks_.size();
+  result << "\n- child map size: " << children_.size();
+  result << "\n- num subscribed tasks: " << subscribed_tasks_.size();
+  result << "\n- lineage size: " << lineage_.GetEntries().size();
+  return result.str();
+}
 
 }  // namespace raylet
 

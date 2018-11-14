@@ -88,7 +88,7 @@ class ActorRegistration {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO: ActorRegistration"; };
+  std::string DebugString() const;
 
  private:
   /// Information from the global actor table about this actor, including the

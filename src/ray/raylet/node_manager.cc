@@ -235,7 +235,6 @@ void NodeManager::Heartbeat() {
   if (interval > RayConfig::instance().num_heartbeats_warning() *
                      RayConfig::instance().heartbeat_timeout_milliseconds()) {
     RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
-    RAY_LOG(WARNING) << DebugString();
   }
   last_heartbeat_at_ms_ = now_ms;
 
@@ -1666,11 +1665,10 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
-  result << "\n- Local resources: " << local_resources_.DebugString();
-  result << "\n- Num remote clients: " << remote_clients_.size();
+  result << "\nLocalResources: " << local_resources_.DebugString();
   result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
-    result << "\n- " << pair.first.hex() << ": " << pair.second.DebugString();
+    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
   }
   result << "\n" << object_manager_.DebugString();
   result << "\n" << gcs_client_->DebugString();
@@ -1681,11 +1679,11 @@ std::string NodeManager::DebugString() const {
   result << "\n" << lineage_cache_.DebugString();
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
-    result << "\n- " << pair.first.hex() << ": " << pair.second->DebugString();
+    result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
   }
   result << "\nActorRegistry:";
   for (auto &pair : actor_registry_) {
-    result << "\n- " << pair.first.hex() << ": " << pair.second.DebugString();
+    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
   }
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
