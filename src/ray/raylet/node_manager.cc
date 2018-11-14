@@ -542,12 +542,14 @@ void NodeManager::DispatchTasks(ReadyQueue& ready_queue) {
   auto task_queues = ready_queue.GetTaskQueues();
   // Remember ids of the task we need to remove from ready queue.
   std::unordered_set<TaskID> assigned_task_ids;
+  auto round_robin_iterator = task_queues.begin();
+  std::advance(round_robin_iterator, rand() % task_queues.size());
   do {
     assigned_task_ids.clear();
     // Round robin over the task lists
-    for (auto& task_queue : ready_queue.GetTaskQueues()) {
-      if (local_available_resources_.Contains(task_queue.first) && task_queue.second.size() > 0) {
-        const auto& task = task_queue.second.front();
+    for (int64_t i = 0; i < task_queues.size(); ++i) {
+      if (local_available_resources_.Contains(round_robin_iterator->first) && round_robin_iterator->second.size() > 0) {
+        const auto& task = round_robin_iterator->second.front();
         if (AssignTask(task)) {
           // We were successful in assigning this task on a local worker, so
           // remember to remove it from ready queue. If for some reason the
@@ -555,6 +557,10 @@ void NodeManager::DispatchTasks(ReadyQueue& ready_queue) {
           // ready queue.
           assigned_task_ids.insert(task.GetTaskSpecification().TaskId());
         }
+      }
+      ++round_robin_iterator;
+      if(round_robin_iterator == task_queues.end()) {
+        round_robin_iterator = task_queues.begin();
       }
     }
     local_queues_.RemoveTasks(assigned_task_ids);
