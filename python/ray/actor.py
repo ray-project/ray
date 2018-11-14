@@ -759,7 +759,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
                 worker.local_scheduler_client.disconnect()
-                # Kill the process group. We will get the SIGTERM and enter
+                # Kill the process group. We will get the SIGTERM and
                 # eventually call sys.exit(0) in worker.py as a result of this.
                 os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
                 assert False, "This process should have terminated."
