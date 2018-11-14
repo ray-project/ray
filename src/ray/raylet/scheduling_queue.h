@@ -100,7 +100,7 @@ class ReadyQueue {
   const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const {
     std::list<Task> result;
     for (auto& task_list : task_lists_) {
-      if (resources && resources->Contains(task_list.first)) {
+      if (!resources || resources->Contains(task_list.first)) {
         for (auto& task : task_list.second) {
           result.push_back(task);
         }
