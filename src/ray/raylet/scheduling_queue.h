@@ -37,6 +37,63 @@ enum class TaskState {
   INFEASIBLE
 };
 
+class TaskQueue {
+ public:
+
+  /// \brief Append a task to queue.
+  ///
+  /// \param task_id The task ID for the task to append.
+  /// \param task The task to append to the queue.
+  /// \return Whether the append operation succeeds.
+  bool AppendTask(const TaskID &task_id, const Task &task);
+
+  /// \brief Remove a task from queue.
+  ///
+  /// \param task_id The task ID for the task to remove from the queue.
+  /// \return Whether the removal succeeds.
+  bool RemoveTask(const TaskID &task_id);
+
+  /// \brief Remove a task from queue.
+  ///
+  /// \param task_id The task ID for the task to remove from the queue.
+  /// \param removed_tasks If the task specified by task_id is successfully
+  ///  removed from the queue, the task data is appended to the vector. Can
+  ///  be a nullptr, in which case nothing is appended.
+  /// \return Whether the removal succeeds.
+  bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
+
+  /// \brief Check if the queue contains a specific task id.
+  ///
+  /// \param task_id The task ID for the task.
+  /// \return Whether the task_id exists in this queue.
+  bool HasTask(const TaskID &task_id) const;
+
+  /// \brief Remove the task list of the queue.
+  /// \return A list of tasks contained in this queue.
+  const std::list<Task> &GetTasks() const;
+
+  /// \brief Get the total resources required by the tasks in the queue.
+  /// \return Total resources required by the tasks in the queue.
+  const ResourceSet &GetCurrentResourceLoad() const;
+
+ protected:
+  /// A list of tasks.
+  std::list<Task> task_list_;
+  /// A hash to speed up looking up a task.
+  std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
+  /// Aggregate resources of all the tasks in this queue.
+  ResourceSet current_resource_load_;
+};
+
+class ReadyQueue : public TaskQueue {
+  bool AppendTask(const TaskID &task_id, const Task &task);
+  bool RemoveTask(const TaskID &task_id,
+                  std::vector<Task> *removed_tasks);
+private:
+  /// A list of tasks.
+  std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
+};
+
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues.
@@ -220,59 +277,6 @@ class SchedulingQueue {
   /// \return A string that can be used to display the contents of the queues
   /// for debugging purposes.
   const std::string ToString() const;
-
-  class TaskQueue {
-   public:
-    /// Creating a task queue.
-    TaskQueue() {}
-
-    /// Destructor for task queue.
-    ~TaskQueue();
-
-    /// \brief Append a task to queue.
-    ///
-    /// \param task_id The task ID for the task to append.
-    /// \param task The task to append to the queue.
-    /// \return Whether the append operation succeeds.
-    bool AppendTask(const TaskID &task_id, const Task &task);
-
-    /// \brief Remove a task from queue.
-    ///
-    /// \param task_id The task ID for the task to remove from the queue.
-    /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id);
-
-    /// \brief Remove a task from queue.
-    ///
-    /// \param task_id The task ID for the task to remove from the queue.
-    /// \param removed_tasks If the task specified by task_id is successfully
-    ///  removed from the queue, the task data is appended to the vector. Can
-    ///  be a nullptr, in which case nothing is appended.
-    /// \return Whether the removal succeeds.
-    bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
-
-    /// \brief Check if the queue contains a specific task id.
-    ///
-    /// \param task_id The task ID for the task.
-    /// \return Whether the task_id exists in this queue.
-    bool HasTask(const TaskID &task_id) const;
-
-    /// \brief Remove the task list of the queue.
-    /// \return A list of tasks contained in this queue.
-    const std::list<Task> &GetTasks() const;
-
-    /// \brief Get the total resources required by the tasks in the queue.
-    /// \return Total resources required by the tasks in the queue.
-    const ResourceSet &GetCurrentResourceLoad() const;
-
-   private:
-    /// A list of tasks.
-    std::list<Task> task_list_;
-    /// A hash to speed up looking up a task.
-    std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-    /// Aggregate resources of all the tasks in this queue.
-    ResourceSet current_resource_load_;
-  };
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
