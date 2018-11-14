@@ -97,11 +97,14 @@ class ReadyQueue {
   const ResourceSet &GetCurrentResourceLoad() const {
     return current_resource_load_;
   }
-  const std::list<Task> GetTasks() const {
+  const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const {
     std::list<Task> result;
-    result.clear();
-    for (auto& elem : task_map_) {
-      result.push_back(*elem.second);
+    for (auto& task_list : task_lists_) {
+      if (resources && resources->Contains(task_list.first)) {
+        for (auto& task : task_list.second) {
+          result.push_back(task);
+        }
+      }
     }
     return result;
   }

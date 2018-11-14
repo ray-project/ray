@@ -539,32 +539,28 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
 }
 
 void NodeManager::DispatchTasks(ReadyQueue& ready_queue) {
-  auto task_queues = ready_queue.GetTaskQueues();
-  // Remember ids of the task we need to remove from ready queue.
-  std::unordered_set<TaskID> assigned_task_ids;
-  auto round_robin_iterator = task_queues.begin();
-  std::advance(round_robin_iterator, rand() % task_queues.size());
-  do {
-    assigned_task_ids.clear();
-    // Round robin over the task lists
-    for (int64_t i = 0; i < task_queues.size(); ++i) {
-      if (local_available_resources_.Contains(round_robin_iterator->first) && round_robin_iterator->second.size() > 0) {
-        const auto& task = round_robin_iterator->second.front();
-        if (AssignTask(task)) {
-          // We were successful in assigning this task on a local worker, so
-          // remember to remove it from ready queue. If for some reason the
-          // scheduling of this task fails later, we will add it back to the
-          // ready queue.
-          assigned_task_ids.insert(task.GetTaskSpecification().TaskId());
-        }
-      }
-      ++round_robin_iterator;
-      if(round_robin_iterator == task_queues.end()) {
-        round_robin_iterator = task_queues.begin();
-      }
+  auto ready_tasks = ready_queue.GetTasks(&local_available_resources_);
+   // Remember ids of the task we need to remove from ready queue.
+  std::unordered_set<TaskID> removed_task_ids = {};
+   for (const auto &task : ready_tasks) {
+     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+     if (!local_available_resources_.Contains(task_resources)) {
+       // Not enough local resources for this task right now, skip this task.
+       // TODO(rkn): We should always skip node managers that have 0 CPUs.
+       continue;
+     }
+    // We have enough resources for this task. Assign task.
+    if (AssignTask(task)) {
+      // We were successful in assigning this task on a local worker, so
+      // remember to remove it from ready queue. If for some reason the
+      // scheduling of this task fails later, we will add it back to the
+      // ready queue.
+      removed_task_ids.insert(task.GetTaskSpecification().TaskId());
     }
-    local_queues_.RemoveTasks(assigned_task_ids);
-  } while(assigned_task_ids.size() > 0);
+  }
+  if (!removed_task_ids.empty()) {
+    local_queues_.RemoveTasks(removed_task_ids);
+  }
 }
 
 void NodeManager::ProcessClientMessage(
