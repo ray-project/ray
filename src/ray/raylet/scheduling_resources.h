@@ -377,7 +377,7 @@ class SchedulingResources {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const;
 
  private:
   /// Static resource configuration (e.g., static_resources).

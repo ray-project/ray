@@ -78,7 +78,7 @@ class RAY_EXPORT AsyncGcsClient {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const;
 
  private:
   std::unique_ptr<FunctionTable> function_table_;

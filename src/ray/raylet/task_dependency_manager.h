@@ -114,7 +114,7 @@ class TaskDependencyManager {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const { return "TODO: TaskDepManager"; };
 
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;

@@ -1,6 +1,7 @@
 #include "scheduling_resources.h"
 
 #include <cmath>
+#include <sstream>
 
 #include "ray/util/logging.h"
 
@@ -511,6 +512,14 @@ bool SchedulingResources::Release(const ResourceSet &resources) {
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return resources_available_.SubtractResourcesStrict(resources);
 }
+
+std::string SchedulingResources::DebugString() const {
+  std::stringstream result;
+  result << "Total: " << resources_total_.ToString();
+  result << ", Avail: " << resources_available_.ToString();
+  //    result << ", Load: " << resources_load_.ToString();
+  return result.str();
+};
 
 }  // namespace raylet
 

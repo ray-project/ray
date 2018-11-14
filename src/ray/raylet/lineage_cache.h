@@ -275,7 +275,7 @@ class LineageCache {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const { return "TODO: LineageCache"; };
 
  private:
   /// Flush a task that is in UNCOMMITTED_READY state.

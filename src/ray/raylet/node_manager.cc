@@ -1663,36 +1663,32 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
 }
 
 std::string NodeManager::DebugString() const {
-  std::string cluster_resources_debug_string = "ClusterResources:";
-  std::string remote_clients_debug_string = "NumRemoteClients: " + remote_clients_.size();
-  std::string remote_connections_debug_string = "RemoteConnections:";
-  std::string actor_registry_debug_string = "ActorRegistry:";
+  std::stringstream result;
+  uint64_t now_ms = current_time_ms();
+  result << "NodeManager:";
+  result << "\n- Local resources: " << local_resources_.DebugString();
+  result << "\n- Num remote clients: " << remote_clients_.size();
+  result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
-    cluster_resources_debug_string +=
-        "\n" + pair.first.hex() + ": " + pair.second.DebugString();
+    result << "\n- " << pair.first.hex() << ": " << pair.second.DebugString();
   }
+  result << "\n" << object_manager_.DebugString();
+  result << "\n" << gcs_client_->DebugString();
+  result << "\n" << worker_pool_.DebugString();
+  result << "\n" << local_queues_.DebugString();
+  result << "\n" << reconstruction_policy_.DebugString();
+  result << "\n" << task_dependency_manager_.DebugString();
+  result << "\n" << lineage_cache_.DebugString();
+  result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
-    remote_connections_debug_string +=
-        "\n" + pair.first.hex() + ": " + pair.second->DebugString();
+    result << "\n- " << pair.first.hex() << ": " << pair.second->DebugString();
   }
+  result << "\nActorRegistry:";
   for (auto &pair : actor_registry_) {
-    actor_registry_debug_string +=
-        "\n" + pair.first.hex() + ": " + pair.second.DebugString();
+    result << "\n- " << pair.first.hex() << ": " << pair.second.DebugString();
   }
-  std::string result = "NodeManager:";
-  result += "\n" + object_manager_.DebugString();
-  result += "\n" + gcs_client_->DebugString();
-  result += "\n" + local_resources_.DebugString();
-  result += "\n" + cluster_resources_debug_string;
-  result += "\n" + worker_pool_.DebugString();
-  result += "\n" + local_queues_.DebugString();
-  result += "\n" + reconstruction_policy_.DebugString();
-  result += "\n" + task_dependency_manager_.DebugString();
-  result += "\n" + lineage_cache_.DebugString();
-  result += "\n" + remote_clients_debug_string;
-  result += "\n" + remote_connections_debug_string;
-  result += "\n" + actor_registry_debug_string;
-  return result;
+  result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  return result.str();
 }
 
 }  // namespace raylet

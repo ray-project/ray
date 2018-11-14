@@ -121,7 +121,7 @@ class WorkerPool {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const;
 
  protected:
   /// A map from the pids of starting worker processes

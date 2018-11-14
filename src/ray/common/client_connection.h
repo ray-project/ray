@@ -72,7 +72,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
     socket_.close(ec);
   }
 
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const { return "TODO: ClientConnection"; };
 
  protected:
   /// A private constructor for a server connection.

@@ -196,10 +196,11 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
 }
 
 std::string ObjectBufferPool::DebugString() const {
-  std::string result = "BufferPool:\n";
-  result += "\n- get buffer state map size: " + get_buffer_state_.size();
-  result += "\n- create buffer state map size: " + create_buffer_state_.size();
-  return result;
+  std::stringstream result;
+  result << "BufferPool:";
+  result << "\n- get buffer state map size: " << get_buffer_state_.size();
+  result << "\n- create buffer state map size: " << create_buffer_state_.size();
+  return result.str();
 }
 
 }  // namespace ray

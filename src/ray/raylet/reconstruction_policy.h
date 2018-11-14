@@ -74,7 +74,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const { return "TODO"; };
+  std::string DebugString() const { return "TODO: ReconstructionPolicy"; };
 
  private:
   struct ReconstructionTask {

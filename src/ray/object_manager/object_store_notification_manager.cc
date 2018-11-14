@@ -91,10 +91,11 @@ void ObjectStoreNotificationManager::SubscribeObjDeleted(
 }
 
 std::string ObjectStoreNotificationManager::DebugString() const {
-  std::string result = "ObjectStoreNotificationManager:\n";
-  result += "\n- num adds processed: " + num_adds_processed_;
-  result += "\n- num removes processed: " + num_removes_processed_;
-  return result;
+  std::stringstream result;
+  result << "ObjectStoreNotificationManager:";
+  result << "\n- num adds processed: " << num_adds_processed_;
+  result << "\n- num removes processed: " << num_removes_processed_;
+  return result.str();
 }
 
 }  // namespace ray
