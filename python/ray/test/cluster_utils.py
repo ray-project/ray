@@ -172,16 +172,11 @@ class Cluster(object):
         all_nodes = list(self.worker_nodes)
         for node in all_nodes:
             self.remove_node(node)
-<<<<<<< HEAD
+
         if self.head_node:
             self.remove_node(self.head_node)
         else:
             logger.warning("No headnode exists!")
-=======
-
-        if self.head_node is not None:
-            self.remove_node(self.head_node)
->>>>>>> 57c7b4238ef02e61de256feaa77f8028a28d630d
 
 
 class Node(object):
