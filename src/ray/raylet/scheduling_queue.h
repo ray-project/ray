@@ -90,7 +90,7 @@ class ReadyQueue {
   bool AppendTask(const TaskID &task_id, const Task &task);
   bool RemoveTask(const TaskID &task_id,
                   std::vector<Task> *removed_tasks);
-  std::list<Task> GetTasks(const ResourceIdSet& resources);
+  std::unordered_map<ResourceSet, std::list<Task>>& GetTaskQueues();
   bool HasTask(const TaskID &task_id) const {
     return task_map_.find(task_id) != task_map_.end();
   }

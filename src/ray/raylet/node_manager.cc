@@ -539,24 +539,26 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
 }
 
 void NodeManager::DispatchTasks(ReadyQueue& ready_queue) {
-  auto ready_tasks = ready_queue.GetTasks(local_available_resources_);
-
+  auto task_queues = ready_queue.GetTaskQueues();
   // Remember ids of the task we need to remove from ready queue.
-  std::unordered_set<TaskID> removed_task_ids = {};
-
-  for (const auto &task : ready_tasks) {
-    // We have enough resources for this task. Assign task.
-    if (AssignTask(task)) {
-      // We were successful in assigning this task on a local worker, so
-      // remember to remove it from ready queue. If for some reason the
-      // scheduling of this task fails later, we will add it back to the
-      // ready queue.
-      removed_task_ids.insert(task.GetTaskSpecification().TaskId());
+  std::unordered_set<TaskID> assigned_task_ids;
+  do {
+    assigned_task_ids.clear();
+    // Round robin over the task lists
+    for (auto& task_queue : ready_queue.GetTaskQueues()) {
+      if (local_available_resources_.Contains(task_queue.first) && task_queue.second.size() > 0) {
+        const auto& task = task_queue.second.front();
+        if (AssignTask(task)) {
+          // We were successful in assigning this task on a local worker, so
+          // remember to remove it from ready queue. If for some reason the
+          // scheduling of this task fails later, we will add it back to the
+          // ready queue.
+          assigned_task_ids.insert(task.GetTaskSpecification().TaskId());
+        }
+      }
     }
-  }
-  if (!removed_task_ids.empty()) {
-    local_queues_.RemoveTasks(removed_task_ids);
-  }
+    local_queues_.RemoveTasks(assigned_task_ids);
+  } while(assigned_task_ids.size() > 0);
 }
 
 void NodeManager::ProcessClientMessage(
