@@ -7,7 +7,7 @@ import time
 import pytest
 try:
     import pytest_timeout
-except ModuleNotFoundError as e:
+except ImportError:
     pytest_timeout = None
 
 from ray.test.cluster_utils import Cluster
