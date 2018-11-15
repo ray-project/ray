@@ -422,7 +422,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto task = local_queues_.RemoveTask(task_id);
+    const auto task = local_queues_.RemoveTask(task_id).first;
     // Since we are spilling back from the ready and waiting queues, we need
     // to unsubscribe the dependencies.
     task_dependency_manager_.UnsubscribeDependencies(task_id);
@@ -470,7 +470,8 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
     }
     // Resubmit the methods that were submitted before the actor's location was
     // known.
-    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
+    auto created_actor_methods =
+        local_queues_.RemoveTasks(created_actor_method_ids).first;
     for (const auto &method : created_actor_methods) {
       if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
         RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
@@ -487,7 +488,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
 
 void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
   auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove).first;
 
   for (auto const &task : removed_tasks) {
     const TaskSpecification &spec = task.GetTaskSpecification();
@@ -692,7 +693,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
       task_dependency_manager_.TaskCanceled(task_id);
-      const Task &task = local_queues_.RemoveTask(task_id);
+      const Task &task = local_queues_.RemoveTask(task_id).first;  // TODO: Do we need to make sure not to call unsubscribedependencies if the task was infeasible.
       const TaskSpecification &spec = task.GetTaskSpecification();
       // Handle the task failure in order to raise an exception in the
       // application.
@@ -931,7 +932,7 @@ void NodeManager::ScheduleTasks(
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
       // (See design_docs/task_states.rst for the state transition diagram.)
-      const auto task = local_queues_.RemoveTask(task_id);
+      const auto task = local_queues_.RemoveTask(task_id).first;
       // Attempt to forward the task. If this fails to forward the task,
       // the task will be resubmit locally.
       ForwardTaskOrResubmit(task, client_id);
@@ -940,7 +941,7 @@ void NodeManager::ScheduleTasks(
 
   // Transition locally placed tasks to waiting or ready for dispatch.
   if (local_task_ids.size() > 0) {
-    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
+    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids).first;
     for (const auto &t : tasks) {
       EnqueuePlaceableTask(t);
     }
@@ -1124,7 +1125,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
     // worker as blocked. This temporarily releases any resources that the
     // worker holds while it is blocked.
     if (!worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
-      const auto task = local_queues_.RemoveTask(current_task_id);
+      const auto task = local_queues_.RemoveTask(current_task_id).first;
       local_queues_.QueueRunningTasks({task});
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -1176,7 +1177,7 @@ void NodeManager::HandleTaskUnblocked(
     // the worker.
     if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
       // (See design_docs/task_states.rst for the state transition diagram.)
-      const auto task = local_queues_.RemoveTask(current_task_id);
+      const auto task = local_queues_.RemoveTask(current_task_id).first;
       local_queues_.QueueRunningTasks({task});
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -1367,7 +1368,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(task_id);
+  const auto task = local_queues_.RemoveTask(task_id).first;
 
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // If this was an actor creation task, then convert the worker to an actor.
@@ -1499,7 +1500,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     RAY_CHECK(ready_task_id_set_copy.empty());
 
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
-    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set).first;
     local_queues_.QueueReadyTasks(ready_tasks);
     const std::list<Task> ready_tasks_list(ready_tasks.begin(), ready_tasks.end());
     // Dispatch only the new ready tasks whose dependencies were fulfilled.

@@ -195,27 +195,53 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   }
 }
 
-std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_ids) {
+std::pair<std::vector<Task>, std::vector<TaskState>> SchedulingQueue::RemoveTasks(
+    std::unordered_set<TaskID> &task_ids) {
   // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
+  std::vector<TaskState> removed_task_states;
+
+  size_t num_queued_tasks = 0;
 
   // Try to find the tasks to remove from the queues.
+
   RemoveTasksFromQueue(methods_waiting_for_actor_creation_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::WAITING_FOR_ACTOR);
+  }
   RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::WAITING);
+  }
   RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::PLACEABLE);
+  }
   RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::READY);
+  }
   RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::RUNNING);
+  }
   RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
+  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
+    removed_task_states.push_back(TaskState::INFEASIBLE);
+  }
 
   RAY_CHECK(task_ids.size() == 0);
-  return removed_tasks;
+  RAY_CHECK(removed_tasks.size() == removed_task_states.size());
+  return std::make_pair(removed_tasks, removed_task_states);
 }
 
-Task SchedulingQueue::RemoveTask(const TaskID &task_id) {
+std::pair<Task, TaskState> SchedulingQueue::RemoveTask(const TaskID &task_id) {
   std::unordered_set<TaskID> task_id_set = {task_id};
-  auto task = RemoveTasks(task_id_set).front();
-  RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
-  return task;
+  auto const tasks_and_states_pair = RemoveTasks(task_id_set);
+  auto task_state_pair = std::make_pair(tasks_and_states_pair.first.front(),
+                                        tasks_and_states_pair.second.front());
+  RAY_CHECK(task_state_pair.first.GetTaskSpecification().TaskId() == task_id);
+  return task_state_pair;
 }
 
 void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState src_state,

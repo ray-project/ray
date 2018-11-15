@@ -34,7 +34,10 @@ enum class TaskState {
   DRIVER,
   // The task has resources that cannot be satisfied by any node, as far as we
   // know.
-  INFEASIBLE
+  INFEASIBLE,
+  // The task is an actor method and is waiting to learn where the actor was
+  // created.
+  WAITING_FOR_ACTOR,
 };
 
 /// \class SchedulingQueue
@@ -118,15 +121,17 @@ class SchedulingQueue {
   /// \param tasks The set of task IDs to remove from the queue. The
   /// corresponding tasks must be contained in the queue. The IDs of removed
   /// tasks will be erased from the set.
-  /// \return A vector of the tasks that were removed.
-  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &tasks);
+  /// \return A vector of the tasks that were removed and their scheduling
+  /// states.
+  std::pair<std::vector<Task>, std::vector<TaskState>> RemoveTasks(
+      std::unordered_set<TaskID> &tasks);
 
   /// Remove a task from the task queue.
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
-  /// \return The task that was removed.
-  Task RemoveTask(const TaskID &task_id);
+  /// \return The task that was removed and its scheduling state.
+  std::pair<Task, TaskState> RemoveTask(const TaskID &task_id);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
