@@ -739,18 +739,18 @@ def test_defining_remote_functions(shutdown_only):
         def g():
             return ray.get_gpu_ids()
 
-        assert f._submit([0], num_return_vals=0) is None
-        id1 = f._submit(args=[1], num_return_vals=1)
+        assert f._remote([0], num_return_vals=0) is None
+        id1 = f._remote(args=[1], num_return_vals=1)
         assert ray.get(id1) == [0]
-        id1, id2 = f._submit(args=[2], num_return_vals=2)
+        id1, id2 = f._remote(args=[2], num_return_vals=2)
         assert ray.get([id1, id2]) == [0, 1]
-        id1, id2, id3 = f._submit(args=[3], num_return_vals=3)
+        id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
         assert ray.get([id1, id2, id3]) == [0, 1, 2]
         assert ray.get(
-            g._submit(
+            g._remote(
                 args=[], num_cpus=1, num_gpus=1,
                 resources={"Custom": 1})) == [0]
-        infeasible_id = g._submit(args=[], resources={"NonexistentCustom": 1})
+        infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
         ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
         assert len(ready_ids) == 0
         assert len(remaining_ids) == 1
@@ -767,10 +767,10 @@ def test_defining_remote_functions(shutdown_only):
             def gpu_ids(self):
                 return ray.get_gpu_ids()
 
-        a = Actor._submit(
+        a = Actor._remote(
             args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
-        id1, id2, id3, id4 = a.method._submit(
+        id1, id2, id3, id4 = a.method._remote(
             args=["test"], kwargs={"b": 2}, num_return_vals=4)
         assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
@@ -1064,13 +1064,13 @@ def test_object_transfer_dump(ray_start_cluster):
 
     # These objects will live on different nodes.
     object_ids = [
-        f._submit(args=[1], resources={str(i): 1}) for i in range(num_nodes)
+        f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
     ]
 
     # Broadcast each object from each machine to each other machine.
     for object_id in object_ids:
         ray.get([
-            f._submit(args=[object_id], resources={str(i): 1})
+            f._remote(args=[object_id], resources={str(i): 1})
             for i in range(num_nodes)
         ])
 
@@ -1715,17 +1715,17 @@ def test_fractional_resources(shutdown_only):
             pass
 
     # Create an actor that requires 0.7 of the custom resource.
-    f1 = Foo2._submit([], {}, resources={"Custom": 0.7})
+    f1 = Foo2._remote([], {}, resources={"Custom": 0.7})
     ray.get(f1.method.remote())
     # Make sure that we cannot create an actor that requires 0.7 of the
     # custom resource. TODO(rkn): Re-enable this once ray.wait is
     # implemented.
-    f2 = Foo2._submit([], {}, resources={"Custom": 0.7})
+    f2 = Foo2._remote([], {}, resources={"Custom": 0.7})
     ready, _ = ray.wait([f2.method.remote()], timeout=500)
     assert len(ready) == 0
     # Make sure we can start an actor that requries only 0.3 of the custom
     # resource.
-    f3 = Foo2._submit([], {}, resources={"Custom": 0.3})
+    f3 = Foo2._remote([], {}, resources={"Custom": 0.3})
     ray.get(f3.method.remote())
 
     del f1, f3
@@ -1741,7 +1741,7 @@ def test_fractional_resources(shutdown_only):
         test.remote()
 
     with pytest.raises(ValueError):
-        Foo2._submit([], {}, resources={"Custom": 1.5})
+        Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
 def test_multiple_local_schedulers(shutdown_only):
