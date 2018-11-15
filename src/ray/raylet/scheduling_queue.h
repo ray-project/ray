@@ -120,6 +120,11 @@ class ReadyQueue {
   ///        these resources.
   /// \return A list of tasks contained in this queue.
   const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const;
+
+  std::unordered_map<ResourceSet, std::list<Task>>& GetTaskQueues() {
+    return task_lists_;
+  }
+
 private:
   /// A list of tasks.
   std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
@@ -185,6 +190,10 @@ class SchedulingQueue {
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
   std::list<Task> GetReadyTasks(const ResourceIdSet* resources = nullptr) const;
+
+  ReadyQueue &GetReadyQueue(){
+    return ready_tasks_;
+  }
 
   /// Get the queue of tasks in the running state.
   ///

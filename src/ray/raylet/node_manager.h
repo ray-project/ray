@@ -208,7 +208,9 @@ class NodeManager {
   /// Otherwise, task_queue points to entire ready queue.
   ///
   /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
-  void DispatchTasks(const std::list<Task> &ready_tasks);
+  void DispatchTasks(const std::list<Task> &ready_tasks, bool can_skip = false);
+
+  void DispatchTasks();
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a

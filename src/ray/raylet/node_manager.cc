@@ -508,7 +508,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
+void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks, bool can_skip) {
   // Return if there are no tasks to schedule.
   if (ready_tasks.empty()) {
     return;
@@ -522,7 +522,11 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
     if (!local_available_resources_.Contains(task_resources)) {
       // Not enough local resources for this task right now, skip this task.
       // TODO(rkn): We should always skip node managers that have 0 CPUs.
-      continue;
+      if (can_skip) {
+        break;
+      } else {
+        continue;
+      }
     }
     // We have enough resources for this task. Assign task.
     if (AssignTask(task)) {
@@ -535,6 +539,14 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks) {
   }
   if (!removed_task_ids.empty()) {
     local_queues_.RemoveTasks(removed_task_ids);
+  }
+}
+
+void NodeManager::DispatchTasks() {
+  for (auto& it : local_queues_.GetReadyQueue().GetTaskQueues()) {
+    if (local_available_resources_.Contains(it.first)) {
+      DispatchTasks(it.second, true);
+    }
   }
 }
 
@@ -618,7 +630,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks(local_queues_.GetReadyTasks(&local_available_resources_));
+    DispatchTasks();
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -647,7 +659,7 @@ void NodeManager::ProcessGetTaskMessage(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasks(&local_available_resources_));
+  DispatchTasks();
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -744,7 +756,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "driver_id: " << worker->GetAssignedDriverId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks(local_queues_.GetReadyTasks(&local_available_resources_));
+    DispatchTasks();
   } else if (is_driver) {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
@@ -1141,7 +1153,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
-      DispatchTasks(local_queues_.GetReadyTasks(&local_available_resources_));
+      DispatchTasks();
     }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply mark
