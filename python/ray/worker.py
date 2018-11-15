@@ -25,6 +25,7 @@ import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.gcs_utils
+import ray.memory_monitor as memory_monitor
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
@@ -213,6 +214,7 @@ class Worker(object):
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = profiling.Profiler(self)
+        self.memory_monitor = memory_monitor.MemoryMonitor()
         self.state_lock = threading.Lock()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -821,6 +823,7 @@ class Worker(object):
         try:
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
+            self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
