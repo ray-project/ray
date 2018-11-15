@@ -143,8 +143,16 @@ bool ReadyQueue::RemoveTask(const TaskID &task_id,
   return true;
 }
 
-std::unordered_map<ResourceSet, std::list<Task>>& ReadyQueue::GetTaskQueues() {
-  return task_lists_;
+const std::list<Task> ReadyQueue::GetTasks(const ResourceIdSet* resources) const {
+  std::list<Task> result;
+  for (auto& task_list : task_lists_) {
+    if (!resources || resources->Contains(task_list.first)) {
+      for (auto& task : task_list.second) {
+        result.push_back(task);
+      }
+    }
+  }
+  return result;
 }
 
 const std::list<Task> &SchedulingQueue::GetMethodsWaitingForActorCreation() const {

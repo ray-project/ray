@@ -87,27 +87,39 @@ class TaskQueue {
 
 class ReadyQueue {
  public:
+  /// \brief Append a task to queue.
+  ///
+  /// \param task_id The task ID for the task to append.
+  /// \param task The task to append to the queue.
+  /// \return Whether the append operation succeeds.
   bool AppendTask(const TaskID &task_id, const Task &task);
+
+  /// \brief Remove a task from queue.
+  ///
+  /// \param task_id The task ID for the task to remove from the queue.
+  /// \return Whether the removal succeeds.
   bool RemoveTask(const TaskID &task_id,
                   std::vector<Task> *removed_tasks);
-  std::unordered_map<ResourceSet, std::list<Task>>& GetTaskQueues();
+
+  /// \brief Check if the queue contains a specific task id.
+  ///
+  /// \param task_id The task ID for the task.
+  /// \return Whether the task_id exists in this queue.
   bool HasTask(const TaskID &task_id) const {
     return task_map_.find(task_id) != task_map_.end();
   }
+  /// \brief Get the total resources required by the tasks in the queue.
+  /// \return Total resources required by the tasks in the queue.
   const ResourceSet &GetCurrentResourceLoad() const {
     return current_resource_load_;
   }
-  const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const {
-    std::list<Task> result;
-    for (auto& task_list : task_lists_) {
-      if (!resources || resources->Contains(task_list.first)) {
-        for (auto& task : task_list.second) {
-          result.push_back(task);
-        }
-      }
-    }
-    return result;
-  }
+
+  /// \brief Remove the task list of the queue.
+  ///
+  /// \param resources If provided, only return tasks that are runnable given
+  ///        these resources.
+  /// \return A list of tasks contained in this queue.
+  const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const;
 private:
   /// A list of tasks.
   std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
