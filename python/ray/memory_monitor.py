@@ -28,10 +28,10 @@ class RayOutOfMemoryError(Exception):
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:5]:
             proc_str += "\n{}\t{}GB\t{}".format(
-                pid, round(rss / 1e9, 1), " ".join(cmdline)[:100].strip())
+                pid, round(rss / 1e9, 2), " ".join(cmdline)[:100].strip())
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
-                os.uname()[1], round(used_gb, 2), round(total_gb, 1)) +
+                os.uname()[1], round(used_gb, 2), round(total_gb, 2)) +
                 "The top 5 memory consumers are:\n\n{}".format(proc_str) +
                 "\n\nIn addition, ~{} GB of shared memory is ".format(
                     round(psutil.virtual_memory().shared / 1e9, 2)) +
