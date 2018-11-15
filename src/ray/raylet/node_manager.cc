@@ -53,7 +53,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
-      logs_dir_(config.logs_dir),
+      temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
@@ -1668,7 +1668,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
 
 void NodeManager::DumpDebugState() {
   std::fstream fs;
-  fs.open(logs_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();
 }

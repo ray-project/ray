@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
   const std::string python_worker_command = std::string(argv[12]);
   const std::string java_worker_command = std::string(argv[13]);
   const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
-  const std::string logs_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
+  const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
-  node_manager_config.logs_dir = logs_dir;
+  node_manager_config.temp_dir = temp_dir;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;

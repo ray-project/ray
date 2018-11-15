@@ -45,8 +45,8 @@ struct NodeManagerConfig {
   uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
-  /// The path to the ray logs dir.
-  std::string logs_dir;
+  /// The path to the ray temp dir.
+  std::string temp_dir;
 };
 
 class NodeManager {
@@ -371,8 +371,8 @@ class NodeManager {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
-  /// The path to the ray logs dir.
-  std::string logs_dir_;
+  /// The path to the ray temp dir.
+  std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and
   /// push it to the GCS.
   boost::asio::steady_timer object_manager_profile_timer_;
