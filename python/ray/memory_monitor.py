@@ -32,7 +32,12 @@ class RayOutOfMemoryError(Exception):
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
                 os.uname()[1], round(used_gb, 2), round(total_gb, 1)) +
-                "The top 5 memory consumers are:\n\n{}".format(proc_str))
+                "The top 5 memory consumers are:\n\n{}".format(proc_str) +
+                "\n\nIn addition, ~{} GB of shared memory is ".format(
+                    round(psutil.virtual_memory().shared / 1e9, 2)) +
+                "currently being used by the Ray object store. You can set "
+                "the object store size with the `object_store_memory` "
+                "parameter when starting Ray.")
 
 
 class MemoryMonitor(object):
