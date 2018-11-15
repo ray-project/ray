@@ -151,7 +151,7 @@ setup(
         "colorama",
         "pytest",
         "pyyaml",
-        "redis",
+        "redis~=2.10.6",
         "faulthandler;python_version<'3'",
         "setproctitle",
         # The six module is required by pyarrow.
