@@ -386,8 +386,8 @@ const std::string SchedulingQueue::ToString() const {
             std::to_string(placeable_tasks_.GetTasks().size()) + "\n";
   result +=
       "waiting_tasks_ size is " + std::to_string(waiting_tasks_.GetTasks().size()) + "\n";
-//  result +=
-//      "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
+  result +=
+      "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
   result +=
       "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
   result += "infeasible_tasks_ size is " +
