@@ -197,10 +197,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
               num_parallel_data_loaders=1,
-              max_sample_requests_in_flight_per_worker=2):
+              max_sample_requests_in_flight_per_worker=2,
+              broadcast_interval=1):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
+        self.broadcast_interval = broadcast_interval
 
         if num_gpus > 1 or num_parallel_data_loaders > 1:
             logger.info(
