@@ -172,7 +172,7 @@ script:
   - python -m pytest -v test/tempfile_test.py
 
   # modin test files
-  - python -m pytest -v python/ray/test/test_modin.py
+  - python python/ray/test/test_modin.py
 
 deploy:
   - provider: s3
