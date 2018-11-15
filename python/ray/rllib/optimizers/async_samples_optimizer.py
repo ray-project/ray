@@ -47,6 +47,7 @@ class LearnerThread(threading.Thread):
         self.load_timer = TimerStat()
         self.load_wait_timer = TimerStat()
         self.daemon = True
+        self.weights_updated = False
         self.stats = {}
         self.stopped = False
 
@@ -60,6 +61,7 @@ class LearnerThread(threading.Thread):
 
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
+            self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
         self.outqueue.put(batch.count)
@@ -134,6 +136,7 @@ class TFMultiGPULearner(LearnerThread):
 
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
+            self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
         self.idle_optimizers.put(opt)
@@ -194,12 +197,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
               num_parallel_data_loaders=1,
-              max_sample_requests_in_flight_per_worker=2,
-              broadcast_interval=5):
+              max_sample_requests_in_flight_per_worker=2):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
-        self.broadcast_interval = broadcast_interval
 
         if num_gpus > 1 or num_parallel_data_loaders > 1:
             logger.info(
@@ -281,7 +282,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
-        num_broadcast = 0
+        num_sent = 0
         weights = None
 
         for ev, sample_batch in self._augment_with_replay(
@@ -308,12 +309,14 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
             # Note that it's important to pull new weights once
             # updated to avoid excessive correlation between actors
-            if weights is None or num_broadcast >= self.broadcast_interval:
+            if weights is None or (self.learner.weights_updated
+                                   and num_sent >= self.broadcast_interval):
+                self.learner.weights_updated = False
                 weights = ray.put(self.local_evaluator.get_weights())
-                num_broadcast = 0
+                num_sent = 0
             ev.set_weights.remote(weights)
-            num_broadcast += 1
             self.num_weight_syncs += 1
+            num_sent += 1
 
             # Kick off another sample request
             self.sample_tasks.add(ev, ev.sample.remote())
