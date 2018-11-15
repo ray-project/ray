@@ -127,6 +127,9 @@ public class RayletClientImpl implements RayletClient {
     UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
+    UniqueId actorCreationDummyObjectId = UniqueId
+        .fromByteBuffer(info.actorCreationDummyObjectIdAsByteBuffer());
+    int maxActorReconstructions = info.maxActorReconstructions();
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
@@ -162,7 +165,8 @@ public class RayletClientImpl implements RayletClient {
     FunctionDescriptor functionDescriptor = new FunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
-    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId, actorId,
+    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
+        actorCreationDummyObjectId, maxActorReconstructions, actorId,
         actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
   }
 
@@ -176,11 +180,13 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb
+        .createString(task.actorCreationDummyObjectId.toByteBuffer());
+    final int maxActorReconstructions = task.maxActorReconstructions;
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
-    final int functionIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int functionIdOffset = fbb.createString(UniqueId.randomId().toByteBuffer());
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
@@ -230,13 +236,24 @@ public class RayletClientImpl implements RayletClient {
     int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
 
     int root = TaskInfo.createTaskInfo(
-        fbb, driverIdOffset, taskIdOffset,
-        parentTaskIdOffset, parentCounter,
-        actorCreateIdOffset, actorCreateDummyIdOffset,
-        actorIdOffset, actorHandleIdOffset, actorCounter,
-        false, functionIdOffset,
-        argsOffset, returnsOffset, requiredResourcesOffset,
-        requiredPlacementResourcesOffset, Language.JAVA,
+        fbb,
+        driverIdOffset,
+        taskIdOffset,
+        parentTaskIdOffset,
+        parentCounter,
+        actorCreateIdOffset,
+        actorCreateDummyIdOffset,
+        maxActorReconstructions,
+        actorIdOffset,
+        actorHandleIdOffset,
+        actorCounter,
+        false,
+        functionIdOffset,
+        argsOffset,
+        returnsOffset,
+        requiredResourcesOffset,
+        requiredPlacementResourcesOffset,
+        Language.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();

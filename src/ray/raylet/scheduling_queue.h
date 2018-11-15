@@ -18,6 +18,8 @@ enum class TaskState {
   INIT,
   // The task may be placed on a node.
   PLACEABLE,
+  // The task is for an actor whose location we do not know yet.
+  WAITING_FOR_ACTOR_CREATION,
   // The task has been placed on a node and is waiting for some object
   // dependencies to become local.
   WAITING,

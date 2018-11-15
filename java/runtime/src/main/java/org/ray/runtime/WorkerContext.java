@@ -80,6 +80,8 @@ public class WorkerContext {
         0,
         UniqueId.NIL,
         UniqueId.NIL,
+        0,
+        UniqueId.NIL,
         UniqueId.NIL,
         0,
         null,
