@@ -316,12 +316,13 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
       // key. This is so redis doesn't crash (we currently have duplicate keys
       // for error conditions, which get delivered via pubsub).
       size_t len;
-      const char * id_str = RedisModule_StringPtrLen(id, &len);
+      const char *id_str = RedisModule_StringPtrLen(id, &len);
       RAY_LOG(INFO) << "Duplicate key: " << std::string(id_str, len);
       // Store the value into a unique new key, just to keep track of it and
       // make sure the log size grows.
       std::string postfix = std::to_string(index);
-      RedisModuleString *new_id = RedisString_Format(ctx, "%S:%b", id, postfix.data(), postfix.size());
+      RedisModuleString *new_id =
+          RedisString_Format(ctx, "%S:%b", id, postfix.data(), postfix.size());
       RedisModuleKey *new_key = OpenPrefixedKey(
           ctx, prefix_str, new_id, REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str);
       RedisModule_ZsetAdd(new_key, index, data, &flags);
