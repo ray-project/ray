@@ -23,9 +23,10 @@ def create_cluster(num_nodes):
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
 
-    # TODO(rkn): Remove this wait. It is only a workaround for
+    # TODO(rkn): Remove this wait and sleep. It is only a workaround for
     # https://github.com/ray-project/ray/issues/3275.
     cluster.wait_for_nodes()
+    time.sleep(1)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster
