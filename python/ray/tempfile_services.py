@@ -128,8 +128,9 @@ def get_ipython_notebook_path(port):
     # the user.
     notebook_name = make_inc_temp(
         suffix=".ipynb", prefix="ray_ui", directory_name=get_temp_root())
-    shutil.copy(notebook_filepath, notebook_name)
-    new_notebook_directory = os.path.dirname(notebook_name)
+    new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
+    shutil.copy(notebook_filepath, new_notebook_filepath)
+    new_notebook_directory = os.path.dirname(new_notebook_filepath)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
         port, os.path.basename(notebook_name), token))
