@@ -2402,6 +2402,28 @@ def test_ray_setproctitle(shutdown_only):
     ray.get(unique_1.remote())
 
 
+def test_duplicate_error_messages(shutdown_only):
+    ray.init(num_cpus=0)
+
+    driver_id = ray.ray_constants.NIL_JOB_ID.id()
+    error_data = ray.gcs_utils.construct_error_message(driver_id, "test", "message", 0)
+
+    # Push the same message to the GCS twice (they are the same because we
+    # do not include a timestamp).
+
+    r = ray.worker.global_worker.redis_client
+
+    r.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
+        ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+
+    ok = r.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
+        ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+
+    assert ok == b'OK'
+
+
 @pytest.mark.skipif(
     os.getenv("TRAVIS") is None,
     reason="This test should only be run on Travis.")
