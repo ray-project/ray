@@ -955,6 +955,7 @@ def start_raylet(redis_address,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
         redis_password or "",
+        get_logs_dir_path(),
     ]
 
     if use_valgrind:

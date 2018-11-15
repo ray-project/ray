@@ -170,7 +170,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 std::string Log<ID, Data>::DebugString() const {
   std::stringstream result;
-  result << "Num lookups: " << num_lookups_ << ", Num appends: " << num_appends_;
+  result << "num lookups: " << num_lookups_ << ", num appends: " << num_appends_;
   return result.str();
 }
 
@@ -236,7 +236,7 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
 template <typename ID, typename Data>
 std::string Table<ID, Data>::DebugString() const {
   std::stringstream result;
-  result << "Num lookups: " << num_lookups_ << ", Num adds: " << num_adds_;
+  result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;
   return result.str();
 }
 
@@ -466,8 +466,8 @@ const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients
 std::string ClientTable::DebugString() const {
   std::stringstream result;
   result << Log<UniqueID, ClientTableData>::DebugString();
-  result << ", Cache size: " << client_cache_.size()
-         << ", Num removed: " << removed_clients_.size();
+  result << ", cache size: " << client_cache_.size()
+         << ", num removed: " << removed_clients_.size();
   return result.str();
 }
 
