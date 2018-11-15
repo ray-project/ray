@@ -20,6 +20,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_parallel_data_loaders",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
+    "broadcast_interval",
 ]
 
 # yapf: disable
@@ -42,6 +43,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_parallel_data_loaders": 1,
     # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
+    # max number of workers to broadcast one set of weights to
+    "broadcast_interval": 5,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,

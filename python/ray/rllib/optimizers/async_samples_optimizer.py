@@ -47,7 +47,6 @@ class LearnerThread(threading.Thread):
         self.load_timer = TimerStat()
         self.load_wait_timer = TimerStat()
         self.daemon = True
-        self.weights_updated = False
         self.stats = {}
         self.stopped = False
 
@@ -61,7 +60,6 @@ class LearnerThread(threading.Thread):
 
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
-            self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
         self.outqueue.put(batch.count)
@@ -136,7 +134,6 @@ class TFMultiGPULearner(LearnerThread):
 
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
-            self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
         self.idle_optimizers.put(opt)
@@ -197,10 +194,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
               num_parallel_data_loaders=1,
-              max_sample_requests_in_flight_per_worker=2):
+              max_sample_requests_in_flight_per_worker=2,
+              broadcast_interval=5):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
+        self.broadcast_interval = broadcast_interval
 
         if num_gpus > 1 or num_parallel_data_loaders > 1:
             logger.info(
@@ -224,11 +223,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         assert len(self.remote_evaluators) > 0
 
         # Stats
-        self.timers = {
-            k: TimerStat()
-            for k in
-            ["put_weights", "enqueue", "sample_processing", "train", "sample"]
-        }
+        self.timers = {k: TimerStat() for k in ["train", "sample"]}
         self.num_weight_syncs = 0
         self.num_replayed = 0
         self.learning_started = False
@@ -286,43 +281,42 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
+        num_broadcast = 0
         weights = None
 
-        with self.timers["sample_processing"]:
-            for ev, sample_batch in self._augment_with_replay(
-                    self.sample_tasks.completed_prefetch()):
-                self.batch_buffer.append(sample_batch)
-                if sum(b.count
-                       for b in self.batch_buffer) >= self.train_batch_size:
-                    train_batch = self.batch_buffer[0].concat_samples(
-                        self.batch_buffer)
-                    with self.timers["enqueue"]:
-                        self.learner.inqueue.put(train_batch)
-                    self.batch_buffer = []
+        for ev, sample_batch in self._augment_with_replay(
+                self.sample_tasks.completed_prefetch()):
+            self.batch_buffer.append(sample_batch)
+            if sum(b.count
+                   for b in self.batch_buffer) >= self.train_batch_size:
+                train_batch = self.batch_buffer[0].concat_samples(
+                    self.batch_buffer)
+                self.learner.inqueue.put(train_batch)
+                self.batch_buffer = []
 
-                # If the batch was replayed, skip the update below.
-                if ev is None:
-                    continue
+            # If the batch was replayed, skip the update below.
+            if ev is None:
+                continue
 
-                sample_timesteps += sample_batch.count
+            sample_timesteps += sample_batch.count
 
-                # Put in replay buffer if enabled
-                if self.replay_buffer_num_slots > 0:
-                    self.replay_batches.append(sample_batch)
-                    if len(self.replay_batches) > self.replay_buffer_num_slots:
-                        self.replay_batches.pop(0)
+            # Put in replay buffer if enabled
+            if self.replay_buffer_num_slots > 0:
+                self.replay_batches.append(sample_batch)
+                if len(self.replay_batches) > self.replay_buffer_num_slots:
+                    self.replay_batches.pop(0)
 
-                # Note that it's important to pull new weights once
-                # updated to avoid excessive correlation between actors
-                if weights is None or self.learner.weights_updated:
-                    self.learner.weights_updated = False
-                    with self.timers["put_weights"]:
-                        weights = ray.put(self.local_evaluator.get_weights())
-                ev.set_weights.remote(weights)
-                self.num_weight_syncs += 1
+            # Note that it's important to pull new weights once
+            # updated to avoid excessive correlation between actors
+            if weights is None or num_broadcast >= self.broadcast_interval:
+                weights = ray.put(self.local_evaluator.get_weights())
+                num_broadcast = 0
+            ev.set_weights.remote(weights)
+            num_broadcast += 1
+            self.num_weight_syncs += 1
 
-                # Kick off another sample request
-                self.sample_tasks.add(ev, ev.sample.remote())
+            # Kick off another sample request
+            self.sample_tasks.add(ev, ev.sample.remote())
 
         while not self.learner.outqueue.empty():
             count = self.learner.outqueue.get()
