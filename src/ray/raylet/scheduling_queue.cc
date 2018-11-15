@@ -6,9 +6,8 @@ namespace {
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-template<typename TaskQueue>
-void RemoveTasksFromQueue(TaskQueue &queue,
-                          std::unordered_set<ray::TaskID> &task_ids,
+template <typename TaskQueue>
+void RemoveTasksFromQueue(TaskQueue &queue, std::unordered_set<ray::TaskID> &task_ids,
                           std::vector<ray::raylet::Task> &removed_tasks) {
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     if (queue.RemoveTask(*it, &removed_tasks)) {
@@ -20,16 +19,15 @@ void RemoveTasksFromQueue(TaskQueue &queue,
 }
 
 // Helper function to queue the given tasks to the given queue.
-template<typename TaskQueue>
-inline void QueueTasks(TaskQueue &queue,
-                       const std::vector<ray::raylet::Task> &tasks) {
+template <typename TaskQueue>
+inline void QueueTasks(TaskQueue &queue, const std::vector<ray::raylet::Task> &tasks) {
   for (const auto &task : tasks) {
     queue.AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
 }
 
 // Helper function to filter out tasks of a given state.
-template<typename TaskQueue>
+template <typename TaskQueue>
 inline void FilterStateFromQueue(const TaskQueue &queue,
                                  std::unordered_set<ray::TaskID> &task_ids,
                                  ray::raylet::TaskState filter_state) {
@@ -43,7 +41,7 @@ inline void FilterStateFromQueue(const TaskQueue &queue,
 }
 
 // Helper function to get tasks for a driver from a given state.
-template<typename TaskQueue>
+template <typename TaskQueue>
 inline void GetDriverTasksFromQueue(const TaskQueue &queue,
                                     const ray::DriverID &driver_id,
                                     std::unordered_set<ray::TaskID> &task_ids) {
@@ -57,9 +55,8 @@ inline void GetDriverTasksFromQueue(const TaskQueue &queue,
 }
 
 // Helper function to get tasks for an actor from a given state.
-template<typename TaskQueue>
-inline void GetActorTasksFromQueue(const TaskQueue &queue,
-                                   const ray::ActorID &actor_id,
+template <typename TaskQueue>
+inline void GetActorTasksFromQueue(const TaskQueue &queue, const ray::ActorID &actor_id,
                                    std::unordered_set<ray::TaskID> &task_ids) {
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
@@ -85,8 +82,7 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   return true;
 }
 
-bool TaskQueue::RemoveTask(const TaskID &task_id,
-                           std::vector<Task> *removed_tasks) {
+bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   auto task_found_iterator = task_map_.find(task_id);
   if (task_found_iterator == task_map_.end()) {
     return false;
@@ -116,7 +112,7 @@ const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
   RAY_CHECK(task_map_.find(task_id) == task_map_.end());
-  auto& resources = task.GetTaskSpecification().GetRequiredResources();
+  auto &resources = task.GetTaskSpecification().GetRequiredResources();
   auto list_iterator = task_lists_[resources].insert(task_lists_[resources].end(), task);
   task_map_[task_id] = list_iterator;
   // Resource bookkeeping
@@ -124,15 +120,14 @@ bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
   return true;
 }
 
-bool ReadyQueue::RemoveTask(const TaskID &task_id,
-                            std::vector<Task> *removed_tasks) {
+bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   auto task_found_iterator = task_map_.find(task_id);
   if (task_found_iterator == task_map_.end()) {
     return false;
   }
 
   auto list_iterator = task_found_iterator->second;
-  auto& resources = list_iterator->GetTaskSpecification().GetRequiredResources();
+  auto &resources = list_iterator->GetTaskSpecification().GetRequiredResources();
   // Resource bookkeeping
   current_resource_load_.SubtractResourcesStrict(resources);
   if (removed_tasks) {
@@ -143,13 +138,11 @@ bool ReadyQueue::RemoveTask(const TaskID &task_id,
   return true;
 }
 
-const std::list<Task> ReadyQueue::GetTasks(const ResourceIdSet* resources) const {
+const std::list<Task> ReadyQueue::GetTasks() const {
   std::list<Task> result;
-  for (auto& task_list : task_lists_) {
-    if (!resources || resources->Contains(task_list.first)) {
-      for (auto& task : task_list.second) {
-        result.push_back(task);
-      }
+  for (auto &task_list : task_lists_) {
+    for (auto& task : task_list.second) {
+      result.push_back(task);
     }
   }
   return result;
@@ -167,8 +160,8 @@ const std::list<Task> &SchedulingQueue::GetPlaceableTasks() const {
   return placeable_tasks_.GetTasks();
 }
 
-std::list<Task> SchedulingQueue::GetReadyTasks(const ResourceIdSet* resources) const {
-  return ready_tasks_.GetTasks(resources);
+std::list<Task> SchedulingQueue::GetReadyTasks() const {
+  return ready_tasks_.GetTasks();
 }
 
 const std::list<Task> &SchedulingQueue::GetInfeasibleTasks() const {

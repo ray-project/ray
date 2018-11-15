@@ -543,7 +543,7 @@ void NodeManager::DispatchTasks(const std::list<Task> &ready_tasks, bool can_ski
 }
 
 void NodeManager::DispatchTasks() {
-  for (auto& it : local_queues_.GetReadyQueue().GetTaskQueues()) {
+  for (auto &it : local_queues_.GetReadyQueue().GetTaskQueues()) {
     if (local_available_resources_.Contains(it.first)) {
       DispatchTasks(it.second, true);
     }

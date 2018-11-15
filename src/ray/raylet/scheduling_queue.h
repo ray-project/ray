@@ -39,7 +39,6 @@ enum class TaskState {
 
 class TaskQueue {
  public:
-
   /// \brief Append a task to queue.
   ///
   /// \param task_id The task ID for the task to append.
@@ -98,8 +97,7 @@ class ReadyQueue {
   ///
   /// \param task_id The task ID for the task to remove from the queue.
   /// \return Whether the removal succeeds.
-  bool RemoveTask(const TaskID &task_id,
-                  std::vector<Task> *removed_tasks);
+  bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks);
 
   /// \brief Check if the queue contains a specific task id.
   ///
@@ -110,22 +108,18 @@ class ReadyQueue {
   }
   /// \brief Get the total resources required by the tasks in the queue.
   /// \return Total resources required by the tasks in the queue.
-  const ResourceSet &GetCurrentResourceLoad() const {
-    return current_resource_load_;
-  }
+  const ResourceSet &GetCurrentResourceLoad() const { return current_resource_load_; }
 
   /// \brief Remove the task list of the queue.
   ///
-  /// \param resources If provided, only return tasks that are runnable given
-  ///        these resources.
   /// \return A list of tasks contained in this queue.
-  const std::list<Task> GetTasks(const ResourceIdSet* resources = nullptr) const;
+  const std::list<Task> GetTasks() const;
 
-  std::unordered_map<ResourceSet, std::list<Task>>& GetTaskQueues() {
+  std::unordered_map<ResourceSet, std::list<Task>> &GetTaskQueues() {
     return task_lists_;
   }
 
-private:
+ private:
   /// A list of tasks.
   std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
   /// A hash to speed up looking up a task.
@@ -185,15 +179,14 @@ class SchedulingQueue {
 
   /// Get the queue of tasks in the ready state.
   ///
-  /// \param resources If provided, only return tasks that are runnable given
-  ///        these resources.
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
-  std::list<Task> GetReadyTasks(const ResourceIdSet* resources = nullptr) const;
+  std::list<Task> GetReadyTasks() const;
 
-  ReadyQueue &GetReadyQueue(){
-    return ready_tasks_;
-  }
+  /// Get a reference to the queue of ready tasks.
+  ///
+  /// \return A reference to the queue of ready tasks.
+  ReadyQueue &GetReadyQueue(){ return ready_tasks_; }
 
   /// Get the queue of tasks in the running state.
   ///
