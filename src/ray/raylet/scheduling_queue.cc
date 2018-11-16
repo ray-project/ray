@@ -141,7 +141,7 @@ bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_ta
 const std::list<Task> ReadyQueue::GetTasks() const {
   std::list<Task> result;
   for (auto &task_list : task_lists_) {
-    for (auto& task : task_list.second) {
+    for (auto &task : task_list.second) {
       result.push_back(task);
     }
   }
@@ -160,9 +160,7 @@ const std::list<Task> &SchedulingQueue::GetPlaceableTasks() const {
   return placeable_tasks_.GetTasks();
 }
 
-std::list<Task> SchedulingQueue::GetReadyTasks() const {
-  return ready_tasks_.GetTasks();
-}
+std::list<Task> SchedulingQueue::GetReadyTasks() const { return ready_tasks_.GetTasks(); }
 
 const std::list<Task> &SchedulingQueue::GetInfeasibleTasks() const {
   return infeasible_tasks_.GetTasks();

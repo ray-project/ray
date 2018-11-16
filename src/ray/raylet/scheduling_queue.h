@@ -186,7 +186,7 @@ class SchedulingQueue {
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  ReadyQueue &GetReadyQueue(){ return ready_tasks_; }
+  ReadyQueue &GetReadyQueue() { return ready_tasks_; }
 
   /// Get the queue of tasks in the running state.
   ///
