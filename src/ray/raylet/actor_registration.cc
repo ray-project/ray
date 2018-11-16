@@ -1,6 +1,7 @@
+#include "ray/raylet/actor_registration.h"
+
 #include <sstream>
 
-#include "ray/raylet/actor_registration.h"
 #include "ray/util/logging.h"
 
 namespace ray {

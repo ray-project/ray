@@ -1,6 +1,6 @@
-#include <sstream>
-
 #include "lineage_cache.h"
+
+#include <sstream>
 
 namespace ray {
 

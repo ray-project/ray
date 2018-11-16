@@ -1,6 +1,6 @@
-#include <fstream>
-
 #include "ray/raylet/node_manager.h"
+
+#include <fstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
