@@ -256,6 +256,16 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   return workers;
 }
 
+std::string WorkerPool::DebugString() const {
+  std::stringstream result;
+  result << "WorkerPool:";
+  for (const auto &entry : states_by_lang_) {
+    result << "\n- num workers: " << entry.second.registered_workers.size();
+    result << "\n- num drivers: " << entry.second.registered_drivers.size();
+  }
+  return result.str();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

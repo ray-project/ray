@@ -206,6 +206,8 @@ class ModelCatalog(object):
         logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
             model, input_dict, obs_space, state_in, seq_lens, model.outputs,
             model.state_out))
+
+        model._validate_output_shape()
         return model
 
     @staticmethod

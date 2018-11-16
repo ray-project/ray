@@ -93,6 +93,11 @@ class InvalidModel(Model):
         return "not", "valid"
 
 
+class InvalidModel2(Model):
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        return tf.constant(0), tf.constant(0)
+
+
 class DictSpyModel(Model):
     capture_index = 0
 
@@ -157,6 +162,17 @@ class NestedSpacesTest(unittest.TestCase):
                     "custom_model": "invalid",
                 },
             }))
+
+    def testInvalidModel2(self):
+        ModelCatalog.register_custom_model("invalid2", InvalidModel2)
+        self.assertRaisesRegexp(
+            ValueError, "Expected output.*",
+            lambda: PGAgent(
+                env="CartPole-v0", config={
+                    "model": {
+                        "custom_model": "invalid2",
+                    },
+                }))
 
     def doTestNestedDict(self, make_env):
         ModelCatalog.register_custom_model("composite", DictSpyModel)

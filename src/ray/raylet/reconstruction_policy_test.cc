@@ -36,6 +36,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     locations_[object_id] = locations;
   }
 
+  std::string DebugString() const { return ""; }
+
   MOCK_METHOD0(RegisterBackend, void(void));
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());

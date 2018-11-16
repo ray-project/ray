@@ -34,7 +34,10 @@ enum class TaskState {
   DRIVER,
   // The task has resources that cannot be satisfied by any node, as far as we
   // know.
-  INFEASIBLE
+  INFEASIBLE,
+  // The task is an actor method and is waiting to learn where the actor was
+  // created.
+  WAITING_FOR_ACTOR,
 };
 
 /// \class SchedulingQueue
@@ -118,15 +121,20 @@ class SchedulingQueue {
   /// \param tasks The set of task IDs to remove from the queue. The
   /// corresponding tasks must be contained in the queue. The IDs of removed
   /// tasks will be erased from the set.
+  /// \param task_states If this is not nullptr, then, the states of the removed
+  /// tasks will be appended to this vector.
   /// \return A vector of the tasks that were removed.
-  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &tasks);
+  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &task_ids,
+                                std::vector<TaskState> *task_states = nullptr);
 
   /// Remove a task from the task queue.
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
+  /// \param task_state If this is not nullptr, then the state of the removed
+  /// task will be written here.
   /// \return The task that was removed.
-  Task RemoveTask(const TaskID &task_id);
+  Task RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
@@ -214,13 +222,6 @@ class SchedulingQueue {
   /// \return Aggregate resource demand from ready tasks.
   ResourceSet GetReadyQueueResources() const;
 
-  /// Return a human-readable string indicating the number of tasks in each
-  /// queue.
-  ///
-  /// \return A string that can be used to display the contents of the queues
-  /// for debugging purposes.
-  const std::string ToString() const;
-
   class TaskQueue {
    public:
     /// Creating a task queue.
@@ -273,6 +274,11 @@ class SchedulingQueue {
     /// Aggregate resources of all the tasks in this queue.
     ResourceSet current_resource_load_;
   };
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
  private:
   /// Tasks that are destined for actors that have not yet been created.
