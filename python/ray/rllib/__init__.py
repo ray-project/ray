@@ -32,7 +32,7 @@ def _setup_logger():
 def _register_all():
 
     for key in [
-            "PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG", "APEX_DDPG",
+            "PPO", "ES", "DQN", "APEX", "A3C", "PG", "DDPG", "APEX_DDPG",
             "IMPALA", "ARS", "A2C", "__fake", "__sigmoid_fake_data",
             "__parameter_tuning"
     ]:

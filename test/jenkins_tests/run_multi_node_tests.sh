@@ -99,7 +99,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run APEX \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "gpu": false, "min_iter_time_s": 1}'
+    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "num_gpus": 0, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -262,6 +262,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_supported_spaces.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/test/test_env_with_subprocess.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     /ray/python/ray/rllib/test/test_rollout.sh
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
@@ -347,14 +350,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env PongDeterministic-v4 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
+    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v1 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true}'
+    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \

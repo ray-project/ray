@@ -55,6 +55,8 @@ class MultiAgentEpisode(object):
         self.user_data = {}
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
+        self._next_agent_index = 0
+        self._agent_to_index = {}
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}
         self._agent_to_last_obs = {}
@@ -140,6 +142,12 @@ class MultiAgentEpisode(object):
 
     def _set_last_pi_info(self, agent_id, pi_info):
         self._agent_to_last_pi_info[agent_id] = pi_info
+
+    def _agent_index(self, agent_id):
+        if agent_id not in self._agent_to_index:
+            self._agent_to_index[agent_id] = self._next_agent_index
+            self._next_agent_index += 1
+        return self._agent_to_index[agent_id]
 
 
 def _flatten_action(action):

@@ -25,6 +25,7 @@ import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.gcs_utils
+import ray.memory_monitor as memory_monitor
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
@@ -213,6 +214,7 @@ class Worker(object):
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = profiling.Profiler(self)
+        self.memory_monitor = memory_monitor.MemoryMonitor()
         self.state_lock = threading.Lock()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -821,6 +823,7 @@ class Worker(object):
         try:
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
+            self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -902,6 +905,10 @@ class Worker(object):
         self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
+        # Set the process group id. This ensures that child processes spawned
+        # by this actor can be killed with this actor easily on termination.
+        os.setpgid(os.getpid(), os.getpid())
+
         key = b"ActorClass:" + class_id
 
         # Wait for the actor class key to have been imported by the import
@@ -945,12 +952,14 @@ class Worker(object):
             }
             if task.actor_id().id() == NIL_ACTOR_ID:
                 title = "ray_worker:{}()".format(function_name)
+                next_title = "ray_worker"
             else:
                 actor = self.actors[task.actor_id().id()]
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
+                next_title = "ray_{}".format(actor.__class__.__name__)
             with profiling.profile("task", extra_data=extra_data, worker=self):
-                with _changeproctitle(title):
+                with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
                 with self.state_lock:
@@ -2163,11 +2172,10 @@ def disconnect(worker=global_worker):
 
 
 @contextmanager
-def _changeproctitle(title):
-    old_title = setproctitle.getproctitle()
+def _changeproctitle(title, next_title):
     setproctitle.setproctitle(title)
     yield
-    setproctitle.setproctitle(old_title)
+    setproctitle.setproctitle(next_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):

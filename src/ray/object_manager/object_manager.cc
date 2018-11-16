@@ -6,15 +6,6 @@ namespace asio = boost::asio;
 
 namespace object_manager_protocol = ray::object_manager::protocol;
 
-namespace {
-
-void CheckIOError(ray::Status &status, const std::string &operation) {
-  RAY_CHECK(status.IsIOError());
-  RAY_LOG(ERROR) << "Failed to contact remote object manager during " << operation;
-}
-
-}  // namespace
-
 namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -278,6 +269,7 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 
   if (conn != nullptr) {
     PullSendRequest(object_id, conn);
+    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
   }
 }
 
@@ -292,11 +284,11 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
   fbb.Finish(message);
   conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) mutable {
-        if (status.ok()) {
-          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-        } else {
-          CheckIOError(status, "Pull");
+      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
+        if (!status.ok()) {
+          RAY_CHECK(status.IsIOError())
+              << "Failed to contact remote object manager during Pull";
+          connection_pool_.RemoveSender(conn);
         }
       });
 }
@@ -439,7 +431,9 @@ ray::Status ObjectManager::ExecuteSendObject(
   if (conn != nullptr) {
     status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
     if (!status.ok()) {
-      CheckIOError(status, "Push");
+      RAY_CHECK(status.IsIOError())
+          << "Failed to contact remote object manager during Push";
+      connection_pool_.RemoveSender(conn);
     }
   }
   return status;
@@ -683,8 +677,6 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
     RAY_LOG(ERROR) << "Failed to connect to remote object manager.";
   } else {
     // Register the new connection.
-    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it if the client
-    // disconnects.
     connection_pool_.RegisterSender(type, info.client_id, conn);
     // Prepare client connection info buffer
     flatbuffers::FlatBufferBuilder fbb;
@@ -880,13 +872,16 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
     }
 
     if (conn != nullptr) {
-      // TODO(swang): Make this a WriteMessageAsync.
-      ray::Status status = conn->WriteMessage(
+      conn->WriteMessageAsync(
           static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-          fbb.GetSize(), fbb.GetBufferPointer());
-      if (status.ok()) {
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-      }
+          fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
+            if (!status.ok()) {
+              RAY_CHECK(status.IsIOError())
+                  << "Failed to contact remote object manager during Free";
+              connection_pool_.RemoveSender(conn);
+            }
+          });
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
     }
   }
 }
