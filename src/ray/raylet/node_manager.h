@@ -208,8 +208,12 @@ class NodeManager {
   /// Otherwise, task_queue points to entire ready queue.
   ///
   /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
+  /// \param can_skip If true, all the tasks in ready_tasks will have the same
+  ///        resource requirements, so we can stop processing them once one of
+  ///        them is infeasible.
   void DispatchTasks(const std::list<Task> &ready_tasks, bool can_skip = false);
 
+  /// Call DispatchTasks(ready_tasks) for all tasks in the ready queue.
   void DispatchTasks();
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
