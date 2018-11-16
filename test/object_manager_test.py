@@ -70,7 +70,7 @@ def test_object_broadcast(ray_start_cluster):
         x_id = ray.put(x)
         object_ids.append(x_id)
         ray.get([
-            f._submit(args=[x_id], resources={str(i % num_nodes): 1})
+            f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
         ])
 
@@ -79,7 +79,7 @@ def test_object_broadcast(ray_start_cluster):
         x_id = create_object.remote()
         object_ids.append(x_id)
         ray.get([
-            f._submit(args=[x_id], resources={str(i % num_nodes): 1})
+            f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
         ])
 
@@ -144,7 +144,7 @@ def test_actor_broadcast(ray_start_cluster):
             pass
 
     actors = [
-        Actor._submit(args=[], kwargs={}, resources={str(i % num_nodes): 1})
+        Actor._remote(args=[], kwargs={}, resources={str(i % num_nodes): 1})
         for i in range(100)
     ]
 
@@ -286,7 +286,7 @@ def test_many_small_transfers(ray_start_cluster):
         id_lists = []
         for i in range(num_nodes):
             id_lists.append([
-                f._submit(args=[], kwargs={}, resources={str(i): 1})
+                f._remote(args=[], kwargs={}, resources={str(i): 1})
                 for _ in range(1000)
             ])
         ids = []
@@ -295,7 +295,7 @@ def test_many_small_transfers(ray_start_cluster):
                 if i == j:
                     continue
                 ids.append(
-                    f._submit(
+                    f._remote(
                         args=id_lists[j], kwargs={}, resources={str(i): 1}))
 
         # Wait for all of the transfers to finish.
