@@ -151,6 +151,7 @@ script:
   - python -m pytest -v test/monitor_test.py
   - python -m pytest -v test/cython_test.py
   - python -m pytest -v test/credis_test.py
+  - python -m pytest -v test/node_manager_tests.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
