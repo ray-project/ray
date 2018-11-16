@@ -251,9 +251,9 @@ def test_object_transfer_retry(ray_start_empty_cluster):
 
     # Make sure that the object was retransferred before the object manager
     # repeated push delay expired.
-    assert end_time - start_time <= repeated_push_delay, (
-        "This test didn't really fail, but the timing is such that it is not "
-        "testing the thing it should be testing.")
+    if end_time - start_time <= repeated_push_delay:
+        warnings.warn("This test didn't really fail, but the timing is such "
+                      "that it is not testing the thing it should be testing.")
     # We should have had to wait for the repeated push delay.
     assert end_transfer_time - start_time >= repeated_push_delay
 
