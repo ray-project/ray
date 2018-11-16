@@ -325,6 +325,17 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
   }
 }
 
+std::string TaskDependencyManager::DebugString() const {
+  std::stringstream result;
+  result << "TaskDependencyManager:";
+  result << "\n- task dep map size: " << task_dependencies_.size();
+  result << "\n- task req map size: " << required_tasks_.size();
+  result << "\n- req objects map size: " << required_objects_.size();
+  result << "\n- local objects map size: " << local_objects_.size();
+  result << "\n- pending tasks map size: " << pending_tasks_.size();
+  return result.str();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

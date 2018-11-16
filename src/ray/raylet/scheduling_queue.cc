@@ -1,5 +1,7 @@
 #include "scheduling_queue.h"
 
+#include <sstream>
+
 #include "ray/status.h"
 
 namespace {
@@ -346,22 +348,17 @@ const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
 }
 
-const std::string SchedulingQueue::ToString() const {
-  std::string result;
-
-  result += "placeable_tasks_ size is " +
-            std::to_string(placeable_tasks_.GetTasks().size()) + "\n";
-  result +=
-      "waiting_tasks_ size is " + std::to_string(waiting_tasks_.GetTasks().size()) + "\n";
-  result +=
-      "ready_tasks_ size is " + std::to_string(ready_tasks_.GetTasks().size()) + "\n";
-  result +=
-      "running_tasks_ size is " + std::to_string(running_tasks_.GetTasks().size()) + "\n";
-  result += "infeasible_tasks_ size is " +
-            std::to_string(infeasible_tasks_.GetTasks().size()) + "\n";
-  result += "methods_waiting_for_actor_creation_ size is " +
-            std::to_string(methods_waiting_for_actor_creation_.GetTasks().size()) + "\n";
-  return result;
+std::string SchedulingQueue::DebugString() const {
+  std::stringstream result;
+  result << "SchedulingQueue:";
+  result << "\n- num placeable tasks: " << placeable_tasks_.GetTasks().size();
+  result << "\n- num waiting tasks: " << waiting_tasks_.GetTasks().size();
+  result << "\n- num ready tasks: " << ready_tasks_.GetTasks().size();
+  result << "\n- num running tasks: " << running_tasks_.GetTasks().size();
+  result << "\n- num infeasible tasks: " << infeasible_tasks_.GetTasks().size();
+  result << "\n- num methods waiting for actor creation: "
+         << methods_waiting_for_actor_creation_.GetTasks().size();
+  return result.str();
 }
 
 }  // namespace raylet
