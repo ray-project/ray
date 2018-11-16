@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import time
 
 import ray
 from ray.test.cluster_utils import Cluster
@@ -53,11 +52,12 @@ def f():
 f.remote()
 """.format(cluster.redis_address, "{str(2): 1}", "    ")
 
-    out = run_string_as_driver(driver_script)
+    run_string_as_driver(driver_script)
 
     # Now add a new node that makes the task feasible.
     cluster.add_node(resources={str(2): 100})
 
     # Make sure we can still run tasks on all nodes.
-    ray.get([f._submit(args=[], kwargs={}, resources={str(i): 1})
-             for i in range(3)])
+    ray.get([
+        f._submit(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
+    ])
