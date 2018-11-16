@@ -422,10 +422,15 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto task = local_queues_.RemoveTask(task_id).first;
+    const auto task_pair = local_queues_.RemoveTask(task_id);
+    const auto task = task_pair.first;
     // Since we are spilling back from the ready and waiting queues, we need
     // to unsubscribe the dependencies.
-    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    if (task_pair.second != TaskState::INFEASIBLE) {
+      // Don't unsubscribe for infeasible tasks because we never subscribed in
+      // the first place.
+      task_dependency_manager_.UnsubscribeDependencies(task_id);
+    }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
     ForwardTaskOrResubmit(task, client_id);
@@ -693,7 +698,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
       task_dependency_manager_.TaskCanceled(task_id);
-      const Task &task = local_queues_.RemoveTask(task_id).first;  // TODO: Do we need to make sure not to call unsubscribedependencies if the task was infeasible.
+      const Task &task = local_queues_.RemoveTask(task_id).first;
       const TaskSpecification &spec = task.GetTaskSpecification();
       // Handle the task failure in order to raise an exception in the
       // application.
