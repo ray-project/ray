@@ -179,6 +179,21 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   return Status::OK();
 }
 
+std::string AsyncGcsClient::DebugString() const {
+  std::stringstream result;
+  result << "AsyncGcsClient:";
+  result << "\n- TaskTable: " << raylet_task_table_->DebugString();
+  result << "\n- ActorTable: " << actor_table_->DebugString();
+  result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
+  result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
+  result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
+  result << "\n- ErrorTable: " << error_table_->DebugString();
+  result << "\n- ProfileTable: " << profile_table_->DebugString();
+  result << "\n- ClientTable: " << client_table_->DebugString();
+  result << "\n- DriverTable: " << driver_table_->DebugString();
+  return result.str();
+}
+
 ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }

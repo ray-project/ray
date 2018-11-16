@@ -1,5 +1,7 @@
 #include "ray/raylet/node_manager.h"
 
+#include <fstream>
+
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -50,6 +52,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      debug_dump_period_(config.debug_dump_period_ms),
+      temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
@@ -174,6 +178,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
+  last_debug_dump_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -275,6 +280,12 @@ void NodeManager::Heartbeat() {
     RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
   }
   RAY_CHECK_OK(status);
+
+  if (debug_dump_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
+    DumpDebugState();
+    last_debug_dump_at_ms_ = now_ms;
+  }
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -1653,6 +1664,41 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           on_error(status);
         }
       });
+}
+
+void NodeManager::DumpDebugState() {
+  std::fstream fs;
+  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs << DebugString();
+  fs.close();
+}
+
+std::string NodeManager::DebugString() const {
+  std::stringstream result;
+  uint64_t now_ms = current_time_ms();
+  result << "NodeManager:";
+  result << "\nLocalResources: " << local_resources_.DebugString();
+  result << "\nClusterResources:";
+  for (auto &pair : cluster_resource_map_) {
+    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
+  }
+  result << "\n" << object_manager_.DebugString();
+  result << "\n" << gcs_client_->DebugString();
+  result << "\n" << worker_pool_.DebugString();
+  result << "\n" << local_queues_.DebugString();
+  result << "\n" << reconstruction_policy_.DebugString();
+  result << "\n" << task_dependency_manager_.DebugString();
+  result << "\n" << lineage_cache_.DebugString();
+  result << "\nRemoteConnections:";
+  for (auto &pair : remote_server_connections_) {
+    result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
+  }
+  result << "\nActorRegistry:";
+  for (auto &pair : actor_registry_) {
+    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
+  }
+  result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  return result.str();
 }
 
 }  // namespace raylet

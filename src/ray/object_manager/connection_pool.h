@@ -90,6 +90,11 @@ class ConnectionPool {
   /// \return Status of invoking this method.
   ray::Status RemoveSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 

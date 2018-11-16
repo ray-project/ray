@@ -184,6 +184,11 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  protected:
   std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
     static std::hash<ray::UniqueID> index;
@@ -208,6 +213,10 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
 
   /// Commands to a GCS table can either be regular (default) or chain-replicated.
   CommandType command_type_ = CommandType::kRegular;
+
+ private:
+  int64_t num_appends_ = 0;
+  int64_t num_lookups_ = 0;
 };
 
 template <typename ID, typename Data>
@@ -295,6 +304,11 @@ class Table : private Log<ID, Data>,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  protected:
   using Log<ID, Data>::shard_contexts_;
   using Log<ID, Data>::client_;
@@ -302,6 +316,10 @@ class Table : private Log<ID, Data>,
   using Log<ID, Data>::prefix_;
   using Log<ID, Data>::command_type_;
   using Log<ID, Data>::GetRedisContext;
+
+ private:
+  int64_t num_adds_ = 0;
+  int64_t num_lookups_ = 0;
 };
 
 class ObjectTable : public Log<ObjectID, ObjectTableData> {
@@ -452,6 +470,11 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   /// \return Status.
   Status PushErrorToDriver(const JobID &job_id, const std::string &type,
                            const std::string &error_message, double timestamp);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 };
 
 class ProfileTable : private Log<UniqueID, ProfileTableData> {
@@ -484,6 +507,11 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   /// \param profile_events The profile events to record.
   /// \return Status.
   Status AddProfileEventBatch(const ProfileTableData &profile_events);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 };
 
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
@@ -582,6 +610,11 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ///
   /// \return The client ID to client information map.
   const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
  private:
   /// Handle a client table notification.
