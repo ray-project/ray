@@ -127,7 +127,6 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
       # Since 10.14, the XCode toolchain only accepts libc++ as the
       # standard library. This should also work on macOS starting from 10.9.
       set(pyarrow_ENV ${pyarrow_ENV} "CXXFLAGS='-stdlib=libc++'")
-      set(pyarrow_ENV ${pyarrow_ENV} "MACOSX_DEPLOYMENT_TARGET=10.7")
     endif()
 
     ExternalProject_Add(pyarrow_ext
