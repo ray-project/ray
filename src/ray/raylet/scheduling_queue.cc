@@ -6,12 +6,17 @@ namespace {
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-void RemoveTasksFromQueue(ray::raylet::SchedulingQueue::TaskQueue &queue,
+void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
+                          ray::raylet::SchedulingQueue::TaskQueue &queue,
                           std::unordered_set<ray::TaskID> &task_ids,
-                          std::vector<ray::raylet::Task> &removed_tasks) {
+                          std::vector<ray::raylet::Task> &removed_tasks,
+                          std::vector<ray::raylet::TaskState> *task_states = nullptr) {
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     if (queue.RemoveTask(*it, &removed_tasks)) {
       it = task_ids.erase(it);
+      if (task_states != nullptr) {
+        task_states->push_back(task_state);
+      }
     } else {
       it++;
     }
@@ -195,75 +200,69 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   }
 }
 
-std::pair<std::vector<Task>, std::vector<TaskState>> SchedulingQueue::RemoveTasks(
-    std::unordered_set<TaskID> &task_ids) {
+std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_ids,
+                                               std::vector<TaskState> *task_states) {
   // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
-  std::vector<TaskState> removed_task_states;
-
-  size_t num_queued_tasks = 0;
 
   // Try to find the tasks to remove from the queues.
 
-  RemoveTasksFromQueue(methods_waiting_for_actor_creation_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::WAITING_FOR_ACTOR);
-  }
-  RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::WAITING);
-  }
-  RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::PLACEABLE);
-  }
-  RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::READY);
-  }
-  RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::RUNNING);
-  }
-  RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
-  for (; num_queued_tasks < removed_tasks.size(); ++num_queued_tasks) {
-    removed_task_states.push_back(TaskState::INFEASIBLE);
-  }
+  RemoveTasksFromQueue(TaskState::WAITING_FOR_ACTOR, methods_waiting_for_actor_creation_,
+                       task_ids, removed_tasks, task_states);
+  RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, removed_tasks,
+                       task_states);
+  RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, removed_tasks,
+                       task_states);
+  RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, removed_tasks,
+                       task_states);
+  RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, removed_tasks,
+                       task_states);
+  RemoveTasksFromQueue(TaskState::INFEASIBLE, infeasible_tasks_, task_ids, removed_tasks,
+                       task_states);
 
   RAY_CHECK(task_ids.size() == 0);
-  RAY_CHECK(removed_tasks.size() == removed_task_states.size());
-  return std::make_pair(removed_tasks, removed_task_states);
+  if (task_states != nullptr) {
+    RAY_CHECK(removed_tasks.size() == task_states->size());
+  }
+  return removed_tasks;
 }
 
-std::pair<Task, TaskState> SchedulingQueue::RemoveTask(const TaskID &task_id) {
+Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *task_state) {
   std::unordered_set<TaskID> task_id_set = {task_id};
-  auto const tasks_and_states_pair = RemoveTasks(task_id_set);
-  auto task_state_pair = std::make_pair(tasks_and_states_pair.first.front(),
-                                        tasks_and_states_pair.second.front());
-  RAY_CHECK(task_state_pair.first.GetTaskSpecification().TaskId() == task_id);
-  return task_state_pair;
+  std::vector<TaskState> task_state_vector;
+  auto const task = RemoveTasks(task_id_set, &task_state_vector).front();
+
+  RAY_CHECK(task_state_vector.size() == 1);
+  if (task_state != nullptr) {
+    *task_state = task_state_vector[0];
+  }
+
+  RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
+  return task;
 }
 
 void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState src_state,
                                 TaskState dst_state) {
   // TODO(atumanov): check the states first to ensure the move is transactional.
   std::vector<Task> removed_tasks;
+
   // Remove the tasks from the specified source queue.
   switch (src_state) {
   case TaskState::PLACEABLE:
-    RemoveTasksFromQueue(placeable_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, removed_tasks);
     break;
   case TaskState::WAITING:
-    RemoveTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, removed_tasks);
     break;
   case TaskState::READY:
-    RemoveTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, removed_tasks);
     break;
   case TaskState::RUNNING:
-    RemoveTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, removed_tasks);
     break;
   case TaskState::INFEASIBLE:
-    RemoveTasksFromQueue(infeasible_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::INFEASIBLE, infeasible_tasks_, task_ids,
+                         removed_tasks);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "

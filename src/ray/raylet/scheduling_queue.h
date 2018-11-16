@@ -121,17 +121,20 @@ class SchedulingQueue {
   /// \param tasks The set of task IDs to remove from the queue. The
   /// corresponding tasks must be contained in the queue. The IDs of removed
   /// tasks will be erased from the set.
-  /// \return A vector of the tasks that were removed and their scheduling
-  /// states.
-  std::pair<std::vector<Task>, std::vector<TaskState>> RemoveTasks(
-      std::unordered_set<TaskID> &tasks);
+  /// \param task_states If this is not nullptr, then, the states of the removed
+  /// tasks will be appended to this vector.
+  /// \return A vector of the tasks that were removed.
+  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &task_ids,
+                                std::vector<TaskState> *task_states = nullptr);
 
   /// Remove a task from the task queue.
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
-  /// \return The task that was removed and its scheduling state.
-  std::pair<Task, TaskState> RemoveTask(const TaskID &task_id);
+  /// \param task_state If this is not nullptr, then the state of the removed
+  /// task will be written here.
+  /// \return The task that was removed.
+  Task RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
