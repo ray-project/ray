@@ -387,19 +387,18 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     return;
   }
 
-  // If we've pushed this same object to this same object manager recently, then
-  // don't do it again. Otherwise do it.
+  // If we haven't pushed this object to this same object manager yet, then push
+  // it. If we have, but it was a long time ago, then push it. If we have and it
+  // was recent, then don't do it again.
   auto &recent_pushes = local_objects_[object_id].recent_pushes;
   auto it = recent_pushes.find(client_id);
   if (it == recent_pushes.end()) {
     // We haven't pushed this specific object to this specific object manager
     // yet (or if we have then the object must have been evicted and recreated
     // locally).
-    recent_pushes[client_id] = current_time_ms();
+    recent_pushes[client_id] = current_sys_time_ms();
   } else {
-    // We've already pushed this object to this object manager, but if that
-    // happened long ago, push it again.
-    int64_t current_time = current_time_ms();
+    int64_t current_time = current_sys_time_ms();
     if (current_time - it->second <=
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
