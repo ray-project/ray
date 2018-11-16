@@ -39,10 +39,14 @@ struct NodeManagerConfig {
   std::unordered_map<Language, std::vector<std::string>> worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
+  /// The time between debug dumps in milliseconds, or -1 to disable.
+  uint64_t debug_dump_period_ms;
   /// the maximum lineage size.
   uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
+  /// The path to the ray temp dir.
+  std::string temp_dir;
 };
 
 class NodeManager {
@@ -92,6 +96,11 @@ class NodeManager {
   /// \return Status indicating whether this was done successfully or not.
   ray::Status RegisterGcs();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Methods for handling clients.
 
@@ -107,6 +116,9 @@ class NodeManager {
 
   /// Send heartbeats to the GCS.
   void Heartbeat();
+
+  /// Write out debug state to a file.
+  void DumpDebugState();
 
   /// Get profiling information from the object manager and push it to the GCS.
   ///
@@ -363,12 +375,18 @@ class NodeManager {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The period between debug state dumps.
+  int64_t debug_dump_period_;
+  /// The path to the ray temp dir.
+  std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and
   /// push it to the GCS.
   boost::asio::steady_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
+  /// The time that the last debug string was logged to the console.
+  uint64_t last_debug_dump_at_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.

@@ -20,6 +20,10 @@ class RayConfig {
     return heartbeat_timeout_milliseconds_;
   }
 
+  int64_t debug_dump_period_milliseconds() const {
+    return debug_dump_period_milliseconds_;
+  }
+
   int64_t num_heartbeats_timeout() const { return num_heartbeats_timeout_; }
 
   uint64_t num_heartbeats_warning() const { return num_heartbeats_warning_; }
@@ -115,6 +119,8 @@ class RayConfig {
         handler_warning_timeout_ms_ = pair.second;
       } else if (pair.first == "heartbeat_timeout_milliseconds") {
         heartbeat_timeout_milliseconds_ = pair.second;
+      } else if (pair.first == "debug_dump_period_milliseconds") {
+        debug_dump_period_milliseconds_ = pair.second;
       } else if (pair.first == "num_heartbeats_timeout") {
         num_heartbeats_timeout_ = pair.second;
       } else if (pair.first == "num_heartbeats_warning") {
@@ -191,6 +197,7 @@ class RayConfig {
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
         num_heartbeats_warning_(5),
+        debug_dump_period_milliseconds_(10000),
         initial_reconstruction_timeout_milliseconds_(10000),
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
@@ -243,6 +250,9 @@ class RayConfig {
   /// heartbeat periods ago, then a warning will be logged that the heartbeat
   /// handler is drifting.
   uint64_t num_heartbeats_warning_;
+
+  /// The duration between dumping debug info to logs, or -1 to disable.
+  int64_t debug_dump_period_milliseconds_;
 
   /// The initial period for a task execution lease. The lease will expire this
   /// many milliseconds after the first acquisition of the lease. Nodes that

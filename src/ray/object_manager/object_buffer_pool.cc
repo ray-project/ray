@@ -195,4 +195,12 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
 }
 
+std::string ObjectBufferPool::DebugString() const {
+  std::stringstream result;
+  result << "BufferPool:";
+  result << "\n- get buffer state map size: " << get_buffer_state_.size();
+  result << "\n- create buffer state map size: " << create_buffer_state_.size();
+  return result.str();
+}
+
 }  // namespace ray
