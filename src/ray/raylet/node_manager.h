@@ -223,10 +223,10 @@ class NodeManager {
   /// \param can_skip If true, all the tasks in ready_tasks will have the same
   ///        resource requirements, so we can stop processing them once one of
   ///        them is infeasible.
-  void DispatchTasks1(const std::unordered_set<TaskID> &ready_tasks, bool can_skip = false);
+  void DispatchTask(const Task& task);
 
   /// Call DispatchTasks(ready_tasks) for all tasks in the ready queue.
-  void DispatchTasks2();
+  void DispatchTasks();
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
