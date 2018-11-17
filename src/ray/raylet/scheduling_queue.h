@@ -71,7 +71,7 @@ class TaskQueue {
   /// \return Whether the task_id exists in this queue.
   bool HasTask(const TaskID &task_id) const;
 
-  /// \brief Remove the task list of the queue.
+  /// \brief Return the task list of the queue.
   /// \return A list of tasks contained in this queue.
   const std::list<Task> &GetTasks() const;
 
@@ -103,8 +103,15 @@ class ReadyQueue : public TaskQueue {
   /// \return Whether the removal succeeds.
   bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks);
 
+  /// \brief Get task associated to task_id in this queue.
+  ///
+  /// \param task_id The task ID for the task to get.
+  /// \return The task corresponding to task_id.
   const Task &GetTask(const TaskID &task_id) { return *task_map_[task_id]; }
 
+  /// \brief Get a mapping from resource shape to tasks.
+  ///
+  /// \return Mapping from resource set to task IDs with these resource requirements.
   std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() {
     return tasks_with_resources_;
   }

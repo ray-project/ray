@@ -531,6 +531,8 @@ void NodeManager::DispatchTasks() {
       const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
       const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
       if (!local_available_resources_.Contains(task_resources)) {
+        // All the tasks in it.second have the same resource shape, so
+        // once the first task is not feasible, we can break out of this loop
         break;
       }
       if (AssignTask(task)) {
