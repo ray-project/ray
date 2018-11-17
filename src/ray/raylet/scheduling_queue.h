@@ -169,7 +169,7 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks ready
   /// to execute but that are waiting for a worker.
-  std::list<Task> GetReadyTasks() const;
+  const std::list<Task> &GetReadyTasks() const;
 
   /// Get a reference to the queue of ready tasks.
   ///
