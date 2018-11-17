@@ -103,9 +103,7 @@ class ReadyQueue : public TaskQueue {
   /// \return Whether the removal succeeds.
   bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks);
 
-  const Task& GetTask(const TaskID &task_id) {
-    return *task_map_[task_id];
-  }
+  const Task &GetTask(const TaskID &task_id) { return *task_map_[task_id]; }
 
   std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() {
     return tasks_with_resources_;
