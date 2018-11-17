@@ -52,12 +52,12 @@ class Categorical(ActionDistribution):
                 self.inputs, reduction_indices=[1], keepdims=True)
         else:
             a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keep_dims=True)
+                self.inputs, reduction_indices=[1], keepdims=True)
         ea0 = tf.exp(a0)
         if use_tf150_api:
             z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
         else:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
@@ -69,17 +69,17 @@ class Categorical(ActionDistribution):
                 other.inputs, reduction_indices=[1], keepdims=True)
         else:
             a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keep_dims=True)
+                self.inputs, reduction_indices=[1], keepdims=True)
             a1 = other.inputs - tf.reduce_max(
-                other.inputs, reduction_indices=[1], keep_dims=True)
+                other.inputs, reduction_indices=[1], keepdims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
         if use_tf150_api:
             z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
             z1 = tf.reduce_sum(ea1, reduction_indices=[1], keepdims=True)
         else:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-            z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
+            z1 = tf.reduce_sum(ea1, reduction_indices=[1], keepdims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(
             p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
