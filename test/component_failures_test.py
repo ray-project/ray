@@ -50,7 +50,7 @@ def test_dying_worker_get(shutdown_only):
         return os.getpid()
 
     x_id = sleep_forever.remote()
-    time.sleep(0.01)  # Try to wait for the sleep task to get scheduled.
+    time.sleep(0.05)  # Try to wait for the sleep task to get scheduled.
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
 
