@@ -538,9 +538,10 @@ void NodeManager::DispatchTasks() {
     for (const auto &task_id : it.second) {
       const auto& task = local_queues_.GetReadyQueue().GetTask(task_id);
       const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
-      if (!local_available_resources_.Contains(task_resources) || !AssignTask(task)) {
+      if (!local_available_resources_.Contains(task_resources)) {
         break;
-      } else {
+      }
+      if (AssignTask(task)) {
         removed_task_ids.insert(task_id);
       }
     }
