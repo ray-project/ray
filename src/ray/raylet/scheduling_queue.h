@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ray/raylet/task.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -87,7 +88,7 @@ class TaskQueue {
   ResourceSet current_resource_load_;
 };
 
-class ReadyQueue {
+class ReadyQueue : public TaskQueue {
  public:
   /// \brief Append a task to queue.
   ///
@@ -102,33 +103,17 @@ class ReadyQueue {
   /// \return Whether the removal succeeds.
   bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks);
 
-  /// \brief Check if the queue contains a specific task id.
-  ///
-  /// \param task_id The task ID for the task.
-  /// \return Whether the task_id exists in this queue.
-  bool HasTask(const TaskID &task_id) const {
-    return task_map_.find(task_id) != task_map_.end();
+  const Task& GetTask(const TaskID &task_id) {
+    return *task_map_[task_id];
   }
-  /// \brief Get the total resources required by the tasks in the queue.
-  /// \return Total resources required by the tasks in the queue.
-  const ResourceSet &GetCurrentResourceLoad() const { return current_resource_load_; }
 
-  /// \brief Remove the task list of the queue.
-  ///
-  /// \return A list of tasks contained in this queue.
-  const std::list<Task> GetTasks() const;
-
-  std::unordered_map<ResourceSet, std::list<Task>> &GetTaskQueues() {
-    return task_lists_;
+  std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() {
+    return tasks_with_resources_;
   }
 
  private:
-  /// A list of tasks.
-  std::unordered_map<ResourceSet, std::list<Task>> task_lists_;
-  /// A hash to speed up looking up a task.
-  std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
-  /// Aggregate resources of all the tasks in this queue.
-  ResourceSet current_resource_load_;
+  /// Index from resource shape to tasks that require these resources.
+  std::unordered_map<ResourceSet, std::unordered_set<TaskID>> tasks_with_resources_;
 };
 
 /// \class SchedulingQueue

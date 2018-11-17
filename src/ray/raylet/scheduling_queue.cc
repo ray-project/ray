@@ -118,41 +118,17 @@ const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
-  RAY_CHECK(task_map_.find(task_id) == task_map_.end());
   auto &resources = task.GetTaskSpecification().GetRequiredResources();
-  auto list_iterator = task_lists_[resources].insert(task_lists_[resources].end(), task);
-  task_map_[task_id] = list_iterator;
-  // Resource bookkeeping
-  current_resource_load_.AddResources(resources);
-  return true;
+  RAY_CHECK(tasks_with_resources_[resources].insert(task_id).second == true);
+  return TaskQueue::AppendTask(task_id, task);
 }
 
 bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
-  auto task_found_iterator = task_map_.find(task_id);
-  if (task_found_iterator == task_map_.end()) {
-    return false;
+  if (task_map_.find(task_id) != task_map_.end()) {
+    auto &resources = task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
+    RAY_CHECK(tasks_with_resources_[resources].erase(task_id) == 1);
   }
-
-  auto list_iterator = task_found_iterator->second;
-  auto &resources = list_iterator->GetTaskSpecification().GetRequiredResources();
-  // Resource bookkeeping
-  current_resource_load_.SubtractResourcesStrict(resources);
-  if (removed_tasks) {
-    removed_tasks->push_back(std::move(*list_iterator));
-  }
-  task_map_.erase(task_found_iterator);
-  task_lists_[resources].erase(list_iterator);
-  return true;
-}
-
-const std::list<Task> ReadyQueue::GetTasks() const {
-  std::list<Task> result;
-  for (auto &task_list : task_lists_) {
-    for (auto &task : task_list.second) {
-      result.push_back(task);
-    }
-  }
-  return result;
+  return TaskQueue::RemoveTask(task_id, removed_tasks);
 }
 
 const std::list<Task> &SchedulingQueue::GetMethodsWaitingForActorCreation() const {
@@ -183,7 +159,7 @@ ResourceSet SchedulingQueue::GetResourceLoad() const {
 }
 
 const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
-  return this->running_tasks_.GetTasks();
+  return running_tasks_.GetTasks();
 }
 
 const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {
