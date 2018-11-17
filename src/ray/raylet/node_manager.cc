@@ -524,14 +524,6 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTask(const Task& task) {
-  const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
-  if (local_available_resources_.Contains(task_resources) && AssignTask(task)) {
-    std::unordered_set<TaskID> removed_task_ids = {task.GetTaskSpecification().TaskId()};
-    local_queues_.RemoveTasks(removed_task_ids);
-  }
-}
-
 void NodeManager::DispatchTasks() {
   std::unordered_set<TaskID> removed_task_ids;
   for (auto &it : local_queues_.GetReadyQueue().GetTasksWithResources()) {
@@ -1246,11 +1238,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
-    // Dispatch just the new who was added to the ready task.
-    // The other tasks in the ready queue can be ignored as no new resources
-    // have been added and no new worker has became available since the last
-    // time DispatchTasks() was called.
-    DispatchTask(task);
+    DispatchTasks();
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
@@ -1363,7 +1351,7 @@ bool NodeManager::AssignTask(const Task &task) {
           // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueReadyTasks(std::vector<Task>({assigned_task}));
-          DispatchTask(assigned_task);
+          DispatchTasks();
         }
       });
 
@@ -1512,13 +1500,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueReadyTasks(ready_tasks);
-    // Dispatch only the new ready tasks whose dependencies were fulfilled.
-    // The other tasks in the ready queue can be ignored as no new resources
-    // have been added and no new worker has became available since the last
-    // time DispatchTasks() was called.
-    for (auto &task : ready_tasks) {
-      DispatchTask(task);
-    }
+    DispatchTasks();
   }
 }
 
