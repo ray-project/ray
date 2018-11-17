@@ -1042,7 +1042,7 @@ def test_actors_and_tasks_with_gpus(shutdown_only):
     locations_to_intervals = locations_to_intervals_for_many_tasks()
     # Make sure that all GPUs were used.
     assert (len(locations_to_intervals) == num_local_schedulers *
-            num_gpus_per_scheduler), str(locations_to_intervals)
+            num_gpus_per_scheduler), str(locations_ids_and_intervals)
     # For each GPU, verify that the set of tasks that used this specific
     # GPU did not overlap in time.
     for locations in locations_to_intervals:
