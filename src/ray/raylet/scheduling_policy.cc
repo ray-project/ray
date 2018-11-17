@@ -141,7 +141,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
     if (!spec.IsActorTask()) {
       // Make sure the node has enough available resources to prevent forwarding cycles.
       if (spec.GetRequiredPlacementResources().IsSubset(
-          remote_scheduling_resources.GetAvailableResources())) {
+              remote_scheduling_resources.GetAvailableResources())) {
         decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());
         break;

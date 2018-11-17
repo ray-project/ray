@@ -36,7 +36,6 @@ class SchedulingPolicy {
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
 
-
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///
   /// \param cluster_resources: a set of cluster resources containing resource and load
