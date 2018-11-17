@@ -118,6 +118,11 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  protected:
   /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.

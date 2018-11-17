@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import hashlib
 import inspect
+import logging
 import os
 import signal
 import traceback
@@ -18,6 +19,8 @@ import ray.worker
 from ray.utils import _random_string
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
+
+logger = logging.getLogger(__name__)
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
@@ -223,9 +226,15 @@ class ActorMethod(object):
                                                        self._method_name))
 
     def remote(self, *args, **kwargs):
-        return self._submit(args, kwargs)
+        return self._remote(args, kwargs)
 
     def _submit(self, args, kwargs, num_return_vals=None):
+        logger.warn(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args, kwargs=kwargs, num_return_vals=num_return_vals)
+
+    def _remote(self, args, kwargs, num_return_vals=None):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
@@ -320,9 +329,24 @@ class ActorClass(object):
         Returns:
             A handle to the newly created actor.
         """
-        return self._submit(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
+                args,
+                kwargs,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None):
+        logger.warn(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args,
+            kwargs=kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources)
+
+    def _remote(self,
                 args,
                 kwargs,
                 num_cpus=None,

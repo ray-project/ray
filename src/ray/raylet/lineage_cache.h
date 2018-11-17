@@ -272,6 +272,11 @@ class LineageCache {
   /// \return The number of entries in the lineage cache.
   size_t NumEntries() const;
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Flush a task that is in UNCOMMITTED_READY state.
   void FlushTask(const TaskID &task_id);

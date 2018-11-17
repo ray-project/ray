@@ -79,8 +79,7 @@ def start_connected_emptyhead_cluster():
 
 @pytest.mark.skipif(
     pytest_timeout is None,
-    reason="Timeout package"
-    " not installed; skipping test that may hang.")
+    reason="Timeout package not installed; skipping test.")
 @pytest.mark.timeout(10, method="thread")
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
@@ -123,8 +122,7 @@ def test_counting_resources(start_connected_cluster):
 @pytest.mark.skip("Add this test once reconstruction is fixed")
 @pytest.mark.skipif(
     pytest_timeout is None,
-    reason="Timeout package"
-    " not installed; skipping test that may hang.")
+    reason="Timeout package not installed; skipping test.")
 @pytest.mark.timeout(10, method="thread")
 def test_remove_node_before_result(start_connected_cluster):
     """Removing a node should cause a Trial to be requeued."""
@@ -159,6 +157,10 @@ def test_remove_node_before_result(start_connected_cluster):
         runner.step()
 
 
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test.")
+@pytest.mark.timeout(120, method="thread")
 def test_trial_migration(start_connected_emptyhead_cluster):
     """Removing a node while cluster has space should migrate trial.
 
@@ -229,6 +231,10 @@ def test_trial_migration(start_connected_emptyhead_cluster):
         runner.step()
 
 
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test.")
+@pytest.mark.timeout(120, method="thread")
 def test_trial_requeue(start_connected_emptyhead_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
