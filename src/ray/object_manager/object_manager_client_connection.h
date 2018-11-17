@@ -74,7 +74,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   }
 
   /// \return The ClientID of this connection.
-  const ClientID &GetClientID() { return client_id_; }
+  const ClientID &GetClientId() { return client_id_; }
 
  private:
   bool operator==(const SenderConnection &rhs) const {
