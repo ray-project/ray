@@ -11,10 +11,10 @@ namespace {
 template <typename TaskQueue>
 void RemoveTasksFromQueue(ray::raylet::TaskState task_state, TaskQueue &queue,
                           std::unordered_set<ray::TaskID> &task_ids,
-                          std::vector<ray::raylet::Task> &removed_tasks,
+                          std::vector<ray::raylet::Task> *removed_tasks,
                           std::vector<ray::raylet::TaskState> *task_states = nullptr) {
   for (auto it = task_ids.begin(); it != task_ids.end();) {
-    if (queue.RemoveTask(*it, &removed_tasks)) {
+    if (queue.RemoveTask(*it, removed_tasks)) {
       it = task_ids.erase(it);
       if (task_states != nullptr) {
         task_states->push_back(task_state);
@@ -220,16 +220,16 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   // Try to find the tasks to remove from the queues.
 
   RemoveTasksFromQueue(TaskState::WAITING_FOR_ACTOR, methods_waiting_for_actor_creation_,
-                       task_ids, removed_tasks, task_states);
-  RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, removed_tasks,
+                       task_ids, &removed_tasks, task_states);
+  RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, &removed_tasks,
                        task_states);
-  RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, removed_tasks,
+  RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, &removed_tasks,
                        task_states);
-  RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, removed_tasks,
+  RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, &removed_tasks,
                        task_states);
-  RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, removed_tasks,
+  RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, &removed_tasks,
                        task_states);
-  RemoveTasksFromQueue(TaskState::INFEASIBLE, infeasible_tasks_, task_ids, removed_tasks,
+  RemoveTasksFromQueue(TaskState::INFEASIBLE, infeasible_tasks_, task_ids, &removed_tasks,
                        task_states);
 
   RAY_CHECK(task_ids.size() == 0);
@@ -261,20 +261,20 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   // Remove the tasks from the specified source queue.
   switch (src_state) {
   case TaskState::PLACEABLE:
-    RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, &removed_tasks);
     break;
   case TaskState::WAITING:
-    RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, &removed_tasks);
     break;
   case TaskState::READY:
-    RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::READY, ready_tasks_, task_ids, &removed_tasks);
     break;
   case TaskState::RUNNING:
-    RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, removed_tasks);
+    RemoveTasksFromQueue(TaskState::RUNNING, running_tasks_, task_ids, &removed_tasks);
     break;
   case TaskState::INFEASIBLE:
     RemoveTasksFromQueue(TaskState::INFEASIBLE, infeasible_tasks_, task_ids,
-                         removed_tasks);
+                         &removed_tasks);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
