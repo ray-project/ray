@@ -6,8 +6,6 @@ import copy
 import hashlib
 import inspect
 import logging
-import os
-import signal
 import sys
 import traceback
 
