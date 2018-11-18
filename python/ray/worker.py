@@ -972,7 +972,7 @@ class Worker(object):
             driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
-            os._exit(0)
+            sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.

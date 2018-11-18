@@ -8,6 +8,7 @@ import inspect
 import logging
 import os
 import signal
+import sys
 import traceback
 
 import ray.cloudpickle as pickle
@@ -783,9 +784,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
                 worker.local_scheduler_client.disconnect()
-                # Kill the process group. We will get the SIGTERM and
-                # eventually call sys.exit(0) in worker.py as a result of this.
-                os.kill(os.getpid(), signal.SIGTERM)
+                sys.exit(0)
                 assert False, "This process should have terminated."
 
         def __ray_save_checkpoint__(self):
