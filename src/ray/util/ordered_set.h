@@ -15,18 +15,14 @@ class ordered_set {
     iterators_[value] = list_iterator;
   }
 
-  size_t count(const T &k) const {
-    return iterators_.count(k);
-  }
+  size_t count(const T &k) const { return iterators_.count(k); }
 
   void pop_front() {
     iterators_.erase(elements_.front());
     elements_.pop_front();
   }
 
-  const T &front() const {
-    return elements_.front();
-  }
+  const T &front() const { return elements_.front(); }
 
   size_t size() const noexcept {
     RAY_CHECK(elements_.size() == iterators_.size());
