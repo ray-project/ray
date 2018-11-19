@@ -526,7 +526,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 void NodeManager::DispatchTasks() {
   std::unordered_set<TaskID> removed_task_ids;
   for (const auto &it : local_queues_.GetReadyQueue().GetTasksWithResources()) {
-    for (const auto &task_id : it.second.elements()) {
+    for (const auto &task_id : it.second) {
       const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
       const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
       if (!local_available_resources_.Contains(task_resources)) {
