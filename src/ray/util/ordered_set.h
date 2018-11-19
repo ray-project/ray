@@ -7,7 +7,11 @@
 template <typename T>
 class ordered_set {
  public:
-  explicit ordered_set() {}
+  ordered_set() {}
+
+  ordered_set(const ordered_set &other) = delete;
+
+  ordered_set &operator=(const ordered_set &other) = delete;
 
   void push_back(const T &value) {
     RAY_CHECK(iterators_.find(value) == iterators_.end());
