@@ -13,11 +13,12 @@
 /// quick.
 template <typename T>
 class ordered_set {
- public:
+ private:
   using elements_type = std::list<T>;
   using positions_type = std::unordered_map<T, typename elements_type::iterator>;
   using iterator = typename elements_type::iterator;
 
+ public:
   ordered_set() {}
 
   ordered_set(const ordered_set &other) = delete;
