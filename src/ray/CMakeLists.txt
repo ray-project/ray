@@ -7,6 +7,7 @@ add_subdirectory(object_manager)
 add_subdirectory(raylet)
 
 include_directories(thirdparty/ae)
+include_directories(thirdparty/tessil)
 
 set(HIREDIS_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/async.c
