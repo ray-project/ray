@@ -94,7 +94,7 @@ class Cluster(object):
                 services.all_processes[key] = []
             node = Node(process_dict_copy)
             self.worker_nodes[node] = address_info
-        logging.info("Starting Node with raylet socket {}".format(
+        logger.info("Starting Node with raylet socket {}".format(
             address_info["raylet_socket_names"]))
 
         return node
