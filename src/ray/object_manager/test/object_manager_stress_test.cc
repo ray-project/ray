@@ -120,7 +120,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::from_random().hex());
     store_id_2 = StartStore(UniqueID::from_random().hex());
 
-    uint pull_timeout_ms = 1;
+    uint pull_timeout_ms = 1000;
     int max_sends_a = 2;
     int max_receives_a = 2;
     int max_sends_b = 3;

@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -49,6 +50,14 @@ struct ObjectManagerConfig {
   /// Negative: waiting infinitely.
   /// 0: giving up retrying immediately.
   int push_timeout_ms;
+};
+
+struct LocalObjectInfo {
+  /// Information from the object store about the object.
+  object_manager::protocol::ObjectInfoT object_info;
+  /// A map from the ID of a remote object manager to the timestamp of when
+  /// the object was last pushed to that object manager (if a push took place).
+  std::unordered_map<ClientID, int64_t> recent_pushes;
 };
 
 class ObjectManagerInterface {
@@ -102,7 +111,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// \return Status of whether adding the subscription succeeded.
   ray::Status SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
 
-  /// Push an object to to the node manager on the node corresponding to client id.
+  /// Consider pushing an object to a remote object manager. This object manager
+  /// may choose to ignore the Push call (e.g., if Push is called twice in a row
+  /// on the same object, the second one might be ignored).
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
@@ -382,8 +393,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
-  /// Cache of locally available objects.
-  std::unordered_map<ObjectID, object_manager::protocol::ObjectInfoT> local_objects_;
+  /// Mapping from locally available objects to information about those objects
+  /// including when the object was last pushed to other object managers.
+  std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
@@ -400,11 +412,16 @@ class ObjectManager : public ObjectManagerInterface {
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
+  /// The objects that this object manager is currently trying to fetch from
+  /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
   std::vector<ProfileEventT> profile_events_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 }  // namespace ray
