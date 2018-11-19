@@ -6,7 +6,7 @@ set -x
 set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
-MODIN_VERSION=0.2.2
+MODIN_VERSION=0.2.4
 MODIN_REPO="https://github.com/modin-project/modin"
 
 pushd $TP_DIR/../python/ray/
