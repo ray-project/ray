@@ -12,7 +12,7 @@ import pickle
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, DEFAULT_RESULTS_DIR
+from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
@@ -101,6 +101,8 @@ class TrialRunner(object):
     def save(self, checkpoint_dir=None):
         if checkpoint_dir is None:
             checkpoint_dir = self._checkpoint_dir
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {

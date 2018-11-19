@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 import time
 import tempfile
 import pytest
@@ -12,6 +13,7 @@ except ImportError:
     pytest_timeout = None
 
 from ray.test.cluster_utils import Cluster
+from ray.test.test_utils import run_string_as_driver_nonblocking, run_string_as_driver
 import ray
 from ray import tune
 from ray.tune.error import TuneError
@@ -289,6 +291,7 @@ def test_cluster_down_simple(start_connected_cluster):
 
     runner.step()  # start
     runner.step()  # start2
+    runner.step()  # step
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
     runner.save()
 
@@ -299,10 +302,85 @@ def test_cluster_down_simple(start_connected_cluster):
     tune.register_trainable("test", _Train)
     runner = TrialRunner(BasicVariantGenerator())
     runner.restore(tmpdir)
-    runner.step()
-    runner.step()
+    print([t.status for t in runner.get_trials()])
+    runner.step()  # start
+    runner.step()  # start2
 
-    for i in range(4):
+    for i in range(3):
+        runner.step()
+
+    with pytest.raises(TuneError):
         runner.step()
 
     assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
+
+
+def test_cluster_down_full(start_connected_cluster):
+    cluster = start_connected_cluster
+
+    tmpdir = tempfile.mkdtemp()
+
+    trainable_str = """
+import time
+
+class _Train(tune.Trainable):
+    def _setup(self, config):
+        self.state = dict(hi=1)
+
+    def _train(self):
+        self.state["hi"] += 1
+        time.sleep(0.5)
+        return dict()
+
+    def _save(self, path):
+        return self.state
+
+    def _restore(self, state):
+        self.state = state
+
+tune.register_trainable("train", _Train)
+"""
+    script = """
+import os
+import ray
+from ray import tune
+
+
+ray.init(redis_address="{redis_address}")
+
+{register_trainable_script}
+
+kwargs = dict(
+    run="train",
+    stop=dict(training_iteration=2),
+    checkpoint_freq=1,
+    max_failures=1)
+
+tune.run_experiments(
+    dict(experiment=kwargs),
+    checkpoint_dir="{checkpoint_dir}",
+    checkpoint_freq=3)
+""".format(
+        redis_address=cluster.redis_address,
+        checkpoint_dir=tmpdir,
+        register_trainable_script=trainable_str)
+    run_string_as_driver_nonblocking(script)
+    while not os.path.exists(os.path.join(tmpdir, "experiment.state")):
+        time.sleep(0.5)
+    cluster.shutdown()
+
+    cluster = _start_new_cluster()
+    script = """
+import ray
+from ray import tune
+
+ray.init(redis_address="{redis_address}")
+
+{register_trainable_script}
+
+tune.run_experiments(restore_from_path="{restore_path}")
+""".format(
+        redis_address=cluster.redis_address,
+        restore_path=tmpdir,
+        register_trainable_script=trainable_str)
+    run_string_as_driver(script)
