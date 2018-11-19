@@ -13,7 +13,7 @@ import pickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S, DEFAULT_RESULTS_DIR
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
@@ -54,6 +54,8 @@ class TrialRunner(object):
                  search_alg,
                  scheduler=None,
                  launch_web_server=False,
+                 checkpoint_dir=None,
+                 checkpoint_freq=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -85,15 +87,20 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
+        self._iteration = 0
         self._server = None
         if launch_web_server:
             self._server = TuneServer(self, server_port)
         self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
+        self._checkpoint_dir = checkpoint_dir
+        self._checkpoint_freq = checkpoint_freq
         self._trial_checkpoints = {}
 
-    def save(self, checkpoint_dir=DEFAULT_RESULTS_DIR):
+    def save(self, checkpoint_dir=None):
+        if checkpoint_dir is None:
+            checkpoint_dir = self._checkpoint_dir
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
@@ -115,8 +122,8 @@ class TrialRunner(object):
             runner_state = pickle.load(f)
 
         logger.info("Replacing all trials with checkpoint state.")
-        self._trial_checkpoints = runner_state["checkpoints"]
-        for ckpt in self._trial_checkpoints:
+        for ckpt in runner_state["checkpoints"]:
+            # NOTE: This will repickle the current trial state
             self.add_trial(pickle.loads(ckpt))
 
         self._total_time = runner_state["total_time"]
@@ -147,6 +154,11 @@ class TrialRunner(object):
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
+            if self._checkpoint_freq:
+                if self._iteration % self._checkpoint_freq == 0:
+                    self.save(self._checkpoint_dir)
+
+            self._iteration += 1
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
@@ -196,6 +208,7 @@ class TrialRunner(object):
         """
         trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
+        self._checkpoint_if_needed(trial)
         self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
@@ -309,14 +322,14 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                self._checkpoint_if_needed(trial, result)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                self._checkpoint_if_needed(trial, result)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -334,12 +347,16 @@ class TrialRunner(object):
                         trial.trial_id, error=True)
                     self.trial_executor.stop_trial(trial, True, error_msg)
 
-    def _checkpoint_if_needed(self, trial, result):
-        if trial.should_checkpoint(result):
-            # TODO(rliaw): This is a blocking call
-            self.trial_executor.save(trial, storage=Checkpoint.DISK)
+    def _checkpoint_if_needed(self, trial):
+        """Checkpoints trial based off trial.last_result."""
+        if trial.should_checkpoint():
+
+            # Save trial runtime if possible
+            if hasattr(trial, "runner") and trial.runner:
+                self.trial_executor.save(trial, storage=Checkpoint.DISK)
+
             try:
-                self._checkpoints[trial] = pickle.dumps(trial)
+                self._trial_checkpoints[trial] = pickle.dumps(trial)
             except ValueError:
                 logger.exception("Error checkpointing full trial state.")
 

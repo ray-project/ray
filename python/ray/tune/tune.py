@@ -35,6 +35,9 @@ def _make_scheduler(args):
 def run_experiments(experiments=None,
                     search_alg=None,
                     scheduler=None,
+                    restore_from_path=None,
+                    checkpoint_dir=None,
+                    checkpoint_freq=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
@@ -95,14 +98,19 @@ def run_experiments(experiments=None,
     runner = TrialRunner(
         search_alg,
         scheduler=scheduler,
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_freq=checkpoint_freq,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    logger.info(runner.debug_string(max_debug=99999))
+    # TODO(rliaw): Have better explicit designation for restoring.
+    if restore_from_path and os.path.exists(restore_from_path):
+        runner.restore(restore_from_path)
 
+    logger.info(runner.debug_string(max_debug=99999))
     last_debug = 0
     while not runner.is_finished():
         runner.step()

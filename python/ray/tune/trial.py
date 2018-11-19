@@ -216,16 +216,18 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self, result):
+    def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        result = self.last_result or {}
 
         if result.get(DONE) and self.checkpoint_at_end:
             return True
 
-        if not self.checkpoint_freq:
+        if self.checkpoint_freq:
+            return result.get(
+                TRAINING_ITERATION, 0) % self.checkpoint_freq == 0
+        else:
             return False
-
-        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -330,6 +332,8 @@ class Trial(object):
         if state["result_logger"]:
             state["result_logger"].flush()
             state["_logger_started"] = True
+        else:
+            state["_logger_started"] = False
 
         state["result_logger"] = None
         state["runner"] = None

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import time
+import tempfile
 import pytest
 try:
     import pytest_timeout
@@ -267,15 +268,15 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_cluster_down_simple():
+def test_cluster_down_simple(start_connected_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
-    cluster = _start_new_cluster()
-    node = cluster.add_node(resources=dict(CPU=1))
-
-    runner = TrialRunner(BasicVariantGenerator())
+    cluster = start_connected_cluster
+    cluster.add_node(resources=dict(CPU=1))
+    tmpdir = tempfile.mkdtemp()
+    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
     kwargs = {
         "stopping_criterion": {
-            "training_iteration": 5
+            "training_iteration": 2
         },
         "checkpoint_freq": 1,
         "max_failures": 1
@@ -287,12 +288,21 @@ def test_cluster_down_simple():
         runner.add_trial(t)
 
     runner.step()  # start
-    runner.step()  # 1 result
-    checkpoint_dir = runner.save()
+    runner.step()  # start2
+    assert all(t.status == Trial.RUNNING for t in runner.get_trials())
+    runner.save()
+
     cluster.shutdown()
     ray.shutdown()
 
     cluster = _start_new_cluster()
+    tune.register_trainable("test", _Train)
     runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(checkpoint_dir)
+    runner.restore(tmpdir)
     runner.step()
+    runner.step()
+
+    for i in range(4):
+        runner.step()
+
+    assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
