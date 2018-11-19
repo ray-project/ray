@@ -4,6 +4,13 @@
 #include <list>
 #include <unordered_map>
 
+/// \class ordered_set
+///
+/// This container has properties of both a deque and a set. It is like a deque
+/// in the sense that it maintains the insertion order and allows you to
+/// push_back elements and pop_front elements. It is like a set in the sense
+/// that it does not allow duplicate entries. Looking up and erasing elements is
+/// quick.
 template <typename T>
 class ordered_set {
  public:
