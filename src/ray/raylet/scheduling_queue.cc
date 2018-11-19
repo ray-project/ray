@@ -118,14 +118,14 @@ const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
-  auto &resources = task.GetTaskSpecification().GetRequiredResources();
+  const auto &resources = task.GetTaskSpecification().GetRequiredResources();
   RAY_CHECK(tasks_with_resources_[resources].insert(task_id).second == true);
   return TaskQueue::AppendTask(task_id, task);
 }
 
 bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   if (task_map_.find(task_id) != task_map_.end()) {
-    auto &resources = task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
+    const auto &resources = task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
     RAY_CHECK(tasks_with_resources_[resources].erase(task_id) == 1);
   }
   return TaskQueue::RemoveTask(task_id, removed_tasks);

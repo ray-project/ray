@@ -101,12 +101,16 @@ class ReadyQueue : public TaskQueue {
   ///
   /// \param task_id The task ID for the task to get.
   /// \return The task corresponding to task_id.
-  const Task &GetTask(const TaskID &task_id) { return *task_map_[task_id]; }
+  const Task &GetTask(const TaskID &task_id) const {
+    auto it = task_map_.find(task_id);
+    RAY_CHECK(it != task_map_.end());
+    return *it->second;
+  }
 
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() {
+  const std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() const {
     return tasks_with_resources_;
   }
 
@@ -173,7 +177,7 @@ class SchedulingQueue {
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  ReadyQueue &GetReadyQueue() { return ready_tasks_; }
+  const ReadyQueue &GetReadyQueue() const { return ready_tasks_; }
 
   /// Get the queue of tasks in the running state.
   ///
