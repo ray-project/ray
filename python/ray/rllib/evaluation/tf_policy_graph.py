@@ -106,16 +106,24 @@ class TFPolicyGraph(PolicyGraph):
         self._optimizer = self.optimizer()
         if isinstance(self._optimizer, tuple):
             # more than one optimizers, e.g., DDPG
-            self._grads_and_vars = [[(g, v) for (g, v) in grad_var_list if g is not None] for grad_var_list in self.gradients(self._optimizer)]
-            self._grads = [[g for (g, v) in grad_var_list] for grad_var_list in self._grads_and_vars]
-            self._apply_ops = [opt.apply_gradients(grad_var_list) for opt, grad_var_list in zip(self._optimizer, self._grads_and_vars)]
+            self._grads_and_vars = [[
+                (g, v) for (g, v) in grad_var_list if g is not None
+            ] for grad_var_list in self.gradients(self._optimizer)]
+            self._grads = [[g for (g, v) in grad_var_list]
+                           for grad_var_list in self._grads_and_vars]
+            self._apply_ops = [
+                opt.apply_gradients(grad_var_list) for opt, grad_var_list in
+                zip(self._optimizer, self._grads_and_vars)
+            ]
             self._apply_op = tf.group(*(self._apply_ops))
         else:
             self._grads_and_vars = [(g, v)
-                                    for (g, v) in self.gradients(self._optimizer)
+                                    for (g,
+                                         v) in self.gradients(self._optimizer)
                                     if g is not None]
             self._grads = [g for (g, v) in self._grads_and_vars]
-            self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
+            self._apply_op = self._optimizer.apply_gradients(
+                self._grads_and_vars)
 
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
