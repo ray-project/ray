@@ -348,7 +348,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
     def _build_action_network(self, p_values, stochastic, eps, target_smoothing=False):
         return ActionNetwork(p_values, self.low_action, self.high_action,
                              stochastic, eps, self.config["use_gaussian_noise"],
-                             self.config["exploration_theta"], target_smoothing,
+                             self.config["exploration_theta"],
+                             self.config["exploration_sigma"], target_smoothing,
                              self.config["target_noise"], self.config["noise_clip"]).actions
 
     def _build_actor_critic_loss(self, q_t, q_tp1, q_tp0, twin_q_t=None, twin_q_tp1=None):
