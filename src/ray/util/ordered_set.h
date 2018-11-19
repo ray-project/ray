@@ -16,7 +16,7 @@ class ordered_set {
  public:
   using elements_type = std::list<T>;
   using positions_type = std::unordered_map<T, typename elements_type::iterator>;
-  using iterator_type = typename elements_type::iterator;
+  using iterator = typename elements_type::iterator;
 
   ordered_set() {}
 
@@ -48,14 +48,14 @@ class ordered_set {
     return positions_.erase(k);
   }
 
-  iterator_type erase(const iterator_type position) {
+  iterator erase(const iterator position) {
     positions_.erase(*position);
     return elements_.erase(position);
   }
 
-  iterator_type begin() noexcept { return elements_.begin(); }
+  iterator begin() noexcept { return elements_.begin(); }
 
-  iterator_type end() noexcept { return elements_.end(); }
+  iterator end() noexcept { return elements_.end(); }
 
  private:
   elements_type elements_;
