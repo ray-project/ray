@@ -16,6 +16,18 @@ OPTIMIZER_SHARED_CONFIGS = [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
+    # twin Q-net
+    "twin_q": False,
+    # delayed policy update
+    "policy_delay": 1,
+    # target policy smoothing
+    "use_gaussian_noise": False,
+    # target noise stddev
+    "target_noise": 0.2,
+    # action noise limit (bound)
+    "noise_clip": 0.5,
+
     # === Model ===
     # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],
