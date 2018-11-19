@@ -59,7 +59,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    config.maximum_startup_concurrency, config.worker_commands),
-      local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
@@ -527,7 +526,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 void NodeManager::DispatchTasks() {
   std::unordered_set<TaskID> removed_task_ids;
   for (const auto &it : local_queues_.GetReadyQueue().GetTasksWithResources()) {
-    for (const auto &task_id : it.second) {
+    for (const auto &task_id : it.second.elements()) {
       const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
       const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
       if (!local_available_resources_.Contains(task_resources)) {

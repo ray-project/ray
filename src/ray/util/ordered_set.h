@@ -34,7 +34,12 @@ class ordered_set {
     auto it = iterators_.find(k);
     RAY_CHECK(it != iterators_.end());
     elements_.erase(it->second);
-    return iterators_.erase(it);
+    iterators_.erase(it);
+    return 1;
+  }
+
+  const std::list<T>& elements() const {
+    return elements_;
   }
 
  private:

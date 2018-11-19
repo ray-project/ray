@@ -8,6 +8,7 @@
 
 #include "ray/raylet/task.h"
 #include "ray/util/logging.h"
+#include "ray/util/ordered_set.h"
 
 namespace ray {
 
@@ -84,6 +85,10 @@ class TaskQueue {
 
 class ReadyQueue : public TaskQueue {
  public:
+  ReadyQueue() {};
+
+  ReadyQueue(const ReadyQueue &other) = delete;
+
   /// \brief Append a task to queue.
   ///
   /// \param task_id The task ID for the task to append.
@@ -110,13 +115,13 @@ class ReadyQueue : public TaskQueue {
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<ResourceSet, std::unordered_set<TaskID>> &GetTasksWithResources() const {
+  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetTasksWithResources() const {
     return tasks_with_resources_;
   }
 
  private:
   /// Index from resource shape to tasks that require these resources.
-  std::unordered_map<ResourceSet, std::unordered_set<TaskID>> tasks_with_resources_;
+  std::unordered_map<ResourceSet, ordered_set<TaskID>> tasks_with_resources_;
 };
 
 /// \class SchedulingQueue
