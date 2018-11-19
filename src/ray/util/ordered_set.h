@@ -37,7 +37,7 @@ class ordered_set {
     auto it = iterators_.find(k);
     RAY_CHECK(it != iterators_.end());
     elements_.erase(it->second);
-    iterators_.erase(it);
+    return iterators_.erase(it);
   }
 
  private:
