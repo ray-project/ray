@@ -28,10 +28,7 @@ class ordered_set {
 
   const T &front() const { return elements_.front(); }
 
-  size_t size() const noexcept {
-    RAY_CHECK(elements_.size() == iterators_.size());
-    return elements_.size();
-  }
+  size_t size() const noexcept { return iterators_.size(); }
 
   size_t erase(const T &k) {
     auto it = iterators_.find(k);
