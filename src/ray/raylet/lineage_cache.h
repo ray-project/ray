@@ -1,6 +1,7 @@
 #ifndef RAY_RAYLET_LINEAGE_CACHE_H
 #define RAY_RAYLET_LINEAGE_CACHE_H
 
+#include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
 // clang-format off
@@ -193,6 +194,11 @@ class Lineage {
   std::unordered_map<const TaskID, LineageEntry> entries_;
   /// A mapping from each task in the lineage to its children.
   std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
+
+  /// Record the fact that the child task depends on the parent task.
+  void AddChild(const TaskID &parent_id, const TaskID &child_id);
+  /// Erase the fact that the child task depends on the parent task.
+  void RemoveChild(const TaskID &parent_id, const TaskID &child_id);
 };
 
 /// \class LineageCache
@@ -281,10 +287,10 @@ class LineageCache {
   /// \return Whether the task is in the lineage cache.
   bool ContainsTask(const TaskID &task_id) const;
 
-  /// Get the number of entries in the lineage cache.
+  /// Get all lineage in the lineage cache.
   ///
-  /// \return The number of entries in the lineage cache.
-  size_t NumEntries() const;
+  /// \return A const reference to the lineage.
+  const Lineage &GetLineage() const;
 
   /// Returns debug string for class.
   ///
@@ -292,6 +298,7 @@ class LineageCache {
   std::string DebugString() const;
 
  private:
+  FRIEND_TEST(LineageCacheTest, BarReturnsZeroOnNull);
   /// Flush a task that is in UNCOMMITTED_READY state.
   void FlushTask(const TaskID &task_id);
   /// Evict a single task. This should only be called if we are sure that the

@@ -89,20 +89,29 @@ boost::optional<LineageEntry &> Lineage::GetEntryMutable(const TaskID &task_id) 
   }
 }
 
+void Lineage::RemoveChild(const TaskID &parent_id, const TaskID &child_id) {
+  auto parent_it = children_.find(parent_id);
+  RAY_CHECK(parent_it->second.erase(child_id) == 1);
+  if (parent_it->second.empty()) {
+    children_.erase(parent_it);
+  }
+}
+
+void Lineage::AddChild(const TaskID &parent_id, const TaskID &child_id) {
+  auto inserted = children_[parent_id].insert(child_id);
+  RAY_CHECK(inserted.second);
+}
+
 bool Lineage::SetEntry(const Task &task, GcsStatus status) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
   auto it = entries_.find(task_id);
   bool updated = false;
+  std::unordered_set<TaskID> old_parents;
   if (it != entries_.end()) {
     if (it->second.SetStatus(status)) {
-      // The task's spec may have changed, so remove its old dependencies.
-      // TODO(swang): This could be inefficient for tasks that have lots of
-      // dependencies and/or large specs. A flag could be passed in for tasks
-      // whose data has not changed.
-      for (const auto &parent_id : it->second.GetParentTaskIds()) {
-        RAY_CHECK(children_[parent_id].erase(task_id) == 1);
-      }
+      // The task's spec may have changed, so record its old dependencies.
+      old_parents = it->second.GetParentTaskIds();
       // SetStatus() would check if the new status is greater,
       // if it succeeds, go ahead to update the task field.
       it->second.UpdateTaskData(task);
@@ -114,11 +123,22 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
     updated = true;
   }
 
-  // If the task data was updated, then record which tasks it depends on.
+  // If the task data was updated, then record which tasks it depends on. Add
+  // all new tasks that it depends on and remove any old tasks that it no
+  // longer depends on.
+  // TODO(swang): Updating the task data every time could be inefficient for
+  // tasks that have lots of dependencies and/or large specs. A flag could be
+  // passed in for tasks whose data has not changed.
   if (updated) {
     for (const auto &parent_id : it->second.GetParentTaskIds()) {
-      auto inserted = children_[parent_id].insert(task_id);
-      RAY_CHECK(inserted.second);
+      if (old_parents.count(parent_id) == 0) {
+        AddChild(parent_id, task_id);
+      } else {
+        old_parents.erase(parent_id);
+      }
+    }
+    for (const auto &old_parent_id : old_parents) {
+      RemoveChild(old_parent_id, task_id);
     }
   }
   return updated;
@@ -131,7 +151,7 @@ boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
 
     // Remove the task's dependencies.
     for (const auto &parent_id : entry.GetParentTaskIds()) {
-      RAY_CHECK(children_[parent_id].erase(task_id) == 1);
+      RemoveChild(parent_id, task_id);
     }
     entries_.erase(task_id);
 
@@ -402,7 +422,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   committed_tasks_.erase(commit_it);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
-  const auto &children = lineage_.GetChildren(task_id);
+  const auto children = lineage_.GetChildren(task_id);
   for (const auto &child_id : children) {
     EvictTask(child_id);
   }
@@ -438,7 +458,7 @@ bool LineageCache::ContainsTask(const TaskID &task_id) const {
   return it != entries.end();
 }
 
-size_t LineageCache::NumEntries() const { return lineage_.GetEntries().size(); }
+const Lineage &LineageCache::GetLineage() const { return lineage_; }
 
 std::string LineageCache::DebugString() const {
   std::stringstream result;
