@@ -142,14 +142,17 @@ class NodeManager {
   /// \param task The task in question.
   /// \return Void.
   void EnqueuePlaceableTask(const Task &task);
-  /// This will treat the task as if it had been executed and failed. This is
-  /// done by looping over the task return IDs and for each ID storing an object
-  /// that represents a failure in the object store. When clients retrieve these
-  /// objects, they will raise application-level exceptions.
+  /// This will treat a task removed from the local queue as if it had been
+  /// executed and failed. This is done by looping over the task return IDs and
+  /// for each ID storing an object that represents a failure in the object
+  /// store. When clients retrieve these objects, they will raise
+  /// application-level exceptions. State for the task will be cleaned up as if
+  /// it were any other task that had been assigned, executed, and removed from
+  /// the local queue.
   ///
   /// \param spec The specification of the task.
   /// \return Void.
-  void TreatTaskAsFailed(const TaskSpecification &spec);
+  void TreatTaskAsFailed(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.

@@ -452,7 +452,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
     if (state != TaskState::INFEASIBLE) {
       // Don't unsubscribe for infeasible tasks because we never subscribed in
       // the first place.
-      task_dependency_manager_.UnsubscribeDependencies(task_id);
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(task_id));
     }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
@@ -461,7 +461,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
 }
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local) {
-  RAY_LOG(INFO) << "Handle disconnected actor";
+  RAY_LOG(DEBUG) << "Actor disconnected " << actor_id;
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
 
@@ -494,8 +494,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                                              const ActorTableDataT &data) {
-  RAY_LOG(INFO) << "Actor creation notification received: " << actor_id << " "
-                << static_cast<int>(data.state);
+  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id << " "
+                 << static_cast<int>(data.state);
 
   // Register the new actor.
   ActorRegistration actor_registration(data);
@@ -545,9 +545,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
-      const TaskSpecification &spec = task.GetTaskSpecification();
-      TreatTaskAsFailed(spec);
-      task_dependency_manager_.TaskCanceled(spec.TaskId());
+      TreatTaskAsFailed(task);
     }
   }
 }
@@ -747,12 +745,10 @@ void NodeManager::ProcessDisconnectClientMessage(
       // If the worker was killed intentionally, e.g., when the driver that created
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
-      task_dependency_manager_.TaskCanceled(task_id);
       const Task &task = local_queues_.RemoveTask(task_id);
-      const TaskSpecification &spec = task.GetTaskSpecification();
       // Handle the task failure in order to raise an exception in the
       // application.
-      TreatTaskAsFailed(spec);
+      TreatTaskAsFailed(task);
 
       const JobID &job_id = worker->GetAssignedDriverId();
 
@@ -772,8 +768,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was an actor, add it to the list of dead actors.
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      RAY_LOG(INFO) << "The actor with ID " << actor_id << " died on "
-                    << gcs_client_->client_table().GetLocalClientId();
+      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died on "
+                     << gcs_client_->client_table().GetLocalClientId();
       HandleDisconnectedActor(actor_id, /*was_local=*/true);
     }
 
@@ -1046,8 +1042,9 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
-  RAY_LOG(INFO) << "Treating task " << spec.TaskId() << " as failed.";
+void NodeManager::TreatTaskAsFailed(const Task &task) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();
@@ -1072,6 +1069,17 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
       ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
     }
   }
+  // A task failing is equivalent to assigning and finishing the task, so clean
+  // up any leftover state as for any task dispatched and removed from the
+  // local queue.
+  lineage_cache_.AddReadyTask(task);
+  task_dependency_manager_.TaskCanceled(spec.TaskId());
+  // Notify the task dependency manager that we no longer need this task's
+  // object dependencies. TODO(swang): Ideally, we would check the return value
+  // here. However, we don't know at this point if the task was in the WAITING
+  // or READY queue before, in which case we would not have been subscribed to
+  // its dependencies.
+  task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
@@ -1097,7 +1105,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     if (actor_entry != actor_registry_.end()) {
       if (!actor_entry->second.IsAlive()) {
-        TreatTaskAsFailed(spec);
+        TreatTaskAsFailed(task);
       } else {
         // We have a known location for the actor.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
@@ -1264,7 +1272,7 @@ void NodeManager::HandleTaskUnblocked(
   worker->RemoveBlockedTaskId(current_task_id);
   // Unsubscribe to the objects. Any fetch or reconstruction operations to
   // make the objects local are canceled.
-  task_dependency_manager_.UnsubscribeDependencies(current_task_id);
+  RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(current_task_id));
   local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
@@ -1383,7 +1391,7 @@ bool NodeManager::AssignTask(const Task &task) {
           local_queues_.QueueRunningTasks(std::vector<Task>({assigned_task}));
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
-          task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+          RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
           // We failed to send the task to the worker, so disconnect the worker.
