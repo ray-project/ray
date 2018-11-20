@@ -125,7 +125,8 @@ bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
 
 bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   if (task_map_.find(task_id) != task_map_.end()) {
-    const auto &resources = task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
+    const auto &resources =
+        task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
     tasks_with_resources_[resources].erase(task_id);
   }
   return TaskQueue::RemoveTask(task_id, removed_tasks);
@@ -261,7 +262,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   // Remove the tasks from the specified source queue.
   switch (src_state) {
   case TaskState::PLACEABLE:
-    RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids, &removed_tasks);
+    RemoveTasksFromQueue(TaskState::PLACEABLE, placeable_tasks_, task_ids,
+                         &removed_tasks);
     break;
   case TaskState::WAITING:
     RemoveTasksFromQueue(TaskState::WAITING, waiting_tasks_, task_ids, &removed_tasks);
