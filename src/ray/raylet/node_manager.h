@@ -220,9 +220,9 @@ class NodeManager {
   /// tasks_with_resources contains only the newly added tasks to the
   /// ready queue. Otherwise, tasks_with_resources points to entire ready queue.
   /// \param tasks_with_resources Mapping from resource shapes to tasks with
-  ///                             that resource shape.
+  /// that resource shape.
   void DispatchTasks(
-      const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources);
+      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
