@@ -2,9 +2,9 @@
 #define RAY_RAYLET_WORKER_POOL_H
 
 #include <inttypes.h>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/gcs/format/util.h"
