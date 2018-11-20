@@ -176,9 +176,23 @@ class Lineage {
   flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
+  /// Return the IDs of tasks in the lineage that are dependent on the given
+  /// task.
+  ///
+  /// \param The ID of the task whose children to get.
+  /// \return The list of IDs for tasks that are in the lineage and dependent
+  /// on the given task.
+  const std::unordered_set<TaskID> &GetChildren(const TaskID &task_id) const;
+
+  /// Return the size of the children_ map. This is used for debugging purposes
+  /// only.
+  size_t GetChildrenSize() const { return children_.size(); }
+
  private:
   /// The lineage entries.
   std::unordered_map<const TaskID, LineageEntry> entries_;
+  /// A mapping from each task in the lineage to its children.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
 };
 
 /// \class LineageCache
@@ -305,8 +319,6 @@ class LineageCache {
   gcs::PubsubInterface<TaskID> &task_pubsub_;
   /// The set of tasks that have been committed but not evicted.
   std::unordered_set<TaskID> committed_tasks_;
-  /// A mapping from each task in the lineage cache to its children.
-  std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
