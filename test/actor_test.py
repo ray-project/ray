@@ -921,7 +921,9 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
         redirect_output=True,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]),
-        _internal_config=json.dumps({"num_heartbeats_timeout": 1000}))
+        _internal_config=json.dumps({
+            "num_heartbeats_timeout": 1000
+        }))
 
     @ray.remote
     def create_actors(i, n):
