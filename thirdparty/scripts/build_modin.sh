@@ -11,7 +11,7 @@ MODIN_REPO="https://github.com/modin-project/modin"
 
 pushd $TP_DIR/../python/ray/
 rm -rf modin
-wget "$MODIN_REPO"/archive/v"$MODIN_VERSION".tar.gz
+wget --no-check-certificate "$MODIN_REPO"/archive/v"$MODIN_VERSION".tar.gz
 tar -xvzf v"$MODIN_VERSION".tar.gz
 mv modin-"$MODIN_VERSION" modin
 rm v"$MODIN_VERSION".tar.gz

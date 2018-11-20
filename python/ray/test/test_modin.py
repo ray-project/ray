@@ -13,3 +13,6 @@ def test_modin_import():
         frame_data = [1, 2, 3, 4, 5, 6, 7, 8]
         frame = pd.DataFrame(frame_data)
         assert frame.sum().squeeze() == sum(frame_data)
+
+
+test_modin_import()
