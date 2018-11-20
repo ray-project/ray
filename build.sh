@@ -106,7 +106,6 @@ pushd "$BUILD_DIR"
 make clean || true
 rm -rf external/arrow-install
 
-export MACOSX_DEPLOYMENT_TARGET=10.7
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
       -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
