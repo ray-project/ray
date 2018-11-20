@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import random
 import numpy as np
 import os
@@ -1227,7 +1228,11 @@ def test_blocking_actor_task(shutdown_only):
 
 
 def test_exception_raised_when_actor_node_dies(shutdown_only):
-    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
+    ray.worker._init(
+        start_ray_local=True, num_local_schedulers=2, num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
 
     @ray.remote
     class Counter(object):
@@ -1255,6 +1260,19 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
     process.kill()
 
     # Submit some new actor tasks.
+    x_ids = [actor.inc.remote() for _ in range(5)]
+
+    # Make sure that getting the result raises an exception.
+    for _ in range(10):
+        for x_id in x_ids:
+            with pytest.raises(ray.worker.RayGetError):
+                # There is some small chance that ray.get will actually
+                # succeed (if the object is transferred before the raylet
+                # dies).
+                ray.get(x_id)
+
+    # Submit some more actor tasks after the actor has definitely been marked
+    # as dead.
     x_ids = [actor.inc.remote() for _ in range(5)]
 
     # Make sure that getting the result raises an exception.

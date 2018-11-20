@@ -254,20 +254,21 @@ class NodeManager {
   void KillWorker(std::shared_ptr<Worker> worker);
 
   /// Methods for actor scheduling.
-  /// Handler for the creation of an actor, possibly on a remote node.
+  /// Handler for an actor state transition, for a newly created actor or an
+  /// actor that died. This method is idempotent and will ignore old state
+  /// transitions.
   ///
   /// \param actor_id The actor ID of the actor that was created.
-  /// \param data Data associated with the actor creation event.
+  /// \param data Data associated with the actor state transition.
   /// \return Void.
-  void HandleActorCreation(const ActorID &actor_id,
-                           const std::vector<ActorTableDataT> &data);
+  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
 
-  /// When an actor dies, loop over all of the queued tasks for that actor and
-  /// treat them as failed.
+  /// Handler for an actor dying. The actor may be remote.
   ///
-  /// \param actor_id The actor that died.
+  /// \param actor_id The actor ID of the actor that died.
+  /// \param was_local Whether the actor was local.
   /// \return Void.
-  void CleanUpTasksForDeadActor(const ActorID &actor_id);
+  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local);
 
   /// When a driver dies, loop over all of the queued tasks for that driver and
   /// treat them as failed.
