@@ -100,6 +100,10 @@ class RayConfig {
 
   int object_manager_pull_timeout_ms() const { return object_manager_pull_timeout_ms_; }
 
+  int object_manager_max_outstanding_pulls() const {
+    return object_manager_max_outstanding_pulls_;
+  }
+
   int object_manager_push_timeout_ms() const { return object_manager_push_timeout_ms_; }
 
   int object_manager_repeated_push_delay_ms() const {
@@ -182,6 +186,8 @@ class RayConfig {
         node_manager_forward_task_retry_timeout_milliseconds_ = pair.second;
       } else if (pair.first == "object_manager_pull_timeout_ms") {
         object_manager_pull_timeout_ms_ = pair.second;
+      } else if (pair.first == "object_manager_max_outstanding_pulls") {
+        object_manager_max_outstanding_pulls_ = pair.second;
       } else if (pair.first == "object_manager_push_timeout_ms") {
         object_manager_push_timeout_ms_ = pair.second;
       } else if (pair.first == "object_manager_default_chunk_size") {
@@ -230,6 +236,7 @@ class RayConfig {
         actor_creation_num_spillbacks_warning_(100),
         node_manager_forward_task_retry_timeout_milliseconds_(1000),
         object_manager_pull_timeout_ms_(10000),
+        object_manager_max_outstanding_pulls_(3),
         object_manager_push_timeout_ms_(10000),
         object_manager_repeated_push_delay_ms_(60000),
         object_manager_default_chunk_size_(1000000),
@@ -347,6 +354,10 @@ class RayConfig {
   /// Timeout, in milliseconds, to wait before retrying a failed pull in the
   /// ObjectManager.
   int object_manager_pull_timeout_ms_;
+
+  /// The maximum number of remote object managers that a given object manager
+  /// should be simultaneously requesting an object from.
+  int object_manager_max_outstanding_pulls_;
 
   /// Timeout, in milliseconds, to wait until the Push request fails.
   /// Special value:

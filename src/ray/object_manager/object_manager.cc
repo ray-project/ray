@@ -217,11 +217,27 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     RAY_CHECK(client_id != client_id_);
   }
 
-  // Add this client ID to the clients that we've already sent pull requests to.
-  it->second.clients_requested.insert(client_id);
+  // If we're already requesting the object from a lot of clients, choose one
+  // randomly to send a cancellation message to.
+  ClientID client_id_to_cancel;
+  if (static_cast<int64_t>(it->second.clients_requested.size()) >=
+      RayConfig::instance().object_manager_max_outstanding_pulls()) {
+    std::uniform_int_distribution<int>
+        cancel_distribution(0, it->second.clients_requested.size() - 1);
+    int client_to_cancel_index = cancel_distribution(gen_);
+    auto client_it = it->second.clients_requested.begin();
+    for (int i = 0; i < client_to_cancel_index; ++i) {
+      ++client_it;
+    }
+    client_id_to_cancel = *client_it;
+  }
 
+  // Cancel an object pull request.
+  it->second.clients_requested.erase(client_id_to_cancel);
+  SendCancelPullRequest(object_id, client_id_to_cancel);
   // Try pulling from the client.
-  PullEstablishConnection(object_id, client_id);
+  it->second.clients_requested.insert(client_id);
+  SendPullRequest(object_id, client_id);
 
   // If there are more clients to try, try them in succession, with a timeout
   // in between each try.
@@ -257,8 +273,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   }
 };
 
-void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
-                                            const ClientID &client_id) {
+void ObjectManager::SendPullRequest(const ObjectID &object_id,
+                                    const ClientID &client_id) {
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
@@ -372,12 +388,12 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                              "\"]";
   profile_events_.push_back(profile_event);
 
-  // Remove the push from the list of in progress pushes.
-  size_t num_erased =
-      in_progress_pushes_.erase(std::make_tuple(object_id, client_id, chunk_index));
-  RAY_CHECK(num_erased == 1);
+  // Remove the push from the list of in progress pushes. If the remote client
+  // has disconnected, then this push should already have been cleaned up from
+  // this data structure.
+  in_progress_pushes_.erase(std::make_tuple(object_id, client_id, chunk_index));
 
-  // Dispatch new pushes in possible.
+  // Dispatch new pushes if possible.
   DispatchPushes();
 }
 
@@ -458,7 +474,6 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     if (pending_pushes_.find(pair) == pending_pushes_.end()) {
       pending_pushes_.push_back(pair);
     }
-    RAY_LOG(INFO) << "Queing push of " << object_id;
     return;
   }
 
@@ -494,7 +509,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-
+      // Record the fact that each chunk is in the process of being pushed.
       in_progress_pushes_.push_back(std::make_tuple(object_id, client_id, chunk_index));
 
       send_service_.post([this, client_id, object_id, data_size, metadata_size,

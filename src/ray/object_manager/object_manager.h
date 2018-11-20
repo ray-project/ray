@@ -227,7 +227,7 @@ class ObjectManager : public ObjectManagerInterface {
     std::vector<ClientID> client_locations;
     /// The IDs of the remote object managers that we have already requested the
     /// object from. If we cancel a request, then we will remove that client
-    /// from this vector.
+    /// from this set.
     std::unordered_set<ClientID> clients_requested;
   };
 
@@ -294,7 +294,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
-  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
+  void SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
 
   /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
