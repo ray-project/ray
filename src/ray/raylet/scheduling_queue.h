@@ -85,7 +85,7 @@ class TaskQueue {
 
 class ReadyQueue : public TaskQueue {
  public:
-  ReadyQueue() {};
+  ReadyQueue(){};
 
   ReadyQueue(const ReadyQueue &other) = delete;
 
@@ -115,7 +115,8 @@ class ReadyQueue : public TaskQueue {
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetTasksWithResources() const {
+  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetTasksWithResources()
+      const {
     return tasks_with_resources_;
   }
 
