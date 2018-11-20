@@ -118,9 +118,16 @@ class DDPGAgent(DQNAgent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            exponent = (
-                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
-            return ConstantSchedule(self.config["noise_scale"] * 0.4**exponent)
+            if worker_index >= 0:
+                exponent = (
+                    1 +
+                    worker_index / float(self.config["num_workers"] - 1) * 7)
+                return ConstantSchedule(
+                    self.config["noise_scale"] * 0.4**exponent)
+            else:
+                # local ev should have zero exploration so that eval rollouts
+                # run properly
+                return ConstantSchedule(0.0)
         else:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *

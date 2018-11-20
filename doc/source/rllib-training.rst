@@ -50,11 +50,11 @@ An example of evaluating a previously trained DQN agent is as follows:
 .. code-block:: bash
 
     python ray/python/ray/rllib/rollout.py \
-          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
+          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
           --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
+located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
 Configuration

@@ -2,7 +2,7 @@
 #   128 workers -> 8 minutes
 #    32 workers -> 17 minutes
 #    16 workers -> 40 min+
-# See also: pong-impala-vectorized.yaml
+# See also: pong-impala-fast.yaml, pong-impala-vectorized.yaml
 pong-impala:
     env: PongNoFrameskip-v4
     run: IMPALA

@@ -127,12 +127,14 @@ class NodeManager {
 
   /// Handler for a heartbeat notification from the GCS.
   ///
-  /// \param client The GCS client.
   /// \param id The ID of the node manager that sent the heartbeat.
   /// \param data The heartbeat data including load information.
   /// \return Void.
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
+  void HeartbeatAdded(const ClientID &id, const HeartbeatTableDataT &data);
+  /// Handler for a heartbeat batch notification from the GCS
+  ///
+  /// \param heartbeat_batch The batch of heartbeat data.
+  void HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch);
 
   /// Methods for task scheduling.
 
