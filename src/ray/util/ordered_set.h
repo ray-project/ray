@@ -16,10 +16,11 @@ class ordered_set {
  private:
   using elements_type = std::list<T>;
   using positions_type = std::unordered_map<T, typename elements_type::iterator>;
+
+ public:
   using iterator = typename elements_type::iterator;
   using const_iterator = typename elements_type::const_iterator;
 
- public:
   ordered_set() {}
 
   ordered_set(const ordered_set &other) = delete;
@@ -53,6 +54,14 @@ class ordered_set {
   iterator erase(const iterator position) {
     positions_.erase(*position);
     return elements_.erase(position);
+  }
+
+  iterator find(const T &k) {
+    auto it = positions_.find(k);
+    if (it == positions_.end()) {
+      return elements_.end();
+    }
+    return it->second;
   }
 
   iterator begin() noexcept { return elements_.begin(); }

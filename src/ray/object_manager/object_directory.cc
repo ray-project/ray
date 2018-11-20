@@ -109,7 +109,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   ClientTableDataT client_data;
   gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::from_binary(client_data.client_id);
+  const ClientID result_client_id = ClientID::from_binary(client_data.client_id);
   if (!result_client_id.is_nil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
     if (client_data.is_insertion) {

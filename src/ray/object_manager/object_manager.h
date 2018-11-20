@@ -19,6 +19,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
 #include "ray/status.h"
+#include "ray/util/ordered_set.h"
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -26,6 +27,24 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
+
+// These hash functions are symmetric, which is bad if the values can appear in
+// either order.
+namespace std {
+template <>
+struct hash<std::pair<::ray::UniqueID, ::ray::UniqueID>> {
+  size_t operator()(const std::pair<::ray::UniqueID, ::ray::UniqueID> &ids) const {
+    return ids.first.hash() + ids.second.hash();
+  }
+};
+
+template <>
+struct hash<std::tuple<::ray::UniqueID, ::ray::UniqueID, uint64_t>> {
+  size_t operator()(const std::tuple<::ray::UniqueID, ::ray::UniqueID, uint64_t> &ids) const {
+    return std::get<0>(ids).hash() + std::get<1>(ids).hash() + std::get<2>(ids);
+  }
+};
+}
 
 namespace ray {
 
@@ -204,7 +223,12 @@ class ObjectManager : public ObjectManagerInterface {
     PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
+    /// Our most recent estimate of which object managers have the object.
     std::vector<ClientID> client_locations;
+    /// The IDs of the remote object managers that we have already requested the
+    /// object from. If we cancel a request, then we will remove that client
+    /// from this vector.
+    std::unordered_set<ClientID> clients_requested;
   };
 
   struct WaitState {
@@ -281,6 +305,14 @@ class ObjectManager : public ObjectManagerInterface {
   void PullSendRequest(const ObjectID &object_id,
                        std::shared_ptr<SenderConnection> &conn);
 
+  /// Asynchronously send a message to a remote object manager cancelling a pull
+  /// request. This is not guaranteed to succeed.
+  ///
+  /// \param object_id The ID of the object to stop pulling.
+  /// \param client_id The remote object manager to send the message to.
+  /// \return Void.
+  void SendCancelPullRequest(const ObjectID &object_id, const ClientID &client_id);
+
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
@@ -299,6 +331,12 @@ class ObjectManager : public ObjectManagerInterface {
   void HandleSendFinished(const ObjectID &object_id, const ClientID &client_id,
                           uint64_t chunk_index, double start_time_us, double end_time_us,
                           ray::Status status);
+
+  /// Push more objects if there are pending pushes and there are available
+  /// resources to push.
+  ///
+  /// \return Void
+  void DispatchPushes();
 
   /// This is used to notify the main thread that the receiving of a chunk has
   /// completed.
@@ -349,6 +387,16 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
+
+  /// Handle receiving a pull request cancellation message.
+  ///
+  /// \param conn The connection to the object manager that the message was
+  /// received from.
+  /// \param message The message that was received.
+  /// \return Void.
+  void ReceiveCancelPullRequest(std::shared_ptr<TcpClientConnection> &conn,
+                                const uint8_t *message);
+
   /// Handles freeing objects request.
   void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
@@ -415,6 +463,14 @@ class ObjectManager : public ObjectManagerInterface {
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  /// A set of the chunks that are in the process of being pushed to remote
+  /// object managers. Each item consists of the ID of the remote object
+  /// manager, the ID of the object, and the index of the chunk.
+  ordered_set<std::tuple<ObjectID, ClientID, uint64_t>> in_progress_pushes_;
+
+  /// The objects that are waiting to be pushed to other machines.
+  ordered_set<std::pair<ObjectID, ClientID>> pending_pushes_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.

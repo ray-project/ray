@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+from collections import defaultdict
 import functools
 import hashlib
 import inspect
@@ -427,3 +428,47 @@ def thread_safe_client(client, lock=None):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def count_object_transfers(object_id, transfer_events=None):
+    """Count the number of times an object has been transferred.
+
+    Args:
+        object_id: The object ID to count.
+        transfer_events: A dictionary of the events to look through. This
+            should be ray.global_state.chrome_tracing_object_transfer_dump(),
+            and it provided here so that the dump can be shared between calls
+            to this function. If this is None, then the dump will be pulled
+            from Redis.
+
+    Returns:
+        A dictionary mapping ordered pairs of object managers to the number of
+            times the object was transferred between those object manager
+            (omitting any pairs where the count is 0).
+    """
+    if transfer_events is None:
+        transfer_events = (
+            ray.global_state.chrome_tracing_object_transfer_dump())
+
+    relevant_events = [
+        event for event in transfer_events if event["cat"] == "transfer_send"
+        and event["args"][0] == object_id.hex() and event["args"][2] == 0
+    ]
+
+    # NOTE: Each event currently appears twice because we duplicate the
+    # send and receive boxes to underline them with a box (black if it is a
+    # send and gray if it is a receive). So we need to remove these extra
+    # boxes here.
+    deduplicated_relevant_events = [
+        event for event in relevant_events if event["cname"] != "black"
+    ]
+    assert len(deduplicated_relevant_events) * 2 == len(relevant_events)
+    relevant_events = deduplicated_relevant_events
+
+    send_counts = defaultdict(int)
+    for event in relevant_events:
+        # The pid identifies the sender and the tid identifies the
+        # receiver.
+        send_counts[(event["pid"], event["tid"])] += 1
+    assert all(value == 1 for value in send_counts.values())
+    return dict(send_counts)
