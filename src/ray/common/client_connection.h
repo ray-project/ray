@@ -1,7 +1,7 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
-#include <list>
+#include <deque>
 #include <memory>
 
 #include <boost/asio.hpp>
@@ -94,7 +94,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   const int async_write_max_messages_;
 
   /// List of pending messages to write.
-  std::list<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
+  std::deque<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
 
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
