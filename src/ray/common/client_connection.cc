@@ -112,7 +112,7 @@ void ServerConnection<T>::WriteMessageAsync(
 
   auto size = async_write_queue_.size();
   auto size_is_power_of_two = (size & (size - 1)) == 0;
-  if (size > 100 && size_is_power_of_two) {
+  if (size > 1000 && size_is_power_of_two) {
     RAY_LOG(WARNING) << "ServerConnection has " << size << " buffered async writes";
   }
 

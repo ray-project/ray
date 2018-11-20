@@ -12,7 +12,7 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const std::vector<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
     const std::shared_ptr<ray::LocalClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -24,7 +24,7 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool RemoveWorker(std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+bool RemoveWorker(std::vector<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
                   const std::shared_ptr<ray::raylet::Worker> &worker) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if (*it == worker) {
