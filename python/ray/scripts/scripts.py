@@ -5,6 +5,7 @@ from __future__ import print_function
 import click
 import json
 import logging
+import os
 import subprocess
 
 import ray.services as services
@@ -543,6 +544,60 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--stop",
+    is_flag=True,
+    default=False,
+    help="Stop the cluster after the command finishes running.")
+@click.option(
+    "--start",
+    is_flag=True,
+    default=False,
+    help="Start the cluster if needed.")
+@click.option(
+    "--screen",
+    is_flag=True,
+    default=False,
+    help="Run the command in a screen.")
+@click.option(
+    "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+@click.option(
+    "--port-forward", required=False, type=int, help="Port to forward.")
+@click.argument("script", required=True, type=str)
+@click.argument("script_args", required=False, type=str, nargs=-1)
+def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
+           port_forward, script, script_args):
+    """Uploads and runs a script on the specified cluster.
+
+    The script is automatically synced to the following location:
+
+        os.path.join("~", os.path.basename(script))
+    """
+    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+
+    if start:
+        create_or_update_cluster(cluster_config_file, None, None, False, False,
+                                 True, cluster_name)
+
+    target = os.path.join("~", os.path.basename(script))
+    rsync(cluster_config_file, script, target, cluster_name, down=False)
+
+    cmd = " ".join(["python", target] + list(script_args))
+    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
+                 cluster_name, port_forward)
+    if tmux:
+        logger.info("Use `ray attach {} --tmux` "
+                    "to check on command status.".format(cluster_config_file))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
     "--stop",
@@ -625,6 +680,7 @@ cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
 cli.add_command(rsync_down)
 cli.add_command(rsync_up)
+cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
 cli.add_command(get_head_ip)
