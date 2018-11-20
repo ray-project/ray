@@ -99,7 +99,7 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
       // The task's spec may have changed, so remove its old dependencies.
       // TODO(swang): This could be inefficient for tasks that have lots of
       // dependencies and/or large specs. A flag could be passed in for tasks
-      // wohse data has not changed.
+      // whose data has not changed.
       for (const auto &parent_id : it->second.GetParentTaskIds()) {
         RAY_CHECK(children_[parent_id].erase(task_id) == 1);
       }
