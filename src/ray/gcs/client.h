@@ -60,6 +60,7 @@ class RAY_EXPORT AsyncGcsClient {
   TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
+  HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
   DriverTable &driver_table();
   ProfileTable &profile_table();
@@ -89,6 +90,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
+  std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;

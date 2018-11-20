@@ -479,6 +479,7 @@ template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Table<ClientID, HeartbeatBatchTableData>;
 template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 template class Log<JobID, DriverTableData>;
