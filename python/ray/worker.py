@@ -905,10 +905,6 @@ class Worker(object):
         self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
-        # Set the process group id. This ensures that child processes spawned
-        # by this actor can be killed with this actor easily on termination.
-        os.setpgid(os.getpid(), os.getpid())
-
         key = b"ActorClass:" + class_id
 
         # Wait for the actor class key to have been imported by the import
@@ -976,7 +972,7 @@ class Worker(object):
             driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
             self.local_scheduler_client.disconnect()
-            os._exit(0)
+            sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
