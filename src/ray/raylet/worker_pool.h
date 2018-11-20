@@ -2,9 +2,9 @@
 #define RAY_RAYLET_WORKER_POOL_H
 
 #include <inttypes.h>
-#include <list>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/gcs/format/util.h"
@@ -136,15 +136,14 @@ class WorkerPool {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
     /// The pool of idle non-actor workers.
-    std::list<std::shared_ptr<Worker>> idle;
+    std::unordered_set<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
-    // TODO(swang): Make this a map to make GetRegisteredWorker faster.
-    std::list<std::shared_ptr<Worker>> registered_workers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
-    std::list<std::shared_ptr<Worker>> registered_drivers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
   };
 
   /// A helper function that returns the reference of the pool state
