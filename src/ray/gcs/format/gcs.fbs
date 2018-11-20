@@ -15,6 +15,7 @@ enum TablePrefix:int {
   FUNCTION,
   TASK_RECONSTRUCTION,
   HEARTBEAT,
+  HEARTBEAT_BATCH,
   ERROR_INFO,
   DRIVER,
   PROFILE,
@@ -30,6 +31,7 @@ enum TablePubsub:int {
   OBJECT,
   ACTOR,
   HEARTBEAT,
+  HEARTBEAT_BATCH,
   ERROR_INFO,
   TASK_LEASE,
   DRIVER,
@@ -260,6 +262,10 @@ table HeartbeatTableData {
   // Aggregate outstanding resource load on this node manager.
   resource_load_label: [string];
   resource_load_capacity: [double];
+}
+
+table HeartbeatBatchTableData {
+  batch: [HeartbeatTableData];
 }
 
 // Data for a lease on task execution.
