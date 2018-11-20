@@ -159,7 +159,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
 void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.insert(driver);
+  state.registered_drivers.insert(std::move(driver));
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
