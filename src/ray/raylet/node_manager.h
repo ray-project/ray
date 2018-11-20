@@ -16,6 +16,7 @@
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/ordered_set.h"
 // clang-format on
 
 namespace ray {
@@ -210,7 +211,7 @@ class NodeManager {
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   ///
-  /// This function is called in one of the following cases:
+  /// This function is called in the following cases:
   ///   (1) A set of new tasks is added to the ready queue.
   ///   (2) New resources are becoming available on the local node.
   ///   (3) A new worker becomes available.
@@ -218,11 +219,12 @@ class NodeManager {
   /// ready queue, as we know that the old tasks in the ready queue cannot
   /// be scheduled (We checked those tasks last time new resources or
   /// workers became available, and nothing changed since then.) In this case,
-  /// task_queue contains only the newly added tasks to the ready queue;
-  /// Otherwise, task_queue points to entire ready queue.
-  ///
-  /// \param ready_tasks Tasks to be dispatched, a subset from ready queue.
-  void DispatchTasks(const std::list<Task> &ready_tasks);
+  /// tasks_with_resources contains only the newly added tasks to the
+  /// ready queue. Otherwise, tasks_with_resources points to entire ready queue.
+  /// \param tasks_with_resources Mapping from resource shapes to tasks with
+  /// that resource shape.
+  void DispatchTasks(
+      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
