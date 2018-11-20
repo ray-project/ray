@@ -200,7 +200,9 @@ class ModelCatalog(object):
         if options.get("use_lstm"):
             copy = dict(input_dict)
             copy["obs"] = model.last_layer
-            model = LSTM(copy, obs_space, num_outputs, options, state_in,
+            feature_space = gym.spaces.Box(
+                -1, 1, shape=(model.last_layer.shape[1], ))
+            model = LSTM(copy, feature_space, num_outputs, options, state_in,
                          seq_lens)
 
         logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
