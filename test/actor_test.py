@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import random
 import numpy as np
 import os
@@ -919,7 +920,8 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
         num_local_schedulers=num_local_schedulers,
         redirect_output=True,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
-        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]),
+        _internal_config=json.dumps({"num_heartbeats_timeout": 1000}))
 
     @ray.remote
     def create_actors(i, n):
