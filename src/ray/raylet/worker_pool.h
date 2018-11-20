@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/gcs/format/util.h"
