@@ -130,6 +130,9 @@ script:
   # with pytest have the same name as the test file -- and this
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
+  # Modin is not found on the regular PATH in Travis. We have to add it to the
+  # PYTHONPATH in order to ensure that the import is found.
+  - export PYTHONPATH="`pwd`/python/ray/modin/:$PYTHONPATH"
 
   - python -m pytest -v python/ray/test/test_global_state.py
   - python -m pytest -v python/ray/test/test_queue.py
