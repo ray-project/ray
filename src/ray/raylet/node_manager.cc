@@ -523,9 +523,18 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks() {
+std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(std::vector<Task> tasks) {
+  std::unordered_map<ResourceSet, ordered_set<TaskID>> result;
+  for (const auto& task : tasks) {
+    auto spec = task.GetTaskSpecification();
+    result[spec.GetRequiredResources()].push_back(spec.TaskId());
+  }
+  return result;
+}
+
+void NodeManager::DispatchTasks(const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources) {
   std::unordered_set<TaskID> removed_task_ids;
-  for (const auto &it : local_queues_.GetReadyQueue().GetTasksWithResources()) {
+  for (const auto &it : tasks_with_resources) {
     for (const auto &task_id : it.second) {
       const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
       const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -622,7 +631,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks();
+    DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -651,7 +660,7 @@ void NodeManager::ProcessGetTaskMessage(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks();
+  DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -748,7 +757,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "driver_id: " << worker->GetAssignedDriverId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks();
+    DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
   } else if (is_driver) {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientId(),
@@ -1112,7 +1121,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
     }
@@ -1146,7 +1154,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
-      DispatchTasks();
+      DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
     }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -1240,7 +1248,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
-    DispatchTasks();
+    DispatchTasks(MakeTasksWithResources({task}));
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
@@ -1352,8 +1360,8 @@ bool NodeManager::AssignTask(const Task &task) {
           // DispatchTasks() removed it from the ready queue. The task will be
           // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks(std::vector<Task>({assigned_task}));
-          DispatchTasks();
+          local_queues_.QueueReadyTasks({assigned_task});
+          DispatchTasks(MakeTasksWithResources({assigned_task}));
         }
       });
 
@@ -1502,7 +1510,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueReadyTasks(ready_tasks);
-    DispatchTasks();
+    DispatchTasks(MakeTasksWithResources(ready_tasks));
   }
 }
 
@@ -1573,7 +1581,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
     }
   });
 }
