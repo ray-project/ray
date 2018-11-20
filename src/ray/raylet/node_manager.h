@@ -217,9 +217,12 @@ class NodeManager {
   /// ready queue, as we know that the old tasks in the ready queue cannot
   /// be scheduled (We checked those tasks last time new resources or
   /// workers became available, and nothing changed since then.) In this case,
-  /// task_queue contains only the newly added tasks to the ready queue;
-  /// Otherwise, task_queue points to entire ready queue.
-  void DispatchTasks(const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources);
+  /// tasks_with_resources contains only the newly added tasks to the
+  /// ready queue. Otherwise, tasks_with_resources points to entire ready queue.
+  /// \param tasks_with_resources Mapping from resource shapes to tasks with
+  ///                             that resource shape.
+  void DispatchTasks(
+      const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a

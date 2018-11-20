@@ -523,16 +523,20 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(std::vector<Task> tasks) {
+// A helper function to create a mapping from resource shapes to
+// tasks with that resource shape from a given list of tasks.
+std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
+    const std::vector<Task>& tasks) {
   std::unordered_map<ResourceSet, ordered_set<TaskID>> result;
-  for (const auto& task : tasks) {
+  for (const auto &task : tasks) {
     auto spec = task.GetTaskSpecification();
     result[spec.GetRequiredResources()].push_back(spec.TaskId());
   }
   return result;
 }
 
-void NodeManager::DispatchTasks(const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources) {
+void NodeManager::DispatchTasks(
+    const std::unordered_map<ResourceSet, ordered_set<TaskID>>& tasks_with_resources) {
   std::unordered_set<TaskID> removed_task_ids;
   for (const auto &it : tasks_with_resources) {
     for (const auto &task_id : it.second) {
