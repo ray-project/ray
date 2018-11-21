@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import json
 import os
 import time
@@ -12,10 +13,10 @@ try:
 except ImportError:
     pytest_timeout = None
 
-from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver_nonblocking, run_string_as_driver
 import ray
 from ray import tune
+from ray.test.cluster_utils import Cluster
+from ray.test.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -319,26 +320,6 @@ def test_cluster_down_full(start_connected_cluster):
 
     tmpdir = tempfile.mkdtemp()
 
-    trainable_str = """
-import time
-
-class _Train(tune.Trainable):
-    def _setup(self, config):
-        self.state = dict(hi=1)
-
-    def _train(self):
-        self.state["hi"] += 1
-        time.sleep(0.5)
-        return dict()
-
-    def _save(self, path):
-        return self.state
-
-    def _restore(self, state):
-        self.state = state
-
-tune.register_trainable("train", _Train)
-"""
     script = """
 import os
 import ray
@@ -347,10 +328,11 @@ from ray import tune
 
 ray.init(redis_address="{redis_address}")
 
-{register_trainable_script}
+{register_trainable_fn}
+{run_register_trainable_fn}()
 
 kwargs = dict(
-    run="train",
+    run="test",
     stop=dict(training_iteration=2),
     checkpoint_freq=1,
     max_failures=1)
@@ -362,24 +344,14 @@ tune.run_experiments(
 """.format(
         redis_address=cluster.redis_address,
         checkpoint_dir=tmpdir,
-        register_trainable_script=trainable_str)
+        register_trainable_fn=inspect.getsource(register_test_trainable),
+        run_register_trainable_fn=register_test_trainable.__name__)
     run_string_as_driver_nonblocking(script)
     while not os.path.exists(os.path.join(tmpdir, "experiment.state")):
         time.sleep(0.5)
+    ray.shutdown()
     cluster.shutdown()
-
     cluster = _start_new_cluster()
-    script = """
-import ray
-from ray import tune
-
-ray.init(redis_address="{redis_address}")
-
-{register_trainable_script}
-
-tune.run_experiments(restore_from_path="{restore_path}")
-""".format(
-        redis_address=cluster.redis_address,
-        restore_path=tmpdir,
-        register_trainable_script=trainable_str)
-    run_string_as_driver(script)
+    register_test_trainable()
+    trials = tune.run_experiments(restore_from_path=tmpdir)
+    assert all(t.status == Trial.TERMINATED for t in trials)
