@@ -162,14 +162,16 @@ class ActorCriticLoss(object):
             else:
                 errors = 0.5 * tf.square(self.td_error)
 
-        self.critic_loss = critic_loss_coeff * tf.reduce_mean(importance_weights * errors)
+        self.critic_loss = critic_loss_coeff * tf.reduce_mean(
+            importance_weights * errors)
 
         # for policy gradient
         # update policy net one time v.s. update critic net `policy_delay` time(s)
         global_step = tf.train.get_or_create_global_step()
         policy_delay_mask = tf.to_float(
             tf.equal(tf.mod(global_step, policy_delay), 0))
-        self.actor_loss = -1.0 * actor_loss_coeff * policy_delay_mask * tf.reduce_mean(q_tp0)
+        self.actor_loss = -1.0 * actor_loss_coeff * policy_delay_mask * tf.reduce_mean(
+            q_tp0)
 
         self.total_loss = self.actor_loss + self.critic_loss
 
@@ -242,12 +244,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # Action outputs
         with tf.variable_scope(A_SCOPE, reuse=True):
             output_actions = self._build_action_network(
-                self.p_t, stochastic=tf.constant(value=False, dtype=tf.bool),
+                self.p_t,
+                stochastic=tf.constant(value=False, dtype=tf.bool),
                 eps=.0)
             output_actions_estimated = self._build_action_network(
                 p_tp1,
-                stochastic=tf.constant(value=self.config["smooth_target_policy"], dtype=tf.bool),
-                eps=.0, is_target=True)
+                stochastic=tf.constant(
+                    value=self.config["smooth_target_policy"], dtype=tf.bool),
+                eps=.0,
+                is_target=True)
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
