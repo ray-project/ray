@@ -104,11 +104,14 @@ class TFPolicyGraph(PolicyGraph):
         self._batch_divisibility_req = batch_divisibility_req
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(self._optimizer) if g is not None]
+        self._grads_and_vars = [(g, v)
+                                for (g, v) in self.gradients(self._optimizer)
+                                if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
         self._apply_op = self._optimizer.apply_gradients(
             self._grads_and_vars,
-            global_step=self.global_step if hasattr(self, "global_step") else None)
+            global_step=self.global_step
+            if hasattr(self, "global_step") else None)
 
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)

@@ -165,7 +165,8 @@ class ActorCriticLoss(object):
         self.actor_loss = -1.0 * tf.reduce_mean(q_tp0)
 
         # update policy net one time v.s. update critic net `policy_delay` time(s)
-        actor_loss_coeff = tf.to_float(tf.equal(tf.mod(global_step, policy_delay), 0))
+        actor_loss_coeff = tf.to_float(
+            tf.equal(tf.mod(global_step, policy_delay), 0))
         self.total_loss = actor_loss_coeff * self.actor_loss + self.critic_loss
 
 
@@ -244,8 +245,10 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 self.p_t, deterministic_flag, zero_eps)
             output_actions_estimated = self._build_action_network(
                 p_tp1,
-                tf.constant(value=False, dtype=tf.bool) if self.config["smooth_target_policy"] else deterministic_flag,
-                zero_eps, is_target=True)
+                tf.constant(value=False, dtype=tf.bool)
+                if self.config["smooth_target_policy"] else deterministic_flag,
+                zero_eps,
+                is_target=True)
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
@@ -364,16 +367,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.config["actor_hiddens"],
             self.config["actor_hidden_activation"]).action_scores
 
-    def _build_action_network(self,
-                              p_values,
-                              stochastic,
-                              eps,
+    def _build_action_network(self, p_values, stochastic, eps,
                               is_target=False):
         return ActionNetwork(
             p_values, self.low_action, self.high_action, stochastic, eps,
             self.config["exploration_theta"], self.config["exploration_sigma"],
             self.config["smooth_target_policy"], self.config["act_noise"],
-            is_target, self.config["target_noise"], self.config["noise_clip"]).actions
+            is_target, self.config["target_noise"],
+            self.config["noise_clip"]).actions
 
     def _build_actor_critic_loss(self,
                                  q_t,
@@ -412,7 +413,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                 if g is not None]
         critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
                                  if g is not None]
-        return critic_grads_and_vars+actor_grads_and_vars
+        return critic_grads_and_vars + actor_grads_and_vars
 
     def extra_compute_action_feed_dict(self):
         return {
