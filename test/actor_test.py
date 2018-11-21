@@ -1261,7 +1261,9 @@ def test_blocking_actor_task(shutdown_only):
 
 def test_exception_raised_when_actor_node_dies(shutdown_only):
     ray.worker._init(
-        start_ray_local=True, num_local_schedulers=2, num_cpus=1,
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_cpus=1,
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200
         }))
