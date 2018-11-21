@@ -367,7 +367,8 @@ class DQNPolicyGraph(TFPolicyGraph):
     def _build_q_network(self, obs, space):
         qnet = QNetwork(
             ModelCatalog.get_model({
-                "obs": obs
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
             }, space, 1, self.config["model"]), self.num_actions,
             self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],

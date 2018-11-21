@@ -393,15 +393,13 @@ def _env_runner(async_vector_env,
                     builder, [t.obs for t in eval_data],
                     rnn_in,
                     prev_action_batch=[t.prev_action for t in eval_data],
-                    prev_reward_batch=[t.prev_reward for t in eval_data],
-                    is_training=True)
+                    prev_reward_batch=[t.prev_reward for t in eval_data])
             else:
                 eval_results[policy_id] = policy.compute_actions(
                     [t.obs for t in eval_data],
                     rnn_in,
                     prev_action_batch=[t.prev_action for t in eval_data],
                     prev_reward_batch=[t.prev_reward for t in eval_data],
-                    is_training=True,
                     episodes=[active_episodes[t.env_id] for t in eval_data])
         if builder:
             for k, v in pending_fetches.items():

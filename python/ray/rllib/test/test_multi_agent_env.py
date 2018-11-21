@@ -323,7 +323,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                is_training=False,
                                 episodes=None):
                 return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
@@ -348,7 +347,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                is_training=False,
                                 episodes=None):
                 # Pretend we did a model-based rollout and want to return
                 # the extra trajectory.

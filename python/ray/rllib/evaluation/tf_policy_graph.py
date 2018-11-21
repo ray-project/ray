@@ -30,7 +30,7 @@ class TFPolicyGraph(PolicyGraph):
 
     Examples:
         >>> policy = TFPolicyGraphSubclass(
-            sess, obs_input, action_sampler, loss, loss_inputs, is_training)
+            sess, obs_input, action_sampler, loss, loss_inputs)
 
         >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
@@ -94,7 +94,7 @@ class TFPolicyGraph(PolicyGraph):
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
-        self._is_training = tf.placeholder_with_default(True, ())
+        self._is_training = self._get_is_training_placeholder()
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         for i, ph in enumerate(self._state_inputs):
@@ -107,9 +107,19 @@ class TFPolicyGraph(PolicyGraph):
                                 for (g, v) in self.gradients(self._optimizer)
                                 if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
+
+        # gather update ops for any batch norm layers
+        self._update_ops = tf.get_collection(
+            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        if self._update_ops:
+            logger.info("Found graph update ops {} in {}".format(
+                self._update_ops,
+                tf.get_variable_scope().name))
+        with tf.control_dependencies(self._update_ops):
+            self._apply_op = self._optimizer.apply_gradients(
+                self._grads_and_vars)
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
@@ -133,7 +143,6 @@ class TFPolicyGraph(PolicyGraph):
                               state_batches=None,
                               prev_action_batch=None,
                               prev_reward_batch=None,
-                              is_training=False,
                               episodes=None):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
@@ -146,7 +155,7 @@ class TFPolicyGraph(PolicyGraph):
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
         if self._prev_reward_input is not None and prev_reward_batch:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
-        builder.add_feed_dict({self._is_training: is_training})
+        builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         fetches = builder.add_fetches([self._sampler] + self._state_outputs +
                                       [self.extra_compute_action_fetches()])
@@ -157,12 +166,11 @@ class TFPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self.build_compute_actions(builder, obs_batch, state_batches,
                                              prev_action_batch,
-                                             prev_reward_batch, is_training)
+                                             prev_reward_batch)
         return builder.get(fetches)
 
     def _get_loss_inputs_dict(self, batch):
@@ -281,6 +289,15 @@ class TFPolicyGraph(PolicyGraph):
 
     def loss_inputs(self):
         return self._loss_inputs
+
+    def _get_is_training_placeholder(self):
+        """Get the placeholder for _is_training, i.e., for batch norm layers.
+
+        This can be called safely before __init__ has run.
+        """
+        if not hasattr(self, "_is_training"):
+            self._is_training = tf.placeholder_with_default(False, ())
+        return self._is_training
 
 
 class LearningRateSchedule(object):

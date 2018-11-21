@@ -274,7 +274,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
     def _build_q_network(self, obs, obs_space, actions):
         q_net = QNetwork(
             ModelCatalog.get_model({
-                "obs": obs
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
             }, obs_space, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"])
@@ -283,7 +284,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
     def _build_p_network(self, obs, obs_space):
         return PNetwork(
             ModelCatalog.get_model({
-                "obs": obs
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
             }, obs_space, 1, self.config["model"]), self.dim_actions,
             self.config["actor_hiddens"],
             self.config["actor_hidden_activation"]).action_scores

@@ -42,7 +42,6 @@ class PolicyGraph(object):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         """Compute actions for the current policy.
 
@@ -51,7 +50,6 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state input batches, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
-            is_training (bool): whether we are training the policy
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
@@ -71,7 +69,6 @@ class PolicyGraph(object):
                               state,
                               prev_action_batch=None,
                               prev_reward_batch=None,
-                              is_training=False,
                               episode=None):
         """Unbatched version of compute_actions.
 
@@ -80,7 +77,6 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state inputs, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
-            is_training (bool): whether we are training the policy
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
@@ -92,7 +88,7 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training, episodes=[episode])
+            [obs], [[s] for s in state], episodes=[episode])
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 

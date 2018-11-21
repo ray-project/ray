@@ -35,7 +35,8 @@ class PGPolicyGraph(TFPolicyGraph):
         self.model = ModelCatalog.get_model({
             "obs": obs,
             "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards
+            "prev_rewards": prev_rewards,
+            "is_training": self._get_is_training_placeholder(),
         }, obs_space, self.logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 

@@ -30,7 +30,7 @@ The following is a list of the built-in model hyperparameters:
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -44,7 +44,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 
             Arguments:
                 input_dict (dict): Dictionary of input tensors, including "obs",
-                    "prev_action", "prev_reward".
+                    "prev_action", "prev_reward", "is_training".
                 num_outputs (int): Output tensor must be of size
                     [BATCH_SIZE, num_outputs].
                 options (dict): Model options.
@@ -60,6 +60,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
                 >>> print(input_dict)
                 {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
                  'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+                 'is_training': <tf.Tensor shape=(), dtype=bool>,
                  'obs': OrderedDict([
                     ('sensors', OrderedDict([
                         ('front_cam', [
@@ -109,6 +110,11 @@ Custom models should subclass the common RLlib `model class <https://github.com/
     })
 
 For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
+
+Batch Normalization
+~~~~~~~~~~~~~~~~~~~
+
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_batch_norm.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy_graph.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/tf_policy_graph.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 Custom Preprocessors
 --------------------
@@ -199,7 +205,8 @@ With a custom policy graph, you can also perform model-based rollouts and option
              def compute_actions(self,
                                  obs_batch,
                                  state_batches,
-                                 is_training=False,
+                                 prev_action_batch=None,
+                                 prev_reward_batch=None,
                                  episodes=None):
                 # compute a batch of actions based on the current obs_batch
                 # and state of each episode (i.e., for multiagent). You can do
