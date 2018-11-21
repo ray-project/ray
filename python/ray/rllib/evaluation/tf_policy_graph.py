@@ -113,10 +113,9 @@ class TFPolicyGraph(PolicyGraph):
         # gather update ops for any batch norm layers
         self._update_ops = tf.get_collection(
             tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
-        if self._update_ops:
-            logger.info("Found graph update ops {} in {}".format(
-                self._update_ops,
-                tf.get_variable_scope().name))
+        logger.debug("Found graph update ops {} in {}".format(
+            self._update_ops,
+            tf.get_variable_scope().name))
         with tf.control_dependencies(self._update_ops):
             self._apply_op = self._optimizer.apply_gradients(
                 self._grads_and_vars)

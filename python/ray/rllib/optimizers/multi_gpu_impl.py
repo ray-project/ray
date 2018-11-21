@@ -106,10 +106,9 @@ class LocalSyncParallelOptimizer(object):
             tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         for op in shared_ops:
             self._update_ops.remove(op)  # only care about tower update ops
-        if self._update_ops:
-            logger.info("Found graph update ops {} in {}".format(
-                self._update_ops,
-                tf.get_variable_scope().name))
+        logger.debug("Found graph update ops {} in {}".format(
+            self._update_ops,
+            tf.get_variable_scope().name))
         with tf.control_dependencies(self._update_ops):
             self._train_op = self.optimizer.apply_gradients(avg)
 

@@ -4,21 +4,18 @@ from __future__ import print_function
 """Example of using a custom model with batch norm."""
 
 import argparse
-import gym
-import random
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 import ray
-from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.tune import run_experiments
-from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=200)
+parser.add_argument("--simple", action="store_true")
 
 
 class BatchNormModel(Model):
@@ -62,6 +59,7 @@ if __name__ == "__main__":
                     "custom_model": "bn_model",
                 },
                 "num_workers": 0,
+                "simple_optimizer": args.simple,
             },
         },
     })
