@@ -165,13 +165,13 @@ class ActorCriticLoss(object):
         self.critic_loss = critic_loss_coeff * tf.reduce_mean(
             importance_weights * errors)
 
-        # for policy gradient
-        # update policy net one time v.s. update critic net `policy_delay` time(s)
+        # for policy gradient, update policy net one time v.s.
+        # update critic net `policy_delay` time(s)
         global_step = tf.train.get_or_create_global_step()
         policy_delay_mask = tf.to_float(
             tf.equal(tf.mod(global_step, policy_delay), 0))
-        self.actor_loss = -1.0 * actor_loss_coeff * policy_delay_mask * tf.reduce_mean(
-            q_tp0)
+        self.actor_loss = (-1.0 * actor_loss_coeff * policy_delay_mask *
+                           tf.reduce_mean(q_tp0))
 
         self.total_loss = self.actor_loss + self.critic_loss
 

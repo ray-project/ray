@@ -84,7 +84,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     # Learning rate for adam optimizer.
-    # Instead of using two optimizers respectively, we use a common learning rate to minimize loss = actor_loss_coeff * actor_loss + critic_loss_coeff * critic_loss
+    # Instead of using two optimizers, we use two different loss coefficients
     "lr": 1e-3,
     "actor_loss_coeff": 0.1,
     "critic_loss_coeff": 1.0,

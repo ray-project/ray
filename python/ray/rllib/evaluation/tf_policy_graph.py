@@ -108,7 +108,7 @@ class TFPolicyGraph(PolicyGraph):
                                 for (g, v) in self.gradients(self._optimizer)
                                 if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        # specify global_step for TD3 which needs to count the number of updating
+        # specify global_step for TD3 which needs to count the num updates
         self._apply_op = self._optimizer.apply_gradients(
             self._grads_and_vars,
             global_step=tf.train.get_or_create_global_step())
