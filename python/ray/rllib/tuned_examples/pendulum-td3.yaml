@@ -9,7 +9,8 @@ pendulum-ddpg:
         # === Tricks ===
         twin_q: True
         policy_delay: 2
-        use_gaussian_noise: True
+        smooth_target_policy: True
+        act_noise: 0.1
         target_noise: 0.2
         noise_clip: 0.5
 

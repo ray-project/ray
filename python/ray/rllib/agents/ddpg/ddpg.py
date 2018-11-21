@@ -17,15 +17,19 @@ OPTIMIZER_SHARED_CONFIGS = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
+    # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
     # twin Q-net
     "twin_q": False,
     # delayed policy update
     "policy_delay": 1,
     # target policy smoothing
-    "use_gaussian_noise": False,
-    # target noise stddev
+    # this also forces the use of gaussian instead of OU noise for exploration
+    "smooth_target_policy": False,
+    # gaussian stddev of act noise
+    "act_noise": 0.1,
+    # gaussian stddev of target noise
     "target_noise": 0.2,
-    # action noise limit (bound)
+    # target noise limit (bound)
     "noise_clip": 0.5,
 
     # === Model ===
