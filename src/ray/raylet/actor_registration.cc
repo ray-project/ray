@@ -37,11 +37,12 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.task_counter++;
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
+  dummy_objects_.push_back(execution_dependency);
 }
 
-bool ActorRegistration::IsAlive() const { return alive_; }
-
-void ActorRegistration::MarkDead() { alive_ = false; }
+bool ActorRegistration::IsAlive() const {
+  return actor_table_data_.state == ActorState::ALIVE;
+}
 
 std::string ActorRegistration::DebugString() const {
   std::stringstream result;
