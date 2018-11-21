@@ -19,6 +19,8 @@ P_SCOPE = "p_func"
 P_TARGET_SCOPE = "target_p_func"
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
+TWIN_Q_SCOPE = "twin_q_func"
+TWIN_Q_TARGET_SCOPE = "twin_target_q_func"
 
 
 class PNetwork(object):
@@ -120,7 +122,8 @@ class ActorCriticLoss(object):
                  done_mask,
                  twin_q_t,
                  twin_q_tp1,
-                 global_step,
+                 actor_loss_coeff=0.1,
+                 critic_loss_coeff=1.0,
                  gamma=0.99,
                  n_step=1,
                  use_huber=False,
@@ -159,15 +162,16 @@ class ActorCriticLoss(object):
             else:
                 errors = 0.5 * tf.square(self.td_error)
 
-        self.critic_loss = tf.reduce_mean(importance_weights * errors)
+        self.critic_loss = critic_loss_coeff * tf.reduce_mean(importance_weights * errors)
 
         # for policy gradient
-        self.actor_loss = -1.0 * tf.reduce_mean(q_tp0)
-
         # update policy net one time v.s. update critic net `policy_delay` time(s)
-        actor_loss_coeff = tf.to_float(
+        global_step = tf.train.get_or_create_global_step()
+        policy_delay_mask = tf.to_float(
             tf.equal(tf.mod(global_step, policy_delay), 0))
-        self.total_loss = actor_loss_coeff * self.actor_loss + self.critic_loss
+        self.actor_loss = -1.0 * actor_loss_coeff * policy_delay_mask * tf.reduce_mean(q_tp0)
+
+        self.total_loss = self.actor_loss + self.critic_loss
 
 
 class DDPGPolicyGraph(TFPolicyGraph):
@@ -183,10 +187,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
         self.dim_actions = action_space.shape[0]
         self.low_action = action_space.low
         self.high_action = action_space.high
-        self.actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
-        self.critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
 
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
@@ -208,7 +208,9 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.output_actions = self._build_action_network(
                 p_values, self.stochastic, self.eps)
 
-        if not self.config["smooth_target_policy"]:
+        if self.config["smooth_target_policy"]:
+            self.reset_noise_op = tf.no_op()
+        else:
             with tf.variable_scope(A_SCOPE, reuse=True):
                 exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
                 self.reset_noise_op = tf.assign(exploration_sample,
@@ -239,16 +241,13 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Action outputs
         with tf.variable_scope(A_SCOPE, reuse=True):
-            deterministic_flag = tf.constant(value=True, dtype=tf.bool)
-            zero_eps = tf.constant(value=.0, dtype=tf.float32)
             output_actions = self._build_action_network(
-                self.p_t, deterministic_flag, zero_eps)
+                self.p_t, stochastic=tf.constant(value=False, dtype=tf.bool),
+                eps=.0)
             output_actions_estimated = self._build_action_network(
                 p_tp1,
-                tf.constant(value=False, dtype=tf.bool)
-                if self.config["smooth_target_policy"] else deterministic_flag,
-                zero_eps,
-                is_target=True)
+                stochastic=tf.constant(value=self.config["smooth_target_policy"], dtype=tf.bool),
+                eps=.0, is_target=True)
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
@@ -259,7 +258,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
                                              output_actions)
         if self.config["twin_q"]:
-            with tf.variable_scope("twin_" + Q_SCOPE) as scope:
+            with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, twin_model = self._build_q_network(
                     self.obs_t, observation_space, self.act_t)
                 self.twin_q_func_vars = _scope_vars(scope.name)
@@ -270,7 +269,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                              output_actions_estimated)
             target_q_func_vars = _scope_vars(scope.name)
         if self.config["twin_q"]:
-            with tf.variable_scope("twin_" + Q_TARGET_SCOPE) as scope:
+            with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
                     self.obs_tp1, observation_space, output_actions_estimated)
                 twin_target_q_func_vars = _scope_vars(scope.name)
@@ -384,28 +383,32 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                  twin_q_tp1=None):
         return ActorCriticLoss(
             q_t, q_tp1, q_tp0, self.importance_weights, self.rew_t,
-            self.done_mask, twin_q_t, twin_q_tp1, self.global_step,
+            self.done_mask, twin_q_t, twin_q_tp1,
+            self.config["actor_loss_coeff"], self.config["critic_loss_coeff"],
             self.config["gamma"], self.config["n_step"],
             self.config["use_huber"], self.config["huber_threshold"],
             self.config["twin_q"])
 
+    def optimizer(self):
+        return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
+
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
-                self.actor_optimizer,
+                optimizer,
                 self.loss.actor_loss,
                 var_list=self.p_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
             critic_grads_and_vars = _minimize_and_clip(
-                self.critic_optimizer,
+                optimizer,
                 self.loss.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:
-            actor_grads_and_vars = self.actor_optimizer.compute_gradients(
+            actor_grads_and_vars = optimizer.compute_gradients(
                 self.loss.actor_loss, var_list=self.p_func_vars)
-            critic_grads_and_vars = self.critic_optimizer.compute_gradients(
+            critic_grads_and_vars = optimizer.compute_gradients(
                 self.loss.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars)
@@ -413,7 +416,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                 if g is not None]
         critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
                                  if g is not None]
-        return critic_grads_and_vars + actor_grads_and_vars
+        grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
+        return grads_and_vars
 
     def extra_compute_action_feed_dict(self):
         return {
@@ -447,8 +451,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
         return td_err
 
     def reset_noise(self, sess):
-        if not self.config["use_gaussian_noise"]:
-            sess.run(self.reset_noise_op)
+        sess.run(self.reset_noise_op)
 
     # support both hard and soft sync
     def update_target(self, tau=None):

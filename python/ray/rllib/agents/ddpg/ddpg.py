@@ -83,9 +83,11 @@ DEFAULT_CONFIG = with_common_config({
     "compress_observations": False,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
-    "actor_lr": 1e-4,
-    "critic_lr": 1e-3,
+    # Learning rate for adam optimizer.
+    # Instead of using two optimizers respectively, we use a common learning rate to minimize loss = actor_loss_coeff * actor_loss + critic_loss_coeff * critic_loss
+    "lr": 1e-3,
+    "actor_loss_coeff": 0.1,
+    "critic_loss_coeff": 1.0,
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
