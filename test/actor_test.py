@@ -1265,7 +1265,8 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
         num_local_schedulers=2,
         num_cpus=1,
         _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
+            "initial_reconstruction_timeout_milliseconds": 200,
+            "num_heartbeats_timeout": 10,
         }))
 
     @ray.remote
@@ -1293,24 +1294,11 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
         ray.services.PROCESS_TYPE_PLASMA_STORE][1]
     process.kill()
 
-    # Submit some new actor tasks.
-    x_ids = [actor.inc.remote() for _ in range(5)]
-
-    # Make sure that getting the result raises an exception.
+    # Submit some new actor tasks both before and after the node failure is
+    # detected. Make sure that getting the result raises an exception.
     for _ in range(10):
-        for x_id in x_ids:
-            with pytest.raises(ray.worker.RayGetError):
-                # There is some small chance that ray.get will actually
-                # succeed (if the object is transferred before the raylet
-                # dies).
-                ray.get(x_id)
-
-    # Submit some more actor tasks after the actor has definitely been marked
-    # as dead.
-    x_ids = [actor.inc.remote() for _ in range(5)]
-
-    # Make sure that getting the result raises an exception.
-    for _ in range(10):
+        # Submit some new actor tasks.
+        x_ids = [actor.inc.remote() for _ in range(5)]
         for x_id in x_ids:
             with pytest.raises(ray.worker.RayGetError):
                 # There is some small chance that ray.get will actually
