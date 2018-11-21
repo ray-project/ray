@@ -19,20 +19,23 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
 
 
-class _Train(tune.Trainable):
-    def _setup(self, config):
-        self.state = {"hi": 1}
+def register_test_trainable():
+    class _Train(tune.Trainable):
+        def _setup(self, config):
+            self.state = {"hi": 1}
 
-    def _train(self):
-        self.state["hi"] += 1
-        time.sleep(0.5)
-        return {}
+        def _train(self):
+            self.state["hi"] += 1
+            time.sleep(0.5)
+            return {}
 
-    def _save(self, path):
-        return self.state
+        def _save(self, path):
+            return self.state
 
-    def _restore(self, state):
-        self.state = state
+        def _restore(self, state):
+            self.state = state
+
+    tune.register_trainable("test", _Train)
 
 
 @pytest.fixture
@@ -48,6 +51,7 @@ def start_connected_cluster():
                 "num_heartbeats_timeout": 10
             })
         })
+    register_test_trainable()
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -67,7 +71,7 @@ def start_connected_emptyhead_cluster():
                 "num_heartbeats_timeout": 10
             })
         })
-    tune.register_trainable("test", _Train)
+    register_test_trainable()
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -91,7 +95,6 @@ def test_counting_resources(start_connected_cluster):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
-    tune.register_trainable("test", _Train)
     trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
     for t in trials:
         runner.add_trial(t)
@@ -125,11 +128,11 @@ def test_remove_node_before_result(start_connected_cluster):
     """Removing a node should cause a Trial to be requeued."""
     cluster = start_connected_cluster
     node = cluster.add_node(resources=dict(CPU=1))
+    # TODO(rliaw): Make blocking an option?
+    assert cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 3}}
-
-    tune.register_trainable("test", _Train)
     trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
     for t in trials:
         runner.add_trial(t)
@@ -139,7 +142,6 @@ def test_remove_node_before_result(start_connected_cluster):
     assert all(t.status == Trial.RUNNING for t in trials)
 
     runner.step()  # 1 result
-    print(runner.debug_string())
 
     cluster.remove_node(node)
     cluster.wait_for_nodes()
@@ -246,14 +248,12 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         "max_failures": 1
     }
 
-    tune.register_trainable("test", _Train)
     trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
     runner.step()  # start
     runner.step()  # 1 result
-    print(runner.debug_string())
 
     cluster.remove_node(node)
     assert cluster.wait_for_nodes()
