@@ -40,7 +40,8 @@ struct hash<std::pair<::ray::UniqueID, ::ray::UniqueID>> {
 
 template <>
 struct hash<std::tuple<::ray::UniqueID, ::ray::UniqueID, uint64_t>> {
-  size_t operator()(const std::tuple<::ray::UniqueID, ::ray::UniqueID, uint64_t> &ids) const {
+  size_t operator()(
+      const std::tuple<::ray::UniqueID, ::ray::UniqueID, uint64_t> &ids) const {
     return std::get<0>(ids).hash() + std::get<1>(ids).hash() + std::get<2>(ids);
   }
 };

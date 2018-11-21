@@ -222,8 +222,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   ClientID client_id_to_cancel;
   if (static_cast<int64_t>(it->second.clients_requested.size()) >=
       RayConfig::instance().object_manager_max_outstanding_pulls()) {
-    std::uniform_int_distribution<int>
-        cancel_distribution(0, it->second.clients_requested.size() - 1);
+    std::uniform_int_distribution<int> cancel_distribution(
+        0, it->second.clients_requested.size() - 1);
     int client_to_cancel_index = cancel_distribution(gen_);
     auto client_it = it->second.clients_requested.begin();
     for (int i = 0; i < client_to_cancel_index; ++i) {
@@ -922,7 +922,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
 void ObjectManager::ReceiveCancelPullRequest(std::shared_ptr<TcpClientConnection> &conn,
                                              const uint8_t *message) {
   auto cancellation_message =
-    flatbuffers::GetRoot<object_manager_protocol::CancelPullRequestMessage>(message);
+      flatbuffers::GetRoot<object_manager_protocol::CancelPullRequestMessage>(message);
   const ObjectID object_id =
       ObjectID::from_binary(cancellation_message->object_id()->str());
   const ClientID client_id =
@@ -969,8 +969,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
         // Notify the main thread that we have finished receiving the object.
         main_service_->post(
             [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
-              HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
-                                    status);
+              HandleReceiveFinished(object_id, client_id, chunk_index, start_time,
+                                    end_time, status);
             });
 
       });
@@ -1102,7 +1102,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << connection_pool_.DebugString();
 
   return result.str();
-
 }
 
 }  // namespace ray
