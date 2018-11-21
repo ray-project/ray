@@ -61,7 +61,8 @@ class TaskDependencyManager {
   /// then they will be canceled.
   ///
   /// \param task_id The ID of the task whose dependencies to unsubscribe from.
-  void UnsubscribeDependencies(const TaskID &task_id);
+  /// \return Whether the task was subscribed before.
+  bool UnsubscribeDependencies(const TaskID &task_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed

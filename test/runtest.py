@@ -1231,6 +1231,7 @@ def test_multithreading(shutdown_only):
 
 
 def test_free_objects_multi_node(shutdown_only):
+    config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=3,
@@ -1241,7 +1242,8 @@ def test_free_objects_multi_node(shutdown_only):
             "Custom1": 1
         }, {
             "Custom2": 1
-        }])
+        }],
+        _internal_config=config)
 
     @ray.remote(resources={"Custom0": 1})
     def run_on_0():

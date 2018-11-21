@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import json
 import signal
 import time
 
@@ -262,7 +263,11 @@ def _test_component_failed(component_type):
         num_local_schedulers=num_local_schedulers,
         start_ray_local=True,
         num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
-        redirect_output=True)
+        redirect_output=True,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 1000,
+            "num_heartbeats_timeout": 10,
+        }))
 
     # Submit many tasks with many dependencies.
     @ray.remote
