@@ -336,7 +336,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Push more objects if there are pending pushes and there are available
   /// resources to push.
   ///
-  /// \return Void
+  /// \return Void.
   void DispatchPushes();
 
   /// This is used to notify the main thread that the receiving of a chunk has
