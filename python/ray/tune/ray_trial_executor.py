@@ -278,6 +278,7 @@ class RayTrialExecutor(TrialExecutor):
     def save(self, trial, storage=Checkpoint.DISK):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
+        trial._checkpoint.last_result = trial.last_result
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
@@ -301,6 +302,8 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
                 ray.get(trial.runner.restore.remote(value))
+            trial.last_result = checkpoint.last_result
+
             return True
         except Exception:
             logger.exception("Error restoring runner.")
