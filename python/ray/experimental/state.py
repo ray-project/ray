@@ -347,25 +347,29 @@ class GlobalState(object):
             }
             client_id = ray.utils.binary_to_hex(client.ClientId())
 
-            # If this client is being removed, then it must
-            # have previously been inserted, and
-            # it cannot have previously been removed.
-            if not client.IsInsertion():
+            # If this client is being inserted, then it must not have been
+            # inserted before. If it is being removed, then it must have
+            # previously been inserted, and it cannot have previously been
+            # removed.
+            if client.IsInsertion():
+                assert client_id not in node_info
+                node_info[client_id] = {
+                    "ClientID": client_id,
+                    "IsInsertion": client.IsInsertion(),
+                    "NodeManagerAddress": decode(client.NodeManagerAddress()),
+                    "NodeManagerPort": client.NodeManagerPort(),
+                    "ObjectManagerPort": client.ObjectManagerPort(),
+                    "ObjectStoreSocketName": decode(
+                        client.ObjectStoreSocketName()),
+                    "RayletSocketName": decode(client.RayletSocketName()),
+                    "Resources": resources
+                }
+            else:
                 assert client_id in node_info, "Client removed not found!"
                 assert node_info[client_id]["IsInsertion"], (
                     "Unexpected duplicate removal of client.")
+                node_info[client_id]["IsInsertion"] = client.IsInsertion()
 
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(client.NodeManagerAddress()),
-                "NodeManagerPort": client.NodeManagerPort(),
-                "ObjectManagerPort": client.ObjectManagerPort(),
-                "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName()),
-                "RayletSocketName": decode(client.RayletSocketName()),
-                "Resources": resources
-            }
         return list(node_info.values())
 
     def log_files(self):
