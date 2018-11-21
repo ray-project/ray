@@ -71,4 +71,4 @@ bash "$TP_SCRIPT_DIR/build_ui.sh"
 ##############################################
 # modin
 ##############################################
-bash "$TP_SCRIPT_DIR/build_modin.sh"
+bash "$TP_SCRIPT_DIR/build_modin.sh" $PYTHON_EXECUTABLE
