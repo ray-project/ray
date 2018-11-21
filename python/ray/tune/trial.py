@@ -85,9 +85,10 @@ class Checkpoint(object):
     MEMORY = "memory"
     DISK = "disk"
 
-    def __init__(self, storage, value):
+    def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
+        self.last_result = last_result
 
     @staticmethod
     def from_object(value=None):
@@ -276,6 +277,14 @@ class Trial(object):
 
     def has_checkpoint(self):
         return self._checkpoint.value is not None
+
+    def should_recover(self):
+        """Returns whether the trial qualifies for restoring.
+
+        This is if a checkpoint frequency is set, which includes settings
+        where there may not yet be a checkpoint.
+        """
+        return self.checkpoint_freq > 0
 
     def update_last_result(self, result, terminate=False):
         if terminate:

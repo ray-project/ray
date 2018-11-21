@@ -42,9 +42,10 @@ class Cluster(object):
             self.add_node(**head_node_args)
             if connect:
                 redis_password = head_node_args.get("redis_password")
-                ray.init(
+                output_info = ray.init(
                     redis_address=self.redis_address,
                     redis_password=redis_password)
+                logger.info(output_info)
         if shutdown_at_exit:
             atexit.register(self.shutdown)
 
@@ -172,8 +173,10 @@ class Cluster(object):
         for node in all_nodes:
             self.remove_node(node)
 
-        if self.head_node is not None:
+        if self.head_node:
             self.remove_node(self.head_node)
+        else:
+            logger.warning("No headnode exists!")
 
 
 class Node(object):
