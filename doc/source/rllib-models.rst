@@ -232,7 +232,7 @@ Custom models can be used to work with environments where (1) the set of valid a
             return masked_logits, last_layer
 
 
-For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__.
+Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__.
 
 
 Model-Based Rollouts

@@ -108,7 +108,7 @@ class ParametricActionCartpole(gym.Env):
 
 class ParametricActionsModel(Model):
     """Parametric action model that handles the dot product and masking.
-    
+
     This assumes the outputs are logits for a Categorical action dist."""
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
