@@ -104,7 +104,7 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison llvm > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison llvm@6 > /dev/null
   # We use true to avoid exiting with an error code because the brew install can
   # fail if a package is already installed.
   true
