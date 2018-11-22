@@ -155,8 +155,8 @@ class ActorCriticLoss(object):
                 errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(
                     twin_td_error)
         else:
-            self.td_error = q_t_selected - tf.stop_gradient(
-                q_t_selected_target)
+            self.td_error = (
+                q_t_selected - tf.stop_gradient(q_t_selected_target))
             if use_huber:
                 errors = _huber_loss(self.td_error, huber_threshold)
             else:
