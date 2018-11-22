@@ -297,7 +297,7 @@ class TrialRunner(object):
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
-                if trial.has_checkpoint() and \
+                if trial.should_recover() and \
                         trial.num_failures < trial.max_failures:
                     self._try_recover(trial, error_msg)
                 else:

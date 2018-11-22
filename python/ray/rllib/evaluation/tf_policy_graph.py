@@ -106,6 +106,7 @@ class TFPolicyGraph(PolicyGraph):
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
+
         self._optimizer = self.optimizer()
         self._grads_and_vars = [(g, v)
                                 for (g, v) in self.gradients(self._optimizer)
@@ -124,8 +125,10 @@ class TFPolicyGraph(PolicyGraph):
             logger.info("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
+            # specify global_step for TD3 which needs to count the num updates
             self._apply_op = self._optimizer.apply_gradients(
-                self._grads_and_vars)
+                self._grads_and_vars,
+                global_step=tf.train.get_or_create_global_step())
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(

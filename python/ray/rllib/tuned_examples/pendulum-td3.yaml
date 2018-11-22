@@ -6,6 +6,14 @@ pendulum-ddpg:
         episode_reward_mean: -160
         time_total_s: 600 # 10 minutes
     config:
+        # === Tricks ===
+        twin_q: True
+        policy_delay: 2
+        smooth_target_policy: True
+        act_noise: 0.1
+        target_noise: 0.2
+        noise_clip: 0.5
+
         # === Model ===
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
