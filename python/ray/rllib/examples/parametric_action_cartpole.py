@@ -34,7 +34,7 @@ from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=200)
+parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--run", type=str, default="PPO")
 
 
@@ -185,7 +185,7 @@ if __name__ == "__main__":
             "run": args.run,
             "env": "pa_cartpole",
             "stop": {
-                "training_iteration": args.num_iters
+                "episode_reward_mean": args.stop,
             },
             "config": dict({
                 "model": {
