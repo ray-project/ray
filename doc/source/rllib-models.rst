@@ -191,7 +191,7 @@ In this example we overrode existing methods of the existing DDPG policy graph, 
 Variable-length / Parametric Action Spaces
 ------------------------------------------
 
-Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is `very large <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ or `potentially infinite <https://arxiv.org/abs/1811.00260>`__. This applies to algorithms in the `policy-gradient family <rllib-env.html>`__ and works as follows:
+Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. This applies to algorithms in the `policy-gradient family <rllib-env.html>`__ and works as follows:
 
 1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max num available:
 
