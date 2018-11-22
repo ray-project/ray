@@ -102,12 +102,17 @@ class TFPolicyGraph(PolicyGraph):
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
+
         self._optimizer = self.optimizer()
         self._grads_and_vars = [(g, v)
                                 for (g, v) in self.gradients(self._optimizer)
                                 if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        self._apply_op = self._optimizer.apply_gradients(self._grads_and_vars)
+        # specify global_step for TD3 which needs to count the num updates
+        self._apply_op = self._optimizer.apply_gradients(
+            self._grads_and_vars,
+            global_step=tf.train.get_or_create_global_step())
+
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
