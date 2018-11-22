@@ -2036,7 +2036,7 @@ def connect(info,
     worker.plasma_client = thread_safe_client(
         plasma.connect(info["store_socket_name"], "", 64))
 
-    local_scheduler_socket = info["raylet_socket_name"]
+    raylet_socket = info["raylet_socket_name"]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2095,8 +2095,7 @@ def connect(info,
     worker.multithreading_warned = False
 
     worker.local_scheduler_client = ray.raylet.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker,
-        worker.current_task_id)
+        raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
 
     # Start the import thread
     import_thread.ImportThread(worker, mode).start()

@@ -1151,8 +1151,6 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (decode(
-                    worker_info[b"local_scheduler_socket"])),
                 "node_ip_address": decode(worker_info[b"node_ip_address"]),
                 "plasma_store_socket": decode(
                     worker_info[b"plasma_store_socket"])

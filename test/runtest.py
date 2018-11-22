@@ -2326,7 +2326,6 @@ def test_workers(shutdown_only):
     assert len(worker_info) >= num_workers
     for worker_id, info in worker_info.items():
         assert "node_ip_address" in info
-        assert "local_scheduler_socket" in info
         assert "plasma_store_socket" in info
         assert "stderr_file" in info
         assert "stdout_file" in info
