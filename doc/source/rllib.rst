@@ -56,7 +56,7 @@ Algorithms
 
    -  `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
 
-   -  `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
+   -  `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
 
    -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 
