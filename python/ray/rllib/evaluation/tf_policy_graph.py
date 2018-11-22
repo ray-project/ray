@@ -53,7 +53,8 @@ class TFPolicyGraph(PolicyGraph):
                  prev_reward_input=None,
                  seq_lens=None,
                  max_seq_len=20,
-                 batch_divisibility_req=1):
+                 batch_divisibility_req=1,
+                 update_ops=None):
         """Initialize the policy graph.
 
         Arguments:
@@ -82,6 +83,9 @@ class TFPolicyGraph(PolicyGraph):
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
+            update_ops (list): override the batchnorm update ops to run when
+                applying gradients. Otherwise we run all update ops found in
+                the current variable scope.
         """
 
         self.observation_space = observation_space
@@ -111,11 +115,14 @@ class TFPolicyGraph(PolicyGraph):
             self._loss, self._sess)
 
         # gather update ops for any batch norm layers
-        self._update_ops = tf.get_collection(
-            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
-        logger.debug("Found graph update ops {} in {}".format(
-            self._update_ops,
-            tf.get_variable_scope().name))
+        if update_ops:
+            self._update_ops = update_ops
+        else:
+            self._update_ops = tf.get_collection(
+                tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        if self._update_ops:
+            logger.info("Update ops to run on apply gradient: {}".format(
+                self._update_ops))
         with tf.control_dependencies(self._update_ops):
             self._apply_op = self._optimizer.apply_gradients(
                 self._grads_and_vars)

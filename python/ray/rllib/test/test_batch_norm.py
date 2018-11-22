@@ -15,7 +15,7 @@ from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=200)
-parser.add_argument("--simple", action="store_true")
+parser.add_argument("--run", type=str, default="PPO")
 
 
 class BatchNormModel(Model):
@@ -49,8 +49,8 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("bn_model", BatchNormModel)
     run_experiments({
         "batch_norm_demo": {
-            "run": "PPO",
-            "env": "CartPole-v0",
+            "run": args.run,
+            "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
             "stop": {
                 "training_iteration": args.num_iters
             },
@@ -59,7 +59,6 @@ if __name__ == "__main__":
                     "custom_model": "bn_model",
                 },
                 "num_workers": 0,
-                "simple_optimizer": args.simple,
             },
         },
     })

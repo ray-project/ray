@@ -146,7 +146,9 @@ class DDPGPolicyGraph(TFPolicyGraph):
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
         self.cur_observations = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
+            tf.float32,
+            shape=(None, ) + observation_space.shape,
+            name="cur_obs")
 
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
@@ -180,7 +182,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
+            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             self.p_t = self._build_p_network(self.obs_t, observation_space)
+            p_batchnorm_update_ops = list(
+                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                prev_update_ops)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
@@ -198,6 +204,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 p_tp1, deterministic_flag, zero_eps)
 
         # q network evaluation
+        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
         with tf.variable_scope(Q_SCOPE) as scope:
             q_t, model = self._build_q_network(self.obs_t, observation_space,
                                                self.act_t)
@@ -205,6 +212,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
                                              output_actions)
+        q_batchnorm_update_ops = list(
+            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
@@ -260,7 +269,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
             loss=model.loss() + self.loss.total_loss,
-            loss_inputs=self.loss_inputs)
+            loss_inputs=self.loss_inputs,
+            update_ops=q_batchnorm_update_ops + p_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
         # Note that this encompasses both the policy and Q-value networks and

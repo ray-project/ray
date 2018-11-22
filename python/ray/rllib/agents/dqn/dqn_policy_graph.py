@@ -295,8 +295,12 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
+            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             q_t, q_logits_t, q_dist_t, model = self._build_q_network(
                 self.obs_t, observation_space)
+            q_batchnorm_update_ops = list(
+                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
@@ -361,7 +365,8 @@ class DQNPolicyGraph(TFPolicyGraph):
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
             loss=model.loss() + self.loss.loss,
-            loss_inputs=self.loss_inputs)
+            loss_inputs=self.loss_inputs,
+            update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
     def _build_q_network(self, obs, space):

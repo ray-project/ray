@@ -101,14 +101,17 @@ class LocalSyncParallelOptimizer(object):
             for i, (grad, var) in enumerate(avg):
                 avg[i] = (clipped[i], var)
 
-        # gather update ops for any batch norm layers
+        # gather update ops for any batch norm layers. TODO(ekl) here we will
+        # use all the ops found which won't work for DQN / DDPG, but those
+        # aren't supported with multi-gpu right now anyways.
         self._update_ops = tf.get_collection(
             tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         for op in shared_ops:
             self._update_ops.remove(op)  # only care about tower update ops
-        logger.debug("Found graph update ops {} in {}".format(
-            self._update_ops,
-            tf.get_variable_scope().name))
+        if self._update_ops:
+            logger.info("Update ops to run on apply gradient: {}".format(
+                self._update_ops))
+
         with tf.control_dependencies(self._update_ops):
             self._train_op = self.optimizer.apply_gradients(avg)
 
