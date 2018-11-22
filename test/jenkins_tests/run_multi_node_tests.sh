@@ -256,16 +256,16 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_batch_norm.py --num-iters=1 --run=PPO
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=PPO
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_batch_norm.py --num-iters=1 --run=PG
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=PG
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_batch_norm.py --num-iters=1 --run=DQN
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=DQN
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_batch_norm.py --num-iters=1 --run=DDPG
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=DDPG
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_multi_agent_env.py
