@@ -6,8 +6,13 @@ OpenAI Five works:
 
     https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
 
-Note: this currently only works with RLlib's policy gradient style algorithms
-i.e., PG / PPO and not DQN / DDPG.
+This currently works with RLlib's policy gradient style algorithms
+(e.g., PG, PPO, IMPALA, A2C) and also DQN.
+
+Note that since the model outputs now include "-inf" tf.float32.min
+values, not all algorithm options are supported at the moment. For example,
+dueling DQN will crash since it has a tf.reduce_mean() that is not robust to
+the -inf action scores.
 """
 
 from __future__ import absolute_import
@@ -167,6 +172,11 @@ if __name__ == "__main__":
         cfg = {
             "observation_filter": "NoFilter",  # don't filter the action list
             "vf_share_layers": True,  # don't create duplicate value model
+        }
+    elif args.run == "DQN":
+        cfg = {
+            "hiddens": [],  # don't postprocess the action scores
+            "dueling": False,  # doesn't support action masking
         }
     else:
         cfg = {}

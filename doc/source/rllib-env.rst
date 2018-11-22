@@ -14,9 +14,9 @@ A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
-DQN, Rainbow    **Yes**                 No                  **Yes**      No
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
 DDPG            No                      **Yes**             **Yes**      No
-APEX-DQN        **Yes**                 No                  **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
 APEX-DDPG       No                      **Yes**             **Yes**      No
 ES              **Yes**                 **Yes**             No           No
 ARS             **Yes**                 **Yes**             No           No

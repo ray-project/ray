@@ -191,9 +191,9 @@ In this example we overrode existing methods of the existing DDPG policy graph, 
 Variable-length / Parametric Action Spaces
 ------------------------------------------
 
-Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. This applies to algorithms in the `policy-gradient family <rllib-env.html>`__ and works as follows:
+Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, that is, the ``a`` in ``Q(s, a)`` is just a random number in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
 
-1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max num available:
+1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
 
 .. code-block:: python
 
@@ -232,7 +232,7 @@ Custom models can be used to work with environments where (1) the set of valid a
             return masked_logits, last_layer
 
 
-Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__.
+Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``-inf`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they aren't robust to processing the ``-inf`` values. The cartpole example has working configurations for DQN and several policy gradient algorithms.
 
 
 Model-Based Rollouts
