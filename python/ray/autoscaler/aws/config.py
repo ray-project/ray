@@ -10,6 +10,7 @@ import time
 
 import boto3
 from botocore.config import Config
+import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
@@ -272,7 +273,7 @@ def _get_role(role_name, config):
     try:
         role.load()
         return role
-    except Exception:
+    except botocore.errorfactory.NoSuchEntityException:
         return None
 
 
@@ -282,7 +283,7 @@ def _get_instance_profile(profile_name, config):
     try:
         profile.load()
         return profile
-    except Exception:
+    except botocore.errorfactory.NoSuchEntityException:
         return None
 
 
