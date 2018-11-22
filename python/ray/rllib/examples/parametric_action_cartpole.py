@@ -7,7 +7,7 @@ OpenAI Five works:
     https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
 
 Note: this currently only works with RLlib's policy gradient style algorithms
-i.e., PG / PPO and not DQN / DDPG.
+i.e., PG / PPO and not DQN.
 """
 
 from __future__ import absolute_import
