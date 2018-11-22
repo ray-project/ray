@@ -2014,7 +2014,8 @@ def connect(info,
         driver_info["name"] = (main.__file__ if hasattr(main, "__file__") else
                                "INTERACTIVE MODE")
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if not worker.redis_client.exists("webui"):
+        if (not worker.redis_client.exists("webui")
+                and info["webui_url"] is not None):
             worker.redis_client.hmset("webui", {"url": info["webui_url"]})
         is_worker = False
     elif mode == WORKER_MODE:
