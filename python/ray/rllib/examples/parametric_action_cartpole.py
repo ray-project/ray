@@ -42,14 +42,14 @@ class ParametricActionCartpole(gym.Env):
 
     At each step, we emit a dict of:
         - the actual cart observation
-        - a mask of valid actions (e.g., [0, 1, 1, 0, 0, 1] for 3 / 6 active)
+        - a mask of valid actions (e.g., [0, 0, 1, 0, 0, 1] for 6 max avail)
         - the list of action embeddings (w/ zeroes for invalid actions) (e.g.,
             [[0, 0],
-             [-1.4414, 0.9071],
+             [0, 0],
              [-0.2322, -0.2569],
              [0, 0],
              [0, 0],
-             [0.7878, 1.2297]] for 3 active of 6 max)
+             [0.7878, 1.2297]] for max_avail_actions=6)
 
     In a real environment, the actions embeddings would be larger than two
     units of course, and also there would be a variable number of valid actions
@@ -147,7 +147,7 @@ class ParametricActionsModel(Model):
         # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
         intent_vector = tf.expand_dims(output, 1)
 
-        # Shape of logits is [BATCH, MAX_ACTIONS].
+        # Batch dot product => shape of logits is [BATCH, MAX_ACTIONS].
         action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
 
         # Mask out invalid actions (use tf.float32.min for stability)
