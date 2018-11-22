@@ -109,7 +109,11 @@ class ParametricActionCartpole(gym.Env):
 class ParametricActionsModel(Model):
     """Parametric action model that handles the dot product and masking.
 
-    This assumes the outputs are logits for a Categorical action dist."""
+    This assumes the outputs are logits for a single Categorical action dist.
+    Getting this to work with a more complex output (e.g., if the action space
+    is a tuple of several distributions) is also possible but left as an
+    exercise to the reader.
+    """
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         # Extract the available actions tensor from the observation.
