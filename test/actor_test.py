@@ -1873,7 +1873,6 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skip("This test does not work yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1890,7 +1889,6 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skip("This test does not work yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
