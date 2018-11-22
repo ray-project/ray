@@ -16,6 +16,7 @@ from __future__ import print_function
 
 import argparse
 import random
+import numpy as np
 import gym
 from gym.spaces import Box, Discrete, Dict
 import tensorflow as tf
@@ -41,14 +42,14 @@ class ParametricActionCartpole(gym.Env):
 
     At each step, we emit a dict of:
         - the actual cart observation
-        - a mask of valid actions (e.g., [0, 0, 1, 0, 0, 1] for max_avail=6)
-        - the list of action embeddings (zeroes for invalid actions) (e.g.,
+        - a mask of valid actions (e.g., [0, 1, 1, 0, 0, 1] for 3 / 6 active)
+        - the list of action embeddings (w/ zeroes for invalid actions) (e.g.,
             [[0, 0],
+             [-1.4414, 0.9071],
+             [-0.2322, -0.2569],
              [0, 0],
-             [1, 0],
              [0, 0],
-             [0, 0],
-             [0, 1]] for max_avail=6).
+             [0.7878, 1.2297]] for 3 active of 6 max)
 
     In a real environment, the actions embeddings would be larger than two
     units of course, and also there would be a variable number of valid actions
@@ -56,17 +57,18 @@ class ParametricActionCartpole(gym.Env):
     """
 
     def __init__(self, max_avail_actions):
-        self.left_action_embed = [0, 1]  # use simple 2-unit action embeddings
-        self.right_action_embed = [1, 0]
+        # Use simple random 2-unit action embeddings for [LEFT, RIGHT]
+        self.left_action_embed = np.random.randn(2)
+        self.right_action_embed = np.random.randn(2)
         self.action_space = Discrete(max_avail_actions)
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
-            "action_mask": Box(0, 1, shape=(max_avail_actions,)),
+            "action_mask": Box(0, 1, shape=(max_avail_actions, )),
             "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
-    def randomize_avail_actions(self):
+    def update_avail_actions(self):
         self.action_assignments = [[0, 0]] * self.action_space.n
         self.action_mask = [0] * self.action_space.n
         self.left_idx, self.right_idx = random.sample(
@@ -77,7 +79,7 @@ class ParametricActionCartpole(gym.Env):
         self.action_mask[self.right_idx] = 1
 
     def reset(self):
-        self.randomize_avail_actions()
+        self.update_avail_actions()
         return {
             "action_mask": self.action_mask,
             "avail_actions": self.action_assignments,
@@ -95,7 +97,7 @@ class ParametricActionCartpole(gym.Env):
                 action, self.action_assignments, self.action_mask,
                 self.left_idx, self.right_idx)
         orig_obs, rew, done, info = self.wrapped.step(actual_action)
-        self.randomize_avail_actions()
+        self.update_avail_actions()
         obs = {
             "action_mask": self.action_mask,
             "avail_actions": self.action_assignments,

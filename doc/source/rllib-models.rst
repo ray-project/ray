@@ -188,6 +188,53 @@ Then, you can create an agent with your custom policy graph by:
 
 In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 
+Variable-length / Parametric Action Spaces
+------------------------------------------
+
+Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is `very large <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ or `potentially infinite <https://arxiv.org/abs/1811.00260>`__. This applies to algorithms in the `policy-gradient family <rllib-env.html>`__ and works as follows:
+
+1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max num available:
+
+.. code-block:: python
+
+   class MyParamActionEnv(
+       def __init__(self, max_avail_actions):
+           self.action_space = Discrete(max_avail_actions)
+           self.observation_space = Dict({
+               "action_mask": Box(0, 1, shape=(max_avail_actions, )),
+               "avail_actions": Box(-1, 1, shape=(max_avail_actions, action_embedding_sz)),
+               "real_obs": ...,
+           })
+
+2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits via the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
+
+.. code-block:: python
+
+    class MyParamActionModel(Model):
+        def _build_layers_v2(self, input_dict, num_outputs, options):
+            avail_actions = input_dict["obs"]["avail_actions"]
+            action_mask = input_dict["obs"]["action_mask"]
+
+            output = FullyConnectedNetwork(
+                input_dict["obs"]["real_obs"], num_outputs=action_embedding_sz)
+
+            # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
+            # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
+            intent_vector = tf.expand_dims(output, 1)
+
+            # Shape of logits is [BATCH, MAX_ACTIONS].
+            action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
+
+            # Mask out invalid actions (use tf.float32.min for stability)
+            inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+            masked_logits = inf_mask + action_logits
+
+            return masked_logits, last_layer
+
+
+For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__.
+
+
 Model-Based Rollouts
 --------------------
 
