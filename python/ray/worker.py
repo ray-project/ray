@@ -713,7 +713,7 @@ class Worker(object):
                     "driver_id": self.task_driver_id.id(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "run_on_other_drivers": run_on_other_drivers
+                    "run_on_other_drivers": str(run_on_other_drivers)
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -1446,12 +1446,8 @@ def _init(address_info=None,
         # Use 1 local scheduler if num_local_schedulers is not provided. If
         # existing local schedulers are provided, use that count as
         # num_local_schedulers.
-        local_schedulers = address_info.get("local_scheduler_socket_names", [])
         if num_local_schedulers is None:
-            if len(local_schedulers) > 0:
-                num_local_schedulers = len(local_schedulers)
-            else:
-                num_local_schedulers = 1
+            num_local_schedulers = 1
         # Use 1 additional redis shard if num_redis_shards is not provided.
         num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
 
@@ -2013,7 +2009,6 @@ def connect(info,
             "driver_id": worker.worker_id,
             "start_time": time.time(),
             "plasma_store_socket": info["store_socket_name"],
-            "local_scheduler_socket": info.get("local_scheduler_socket_name"),
             "raylet_socket": info.get("raylet_socket_name")
         }
         driver_info["name"] = (main.__file__ if hasattr(main, "__file__") else
@@ -2027,7 +2022,6 @@ def connect(info,
         worker_dict = {
             "node_ip_address": worker.node_ip_address,
             "plasma_store_socket": info["store_socket_name"],
-            "local_scheduler_socket": info["local_scheduler_socket_name"]
         }
         if redirect_worker_output:
             worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
