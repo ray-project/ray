@@ -4,47 +4,38 @@ from __future__ import print_function
 
 import asyncio
 import ray
-from ray.experimental.plasma_eventloop import (
-    PlasmaEpoll, PlasmaPoll, PlasmaSelectorEventLoop, PlasmaFutureGroup,
+from ray.experimental.async_plasma import (
+    PlasmaProtocol, PlasmaEventHandler, PlasmaFutureGroup,
     RayAsyncParamsType)
 
-global_worker = ray.worker.global_worker
-eventloop: PlasmaSelectorEventLoop = None
+handler: PlasmaEventHandler = None
+transport = None
+protocol = None
 
-
-def init(selector_name='poll'):
-    global eventloop
-    if eventloop is None:
-        if selector_name == 'poll':
-            selector = PlasmaPoll(global_worker)
-        elif selector_name == 'epoll':
-            selector = PlasmaEpoll(global_worker)
-        else:
-            raise Exception("Unknown selector name '%s'" % selector_name)
-        eventloop = PlasmaSelectorEventLoop(selector, worker=global_worker)
-        asyncio.set_event_loop(eventloop)
+async def init():
+    global handler, transport, protocol
+    if handler is None:
+        worker=ray.worker.global_worker
+        loop = asyncio.get_event_loop()
+        worker.plasma_client.subscribe()
+        rsock = worker.plasma_client.get_notification_socket()
+        handler = PlasmaEventHandler(loop, worker)
+        transport, protocol = await loop.create_connection(
+            lambda: PlasmaProtocol(loop, worker.plasma_client, handler),
+            sock=rsock)
 
 
 def shutdown():
     """Cleanup the eventloop. Restore original eventloop."""
-    global eventloop
-    if eventloop is not None:
-        eventloop.close()
-        eventloop = None
-    # Restore the default eventloop.
-    asyncio.set_event_loop(asyncio.get_event_loop_policy().new_event_loop())
+    global handler
+    if handler is not None:
+        handler.close()
+        handler = None
 
 
-def set_debug(enabled):
-    """If enabled, the eventloop will print debug info."""
-    if eventloop is None:
-        init()
-    eventloop.set_debug(enabled)
-
-
-def create_group(return_exceptions=False,
+async def create_group(return_exceptions=False,
                  keep_duplicated=True,
-                 worker=global_worker) -> PlasmaFutureGroup:
+                 worker=ray.worker.global_worker) -> PlasmaFutureGroup:
     """This function creates an instance of `PlasmaFutureGroup`.
 
     Args:
@@ -58,15 +49,15 @@ def create_group(return_exceptions=False,
     """
 
     worker.check_connected()
-    if eventloop is None:
-        init()
+    if handler is None:
+        await init()
     return PlasmaFutureGroup(
-        eventloop,
+        handler,
         return_exceptions=return_exceptions,
         keep_duplicated=keep_duplicated)
 
 
-async def get(object_ids: RayAsyncParamsType, worker=global_worker):
+async def get(object_ids: RayAsyncParamsType, worker=ray.worker.global_worker):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -85,15 +76,15 @@ async def get(object_ids: RayAsyncParamsType, worker=global_worker):
     """
 
     worker.check_connected()
-    if eventloop is None:
-        init()
-    return await eventloop.get(object_ids)
+    if handler is None:
+        await init()
+    return await handler.get(object_ids)
 
 
 async def wait(object_ids: RayAsyncParamsType,
                num_returns=1,
                timeout=None,
-               worker=global_worker):
+               worker=ray.worker.global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -136,8 +127,8 @@ async def wait(object_ids: RayAsyncParamsType,
             type(object_ids)))
 
     worker.check_connected()
-    if eventloop is None:
-        init()
+    if handler is None:
+        await init()
 
     # TODO(rkn): This is a temporary workaround for
     # https://github.com/ray-project/ray/issues/997. However, it should be
@@ -157,5 +148,5 @@ async def wait(object_ids: RayAsyncParamsType,
     # Convert milliseconds into seconds.
     timeout = timeout / 1000 if timeout is not None else 2**30
 
-    return await eventloop.wait(
+    return await handler.wait(
         object_ids, num_returns=num_returns, timeout=timeout)
