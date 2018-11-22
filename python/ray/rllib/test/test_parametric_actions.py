@@ -1,0 +1,181 @@
+"""Example of handling variable length and/or parametric action spaces.
+
+This is a toy example of the action-embedding based approach for handling large
+discrete action spaces (potentially infinite in size), similar to how
+OpenAI Five works:
+
+    https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
+
+Note: this currently only works with RLlib's policy gradient style algorithms
+i.e., PG / PPO and not DQN / DDPG.
+"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import argparse
+import random
+import gym
+from gym.spaces import Box, Discrete, Dict
+import tensorflow as tf
+import tensorflow.contrib.slim as slim
+
+import ray
+from ray.rllib.models import Model, ModelCatalog
+from ray.rllib.models.misc import normc_initializer
+from ray.tune import run_experiments
+from ray.tune.registry import register_env
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--num-iters", type=int, default=200)
+parser.add_argument("--run", type=str, default="PPO")
+
+
+class ParametricActionCartpole(gym.Env):
+    """Parametric action version of CartPole.
+
+    In this env there are only ever two valid actions, but we pretend there are
+    actually up to `max_avail_actions` actions that can be taken, and the two
+    valid actions are randomly hidden among this set.
+
+    At each step, we emit a dict of:
+        - the actual cart observation
+        - a mask of valid actions (e.g., [0, 0, 1, 0, 0, 1] for max_avail=6)
+        - the list of action embeddings (zeroes for invalid actions) (e.g.,
+            [[0, 0],
+             [0, 0],
+             [1, 0],
+             [0, 0],
+             [0, 0],
+             [0, 1]] for max_avail=6).
+
+    In a real environment, the actions embeddings would be larger than two
+    units of course, and also there would be a variable number of valid actions
+    per step instead of always [LEFT, RIGHT].
+    """
+
+    def __init__(self, max_avail_actions):
+        self.left_action_embed = [0, 1]  # use simple 2-unit action embeddings
+        self.right_action_embed = [1, 0]
+        self.action_space = Discrete(max_avail_actions)
+        self.wrapped = gym.make("CartPole-v0")
+        self.observation_space = Dict({
+            "action_mask": Box(0, 1, shape=(max_avail_actions,)),
+            "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
+            "cart": self.wrapped.observation_space,
+        })
+
+    def randomize_avail_actions(self):
+        self.action_assignments = [[0, 0]] * self.action_space.n
+        self.action_mask = [0] * self.action_space.n
+        self.left_idx, self.right_idx = random.sample(
+            range(self.action_space.n), 2)
+        self.action_assignments[self.left_idx] = self.left_action_embed
+        self.action_assignments[self.right_idx] = self.right_action_embed
+        self.action_mask[self.left_idx] = 1
+        self.action_mask[self.right_idx] = 1
+
+    def reset(self):
+        self.randomize_avail_actions()
+        return {
+            "action_mask": self.action_mask,
+            "avail_actions": self.action_assignments,
+            "cart": self.wrapped.reset(),
+        }
+
+    def step(self, action):
+        if action == self.left_idx:
+            actual_action = 0
+        elif action == self.right_idx:
+            actual_action = 1
+        else:
+            raise ValueError(
+                "Chosen action was not one of the non-zero action embeddings",
+                action, self.action_assignments, self.action_mask,
+                self.left_idx, self.right_idx)
+        orig_obs, rew, done, info = self.wrapped.step(actual_action)
+        self.randomize_avail_actions()
+        obs = {
+            "action_mask": self.action_mask,
+            "avail_actions": self.action_assignments,
+            "cart": orig_obs,
+        }
+        return obs, rew, done, info
+
+
+class ParametricActionsModel(Model):
+    """Parametric action model that handles the dot product and masking.
+    
+    This assumes the outputs are logits for a Categorical action dist."""
+
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        # Extract the available actions tensor from the observation.
+        avail_actions = input_dict["obs"]["avail_actions"]
+        action_mask = input_dict["obs"]["action_mask"]
+        action_embed_size = avail_actions.shape[2].value
+        if num_outputs != avail_actions.shape[1].value:
+            raise ValueError(
+                "This model assumes num outputs is equal to max avail actions",
+                num_outputs, avail_actions)
+
+        # Standard FC net component.
+        last_layer = input_dict["obs"]["cart"]
+        hiddens = [256, 256]
+        for i, size in enumerate(hiddens):
+            label = "fc{}".format(i)
+            last_layer = slim.fully_connected(
+                last_layer,
+                size,
+                weights_initializer=normc_initializer(1.0),
+                activation_fn=tf.nn.tanh,
+                scope=label)
+        output = slim.fully_connected(
+            last_layer,
+            action_embed_size,
+            weights_initializer=normc_initializer(0.01),
+            activation_fn=None,
+            scope="fc_out")
+
+        # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
+        # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
+        intent_vector = tf.expand_dims(output, 1)
+
+        # Shape of logits is [BATCH, MAX_ACTIONS].
+        action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
+
+        # Mask out invalid actions (use tf.float32.min for stability)
+        inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+        masked_logits = inf_mask + action_logits
+
+        return masked_logits, last_layer
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    ray.init()
+
+    ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
+    register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
+    if args.run == "PPO":
+        cfg = {
+            "observation_filter": "NoFilter",  # don't filter the action list
+            "vf_share_layers": True,  # don't create duplicate value model
+        }
+    else:
+        cfg = {}
+    run_experiments({
+        "parametric_cartpole": {
+            "run": args.run,
+            "env": "pa_cartpole",
+            "stop": {
+                "training_iteration": args.num_iters
+            },
+            "config": dict({
+                "model": {
+                    "custom_model": "pa_model",
+                },
+                "num_workers": 0,
+            }, **cfg),
+        },
+    })

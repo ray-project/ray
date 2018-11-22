@@ -253,6 +253,9 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_external_env.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/test/test_parametric_actions.py --num-iters=1
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
