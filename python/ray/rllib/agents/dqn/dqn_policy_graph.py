@@ -184,7 +184,7 @@ class QValuePolicy(object):
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
 
-        # Special case mask out actions (q_value ~= -inf) so that we don't
+        # Special case masked out actions (q_value ~= -inf) so that we don't
         # even consider them for exploration.
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
