@@ -12,8 +12,8 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 ray up -y $ROOT_DIR/stress_testing_config.yaml
 
 # Run a bunch of stress tests.
-ray submit $ROOT_DIR/stress_testing_config.yaml python test_many_tasks.py
-ray submit $ROOT_DIR/stress_testing_config.yaml python test_dead_actors.py
+ray submit $ROOT_DIR/stress_testing_config.yaml test_many_tasks_and_transfers.py
+ray submit $ROOT_DIR/stress_testing_config.yaml test_dead_actors.py
 
 # Tear down the cluster.
 ray down -y $ROOT_DIR/stress_testing_config.yaml
