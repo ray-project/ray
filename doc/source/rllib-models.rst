@@ -110,10 +110,10 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 
 For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/carla>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
-Custom LSTM Models
-~~~~~~~~~~~~~~~~~~
+Custom Recurrent Models
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Instead of using the ``use_lstm: True`` option, it can be preferable use a custom LSTM model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. The only difference from a normal custom model is that you have to define ``self.state_init``, ``self.state_in``, and ``self.state_out``. You can refer to the existing `lstm.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__ model as an example to implement your own model:
+Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. The only difference from a normal custom model is that you have to define ``self.state_init``, ``self.state_in``, and ``self.state_out``. You can refer to the existing `lstm.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__ model as an example to implement your own model:
 
 
 .. code-block:: python
