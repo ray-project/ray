@@ -493,7 +493,7 @@ class StandardAutoscaler(object):
             return
         key = self.provider.internal_ip(node_id)
         if key not in self.load_metrics.last_heartbeat_time_by_ip:
-            self.load_metrics.last_heartbeat_by_ip = time.time()
+            self.load_metrics.last_heartbeat_by_ip[key] = time.time()
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
         delta = time.time() - last_heartbeat_time
         if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
