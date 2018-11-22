@@ -114,7 +114,7 @@ class QNetwork(object):
                 self.logits = support_logits_per_action
                 self.dist = support_prob_per_action
             else:
-                action_scores_mean = tf.reduce_mean(action_scores, 1)
+                action_scores_mean = _reduce_mean_ignore_inf(action_scores, 1)
                 action_scores_centered = action_scores - tf.expand_dims(
                     action_scores_mean, 1)
                 self.value = state_score + action_scores_centered
@@ -516,6 +516,14 @@ def _postprocess_dqn(policy_graph, sample_batch):
         batch.data["weights"] = new_priorities
 
     return batch
+
+
+def _reduce_mean_ignore_inf(x, axis):
+    """Same as tf.reduce_mean() but ignores -inf values."""
+    mask = tf.not_equal(x, tf.float32.min)
+    x_zeroed = tf.where(mask, x, tf.zeros_like(x))
+    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
+        tf.cast(mask, tf.float32), axis))
 
 
 def _huber_loss(x, delta=1.0):

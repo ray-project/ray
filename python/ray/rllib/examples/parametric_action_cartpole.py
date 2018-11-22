@@ -11,8 +11,8 @@ This currently works with RLlib's policy gradient style algorithms
 
 Note that since the model outputs now include "-inf" tf.float32.min
 values, not all algorithm options are supported at the moment. For example,
-dueling DQN will crash since it has a tf.reduce_mean() that is not robust to
-the -inf action scores.
+algorithms might crash if they don't properly ignore the -inf action scores.
+Working configurations are given below.
 """
 
 from __future__ import absolute_import
@@ -176,7 +176,6 @@ if __name__ == "__main__":
     elif args.run == "DQN":
         cfg = {
             "hiddens": [],  # don't postprocess the action scores
-            "dueling": False,  # doesn't support action masking
         }
     else:
         cfg = {}
