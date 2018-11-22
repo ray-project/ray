@@ -197,7 +197,7 @@ Custom models can be used to work with environments where (1) the set of valid a
 
 .. code-block:: python
 
-   class MyParamActionEnv(
+   class MyParamActionEnv(gym.Env):
        def __init__(self, max_avail_actions):
            self.action_space = Discrete(max_avail_actions)
            self.observation_space = Dict({
