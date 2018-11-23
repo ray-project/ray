@@ -112,7 +112,13 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         stats = {}
         check_support("IMPALA", {"num_gpus": 0}, stats)
-        check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
+        check_support(
+            "DDPG", {
+                "noise_scale": 100.0,
+                "timesteps_per_iteration": 1
+            },
+            stats,
+            check_bounds=True)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support("A3C", {
             "num_workers": 1,
