@@ -258,23 +258,23 @@ def _env_runner(async_vector_env,
     active_episodes = defaultdict(new_episode)
 
     while True:
-        # Get observations from all ready agents.
+        # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             async_vector_env.poll()
 
-        # Prepare data batches and insert experiences into the sample batch.
-        active_envs, to_eval, outputs = _prepare_eval_data(
+        # Process observations and prepare for policy evaluation
+        active_envs, to_eval, outputs = _process_observations(
             async_vector_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             obs_filters, unroll_length, pack, callbacks)
         for o in outputs:
             yield o
 
-        # Do batched policy eval.
+        # Do batched policy eval
         eval_results = _do_policy_eval(tf_sess, to_eval, policies,
                                        active_episodes)
 
-        # Process results and update episode state.
+        # Process results and update episode state
         actions_to_send = _process_policy_eval_results(
             to_eval, eval_results, active_episodes, active_envs,
             off_policy_actions)
@@ -284,10 +284,10 @@ def _env_runner(async_vector_env,
         async_vector_env.send_actions(actions_to_send)
 
 
-def _prepare_eval_data(async_vector_env, policies, batch_builder_pool,
-                       active_episodes, unfiltered_obs, rewards, dones, infos,
-                       off_policy_actions, horizon, obs_filters, unroll_length,
-                       pack, callbacks):
+def _process_observations(async_vector_env, policies, batch_builder_pool,
+                          active_episodes, unfiltered_obs, rewards, dones,
+                          infos, off_policy_actions, horizon, obs_filters,
+                          unroll_length, pack, callbacks):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -389,8 +389,10 @@ def _prepare_eval_data(async_vector_env, policies, batch_builder_pool,
             resetted_obs = async_vector_env.try_reset(env_id)
             if resetted_obs is None:
                 # Reset not supported, drop this env from the ready list
-                assert horizon == float("inf"), \
-                    "Setting episode horizon requires reset() support."
+                if horizon != float("inf"):
+                    raise ValueError(
+                        "Setting episode horizon requires reset() support "
+                        "from the environment.")
             else:
                 # Creates a new episode
                 episode = active_episodes[env_id]
