@@ -51,6 +51,10 @@ class PlasmaProtocol(asyncio.Protocol):
         # The socket has been closed
         self.on_con_lost.set_result(True)
 
+    def eof_received(self):
+        logger.debug('EOF received')
+        self.transport.close()
+
 
 class PlasmaObjectFuture(asyncio.Future):
     """This class manages the lifecycle of a Future contains an object_id.
@@ -261,6 +265,18 @@ class PlasmaFutureGroup(asyncio.Future):
         if self._halt_on():
             self.set_result(self._collect_results())
 
+    def __iter__(self):
+        # Deal with the case that there's nothing to group.
+        if not self.children:
+            self.set_result([])
+        return super().__iter__()
+
+    def __await__(self):
+        # Deal with the case that there's nothing to group.
+        if not self.children:
+            self.set_result([])
+        return super().__await__()
+
     def cancel(self):
         if self.done():
             return False
@@ -308,7 +324,7 @@ class PlasmaFutureGroup(asyncio.Future):
             if timeout_handle is not None:
                 timeout_handle.cancel()
 
-        self.remove_done_callback(_on_completion)
+        #self.remove_done_callback(_on_completion)
 
         return self.flush_results()
 
@@ -324,12 +340,13 @@ class PlasmaEventHandler:
 
     def process_notifications(self, messages: List):
         for object_id, object_size, metadata_size in messages:
+            object_id = ray.ObjectID(object_id.binary())
             if object_id in self._waiting_dict:
                 linked_list = self._waiting_dict[object_id]
                 for future in linked_list.traverse():
                     # set result and remove it from the selector
                     if future.cancelled():
-                        return
+                        continue
                     future.complete()
                     if self._loop.get_debug():
                         logger.info("%s removed from the selector.", future)
@@ -354,6 +371,13 @@ class PlasmaEventHandler:
             raise TypeError("Input should be an ObjectID.")
 
         fut = PlasmaObjectFuture(loop=self._loop, object_id=object_id)
+        ready, _ = ray.wait([object_id], timeout=0)
+        if ready:
+            if self._loop.get_debug():
+                logger.info("%s has been ready.", object_id)
+            fut.complete()
+            return fut
+
         if object_id not in self._waiting_dict:
             linked_list = PlasmaObjectLinkedList(self._loop, object_id)
             linked_list.add_done_callback(self._unregister_callback)

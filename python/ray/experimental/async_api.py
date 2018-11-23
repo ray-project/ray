@@ -15,7 +15,7 @@ protocol = None
 async def init():
     global handler, transport, protocol
     if handler is None:
-        worker=ray.worker.global_worker
+        worker = ray.worker.global_worker
         loop = asyncio.get_event_loop()
         worker.plasma_client.subscribe()
         rsock = worker.plasma_client.get_notification_socket()
@@ -27,10 +27,12 @@ async def init():
 
 def shutdown():
     """Cleanup the eventloop. Restore original eventloop."""
-    global handler
+    global handler, transport, protocol
     if handler is not None:
         handler.close()
         handler = None
+        transport = None
+        protocol = None
 
 
 async def create_group(return_exceptions=False,
