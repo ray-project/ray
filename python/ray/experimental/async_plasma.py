@@ -73,6 +73,8 @@ class PlasmaObjectFuture(asyncio.Future):
         super().__init__(loop=loop)
         self.ref_count = 0
         self.object_id = object_id
+        self.prev = None
+        self.next = None
 
     def complete(self):
         self.set_result(self.object_id)
@@ -80,6 +82,48 @@ class PlasmaObjectFuture(asyncio.Future):
     def __repr__(self):
         return super().__repr__() + "{object_id=%s, ref_count=%d}" % (
             self.object_id, self.ref_count)
+
+
+class PlasmaObjectLinkedList(asyncio.Future):
+    def __init__(self, loop, object_id: ray.ObjectID):
+        super().__init__(loop=loop)
+        self.object_id = object_id
+        self.head: PlasmaObjectFuture = None
+        self.tail: PlasmaObjectFuture = None
+
+    def append(self, future: PlasmaObjectFuture):
+        future.prev = self.tail
+        if self.tail is None:
+            assert self.head is None
+            self.head = future
+        else:
+            self.tail.next = future
+        self.tail = future
+        future.add_done_callback(self.remove)
+
+    def remove(self, future: PlasmaObjectFuture):
+        if future.prev is None:
+            assert future is self.head
+            self.head = future.next
+            if self.head is None:
+                self.tail = None
+                self.set_result(None)
+            else:
+                self.head.prev = None
+        elif future.next is None:
+            assert future is self.tail
+            self.tail = future.prev
+            if self.tail is None:
+                self.head = None
+                self.set_result(None)
+            else:
+                self.tail.prev = None
+
+    def traverse(self):
+        current = self.head
+        while current is not None:
+            yield current
+            current = current.next
 
 
 class PlasmaFutureGroup(asyncio.Future):
@@ -276,13 +320,13 @@ class PlasmaEventHandler:
         super().__init__()
         self._loop = loop
         self._worker = worker
-        self._waiting_dict: Dict[ray.ObjectID, Set[PlasmaObjectFuture]] = {}
+        self._waiting_dict: Dict[ray.ObjectID, PlasmaObjectLinkedList] = {}
 
     def process_notifications(self, messages: List):
         for object_id, object_size, metadata_size in messages:
             if object_id in self._waiting_dict:
-                futures = self._waiting_dict[object_id]
-                for future in futures:
+                linked_list = self._waiting_dict[object_id]
+                for future in linked_list.traverse():
                     # set result and remove it from the selector
                     if future.cancelled():
                         return
@@ -293,10 +337,8 @@ class PlasmaEventHandler:
     def close(self):
         self._waiting_dict.clear()
 
-    def _unregister_callback(self, fut: PlasmaObjectFuture):
-        self._waiting_dict[fut.object_id].remove(fut)
-        if not self._waiting_dict[fut.object_id]:
-            del self._waiting_dict[fut.object_id]
+    def _unregister_callback(self, fut: PlasmaObjectLinkedList):
+        del self._waiting_dict[fut.object_id]
 
     def as_future(self, object_id):
         """Turn an object_id into a Future object.
@@ -312,11 +354,11 @@ class PlasmaEventHandler:
             raise TypeError("Input should be an ObjectID.")
 
         fut = PlasmaObjectFuture(loop=self._loop, object_id=object_id)
-        fut.add_done_callback(self._unregister_callback)
         if object_id not in self._waiting_dict:
-            self._waiting_dict[object_id] = {fut}
-        else:
-            self._waiting_dict[object_id].add(fut)
+            linked_list = PlasmaObjectLinkedList(self._loop, object_id)
+            linked_list.add_done_callback(self._unregister_callback)
+            self._waiting_dict[object_id] = linked_list
+        self._waiting_dict[object_id].append(fut)
         if self._loop.get_debug():
             logger.info("%s added to the waiting list.", fut)
 
