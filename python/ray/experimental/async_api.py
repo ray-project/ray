@@ -148,7 +148,8 @@ async def wait(object_ids: RayAsyncParamsType,
                         "of objects provided to ray.wait.")
 
     # Convert milliseconds into seconds.
-    timeout = timeout / 1000 if timeout is not None else 2**30
+    if timeout is not None:
+        timeout = timeout / 1000
 
     return await handler.wait(
         object_ids, num_returns=num_returns, timeout=timeout)
