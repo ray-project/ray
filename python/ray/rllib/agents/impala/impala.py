@@ -62,6 +62,11 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
+
+    "sgd_minibatch_size": 128,        
+    "use_ppo": False,
+    "clip_param": 0.3,
+    "num_sgd_iter": 20,
 })
 # __sphinx_doc_end__
 # yapf: enable

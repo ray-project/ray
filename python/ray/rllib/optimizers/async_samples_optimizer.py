@@ -50,6 +50,8 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
+        self.num_sgd_iter = 1
+        self.sgd_minibatch_size = 128
 
     def run(self):
         while not self.stopped:
@@ -60,7 +62,8 @@ class LearnerThread(threading.Thread):
             batch = self.inqueue.get()
 
         with self.grad_timer:
-            fetches = self.local_evaluator.compute_apply(batch)
+            for i in range(self.num_sgd_iter):
+                fetches = self.local_evaluator.compute_apply(batch)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
@@ -197,7 +200,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
               num_parallel_data_loaders=1,
-              max_sample_requests_in_flight_per_worker=2):
+              max_sample_requests_in_flight_per_worker=2,
+              num_sgd_iter=20,
+              sgd_minibatch_size=128):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size

@@ -21,6 +21,9 @@ from ray.rllib.models.action_dist import Categorical
 
 class VTraceLoss(object):
     def __init__(self,
+                 curr_action_dist,
+                 prev_action_dist,
+                 unmodified_actions,
                  actions,
                  actions_logp,
                  actions_entropy,
@@ -35,7 +38,9 @@ class VTraceLoss(object):
                  vf_loss_coeff=0.5,
                  entropy_coeff=-0.01,
                  clip_rho_threshold=1.0,
-                 clip_pg_rho_threshold=1.0):
+                 clip_pg_rho_threshold=1.0,
+                 use_ppo=True,
+                 clip_param=0.3):
         """Policy gradient loss with vtrace importance weighting.
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
@@ -57,6 +62,16 @@ class VTraceLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
+        def to_batches(tensor):
+            T = 200
+            B = tf.shape(tensor)[0] // T
+            rs = tf.reshape(tensor,
+                            tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+            # swap B and T axes
+            return tf.transpose(
+                rs,
+                [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.from_logits(
                 behaviour_policy_logits=behaviour_logits,
@@ -69,11 +84,26 @@ class VTraceLoss(object):
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
+        print(use_ppo)
+        print("nani")
+        if use_ppo:
+            logp_ratio = to_batches(tf.exp(curr_action_dist.logp(unmodified_actions) - prev_action_dist.logp(unmodified_actions)))[:-1]
 
-        # The policy gradients loss
-        self.pi_loss = -tf.reduce_sum(
-            tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
-                            valid_mask))
+            advantages = self.vtrace_returns.pg_advantages
+            print(advantages.shape)
+            surrogate_loss = tf.minimum(
+                        advantages * logp_ratio,
+                        advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
+                                          1 + clip_param))
+
+            action_kl = tf.reduce_mean(prev_action_dist.kl(curr_action_dist))
+            self.pi_loss = -tf.reduce_sum(surrogate_loss) + 0.2*action_kl
+
+        else:
+            # The policy gradients loss
+            self.pi_loss = -tf.reduce_sum(
+                tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
+                                valid_mask))
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
@@ -140,6 +170,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
         action_dist = dist_class(self.model.outputs)
+
+        prev_action_dist = dist_class(behaviour_logits)
+
         values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
@@ -169,6 +202,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
+            curr_action_dist = action_dist,
+            prev_action_dist = prev_action_dist,
+            unmodified_actions = actions,
             actions=to_batches(actions)[:-1],
             actions_logp=to_batches(action_dist.logp(actions))[:-1],
             actions_entropy=to_batches(action_dist.entropy())[:-1],
@@ -183,7 +219,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.config["entropy_coeff"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
+            clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
+            use_ppo=self.config["use_ppo"],
+            clip_param=self.config["clip_param"])
 
         # KL divergence between worker and learner logits for debugging
         model_dist = Categorical(self.model.outputs)
