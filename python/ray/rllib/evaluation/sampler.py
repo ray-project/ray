@@ -293,7 +293,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
     Returns:
         active_envs: set of non-terminated env ids
         to_eval: map of policy_id to list of agent PolicyEvalData
-        outputs: list of objects to return from the sampler
+        outputs: list of metrics and samples to return from the sampler
     """
 
     active_envs = set()
