@@ -109,7 +109,7 @@ class LocalSyncParallelOptimizer(object):
         for op in shared_ops:
             self._update_ops.remove(op)  # only care about tower update ops
         if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
+            logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
 
         with tf.control_dependencies(self._update_ops):
