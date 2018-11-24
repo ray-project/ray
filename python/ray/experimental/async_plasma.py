@@ -364,7 +364,7 @@ class PlasmaEventHandler:
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
         del self._waiting_dict[fut.object_id]
 
-    def _ray_object_id_to_future(self, object_id: ray.ObjectID):
+    def as_future(self, object_id: ray.ObjectID):
         """Turn an object_id into a Future object.
 
         Args:
@@ -401,7 +401,7 @@ class PlasmaEventHandler:
         selection_vector = []
         for i, obj in enumerate(object_ids):
             if isinstance(obj, ray.ObjectID):
-                processed.append(self._ray_object_id_to_future(obj))
+                processed.append(self.as_future(obj))
                 selection_vector.append(i)
             elif inspect.isawaitable(obj):
                 processed.append(obj)
@@ -413,7 +413,7 @@ class PlasmaEventHandler:
         if not isinstance(object_ids, list):
             if inspect.isawaitable(object_ids):
                 return await object_ids
-            plain_ready_id = await self._ray_object_id_to_future(object_ids)
+            plain_ready_id = await self.as_future(object_ids)
             return self._worker.retrieve_and_deserialize([plain_ready_id], 0)[
                 0]
         else:

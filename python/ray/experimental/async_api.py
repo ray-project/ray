@@ -12,6 +12,7 @@ handler: PlasmaEventHandler = None
 transport = None
 protocol = None
 
+
 async def init():
     global handler, transport, protocol
     if handler is None:
@@ -35,9 +36,16 @@ def shutdown():
         protocol = None
 
 
-async def create_group(return_exceptions=False,
-                 keep_duplicated=True,
-                 worker=ray.worker.global_worker) -> PlasmaFutureGroup:
+def as_future(object_id):
+    if handler is None:
+        # Blocking here because we do not want this API to be async.
+        asyncio.get_event_loop().run_until_complete(init())
+    return handler.as_future(object_id)
+
+
+def create_group(return_exceptions=False,
+                       keep_duplicated=True,
+                       worker=ray.worker.global_worker) -> PlasmaFutureGroup:
     """This function creates an instance of `PlasmaFutureGroup`.
 
     Args:
@@ -52,7 +60,8 @@ async def create_group(return_exceptions=False,
 
     worker.check_connected()
     if handler is None:
-        await init()
+        # Blocking here because we do not want this API to be async.
+        asyncio.get_event_loop().run_until_complete(init())
     return PlasmaFutureGroup(
         handler,
         return_exceptions=return_exceptions,
