@@ -111,9 +111,12 @@ class PlasmaObjectLinkedList(asyncio.Future):
         else:
             self.tail.next = future
         self.tail = future
+        # Once done, it will be removed from the list.
         future.add_done_callback(self.remove)
 
     def remove(self, future: PlasmaObjectFuture):
+        if self._loop.get_debug():
+            logger.info("Removing %s from the linked list.", future)
         if future.prev is None:
             assert future is self.head
             self.head = future.next
@@ -351,12 +354,9 @@ class PlasmaEventHandler:
             if object_id in self._waiting_dict:
                 linked_list = self._waiting_dict[object_id]
                 for future in linked_list.traverse():
-                    # set result and remove it from the selector
                     if future.cancelled():
                         continue
                     future.complete()
-                    if self._loop.get_debug():
-                        logger.info("%s removed from the selector.", future)
 
     def close(self):
         self._waiting_dict.clear()
