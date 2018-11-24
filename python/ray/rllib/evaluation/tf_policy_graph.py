@@ -122,7 +122,7 @@ class TFPolicyGraph(PolicyGraph):
             self._update_ops = tf.get_collection(
                 tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
+            logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
             # specify global_step for TD3 which needs to count the num updates
