@@ -1,14 +1,17 @@
 import asyncio
 import functools
+import inspect
 import sys
-from typing import Union, List, Callable, Dict
+from typing import Union, List, Callable, Dict, Awaitable
 
 import pyarrow.plasma as plasma
 
 import ray
 from ray.services import logger
 
-RayAsyncParamsType = Union[ray.ObjectID, List[ray.ObjectID]]
+RayAsyncType = Union[ray.ObjectID, Awaitable]
+RayAsyncParamsType = Union[RayAsyncType, List[RayAsyncType]]
+
 
 def _release_waiter(waiter, *args):
     if not waiter.done():
@@ -80,6 +83,10 @@ class PlasmaObjectFuture(asyncio.Future):
         self.object_id = object_id
         self.prev = None
         self.next = None
+
+    @property
+    def ray_object_id(self):
+        return ray.ObjectID(self.object_id.binary())
 
     def complete(self):
         self.set_result(self.object_id)
@@ -162,7 +169,7 @@ class PlasmaFutureGroup(asyncio.Future):
 
         if not asyncio.futures.isfuture(coroutine_or_future):
             fut = asyncio.ensure_future(coroutine_or_future, loop=self._loop)
-            if self.loop is None:
+            if self._loop is None:
                 self.loop = fut._loop
             # The caller cannot control this future, the "destroy pending task"
             # warning should not be emitted.
@@ -335,7 +342,7 @@ class PlasmaEventHandler:
 
     def __init__(self, loop, worker):
         super().__init__()
-        self._loop = loop
+        self._loop: asyncio.BaseEventLoop = loop
         self._worker = worker
         self._waiting_dict: Dict[ray.ObjectID, PlasmaObjectLinkedList] = {}
 
@@ -357,7 +364,7 @@ class PlasmaEventHandler:
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
         del self._waiting_dict[fut.object_id]
 
-    def as_future(self, object_id: ray.ObjectID):
+    def _ray_object_id_to_future(self, object_id: ray.ObjectID):
         """Turn an object_id into a Future object.
 
         Args:
@@ -366,14 +373,11 @@ class PlasmaEventHandler:
         Returns:
             PlasmaObjectFuture: A future object that waits the object_id/
         """
-
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
 
         ready, _ = ray.wait([object_id], timeout=0)
-
         plain_object_id = plasma.ObjectID(object_id.id())
-
         fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
 
         if ready:
@@ -392,23 +396,39 @@ class PlasmaEventHandler:
 
         return fut
 
-    def _release(self, *fut):
-        for f in fut:
-            if isinstance(f, PlasmaObjectFuture):
-                f.cancel()
+    def _convert(self, object_ids):
+        processed = []
+        selection_vector = []
+        for i, obj in enumerate(object_ids):
+            if isinstance(obj, ray.ObjectID):
+                processed.append(self._ray_object_id_to_future(obj))
+                selection_vector.append(i)
+            elif inspect.isawaitable(obj):
+                processed.append(obj)
+            else:
+                raise TypeError("Unsupported type %s" % type(obj))
+        return processed, selection_vector
 
     async def get(self, object_ids: RayAsyncParamsType):
         if not isinstance(object_ids, list):
-            plain_ready_id = await self.as_future(object_ids)
-            return self._worker.retrieve_and_deserialize([plain_ready_id], 0)[0]
+            if inspect.isawaitable(object_ids):
+                return await object_ids
+            plain_ready_id = await self._ray_object_id_to_future(object_ids)
+            return self._worker.retrieve_and_deserialize([plain_ready_id], 0)[
+                0]
         else:
+            processed, selection_vector = self._convert(object_ids)
             fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
-            fut.extend(self.as_future(oid) for oid in object_ids)
-            plain_ready_ids = await fut
-            return self._worker.retrieve_and_deserialize(plain_ready_ids, 0)
+            fut.extend(processed)
+            results = await fut
+            plain_ready_ids = [results[i] for i in selection_vector]
+            objs = self._worker.retrieve_and_deserialize(plain_ready_ids, 0)
+            for i, obj in enumerate(objs):
+                results[selection_vector[i]] = obj
+            return results
 
     async def wait(self,
-                   object_ids: RayAsyncParamsType,
+                   object_ids: List[Union[ray.ObjectID, Awaitable]],
                    num_returns=1,
                    timeout=None,
                    return_exact_num=True):
@@ -416,17 +436,19 @@ class PlasmaEventHandler:
 
         Args:
             object_ids (RayAsyncParamsType):
-                A single object_id, future, coroutine or list of them.
+                A list of single object_id, future, coroutine.
             timeout (float):
                 The timeout in seconds (`ray.wait` use milliseconds).
             num_returns (int): The minimal number of ready object returns.
-            return_exact_num: If true, return no more than the amount of
+            return_exact_num (bool): If true, return no more than the amount
+                specified.
 
         Returns:
             Tuple[List, List]: Ready futures & unready ones.
         """
 
-        futures = [self.as_future(oid) for oid in object_ids]
+        processed, selection_vector = self._convert(object_ids)
+        temp = {processed[i] for i in selection_vector}
 
         fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
         fut.set_halt_condition(
@@ -434,13 +456,19 @@ class PlasmaEventHandler:
                 fut.halt_on_some_finished,
                 n=num_returns,
             ))
-        fut.extend(futures)
+        fut.extend(processed)
         _done, _pending = await fut.wait(timeout)
         fut.return_exceptions = True  # Ignore `CancelledError`.
 
-        self._release(*_pending)
-        done = [ray.ObjectID(fut.object_id.binary()) for fut in _done]
-        pending = [ray.ObjectID(fut.object_id.binary()) for fut in _pending]
+        # Release temporary futures
+        for f in _pending:
+            if isinstance(f, PlasmaObjectFuture) and f in temp:
+                f.cancel()
+
+        done = [fut.ray_object_id if isinstance(fut, PlasmaObjectFuture) else
+                fut for fut in _done]
+        pending = [fut.ray_object_id if isinstance(fut, PlasmaObjectFuture)
+                   else fut for fut in _pending]
 
         if return_exact_num and len(done) > num_returns:
             done, pending = done[:num_returns], done[num_returns:] + pending
