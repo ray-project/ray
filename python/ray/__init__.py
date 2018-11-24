@@ -46,8 +46,7 @@ except ImportError as e:
             e.args += (helpful_message, )
     raise
 
-modin_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "modin")
+modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.insert(0, modin_path)
 
 from ray.raylet import ObjectID, _config  # noqa: E402
