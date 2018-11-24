@@ -55,7 +55,7 @@ class TrialRunner(object):
                  scheduler=None,
                  launch_web_server=False,
                  checkpoint_dir=None,
-                 checkpoint_freq=None,
+                 checkpoint_freq=0,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -67,6 +67,9 @@ class TrialRunner(object):
                 Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
+            checkpoint_dir (str): Path where global checkpoints are stored.
+            checkpoint_freq (int): How many trial results between global
+                checkpoints. A value of 0 (default) disables checkpointing.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -98,11 +101,12 @@ class TrialRunner(object):
         self._checkpoint_freq = checkpoint_freq
         self._trial_checkpoints = {}
 
-    def save(self, checkpoint_dir=None):
-        if checkpoint_dir is None:
-            checkpoint_dir = self._checkpoint_dir
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
+    def save(self):
+        """Saves all trial checkpoints"""
+        checkpoint_dir = self._checkpoint_dir
+        if not os.path.exists(checkpoint_dir):
+            logger.debug("Checkpoint directory newly created.")
+            os.makedirs(checkpoint_dir)
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
@@ -125,8 +129,8 @@ class TrialRunner(object):
 
         logger.info("Replacing all trials with checkpoint state.")
         for ckpt in runner_state["checkpoints"]:
-            # NOTE: This will repickle the current trial state
-            self.add_trial(pickle.loads(ckpt))
+            trial = pickle.loads(ckpt)
+            self.add_trial(trial)
 
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]

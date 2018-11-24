@@ -330,8 +330,6 @@ class Trial(object):
         state = self.__dict__.copy()
 
         if state["status"] == Trial.RUNNING:
-            # TODO(rliaw): Consider using _try_recover to keep this state
-            # when pickling.
             state["status"] = Trial.PENDING
         # Remove the unpicklable entries.
         if state["result_logger"]:

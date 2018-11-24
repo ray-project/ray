@@ -38,7 +38,7 @@ def run_experiments(experiments=None,
                     scheduler=None,
                     restore_from_path=None,
                     checkpoint_dir=None,
-                    checkpoint_freq=None,
+                    checkpoint_freq=0,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
@@ -55,6 +55,11 @@ def run_experiments(experiments=None,
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
+        restore_from_path (str): Restores experiment execution state to
+            given checkpoint path.
+        checkpoint_dir (str): Path at which experiment checkpoints are stored.
+        checkpoint_freq (int): How many trial results between
+            checkpoints. A value of 0 (default) disables checkpointing.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
