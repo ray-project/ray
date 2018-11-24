@@ -23,6 +23,7 @@ class VTraceLoss(object):
     def __init__(self,
                  curr_action_dist,
                  prev_action_dist,
+                 cur_kl_coeff,
                  unmodified_actions,
                  actions,
                  actions_logp,
@@ -62,6 +63,7 @@ class VTraceLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
+
         def to_batches(tensor):
             T = 200
             B = tf.shape(tensor)[0] // T
@@ -90,14 +92,14 @@ class VTraceLoss(object):
             logp_ratio = to_batches(tf.exp(curr_action_dist.logp(unmodified_actions) - prev_action_dist.logp(unmodified_actions)))[:-1]
 
             advantages = self.vtrace_returns.pg_advantages
-            print(advantages.shape)
             surrogate_loss = tf.minimum(
                         advantages * logp_ratio,
                         advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
 
-            action_kl = tf.reduce_mean(prev_action_dist.kl(curr_action_dist))
-            self.pi_loss = -tf.reduce_sum(surrogate_loss) + 0.2*action_kl
+            action_kl = prev_action_dist.kl(curr_action_dist)
+            self.mean_kl = tf.reduce_mean(action_kl)
+            self.pi_loss = -tf.reduce_sum(surrogate_loss) + cur_kl_coeff*tf.reduce_sum(action_kl)
 
         else:
             # The policy gradients loss
@@ -129,6 +131,14 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
+        self.kl_coeff_val = self.config["kl_coeff"]
+        self.kl_target = self.config["kl_target"]
+        self.kl_coeff = tf.get_variable(
+            initializer=tf.constant_initializer(self.kl_coeff_val),
+            name="kl_coeff",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
 
         # Create input placeholders
         if existing_inputs:
@@ -199,11 +209,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.reshape(mask, [-1])
         else:
             mask = tf.ones_like(rewards)
-
+        print(self.config)
+        print(self.config["sample_batch_size"])
+        print(self.config["train_batch_size"])
+        print("OMG")
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             curr_action_dist = action_dist,
             prev_action_dist = prev_action_dist,
+            cur_kl_coeff = self.kl_coeff,
             unmodified_actions = actions,
             actions=to_batches(actions)[:-1],
             actions_logp=to_batches(action_dist.logp(actions))[:-1],
@@ -275,9 +289,12 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     tf.reshape(to_batches(values)[:-1], [-1])),
                 "mean_KL": self.mean_KL,
                 "max_KL": self.max_KL,
-                "median_KL": self.median_KL,
+                "median_KL": self.median_KL, 
             },
         }
+        if self.config["use_ppo"]:
+            self.stats_fetches["kl"] = self.loss.mean_kl
+        print(self.stats_fetches)
 
     def optimizer(self):
         if self.config["opt_type"] == "adam":
@@ -298,6 +315,14 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
+
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
+        return self.kl_coeff_val
 
     def postprocess_trajectory(self,
                                sample_batch,

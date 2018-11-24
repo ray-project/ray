@@ -36,7 +36,7 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator):
+    def __init__(self, local_evaluator, num_sgd_iter, sgd_minibatch_size):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
@@ -50,8 +50,8 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
-        self.num_sgd_iter = 1
-        self.sgd_minibatch_size = 128
+        self.num_sgd_iter = num_sgd_iter
+        self.sgd_minibatch_size = sgd_minibatch_size
 
     def run(self):
         while not self.stopped:
@@ -62,8 +62,14 @@ class LearnerThread(threading.Thread):
             batch = self.inqueue.get()
 
         with self.grad_timer:
+            fetches = None
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(batch)
+            print(fetches)
+            if 'kl' in fetches:
+                print("THIS IS INTERSTING")
+                self.local_evaluator.for_policy(
+                    lambda pi: pi.update_kl(fetches["kl"]))
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
@@ -201,7 +207,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               replay_proportion=0.0,
               num_parallel_data_loaders=1,
               max_sample_requests_in_flight_per_worker=2,
-              num_sgd_iter=20,
+              num_sgd_iter=1,
               sgd_minibatch_size=128):
         self.learning_started = False
         self.train_batch_size = train_batch_size
@@ -223,7 +229,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 grad_clip=grad_clip,
                 num_parallel_data_loaders=num_parallel_data_loaders)
         else:
-            self.learner = LearnerThread(self.local_evaluator)
+            self.learner = LearnerThread(self.local_evaluator, num_sgd_iter, sgd_minibatch_size)
         self.learner.start()
 
         assert len(self.remote_evaluators) > 0

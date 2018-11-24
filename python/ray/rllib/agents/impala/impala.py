@@ -64,9 +64,11 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": -0.01,
 
     "sgd_minibatch_size": 128,        
-    "use_ppo": False,
+    "use_ppo": True,
     "clip_param": 0.3,
-    "num_sgd_iter": 20,
+    "num_sgd_iter": 1,
+    "kl_coeff": 0.2,
+    "kl_target": 0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -98,7 +100,7 @@ class ImpalaAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
-        self.optimizer.step()
+        print(self.optimizer.step())
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
         result = self.optimizer.collect_metrics(
