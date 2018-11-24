@@ -89,8 +89,10 @@ class ActionNetwork(object):
             exploration_value = tf.assign_add(
                 exploration_sample,
                 theta * (.0 - exploration_sample) + sigma * normal_sample)
-            stochastic_actions = deterministic_actions + eps * (
-                high_action - low_action) * exploration_value
+            stochastic_actions = tf.clip_by_value(
+                deterministic_actions +
+                eps * (high_action - low_action) * exploration_value,
+                low_action, high_action)
 
         self.actions = tf.cond(stochastic, lambda: stochastic_actions,
                                lambda: deterministic_actions)
