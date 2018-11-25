@@ -107,7 +107,8 @@ class TFMultiGPULearner(LearnerThread):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
-        LearnerThread.__init__(self, local_evaluator)
+        LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
+                               num_sgd_passes)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
