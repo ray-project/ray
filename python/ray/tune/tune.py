@@ -9,6 +9,7 @@ import time
 from ray.tune.error import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
@@ -58,6 +59,7 @@ def run_experiments(experiments=None,
         restore_from_path (str): Restores experiment execution state to
             given checkpoint path.
         checkpoint_dir (str): Path at which experiment checkpoints are stored.
+            Defaults to DEFAULT_RESULTS_DIR.
         checkpoint_freq (int): How many trial results between
             checkpoints. A value of 0 (default) disables checkpointing.
         with_server (bool): Starts a background Tune server. Needed for
@@ -99,12 +101,10 @@ def run_experiments(experiments=None,
     if search_alg is None:
         search_alg = BasicVariantGenerator()
 
-    search_alg.add_configurations(experiments)
-
     runner = TrialRunner(
         search_alg,
         scheduler=scheduler,
-        checkpoint_dir=checkpoint_dir,
+        checkpoint_dir=checkpoint_dir or DEFAULT_RESULTS_DIR,
         checkpoint_freq=checkpoint_freq,
         launch_web_server=with_server,
         server_port=server_port,
@@ -112,9 +112,13 @@ def run_experiments(experiments=None,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    # TODO(rliaw): Have better explicit designation for restoring.
     if restore_from_path and os.path.exists(restore_from_path):
+        assert experiments is None, (
+            "Simultaneous starting experiments and restoring not supported.")
         runner.restore(restore_from_path)
+    else:
+        search_alg.add_configurations(experiments)
+
 
     logger.info(runner.debug_string(max_debug=99999))
     last_debug = 0

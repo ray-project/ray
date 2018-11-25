@@ -31,15 +31,14 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None):
-        """Starts the trial restoring from checkpoint if checkpoint != None.
-
-        If an error is encountered when starting the trial, an exception will
-        be thrown.
+    def start_trial(self, trial, checkpoint=None, raise_on_failure=False):
+        """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
+            trial (Trial): Trial to be started.
             checkpoint(Checkpoint): A Python object or path storing the state
             of trial.
+            raise_on_failure (bool): To raise exception on failure in starting.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
@@ -58,26 +57,6 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
-
-    def restart_trial(self, trial, error_msg=None):
-        """Restarts or requeues the trial.
-
-        The state of the trial should restore from the last checkpoint. Trial
-        is requeued if the cluster no longer has resources to accomodate it.
-
-        Args:
-            error_msg (str): Optional error message.
-        """
-        self.stop_trial(
-            trial,
-            error=error_msg is not None,
-            error_msg=error_msg,
-            stop_logger=False)
-        trial.result_logger.flush()
-        if self.has_resources(trial.resources):
-            self.start_trial(trial)
-        else:
-            trial.status = Trial.PENDING
 
     def continue_training(self, trial):
         """Continues the training of this trial."""
