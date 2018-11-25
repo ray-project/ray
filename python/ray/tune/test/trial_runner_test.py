@@ -1613,7 +1613,7 @@ class TrialRunnerTest(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testNoSave(self):
-        """Check that certain trials are not saved."""
+        """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
         default_resources = Resources(cpu=1, gpu=0)
