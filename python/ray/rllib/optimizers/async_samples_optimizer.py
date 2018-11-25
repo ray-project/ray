@@ -202,7 +202,7 @@ class _LoaderThread(threading.Thread):
                 state_keys = s.policy._state_inputs + [s.policy._seq_lens]
             else:
                 state_keys = []
-            self.par_opt.load_data(
+            s.par_opt.load_data(
                 s.sess, [tuples[k] for k in data_keys],
                 [tuples[k] for k in state_keys],
                 selected_buffer=token)
