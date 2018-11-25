@@ -1,13 +1,18 @@
-# This can reach 18-19 reward within 10 minutes on a Tesla M60 GPU (e.g., G3 EC2 node):
-#   128 workers -> 8 minutes
-#    32 workers -> 17 minutes
-#    16 workers -> 40 min+
-# See also: pong-impala-vectorized.yaml
-pong-impala:
+pong-impala-fast:
     env: PongNoFrameskip-v4
     run: IMPALA
+    stop:
+        episode_reward_mean: 20.0
+        timesteps_total: 20000000 
     config:
         sample_batch_size: 200
         train_batch_size: 2000
         num_workers: 47
-        num_envs_per_worker: 1
+        num_envs_per_worker: 5
+        num_sgd_iter: 
+            grid_search: [5,1]
+        clip_param:
+            grid_search: [1000000000, 0.3]
+        num_gpus: 1
+        model:
+          dim: 42

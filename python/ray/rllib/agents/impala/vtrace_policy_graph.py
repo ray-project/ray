@@ -63,7 +63,7 @@ class VTraceLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
-
+        print(clip_param)
         def to_batches(tensor):
             T = 200
             B = tf.shape(tensor)[0] // T
@@ -86,6 +86,7 @@ class VTraceLoss(object):
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
+        use_ppo = True
         print(use_ppo)
         print("nani")
         if use_ppo:
@@ -99,7 +100,7 @@ class VTraceLoss(object):
 
             action_kl = prev_action_dist.kl(curr_action_dist)
             self.mean_kl = tf.reduce_mean(action_kl)
-            self.pi_loss = -tf.reduce_sum(surrogate_loss) + cur_kl_coeff*tf.reduce_sum(action_kl)
+            self.pi_loss = -tf.reduce_sum(surrogate_loss) #+ cur_kl_coeff*tf.reduce_sum(action_kl)
 
         else:
             # The policy gradients loss
@@ -292,6 +293,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "median_KL": self.median_KL, 
             },
         }
+        print(self.config["use_ppo"])
         if self.config["use_ppo"]:
             self.stats_fetches["kl"] = self.loss.mean_kl
         print(self.stats_fetches)

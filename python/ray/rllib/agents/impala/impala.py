@@ -20,6 +20,8 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_parallel_data_loaders",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
+    "num_sgd_iter",
+    "sgd_minibatch_size",
 ]
 
 # yapf: disable
@@ -60,13 +62,13 @@ DEFAULT_CONFIG = with_common_config({
     "momentum": 0.0,
     "epsilon": 0.1,
     # balancing the three losses
-    "vf_loss_coeff": 0.5,
+    "vf_loss_coeff": 1.0,
     "entropy_coeff": -0.01,
 
     "sgd_minibatch_size": 128,        
     "use_ppo": True,
     "clip_param": 0.3,
-    "num_sgd_iter": 1,
+    "num_sgd_iter": 5,
     "kl_coeff": 0.2,
     "kl_target": 0.01,
 })
@@ -82,6 +84,8 @@ class ImpalaAgent(Agent):
     _policy_graph = VTracePolicyGraph
 
     def _init(self):
+        print(self.config["num_sgd_iter"])
+        print(self.config["clip_param"])
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]

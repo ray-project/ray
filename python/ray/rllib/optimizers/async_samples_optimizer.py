@@ -63,6 +63,7 @@ class LearnerThread(threading.Thread):
 
         with self.grad_timer:
             fetches = None
+            print(self.num_sgd_iter)
             for i in range(self.num_sgd_iter):
                 fetches = self.local_evaluator.compute_apply(batch)
             print(fetches)
