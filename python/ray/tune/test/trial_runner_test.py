@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -1547,6 +1549,69 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()  # this converts self._finished to True
         self.assertTrue(searcher.is_finished())
         self.assertRaises(TuneError, runner.step)
+
+    def testSaveRestore(self):
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        default_resources = Resources(cpu=1, gpu=0)
+
+        runner = TrialRunner(
+            BasicVariantGenerator(),
+            checkpoint_dir=tmpdir,
+            checkpoint_freq=1)
+        trials = [Trial("__fake",
+                  trial_id="trial_terminate",
+                  stopping_criterion={"training_iteration": 1},
+                  checkpoint_freq=1,
+                  checkpoint_at_end=True,
+                  resources=default_resources)]
+        runner.add_trial(trials[0])
+        runner.step()  # start
+        runner.step()
+        self.assertEquals(trials[0].status, Trial.TERMINATED)
+
+        trials += [
+            Trial("__fake",
+                  trial_id="trial_fail",
+                  stopping_criterion={"training_iteration": 3},
+                  checkpoint_freq=1,
+                  checkpoint_at_end=True,
+                  config={"mock_error": True},
+                  resources=default_resources)]
+        runner.add_trial(trials[1])
+        runner.step()
+        runner.step()
+        runner.step()
+        self.assertEquals(trials[1].status, Trial.ERROR)
+
+        trials += [
+            Trial("__fake",
+                  trial_id="trial_succ",
+                  stopping_criterion={"training_iteration": 2},
+                  checkpoint_freq=1,
+                  resources=default_resources)]
+        runner.add_trial(trials[2])
+        runner.step()
+        self.assertEquals(trials[2].status, Trial.RUNNING)
+
+        runner2 = TrialRunner(BasicVariantGenerator())
+        runner2.restore(tmpdir)
+        for tid in ["trial_terminate", "trial_fail"]:
+            original_trial = runner.get_trial(tid)
+            restored_trial = runner2.get_trial(tid)
+            self.assertEqual(original_trial.status, restored_trial.status)
+
+        restored_trial = runner2.get_trial("trial_succ")
+        self.assertEqual(Trial.PENDING, restored_trial.status)
+
+        runner2.step()
+        runner2.step()
+        runner2.step()
+        self.assertRaises(TuneError, runner2.step)
+        shutil.rmtree(tmpdir)
+
+
+
 
 
 if __name__ == "__main__":

@@ -107,6 +107,7 @@ class TrialRunner(object):
         if not os.path.exists(checkpoint_dir):
             logger.debug("Checkpoint directory newly created.")
             os.makedirs(checkpoint_dir)
+        logger.warning("Search Algorithm and Scheduler not checkpointed.")
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
@@ -359,7 +360,6 @@ class TrialRunner(object):
     def _checkpoint_if_needed(self, trial):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint():
-
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
@@ -398,8 +398,8 @@ class TrialRunner(object):
     def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.
 
-        This does not notify the SearchAlgorithm because
-        the function evaluation is still in progress.
+        This does not notify the SearchAlgorithm because the function
+        evaluation is still in progress.
         """
         self._scheduler_alg.on_trial_error(self, trial)
         trial.status = Trial.PENDING

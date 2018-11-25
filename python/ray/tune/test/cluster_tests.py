@@ -266,6 +266,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(resources=dict(CPU=1))
+    assert cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
