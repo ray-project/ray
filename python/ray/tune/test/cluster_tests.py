@@ -294,7 +294,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
 
 
 def test_cluster_down_simple(start_connected_cluster):
-    """Removing a node in full cluster causes Trial to be requeued."""
+    """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
     cluster.add_node(resources=dict(CPU=1))
     tmpdir = tempfile.mkdtemp()
@@ -338,6 +338,7 @@ def test_cluster_down_simple(start_connected_cluster):
 
 
 def test_cluster_down_full(start_connected_cluster, tmpdir):
+    """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
 
     script = """
@@ -387,6 +388,7 @@ tune.run_experiments(
 
 
 def test_cluster_down_error(start_connected_cluster, tmpdir):
+    """Tests run_experiment on cluster shutdown even with atypical trial."""
     cluster = start_connected_cluster
 
     script = """
