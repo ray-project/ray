@@ -5,10 +5,10 @@ from __future__ import print_function
 import collections
 import logging
 import os
+import pickle
 import re
 import time
 import traceback
-import pickle
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -83,7 +83,8 @@ class TrialRunner(object):
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
         self.trial_executor = trial_executor or \
-            RayTrialExecutor(queue_trials=queue_trials)
+            RayTrialExecutor(queue_trials=queue_trials,
+                             track_checkpoints=checkpoint_freq > 0)
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -111,7 +112,7 @@ class TrialRunner(object):
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
-            "checkpoints": list(self._trial_checkpoints.values()),
+            "checkpoints": list(self.trial_executor.get_checkpoints().values()),
             "total_time": self._total_time,
             "stop_queue": self._stop_queue
         }
@@ -161,11 +162,6 @@ class TrialRunner(object):
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
-            if self._checkpoint_freq:
-                if self._iteration % self._checkpoint_freq == 0:
-                    self.save()
-
-            self._iteration += 1
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
@@ -185,6 +181,13 @@ class TrialRunner(object):
                     raise TuneError(
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
+
+        if self._checkpoint_freq:
+            if self._iteration % self._checkpoint_freq == 0:
+                self.save()
+
+        self._iteration += 1
+
 
         if self._server:
             self._process_requests()
@@ -356,18 +359,13 @@ class TrialRunner(object):
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
 
-
     def _checkpoint_if_needed(self, trial):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint():
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
-
-            try:
-                self._trial_checkpoints[trial] = pickle.dumps(trial)
-            except ValueError:
-                logger.exception("Error checkpointing full trial state.")
+            self.trial_executor.checkpoint_metadata_if_needed(trial)
 
     def try_recover(self, trial, error_msg):
         """Tries to recover trial.
@@ -402,7 +400,7 @@ class TrialRunner(object):
         evaluation is still in progress.
         """
         self._scheduler_alg.on_trial_error(self, trial)
-        trial.status = Trial.PENDING
+        self.trial_executor.set_status(trial, Trial.PENDING)
         self._scheduler_alg.on_trial_add(self, trial)
 
     def _update_trial_queue(self, blocking=False, timeout=600):

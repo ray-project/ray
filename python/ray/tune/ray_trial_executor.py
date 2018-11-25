@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import logging
 import os
+import pickle
 import time
 import traceback
 
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False):
-        super(RayTrialExecutor, self).__init__(queue_trials)
+    def __init__(self, queue_trials=False, track_checkpoints=False):
+        super(RayTrialExecutor, self).__init__(queue_trials, track_checkpoints)
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
@@ -60,7 +61,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def _start_trial(self, trial, checkpoint=None):
         prior_status = trial.status
-        trial.status = Trial.RUNNING
+        self.set_status(trial, Trial.RUNNING)
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             return
@@ -88,9 +89,9 @@ class RayTrialExecutor(TrialExecutor):
         """
 
         if error:
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         else:
-            trial.status = Trial.TERMINATED
+            self.set_status(trial, Trial.TERMINATED)
 
         try:
             trial.write_error_log(error_msg)
@@ -103,7 +104,7 @@ class RayTrialExecutor(TrialExecutor):
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
             logger.exception("Error stopping runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
 
@@ -309,7 +310,7 @@ class RayTrialExecutor(TrialExecutor):
             return True
         if trial.runner is None:
             logger.error("Unable to restore - no runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False
         try:
             value = checkpoint.value
@@ -323,5 +324,5 @@ class RayTrialExecutor(TrialExecutor):
             return True
         except Exception:
             logger.exception("Error restoring runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False

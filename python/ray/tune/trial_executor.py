@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 
 from ray.tune.trial import Trial, Checkpoint
 
@@ -15,7 +16,7 @@ class TrialExecutor(object):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False):
+    def __init__(self, queue_trials=False, track_checkpoints=False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -25,6 +26,27 @@ class TrialExecutor(object):
                 automatic scale-up.
         """
         self._queue_trials = queue_trials
+        self._track_checkpoints = track_checkpoints
+        self._checkpoints = {}
+
+    def set_status(self, trial, status):
+        trial.status = status
+        self.checkpoint_metadata_if_needed(trial)
+
+    def checkpoint_metadata_if_needed(self, trial):
+        if self._track_checkpoints:
+            if trial._checkpoint.storage == Checkpoint.MEMORY:
+                logger.debug("Not saving data for trial w/ memory checkpoint.")
+                return
+            try:
+                logger.debug("Saving trial metadata.")
+                metadata = pickle.dumps(trial)
+                self._checkpoints[trial.trial_id] = metadata
+            except ValueError:
+                logger.exception("Error checkpointing trial metadata.")
+
+    def get_checkpoints(self):
+        return self._checkpoints.copy()
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -72,15 +94,15 @@ class TrialExecutor(object):
         try:
             self.save(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
-            trial.status = Trial.PAUSED
+            self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
 
     def unpause_trial(self, trial):
         """Sets PAUSED trial to pending to allow scheduler to start."""
         assert trial.status == Trial.PAUSED, trial.status
-        trial.status = Trial.PENDING
+        self.set_status(trial, Trial.PENDING)
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
