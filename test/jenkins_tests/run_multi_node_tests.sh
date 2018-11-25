@@ -58,6 +58,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 2}' \
+    --config '{"num_gpus": 0.1}' \
+    --ray-num-gpus 1
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "lr": 1e-4, "sgd_minibatch_size": 64, "train_batch_size": 2000, "num_workers": 1, "use_gae": false, "batch_mode": "complete_episodes"}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
