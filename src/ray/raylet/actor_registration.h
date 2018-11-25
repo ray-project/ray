@@ -94,6 +94,11 @@ class ActorRegistration {
   /// \return True if the local actor is alive and false if it is dead.
   bool IsAlive() const;
 
+  /// Returns num handles to this actor entry.
+  ///
+  /// \return int.
+  int NumHandles() const;
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.

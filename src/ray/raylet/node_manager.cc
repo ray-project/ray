@@ -1767,15 +1767,20 @@ std::string NodeManager::DebugString() const {
   result << "\nActorRegistry:";
   int live_actors = 0;
   int dead_actors = 0;
+  int max_num_handles = 0;
   for (auto &pair : actor_registry_) {
     if (pair.second.IsAlive()) {
       live_actors += 1;
     } else {
       dead_actors += 1;
     }
+    if (pair.second.NumHandles() > max_num_handles) {
+      max_num_handles = pair.second.NumHandles();
+    }
   }
   result << "\n- num live actors: " << live_actors;
   result << "\n- num dead actors: " << dead_actors;
+  result << "\n- max num handles: " << max_num_handles;
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
     result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();

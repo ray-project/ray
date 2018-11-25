@@ -44,6 +44,8 @@ bool ActorRegistration::IsAlive() const {
   return actor_table_data_.state == ActorState::ALIVE;
 }
 
+int ActorRegistration::NumHandles() const { return frontier_.size(); }
+
 }  // namespace raylet
 
 }  // namespace ray
