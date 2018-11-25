@@ -44,17 +44,6 @@ bool ActorRegistration::IsAlive() const {
   return actor_table_data_.state == ActorState::ALIVE;
 }
 
-std::string ActorRegistration::DebugString() const {
-  std::stringstream result;
-  if (alive_) {
-    result << "alive";
-  } else {
-    result << "dead";
-  }
-  result << ", num handles: " << frontier_.size();
-  return result.str();
-}
-
 }  // namespace raylet
 
 }  // namespace ray

@@ -1764,13 +1764,21 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
+  result << "\nActorRegistry:";
+  int live_actors = 0;
+  int dead_actors = 0;
+  for (auto &pair : actor_registry_) {
+    if (pair.second.IsAlive()) {
+      live_actors += 1;
+    } else {
+      dead_actors += 1;
+    }
+  }
+  result << "\n- num live actors: " << live_actors;
+  result << "\n- num dead actors: " << dead_actors;
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
     result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
-  }
-  result << "\nActorRegistry:";
-  for (auto &pair : actor_registry_) {
-    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
   }
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();

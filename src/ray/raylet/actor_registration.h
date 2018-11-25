@@ -94,11 +94,6 @@ class ActorRegistration {
   /// \return True if the local actor is alive and false if it is dead.
   bool IsAlive() const;
 
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
-
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
