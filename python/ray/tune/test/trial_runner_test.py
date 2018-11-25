@@ -1558,28 +1558,31 @@ class TrialRunnerTest(unittest.TestCase):
         default_resources = Resources(cpu=1, gpu=0)
 
         runner = TrialRunner(
-            BasicVariantGenerator(),
-            checkpoint_dir=tmpdir,
-            checkpoint_freq=1)
-        trials = [Trial("__fake",
-                  trial_id="trial_terminate",
-                  stopping_criterion={"training_iteration": 1},
-                  checkpoint_freq=1,
-                  checkpoint_at_end=True,
-                  resources=default_resources)]
+            BasicVariantGenerator(), checkpoint_dir=tmpdir, checkpoint_freq=1)
+        trials = [
+            Trial(
+                "__fake",
+                trial_id="trial_terminate",
+                stopping_criterion={"training_iteration": 1},
+                checkpoint_freq=1,
+                checkpoint_at_end=True,
+                resources=default_resources)
+        ]
         runner.add_trial(trials[0])
         runner.step()  # start
         runner.step()
         self.assertEquals(trials[0].status, Trial.TERMINATED)
 
         trials += [
-            Trial("__fake",
-                  trial_id="trial_fail",
-                  stopping_criterion={"training_iteration": 3},
-                  checkpoint_freq=1,
-                  checkpoint_at_end=True,
-                  config={"mock_error": True},
-                  resources=default_resources)]
+            Trial(
+                "__fake",
+                trial_id="trial_fail",
+                stopping_criterion={"training_iteration": 3},
+                checkpoint_freq=1,
+                checkpoint_at_end=True,
+                config={"mock_error": True},
+                resources=default_resources)
+        ]
         runner.add_trial(trials[1])
         runner.step()
         runner.step()
@@ -1587,11 +1590,13 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(trials[1].status, Trial.ERROR)
 
         trials += [
-            Trial("__fake",
-                  trial_id="trial_succ",
-                  stopping_criterion={"training_iteration": 2},
-                  checkpoint_freq=1,
-                  resources=default_resources)]
+            Trial(
+                "__fake",
+                trial_id="trial_succ",
+                stopping_criterion={"training_iteration": 2},
+                checkpoint_freq=1,
+                resources=default_resources)
+        ]
         runner.add_trial(trials[2])
         runner.step()
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)

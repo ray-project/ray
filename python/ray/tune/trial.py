@@ -224,8 +224,8 @@ class Trial(object):
             return True
 
         if self.checkpoint_freq:
-            return result.get(
-                TRAINING_ITERATION, 0) % self.checkpoint_freq == 0
+            return result.get(TRAINING_ITERATION,
+                              0) % self.checkpoint_freq == 0
         else:
             return False
 

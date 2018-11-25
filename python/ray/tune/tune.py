@@ -119,7 +119,6 @@ def run_experiments(experiments=None,
     else:
         search_alg.add_configurations(experiments)
 
-
     logger.info(runner.debug_string(max_debug=99999))
     last_debug = 0
     while not runner.is_finished():

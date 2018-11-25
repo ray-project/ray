@@ -112,7 +112,8 @@ class TrialRunner(object):
         # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
         # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
-            "checkpoints": list(self.trial_executor.get_checkpoints().values()),
+            "checkpoints": list(
+                self.trial_executor.get_checkpoints().values()),
             "total_time": self._total_time,
             "stop_queue": self._stop_queue
         }
@@ -187,7 +188,6 @@ class TrialRunner(object):
                 self.save()
 
         self._iteration += 1
-
 
         if self._server:
             self._process_requests()
@@ -390,8 +390,7 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             logger.exception("Error recovering trial from checkpoint, abort.")
             self._scheduler_alg.on_trial_error(self, trial)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, error=True)
+            self._search_alg.on_trial_complete(trial.trial_id, error=True)
 
     def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.
