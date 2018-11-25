@@ -138,7 +138,7 @@ requires = [
     "colorama",
     "pytest",
     "pyyaml",
-    "redis~=2.10.6",
+    "redis",
     "setproctitle",
     # The six module is required by pyarrow.
     "six >= 1.0.0",

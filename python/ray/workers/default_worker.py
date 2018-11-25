@@ -41,11 +41,6 @@ parser.add_argument(
     type=str,
     help="the object store manager's name")
 parser.add_argument(
-    "--local-scheduler-name",
-    required=False,
-    type=str,
-    help="the local scheduler's name")
-parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
     "--logging-level",
@@ -76,7 +71,6 @@ if __name__ == "__main__":
         "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
         "manager_socket_name": args.object_store_manager_name,
-        "local_scheduler_socket_name": args.local_scheduler_name,
         "raylet_socket_name": args.raylet_name
     }
 
