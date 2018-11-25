@@ -340,8 +340,7 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             logger.exception("Error recovering trial from checkpoint, abort.")
             self._scheduler_alg.on_trial_error(self, trial)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, error=True)
+            self._search_alg.on_trial_complete(trial.trial_id, error=True)
 
     def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.
