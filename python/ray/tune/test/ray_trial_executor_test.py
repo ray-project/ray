@@ -9,8 +9,9 @@ import ray
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, Checkpoint, Resources
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -49,6 +50,15 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testStartFailure(self):
+        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
+        trial = Trial("asdf", resources=Resources(1, 0))
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.ERROR, trial.status)
+        self.assertRaises(
+            Exception, lambda: self.trial_executor.start_trial(
+                trial, raise_on_error=True))
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""

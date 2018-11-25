@@ -8,6 +8,7 @@ import time
 from ray.tune.error import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
@@ -89,8 +90,6 @@ def run_experiments(experiments=None,
 
     if search_alg is None:
         search_alg = BasicVariantGenerator()
-
-    search_alg.add_configurations(experiments)
 
     runner = TrialRunner(
         search_alg,
