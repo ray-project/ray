@@ -1553,36 +1553,32 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner.step)
 
     def testSaveRestore(self):
+        """Creates trials of different status to test runner.save/restore."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
         default_resources = Resources(cpu=1, gpu=0)
 
         runner = TrialRunner(
-            BasicVariantGenerator(), checkpoint_dir=tmpdir, checkpoint_freq=1)
-        trials = [
-            Trial(
-                "__fake",
-                trial_id="trial_terminate",
-                stopping_criterion={"training_iteration": 1},
-                checkpoint_freq=1,
-                checkpoint_at_end=True,
-                resources=default_resources)
-        ]
+            BasicVariantGenerator(),
+            checkpoint_dir=tmpdir,
+            checkpoint_freq=1)
+        trials = [Trial("__fake",
+                  trial_id="trial_terminate",
+                  stopping_criterion={"training_iteration": 1},
+                  checkpoint_freq=1,
+                  resources=default_resources)]
         runner.add_trial(trials[0])
         runner.step()  # start
         runner.step()
         self.assertEquals(trials[0].status, Trial.TERMINATED)
 
         trials += [
-            Trial(
-                "__fake",
-                trial_id="trial_fail",
-                stopping_criterion={"training_iteration": 3},
-                checkpoint_freq=1,
-                checkpoint_at_end=True,
-                config={"mock_error": True},
-                resources=default_resources)
-        ]
+            Trial("__fake",
+                  trial_id="trial_fail",
+                  stopping_criterion={"training_iteration": 3},
+                  checkpoint_freq=1,
+                  config={"mock_error": True},
+                  resources=default_resources)]
         runner.add_trial(trials[1])
         runner.step()
         runner.step()
@@ -1590,13 +1586,11 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(trials[1].status, Trial.ERROR)
 
         trials += [
-            Trial(
-                "__fake",
-                trial_id="trial_succ",
-                stopping_criterion={"training_iteration": 2},
-                checkpoint_freq=1,
-                resources=default_resources)
-        ]
+            Trial("__fake",
+                  trial_id="trial_succ",
+                  stopping_criterion={"training_iteration": 2},
+                  checkpoint_freq=1,
+                  resources=default_resources)]
         runner.add_trial(trials[2])
         runner.step()
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
@@ -1618,6 +1612,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
+    def testNoSave(self):
+        """Check that certain trials are not saved."""
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        default_resources = Resources(cpu=1, gpu=0)
+
+        runner = TrialRunner(
+            BasicVariantGenerator(),
+            checkpoint_dir=tmpdir,
+            checkpoint_freq=1)
+        trials = [Trial("__fake",
+                  trial_id="trial_terminate",
+                  stopping_criterion={"training_iteration": 2},
+                  resources=default_resources)]
+        runner.add_trial(trials[0])
+        runner.step()  # start
+        runner.step()
+
+        runner2 = TrialRunner(BasicVariantGenerator())
+        runner2.restore(tmpdir)
+        self.assertEquals(len(runner2.get_trials()), 0)
+        runner2.step()
+        self.assertRaises(TuneError, runner2.step)
+        shutil.rmtree(tmpdir)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

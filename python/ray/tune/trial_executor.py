@@ -30,11 +30,27 @@ class TrialExecutor(object):
         self._checkpoints = {}
 
     def set_status(self, trial, status):
+        """Sets status and checkpoints metadata if needed.
+
+        Only checkpoints metadata if trial status is a terminal condition.
+        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
+        in the TrialRunner.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+            status (Trial.status): Status to set trial to.
+        """
         trial.status = status
-        self.checkpoint_metadata_if_needed(trial)
+        if status in [Trial.TERMINATED, Trial.ERROR]:
+            self.checkpoint_metadata_if_needed(trial)
 
     def checkpoint_metadata_if_needed(self, trial):
-        if self._track_checkpoints:
+        """Checkpoints metadata if current session and trial allow.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+        """
+        if self._track_checkpoints and trial.checkpoint_freq > 0:
             if trial._checkpoint.storage == Checkpoint.MEMORY:
                 logger.debug("Not saving data for trial w/ memory checkpoint.")
                 return
@@ -46,6 +62,7 @@ class TrialExecutor(object):
                 logger.exception("Error checkpointing trial metadata.")
 
     def get_checkpoints(self):
+        """Returns a copy of mapping of the trial ID to pickled metadata."""
         return self._checkpoints.copy()
 
     def has_resources(self, resources):
