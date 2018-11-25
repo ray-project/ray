@@ -1637,5 +1637,6 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

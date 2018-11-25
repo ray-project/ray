@@ -12,7 +12,7 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, DEFAULT_RESULTS_DIR
+from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
@@ -68,7 +68,7 @@ class TrialRunner(object):
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             checkpoint_dir (str): Path where global checkpoints are stored.
-            checkpoint_freq (int): How many trial results between global
+            checkpoint_freq (int): How many steps between global
                 checkpoints. A value of 0 (default) disables checkpointing.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
@@ -103,7 +103,7 @@ class TrialRunner(object):
         self._trial_checkpoints = {}
 
     def save(self):
-        """Saves all trial checkpoints"""
+        """Saves all trial checkpoints to `self._checkpoint_dir.`"""
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
             logger.debug("Checkpoint directory newly created.")
@@ -123,6 +123,14 @@ class TrialRunner(object):
         return checkpoint_dir
 
     def restore(self, checkpoint_dir):
+        """Restores all checkpointed trials from previous run.
+
+        Requires user to manually re-register their objects. Also stops
+        all ongoing trials.
+
+        Args:
+            checkpoint_dir (str): Path to checkpoint (previously specified).
+        """
         logger.debug("Stopping all trials.")
         for trial in self._trials:
             self.stop_trial(trial)
@@ -371,6 +379,10 @@ class TrialRunner(object):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
+
+        Args:
+            trial (Trial): Trial to recover.
+            error_msg (str): Error message from prior to invoking this method.
         """
         try:
             self.trial_executor.stop_trial(
