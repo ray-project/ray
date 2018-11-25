@@ -236,7 +236,9 @@ class PolicyEvaluator(EvaluatorInterface):
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
             if not ray.get_gpu_ids():
-                logger.info("Creating policy evaluation worker {} on CPU (please ignore any CUDA init errors)".format(worker_index))
+                logger.info("Creating policy evaluation worker {}".format(
+                    worker_index) +
+                            " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
