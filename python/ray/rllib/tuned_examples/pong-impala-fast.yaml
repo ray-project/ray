@@ -13,7 +13,7 @@ pong-impala-fast:
         num_envs_per_worker: 5
         broadcast_interval: 5
         max_sample_requests_in_flight_per_worker: 1
-        num_parallel_data_loaders: 4
+        num_data_loader_buffers: 4
         num_gpus: 2
         model:
           dim: 42

@@ -2,9 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 from collections import namedtuple
+from threading import RLock
 
 import tensorflow as tf
+
+logger = logging.getLogger(__name__)
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
@@ -53,18 +57,25 @@ class LocalSyncParallelOptimizer(object):
                  rnn_inputs,
                  max_per_device_batch_size,
                  build_graph,
-                 grad_norm_clipping=None):
+                 grad_norm_clipping=None,
+                 num_buffers=10):
         self.optimizer = optimizer
         self.devices = devices
         self.max_per_device_batch_size = max_per_device_batch_size
         self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph
+        self.num_buffers = num_buffers
+        self.buffers_initialized = False
+        self.init_lock = RLock()
 
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_graph(self.loss_inputs)
 
-        # Then setup the per-device loss graphs that use the shared weights
+        # We retain 1 or more buffers that retain data in GPU memory.
+        # Each SGD minibatch runs over a data slice from the selected buffer.
+        self._selected_buffer = tf.placeholder(tf.int32, name="sel_buffer")
+        # Points to an offset within the selected buffer.
         self._batch_index = tf.placeholder(tf.int32, name="batch_index")
 
         # Dynamic batch size, which may be shrunk if there isn't enough data
@@ -97,7 +108,7 @@ class LocalSyncParallelOptimizer(object):
                 avg[i] = (clipped[i], var)
         self._train_op = self.optimizer.apply_gradients(avg)
 
-    def load_data(self, sess, inputs, state_inputs):
+    def load_data(self, sess, inputs, state_inputs, selected_buffer=0):
         """Bulk loads the specified inputs into device memory.
 
         The shape of the inputs must conform to the shapes of the input
@@ -117,6 +128,7 @@ class LocalSyncParallelOptimizer(object):
             The number of tuples loaded per device.
         """
 
+        assert 0 <= selected_buffer < self.num_buffers
         feed_dict = {}
         assert len(self.loss_inputs) == len(inputs + state_inputs), \
             (self.loss_inputs, inputs, state_inputs)
@@ -167,14 +179,28 @@ class LocalSyncParallelOptimizer(object):
                 feed_dict[ph] = truncated_arr
                 truncated_len = len(truncated_arr)
 
-        sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
+        if not self.buffers_initialized and self.num_buffers > 1:
+            with self.init_lock:
+                if not self.buffers_initialized:
+                    logger.info(
+                        "Initializing GPU variables (num_buffers={})".format(
+                            self.num_buffers))
+                    # Run all the init ops on all variables
+                    sess.run(
+                        [t.buffer_init_ops for t in self._towers],
+                        feed_dict=feed_dict)
+                    self.buffers_initialized = True
+                    logger.info("Done")
+        sess.run(
+            [t.buffer_init_ops[selected_buffer] for t in self._towers],
+            feed_dict=feed_dict)
 
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, "No data loaded?"
         assert tuples_per_device % self._loaded_per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index):
+    def optimize(self, sess, batch_index, selected_buffer=0):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -193,7 +219,9 @@ class LocalSyncParallelOptimizer(object):
         Returns:
             The outputs of extra_ops evaluated over the batch.
         """
+        assert 0 <= selected_buffer < self.num_buffers
         feed_dict = {
+            self._selected_buffer: selected_buffer,
             self._batch_index: batch_index,
             self._per_device_batch_size: self._loaded_per_device_batch_size,
             self._max_seq_len: self._loaded_max_seq_len,
@@ -219,15 +247,22 @@ class LocalSyncParallelOptimizer(object):
         assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
             with tf.name_scope(TOWER_SCOPE_NAME):
-                device_input_batches = []
+                device_input_buffers = [[] for _ in range(self.num_buffers)]
                 device_input_slices = []
                 for i, ph in enumerate(device_input_placeholders):
-                    current_batch = tf.Variable(
-                        ph,
-                        trainable=False,
-                        validate_shape=False,
-                        collections=[])
-                    device_input_batches.append(current_batch)
+                    buffers = [
+                        tf.Variable(
+                            ph,
+                            trainable=False,
+                            validate_shape=False,
+                            collections=[]) for _ in range(self.num_buffers)
+                    ]
+                    pairs = []
+                    for i, b in enumerate(buffers):
+                        pairs.append((tf.equal(self._selected_buffer, i),
+                                      lambda: b))
+                        device_input_buffers[i].append(b)
+                    current_batch = tf.case(pairs, exclusive=True)
                     if i < num_data_in:
                         scale = self._max_seq_len
                         granularity = self._max_seq_len
@@ -244,14 +279,15 @@ class LocalSyncParallelOptimizer(object):
                     device_input_slices.append(current_slice)
                 graph_obj = self.build_graph(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizer)
-            return Tower(
+            return Tower([
                 tf.group(
-                    *[batch.initializer for batch in device_input_batches]),
-                device_grads, graph_obj)
+                    *[batch.initializer for batch in device_input_buffers[i]])
+                for i in range(self.num_buffers)
+            ], device_grads, graph_obj)
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
+Tower = namedtuple("Tower", ["buffer_init_ops", "grads", "loss_graph"])
 
 
 def make_divisible_by(a, n):

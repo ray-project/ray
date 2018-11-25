@@ -17,10 +17,12 @@ OPTIMIZER_SHARED_CONFIGS = [
     "train_batch_size",
     "replay_buffer_num_slots",
     "replay_proportion",
-    "num_parallel_data_loaders",
+    "num_data_loader_buffers",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
     "broadcast_interval",
+    "num_sgd_passes",
+    "minibatch_buffer_size",
 ]
 
 # yapf: disable
@@ -38,13 +40,19 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 2,
     # number of GPUs the learner should use.
     "num_gpus": 1,
-    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
-    # proportionally with the number of loaders.
-    "num_parallel_data_loaders": 1,
     # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
+    # number of passes to make over each train batch
+    "num_sgd_passes": 1,
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
+    # proportionally with the number of loaders.
+    "num_data_loader_buffers": 1,
+    # how many train batches should be retained for minibatching. This number
+    # must be less or equal to `num_data_loader_buffers`. This conf only has
+    # an effect if `num_sgd_passes > 1`.
+    "minibatch_buffer_size": 1,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
