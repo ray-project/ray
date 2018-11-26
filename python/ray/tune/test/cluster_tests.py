@@ -43,7 +43,7 @@ def register_fail_trainable():
         def _restore(self, state):
             self.state = state
 
-    tune.register_trainable("test2", _Fail)
+    tune.register_trainable("test", _Fail)
 
 
 def _start_new_cluster():
@@ -105,7 +105,7 @@ def test_counting_resources(start_connected_cluster):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
-    trials = [Trial("test2", **kwargs), Trial("test2", **kwargs)]
+    trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -378,7 +378,7 @@ ray.init(redis_address="{redis_address}")
 {run_register_trainable_fn}()
 
 kwargs = dict(
-    run="test2",
+    run="test",
     stop=dict(training_iteration=5),
     checkpoint_freq=1,
     max_failures=1)
