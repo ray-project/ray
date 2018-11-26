@@ -50,11 +50,6 @@ class Monitor(object):
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
-        self.shard_subscribe_clients = []
-        for redis_client in self.state.redis_clients:
-            subscribe_client = redis_client.pubsub(
-                ignore_subscribe_messages=True)
-            self.shard_subscribe_clients.append(subscribe_client)
         # Keep a mapping from local scheduler client ID to IP address to use
         # for updating the load metrics.
         self.local_scheduler_id_to_ip_map = {}
@@ -90,23 +85,16 @@ class Monitor(object):
                             str(e)))
                     self.issue_gcs_flushes = False
 
-    def subscribe(self, channel, primary=True):
-        """Subscribe to the given channel.
+    def subscribe(self, channel):
+        """Subscribe to the given channel on the primary Redis shard.
 
         Args:
             channel (str): The channel to subscribe to.
-            primary: If True, then we only subscribe to the primary Redis
-                shard. Otherwise we subscribe to all of the other shards but
-                not the primary.
 
         Raises:
             Exception: An exception is raised if the subscription fails.
         """
-        if primary:
-            self.primary_subscribe_client.subscribe(channel)
-        else:
-            for subscribe_client in self.shard_subscribe_clients:
-                subscribe_client.subscribe(channel)
+        self.primary_subscribe_client.subscribe(channel)
 
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
@@ -230,8 +218,7 @@ class Monitor(object):
             max_messages: The maximum number of messages to process before
                 returning.
         """
-        subscribe_clients = (
-            [self.primary_subscribe_client] + self.shard_subscribe_clients)
+        subscribe_clients = [self.primary_subscribe_client]
         for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
                 message = subscribe_client.get_message()
