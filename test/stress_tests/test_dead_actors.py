@@ -9,7 +9,8 @@ import sys
 
 import ray
 
-ray.init()
+ray.init(redis_address="localhost:6379")
+
 
 @ray.remote
 class Child(object):
@@ -21,6 +22,7 @@ class Child(object):
         exit_chance = np.random.rand()
         if exit_chance > self.death_probability:
             sys.exit(-1)
+
 
 @ray.remote
 class Parent(object):
