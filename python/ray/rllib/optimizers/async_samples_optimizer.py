@@ -45,8 +45,11 @@ class MinibatchBuffer(object):
                 self.cur_max_ttl += 1
         buf = self.buffers[self.idx]
         self.ttl[self.idx] -= 1
+        released = self.ttl[self.idx] <= 0
+        if released:
+            self.buffers[self.idx] = None
         self.idx = (self.idx + 1) % len(self.buffers)
-        return buf
+        return buf, released
 
 
 class LearnerThread(threading.Thread):
@@ -81,7 +84,7 @@ class LearnerThread(threading.Thread):
 
     def step(self):
         with self.queue_timer:
-            batch = self.minibatch_buffer.get()
+            batch, _ = self.minibatch_buffer.get()
 
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
@@ -159,7 +162,7 @@ class TFMultiGPULearner(LearnerThread):
     def step(self):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            token = self.minibatch_buffer.get()
+            token, released = self.minibatch_buffer.get()
 
         with self.grad_timer:
             fetches = self.par_opt.optimize(
@@ -167,7 +170,8 @@ class TFMultiGPULearner(LearnerThread):
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
-        self.idle_buffers.put(token)
+        if released:
+            self.idle_buffers.put(token)
         self.outqueue.put(self.train_batch_size)
         self.learner_queue_size.push(self.inqueue.qsize())
 
