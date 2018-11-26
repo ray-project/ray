@@ -15,7 +15,8 @@ except ImportError:
 import ray
 from ray import tune
 from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver, run_string_as_driver_nonblocking
+from ray.test.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking)
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -301,7 +302,6 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     ray.shutdown()
 
     cluster = _start_new_cluster()
-    register_test_trainable()
     runner = TrialRunner(BasicVariantGenerator())
     runner.restore(dirpath)
     print([t.status for t in runner.get_trials()])
