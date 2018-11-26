@@ -4,10 +4,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import sys
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 ray.init(redis_address="localhost:6379")
 
@@ -26,18 +29,21 @@ class Child(object):
 
 @ray.remote
 class Parent(object):
-
     def __init__(self, num_children, death_probability):
         self.death_probability = death_probability
-        self.children = [Child.remote(death_probability) for _ in range(num_children)]
+        self.children = [
+            Child.remote(death_probability) for _ in range(num_children)
+        ]
 
     def ping(self, num_pings):
         children_outputs = []
         for _ in range(num_pings):
-            children_outputs += [child.ping.remote() for child in self.children]
+            children_outputs += [
+                child.ping.remote() for child in self.children
+            ]
         try:
             ray.get(children_outputs)
-        except:
+        except Exception:
             # Replace the children if one of them died.
             self.__init__(len(self.children), self.death_probability)
 
@@ -45,11 +51,14 @@ class Parent(object):
         # Clean up children.
         ray.get([child.__ray_terminate__.remote() for child in self.children])
 
+
 num_parents = 10
 num_children = 10
 death_probability = 0.95
 
-parents = [Parent.remote(num_children, death_probability) for _ in range(num_parents)]
+parents = [
+    Parent.remote(num_children, death_probability) for _ in range(num_parents)
+]
 for i in range(100):
     ray.get([parent.ping.remote(10) for parent in parents])
 
@@ -60,4 +69,4 @@ for i in range(100):
         parents[parent_index].kill.remote()
         parents[parent_index] = Parent.remote(num_children, death_probability)
 
-    print("Finished trial", i)
+    logger.info("Finished trial", i)
