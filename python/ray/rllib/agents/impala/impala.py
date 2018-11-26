@@ -34,18 +34,24 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace_clip_pg_rho_threshold": 1.0,
 
     # System params.
+    #
+    # == Overview of data flow in IMPALA ==
+    # 1. Policy evaluation in parallel across `num_workers` actors produces
+    #    batches of size `sample_batch_size`.
+    # 2. If enabled, the replay buffer stores and produces batches of size
+    #    `sample_batch_size`.
+    # 3. If enabled, the minibatch ring buffer (vars in GPU memory) stores and
+    #    produces batches of size `train_batch_size` up to `num_sgd_passes`
+    #    times per batch.
+    # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
+    #    on batches of size `train_batch_size`.
+    #
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
     # number of GPUs the learner should use.
     "num_gpus": 1,
-    # level of queuing for sampling.
-    "max_sample_requests_in_flight_per_worker": 2,
-    # max number of workers to broadcast one set of weights to
-    "broadcast_interval": 1,
-    # number of passes to make over each train batch
-    "num_sgd_passes": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
     # proportionally with the number of loaders.
     "num_data_loader_buffers": 1,
@@ -53,12 +59,18 @@ DEFAULT_CONFIG = with_common_config({
     # must be less or equal to `num_data_loader_buffers`. This conf only has
     # an effect if `num_sgd_passes > 1`.
     "minibatch_buffer_size": 1,
+    # number of passes to make over each train batch
+    "num_sgd_passes": 1,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
     # number of sample batches to store for replay. The number of transitions
     # saved total will be (replay_buffer_num_slots * sample_batch_size).
     "replay_buffer_num_slots": 100,
+    # level of queuing for sampling.
+    "max_sample_requests_in_flight_per_worker": 2,
+    # max number of workers to broadcast one set of weights to
+    "broadcast_interval": 1,
 
     # Learning params.
     "grad_clip": 40.0,
