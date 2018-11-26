@@ -36,12 +36,11 @@ DEFAULT_CONFIG = with_common_config({
     #
     # == Overview of data flow in IMPALA ==
     # 1. Policy evaluation in parallel across `num_workers` actors produces
-    #    batches of size `sample_batch_size`.
+    #    batches of size `sample_batch_size * num_envs_per_worker`.
     # 2. If enabled, the replay buffer stores and produces batches of size
-    #    `sample_batch_size`.
-    # 3. If enabled, the minibatch ring buffer (vars in GPU memory) stores and
-    #    replays batches of size `train_batch_size` up to `num_sgd_iter`
-    #    times per batch.
+    #    `sample_batch_size * num_envs_per_worker`.
+    # 3. If enabled, the minibatch ring buffer stores and replays batches of
+    #    size `train_batch_size` up to `num_sgd_iter` times per batch.
     # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
     #    on batches of size `train_batch_size`.
     #
@@ -52,11 +51,10 @@ DEFAULT_CONFIG = with_common_config({
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
-    # proportionally with the number of loaders.
+    # proportionally with the number of buffers.
     "num_data_loader_buffers": 1,
-    # how many train batches should be retained for minibatching. This number
-    # must be less or equal to `num_data_loader_buffers`. This conf only has
-    # an effect if `num_sgd_iter > 1`.
+    # how many train batches should be retained for minibatching. This conf
+    # only has an effect if `num_sgd_iter > 1`.
     "minibatch_buffer_size": 1,
     # number of passes to make over each train batch
     "num_sgd_iter": 1,
