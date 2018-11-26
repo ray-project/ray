@@ -16,8 +16,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking)
+from ray.test.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -329,9 +328,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         stop=dict(training_iteration=3),
         checkpoint_freq=1,
         max_failures=1)
-    exp2_args = dict(
-        run="__fake",
-        stop=dict(training_iteration=3))
+    exp2_args = dict(run="__fake", stop=dict(training_iteration=3))
     exp3_args = dict(
         run="__fake",
         stop=dict(training_iteration=3),
@@ -342,12 +339,9 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         config=dict(mock_error=True),
         checkpoint_freq=1,
         max_failures=1)
-    
+
     tune.run_experiments(
-        dict(exp1=exp1_args,
-         exp2=exp2_args,
-         exp3=exp3_args,
-         exp4=exp4_args),
+        dict(exp1=exp1_args, exp2=exp2_args, exp3=exp3_args, exp4=exp4_args),
         checkpoint_dir=dirpath,
         checkpoint_freq=2,
         raise_on_failed_trial=False)
