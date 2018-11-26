@@ -18,7 +18,6 @@ OPTIMIZER_SHARED_CONFIGS = [
     "replay_buffer_num_slots",
     "replay_proportion",
     "num_data_loader_buffers",
-    "grad_clip",
     "max_sample_requests_in_flight_per_worker",
     "broadcast_interval",
     "num_sgd_passes",

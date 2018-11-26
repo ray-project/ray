@@ -118,7 +118,6 @@ class TFMultiGPULearner(LearnerThread):
                  num_gpus=1,
                  lr=0.0005,
                  train_batch_size=500,
-                 grad_clip=40,
                  num_data_loader_buffers=1,
                  minibatch_buffer_size=1,
                  num_sgd_passes=1):
@@ -158,7 +157,6 @@ class TFMultiGPULearner(LearnerThread):
                         rnn_inputs,
                         99999999,  # it will get rounded down
                         self.policy.copy,
-                        grad_norm_clipping=grad_clip,
                         num_buffers=num_data_loader_buffers)
 
                 self.sess = self.local_evaluator.tf_sess
@@ -242,7 +240,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_envs_per_worker=1,
               num_gpus=0,
               lr=0.0005,
-              grad_clip=40,
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
               num_data_loader_buffers=1,
@@ -276,7 +273,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 lr=lr,
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
-                grad_clip=grad_clip,
                 num_data_loader_buffers=num_data_loader_buffers,
                 minibatch_buffer_size=minibatch_buffer_size,
                 num_sgd_passes=num_sgd_passes)
