@@ -17,11 +17,12 @@ OPTIMIZER_SHARED_CONFIGS = [
     "train_batch_size",
     "replay_buffer_num_slots",
     "replay_proportion",
-    "num_parallel_data_loaders",
+    "num_data_loader_buffers",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
-    "num_sgd_iter",
-    "sgd_minibatch_size",
+    "broadcast_interval",
+    "num_sgd_passes",
+    "minibatch_buffer_size",
 ]
 
 # yapf: disable
@@ -33,6 +34,18 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace_clip_pg_rho_threshold": 1.0,
 
     # System params.
+    #
+    # == Overview of data flow in IMPALA ==
+    # 1. Policy evaluation in parallel across `num_workers` actors produces
+    #    batches of size `sample_batch_size`.
+    # 2. If enabled, the replay buffer stores and produces batches of size
+    #    `sample_batch_size`.
+    # 3. If enabled, the minibatch ring buffer (vars in GPU memory) stores and
+    #    replays batches of size `train_batch_size` up to `num_sgd_passes`
+    #    times per batch.
+    # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
+    #    on batches of size `train_batch_size`.
+    #
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
@@ -41,15 +54,23 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
     # proportionally with the number of loaders.
-    "num_parallel_data_loaders": 1,
-    # level of queuing for sampling.
-    "max_sample_requests_in_flight_per_worker": 2,
+    "num_data_loader_buffers": 1,
+    # how many train batches should be retained for minibatching. This number
+    # must be less or equal to `num_data_loader_buffers`. This conf only has
+    # an effect if `num_sgd_passes > 1`.
+    "minibatch_buffer_size": 1,
+    # number of passes to make over each train batch
+    "num_sgd_passes": 1,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
     # number of sample batches to store for replay. The number of transitions
     # saved total will be (replay_buffer_num_slots * sample_batch_size).
     "replay_buffer_num_slots": 100,
+    # level of queuing for sampling.
+    "max_sample_requests_in_flight_per_worker": 2,
+    # max number of workers to broadcast one set of weights to
+    "broadcast_interval": 1,
 
     # Learning params.
     "grad_clip": 40.0,
@@ -64,16 +85,13 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 1.0,
     "entropy_coeff": -0.01,
-
-    "sgd_minibatch_size": 128,        
+        
     "use_ppo": True,
-    "clip_param": 0.3,
-    "num_sgd_iter": 5,
+    "clip_param": 0.4,
     "kl_coeff": 0.2,
     "kl_target": 0.01,
+
 })
-# __sphinx_doc_end__
-# yapf: enable
 
 
 class ImpalaAgent(Agent):
@@ -84,8 +102,6 @@ class ImpalaAgent(Agent):
     _policy_graph = VTracePolicyGraph
 
     def _init(self):
-        print(self.config["num_sgd_iter"])
-        print(self.config["clip_param"])
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
@@ -104,7 +120,7 @@ class ImpalaAgent(Agent):
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
-        print(self.optimizer.step())
+        self.optimizer.step()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
         result = self.optimizer.collect_metrics(

@@ -5,14 +5,16 @@ pong-impala-fast:
         episode_reward_mean: 20.0
         timesteps_total: 20000000 
     config:
-        sample_batch_size: 200
-        train_batch_size: 2000
+        sample_batch_size: 50
+        train_batch_size: 1000
         num_workers: 47
+        broadcast_interval: 5
+        max_sample_requests_in_flight_per_worker: 1
+        num_data_loader_buffers: 4
         num_envs_per_worker: 5
-        num_sgd_iter: 
-            grid_search: [5,1]
-        clip_param:
-            grid_search: [1000000000, 0.3]
+        num_sgd_passes: 1
+        vf_loss_coeff: 1.0
+        clip_param: 0.4
         num_gpus: 1
         model:
           dim: 42

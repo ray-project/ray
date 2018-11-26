@@ -29,14 +29,11 @@ logger = logging.getLogger(__name__)
 
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
-
     This class wraps a policy graph instance and an environment class to
     collect experiences from the environment. You can create many replicas of
     this class as Ray actors to scale RL training.
-
     This class supports vectorized and multi-agent policy evaluation (e.g.,
     VectorEnv, MultiAgentEnv, etc.)
-
     Examples:
         >>> # Create a policy evaluator and using it to collect experiences.
         >>> evaluator = PolicyEvaluator(
@@ -46,7 +43,6 @@ class PolicyEvaluator(EvaluatorInterface):
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "dones": [[...]], "new_obs": [[...]]})
-
         >>> # Creating policy evaluators using optimizer_cls.make().
         >>> optimizer = SyncSamplesOptimizer.make(
         ...   evaluator_cls=PolicyEvaluator,
@@ -56,7 +52,6 @@ class PolicyEvaluator(EvaluatorInterface):
         ...   },
         ...   num_workers=10)
         >>> for _ in range(10): optimizer.step()
-
         >>> # Creating a multi-agent policy evaluator
         >>> evaluator = PolicyEvaluator(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
@@ -108,7 +103,6 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_level=None,
                  callbacks=None):
         """Initialize a policy evaluator.
-
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
                 EnvContext wrapped configuration.
@@ -235,6 +229,10 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
+            if not ray.get_gpu_ids():
+                logger.info("Creating policy evaluation worker {}".format(
+                    worker_index) +
+                            " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -330,7 +328,6 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
-
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
@@ -388,7 +385,6 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def foreach_trainable_policy(self, func):
         """Apply the given function to each (policy, policy_id) tuple.
-
         This only applies func to policies in `self.policies_to_train`."""
 
         return [
@@ -398,7 +394,6 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
-
         Args:
             new_filters (dict): Filters with new state to update local copy.
         """
@@ -408,10 +403,8 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def get_filters(self, flush_after=False):
         """Returns a snapshot of filters.
-
         Args:
             flush_after (bool): Clears the filter buffer state.
-
         Returns:
             return_filters (dict): Dict for serializable filters
         """

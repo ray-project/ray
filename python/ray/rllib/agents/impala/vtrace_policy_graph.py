@@ -17,6 +17,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import Categorical
+from ray.rllib.evaluation.postprocessing import compute_advantages
 
 
 class VTraceLoss(object):
@@ -65,7 +66,7 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         print(clip_param)
         def to_batches(tensor):
-            T = 200
+            T = 50
             B = tf.shape(tensor)[0] // T
             rs = tf.reshape(tensor,
                             tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
