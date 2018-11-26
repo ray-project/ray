@@ -252,18 +252,16 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
 
-        if num_data_loader_buffers < minibatch_buffer_size:
-            raise ValueError(
-                "Must have at least as many parallel data loader buffers as "
-                "minibatch buffers: {} vs {}".format(num_data_loader_buffers,
-                                                     minibatch_buffer_size))
-        self.minibatch_buffer = MinibatchBuffer(
-            num_data_loader_buffers, minibatch_buffer_size, num_sgd_passes)
-
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
                     num_gpus, num_data_loader_buffers))
+            if num_data_loader_buffers < minibatch_buffer_size:
+                raise ValueError(
+                    "In multi-gpu mode you must have at least as many "
+                    "parallel data loader buffers as minibatch buffers: "
+                    "{} vs {}".format(num_data_loader_buffers,
+                                      minibatch_buffer_size))
             if train_batch_size // max(1, num_gpus) % (
                     sample_batch_size // num_envs_per_worker) != 0:
                 raise ValueError(
