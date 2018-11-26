@@ -95,6 +95,7 @@ def start_connected_emptyhead_cluster():
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
     cluster = start_connected_cluster
+    register_fail_trainable()  # This is less flaky than _register_all
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
     nodes += [cluster.add_node(resources=dict(CPU=1))]
@@ -104,7 +105,7 @@ def test_counting_resources(start_connected_cluster):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [Trial("test2", **kwargs), Trial("test2", **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -304,7 +305,6 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     cluster = _start_new_cluster()
     runner = TrialRunner(BasicVariantGenerator())
     runner.restore(dirpath)
-    print([t.status for t in runner.get_trials()])
     runner.step()  # start
     runner.step()  # start2
 
