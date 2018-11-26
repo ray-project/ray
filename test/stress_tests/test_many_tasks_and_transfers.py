@@ -77,7 +77,7 @@ logger.info("Finished after {} seconds.".format(time.time() - start_time))
 start_time = time.time()
 logger.info("Submitting actor tasks with all-to-all communication.")
 x_ids = []
-for _ in range(100):
+for _ in range(50):
     for size_exponent in [0, 1, 2, 3, 4, 5, 6]:
         x_ids = [a.method.remote(10**size_exponent, *x_ids) for a in actors]
 ray.get(x_ids)
