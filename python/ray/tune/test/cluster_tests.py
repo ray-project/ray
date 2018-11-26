@@ -4,9 +4,7 @@ from __future__ import print_function
 
 import inspect
 import json
-import os
 import time
-import tempfile
 import pytest
 try:
     import pytest_timeout
@@ -45,13 +43,14 @@ def register_test_trainable():
 def register_fail_trainable():
     class _Fail(tune.Trainable):
         """Fails on the 4th iteration."""
+
         def _setup(self, config):
             self.state = {"hi": 0}
 
         def _train(self):
             self.state["hi"] += 1
             time.sleep(0.5)
-            if self.state["hi"] % 5 == 4:
+            if self.state["hi"] >= 4:
                 assert False
             return {}
 
@@ -300,9 +299,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     cluster.add_node(resources=dict(CPU=1))
     dirpath = str(tmpdir)
     runner = TrialRunner(
-        BasicVariantGenerator(),
-        checkpoint_freq=2,
-        checkpoint_dir=dirpath)
+        BasicVariantGenerator(), checkpoint_freq=2, checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -347,7 +344,6 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     script = """
-import os
 import time
 import ray
 from ray import tune
@@ -395,7 +391,6 @@ def test_cluster_down_error(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     script = """
-import os
 import time
 import ray
 from ray import tune
