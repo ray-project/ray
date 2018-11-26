@@ -307,8 +307,7 @@ class Monitor(object):
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-        self.subscribe(
-            ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL, primary=False)
+        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
         self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
