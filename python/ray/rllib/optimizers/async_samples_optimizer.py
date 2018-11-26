@@ -28,7 +28,16 @@ NUM_DATA_LOAD_THREADS = 16
 
 
 class MinibatchBuffer(object):
+    """Ring buffer of recent data batches for minibatch SGD."""
+
     def __init__(self, inqueue, size, num_passes):
+        """Initialize a minibatch buffer.
+
+        Arguments:
+            inqueue: Queue to populate the internal ring buffer from.
+            size: Max number of data items to buffer.
+            num_passes: Max num times each data item should be emitted.
+        """
         self.inqueue = inqueue
         self.size = size
         self.max_ttl = num_passes
@@ -38,6 +47,12 @@ class MinibatchBuffer(object):
         self.idx = 0
 
     def get(self):
+        """Get a new batch from the internal ring buffer.
+
+        Returns:
+            buf: Data item saved from inqueue.
+            released: True if the item is now removed from the ring buffer.
+        """
         if self.ttl[self.idx] <= 0:
             self.buffers[self.idx] = self.inqueue.get()
             self.ttl[self.idx] = self.cur_max_ttl
