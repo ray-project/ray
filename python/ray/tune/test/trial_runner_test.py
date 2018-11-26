@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 import time
 import unittest
-from unittest import mock
 
 import ray
 from ray.rllib import _register_all
@@ -25,6 +25,11 @@ from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import patch
+else:
+    from mock import patch
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -1133,15 +1138,15 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        with mock.patch('ray.global_state.cluster_resources') as res_mock:
-            res_mock.return_value = {"CPU": 1, "GPU": 1}
+        with patch('ray.global_state.cluster_resources') as resource_mock:
+            resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
             # Mimic a node failure
-            res_mock.return_value = {"CPU": 0, "GPU": 0}
+            resource_mock.return_value = {"CPU": 0, "GPU": 0}
             runner.step()
             self.assertEqual(trials[0].status, Trial.PENDING)
             self.assertEqual(trials[0].num_failures, 1)
