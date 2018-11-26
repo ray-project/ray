@@ -108,31 +108,39 @@ class Monitor(object):
             for subscribe_client in self.shard_subscribe_clients:
                 subscribe_client.subscribe(channel)
 
-    def xray_heartbeat_handler(self, unused_channel, data):
-        """Handle an xray heartbeat message from Redis."""
+    def xray_heartbeat_batch_handler(self, unused_channel, data):
+        """Handle an xray heartbeat batch message from Redis."""
 
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             data, 0)
         heartbeat_data = gcs_entries.Entries(0)
-        message = ray.gcs_utils.HeartbeatTableData.GetRootAsHeartbeatTableData(
-            heartbeat_data, 0)
-        num_resources = message.ResourcesAvailableLabelLength()
-        static_resources = {}
-        dynamic_resources = {}
-        for i in range(num_resources):
-            dyn = message.ResourcesAvailableLabel(i)
-            static = message.ResourcesTotalLabel(i)
-            dynamic_resources[dyn] = message.ResourcesAvailableCapacity(i)
-            static_resources[static] = message.ResourcesTotalCapacity(i)
 
-        # Update the load metrics for this local scheduler.
-        client_id = ray.utils.binary_to_hex(message.ClientId())
-        ip = self.local_scheduler_id_to_ip_map.get(client_id)
-        if ip:
-            self.load_metrics.update(ip, static_resources, dynamic_resources)
-        else:
-            print("Warning: could not find ip for client {} in {}.".format(
-                client_id, self.local_scheduler_id_to_ip_map))
+        message = (ray.gcs_utils.HeartbeatBatchTableData.
+                   GetRootAsHeartbeatBatchTableData(heartbeat_data, 0))
+
+        for j in range(message.BatchLength()):
+            heartbeat_message = message.Batch(j)
+
+            num_resources = heartbeat_message.ResourcesAvailableLabelLength()
+            static_resources = {}
+            dynamic_resources = {}
+            for i in range(num_resources):
+                dyn = heartbeat_message.ResourcesAvailableLabel(i)
+                static = heartbeat_message.ResourcesTotalLabel(i)
+                dynamic_resources[dyn] = (
+                    heartbeat_message.ResourcesAvailableCapacity(i))
+                static_resources[static] = (
+                    heartbeat_message.ResourcesTotalCapacity(i))
+
+            # Update the load metrics for this local scheduler.
+            client_id = ray.utils.binary_to_hex(heartbeat_message.ClientId())
+            ip = self.local_scheduler_id_to_ip_map.get(client_id)
+            if ip:
+                self.load_metrics.update(ip, static_resources,
+                                         dynamic_resources)
+            else:
+                print("Warning: could not find ip for client {} in {}.".format(
+                    client_id, self.local_scheduler_id_to_ip_map))
 
     def _xray_clean_up_entries_for_driver(self, driver_id):
         """Remove this driver's object/task entries from redis.
@@ -237,9 +245,9 @@ class Monitor(object):
 
                 # Determine the appropriate message handler.
                 message_handler = None
-                if channel == ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL:
+                if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
                     # Similar functionality as local scheduler info channel
-                    message_handler = self.xray_heartbeat_handler
+                    message_handler = self.xray_heartbeat_batch_handler
                 elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
                     # Handles driver death.
                     message_handler = self.xray_driver_removed_handler
@@ -299,7 +307,8 @@ class Monitor(object):
         clients and cleaning up state accordingly.
         """
         # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL, primary=False)
+        self.subscribe(
+            ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL, primary=False)
         self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
 
         # TODO(rkn): If there were any dead clients at startup, we should clean

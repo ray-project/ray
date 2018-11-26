@@ -28,6 +28,7 @@ FUNCTION_PREFIX = "RemoteFunction:"
 
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
+XRAY_HEARTBEAT_BATCH_CHANNEL = str(TablePubsub.HEARTBEAT_BATCH).encode("ascii")
 
 # xray driver updates
 XRAY_DRIVER_CHANNEL = str(TablePubsub.DRIVER).encode("ascii")
