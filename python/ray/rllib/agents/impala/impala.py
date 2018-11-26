@@ -41,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     # 2. If enabled, the replay buffer stores and produces batches of size
     #    `sample_batch_size`.
     # 3. If enabled, the minibatch ring buffer (vars in GPU memory) stores and
-    #    produces batches of size `train_batch_size` up to `num_sgd_passes`
+    #    replays batches of size `train_batch_size` up to `num_sgd_passes`
     #    times per batch.
     # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
     #    on batches of size `train_batch_size`.
