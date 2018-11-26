@@ -156,7 +156,7 @@ class TFMultiGPULearner(LearnerThread):
                         self.devices,
                         [v for _, v in self.policy.loss_inputs()],
                         rnn_inputs,
-                        999999,  # it will get rounded down
+                        99999999,  # it will get rounded down
                         self.policy.copy,
                         grad_norm_clipping=grad_clip,
                         num_buffers=num_data_loader_buffers)
