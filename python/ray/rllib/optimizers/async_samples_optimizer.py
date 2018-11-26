@@ -76,14 +76,14 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_passes):
+    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
         self.minibatch_buffer = MinibatchBuffer(
-            self.inqueue, minibatch_buffer_size, num_sgd_passes)
+            self.inqueue, minibatch_buffer_size, num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
@@ -120,12 +120,12 @@ class TFMultiGPULearner(LearnerThread):
                  train_batch_size=500,
                  num_data_loader_buffers=1,
                  minibatch_buffer_size=1,
-                 num_sgd_passes=1):
+                 num_sgd_iter=1):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
-                               num_sgd_passes)
+                               num_sgd_iter)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
@@ -173,7 +173,7 @@ class TFMultiGPULearner(LearnerThread):
             self.loader_thread.start()
 
         self.minibatch_buffer = MinibatchBuffer(
-            self.ready_optimizers, minibatch_buffer_size, num_sgd_passes)
+            self.ready_optimizers, minibatch_buffer_size, num_sgd_iter)
 
     def step(self):
         assert self.loader_thread.is_alive()
@@ -245,7 +245,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_data_loader_buffers=1,
               max_sample_requests_in_flight_per_worker=2,
               broadcast_interval=1,
-              num_sgd_passes=1,
+              num_sgd_iter=1,
               minibatch_buffer_size=1):
         self.learning_started = False
         self.train_batch_size = train_batch_size
@@ -273,10 +273,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 train_batch_size=train_batch_size,
                 num_data_loader_buffers=num_data_loader_buffers,
                 minibatch_buffer_size=minibatch_buffer_size,
-                num_sgd_passes=num_sgd_passes)
+                num_sgd_iter=num_sgd_iter)
         else:
             self.learner = LearnerThread(self.local_evaluator,
-                                         minibatch_buffer_size, num_sgd_passes)
+                                         minibatch_buffer_size, num_sgd_iter)
         self.learner.start()
 
         assert len(self.remote_evaluators) > 0

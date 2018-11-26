@@ -20,7 +20,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_data_loader_buffers",
     "max_sample_requests_in_flight_per_worker",
     "broadcast_interval",
-    "num_sgd_passes",
+    "num_sgd_iter",
     "minibatch_buffer_size",
 ]
 
@@ -40,7 +40,7 @@ DEFAULT_CONFIG = with_common_config({
     # 2. If enabled, the replay buffer stores and produces batches of size
     #    `sample_batch_size`.
     # 3. If enabled, the minibatch ring buffer (vars in GPU memory) stores and
-    #    replays batches of size `train_batch_size` up to `num_sgd_passes`
+    #    replays batches of size `train_batch_size` up to `num_sgd_iter`
     #    times per batch.
     # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
     #    on batches of size `train_batch_size`.
@@ -56,10 +56,10 @@ DEFAULT_CONFIG = with_common_config({
     "num_data_loader_buffers": 1,
     # how many train batches should be retained for minibatching. This number
     # must be less or equal to `num_data_loader_buffers`. This conf only has
-    # an effect if `num_sgd_passes > 1`.
+    # an effect if `num_sgd_iter > 1`.
     "minibatch_buffer_size": 1,
     # number of passes to make over each train batch
-    "num_sgd_passes": 1,
+    "num_sgd_iter": 1,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
