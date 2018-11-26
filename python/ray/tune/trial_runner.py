@@ -192,7 +192,8 @@ class TrialRunner(object):
                         "trials with sufficient resources.")
 
         if self._checkpoint_freq:
-            if self._iteration % self._checkpoint_freq == 0:
+            if (self._iteration % self._checkpoint_freq == 0
+                    or self.is_finished()):
                 self.save()
 
         self._iteration += 1
@@ -373,7 +374,7 @@ class TrialRunner(object):
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
-            self.trial_executor.checkpoint_metadata_if_needed(trial)
+            self.trial_executor.try_checkpoint_metadata(trial)
 
     def try_recover(self, trial, error_msg):
         """Tries to recover trial.

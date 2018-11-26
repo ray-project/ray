@@ -42,9 +42,9 @@ class TrialExecutor(object):
         """
         trial.status = status
         if status in [Trial.TERMINATED, Trial.ERROR]:
-            self.checkpoint_metadata_if_needed(trial)
+            self.try_checkpoint_metadata(trial)
 
-    def checkpoint_metadata_if_needed(self, trial):
+    def try_checkpoint_metadata(self, trial):
         """Checkpoints metadata if current session and trial allow.
 
         Args:
