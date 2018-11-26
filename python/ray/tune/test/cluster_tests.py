@@ -293,12 +293,12 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_cluster_down_simple(start_connected_cluster):
+def test_cluster_down_simple(start_connected_cluster, tmpdir):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
     cluster.add_node(resources=dict(CPU=1))
-    tmpdir = tempfile.mkdtemp()
-    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
+    dirpath = str(tmpdir)
+    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -323,7 +323,7 @@ def test_cluster_down_simple(start_connected_cluster):
     cluster = _start_new_cluster()
     register_test_trainable()
     runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(tmpdir)
+    runner.restore(dirpath)
     print([t.status for t in runner.get_trials()])
     runner.step()  # start
     runner.step()  # start2
@@ -340,7 +340,7 @@ def test_cluster_down_simple(start_connected_cluster):
 def test_cluster_down_full(start_connected_cluster, tmpdir):
     """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
-
+    dirpath = str(tmpdir)
     script = """
 import os
 import time
@@ -365,12 +365,12 @@ tune.run_experiments(
     checkpoint_freq=3)
 """.format(
         redis_address=cluster.redis_address,
-        checkpoint_dir=tmpdir,
+        checkpoint_dir=dirpath,
         register_trainable_fn=inspect.getsource(register_test_trainable),
         run_register_trainable_fn=register_test_trainable.__name__)
     run_string_as_driver_nonblocking(script)
 
-    while not os.path.exists(os.path.join(tmpdir, "experiment.state")):
+    while not os.path.exists(os.path.join(dirpath, "experiment.state")):
         time.sleep(0.1)
     ray.shutdown()
     cluster.shutdown()
@@ -379,18 +379,18 @@ tune.run_experiments(
 
     # Check that last_result.iteration = 1
     runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(tmpdir)
+    runner.restore(dirpath)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 1
 
-    trials = tune.run_experiments(restore_from_path=tmpdir)
+    trials = tune.run_experiments(restore_from_path=dirpath)
     assert all(t.status == Trial.TERMINATED for t in trials)
 
 
 def test_cluster_down_error(start_connected_cluster, tmpdir):
     """Tests run_experiment on cluster shutdown even with atypical trial."""
     cluster = start_connected_cluster
-
+    dirpath = str(tmpdir)
     script = """
 import os
 import time
@@ -415,12 +415,12 @@ tune.run_experiments(
     checkpoint_freq=3)
 """.format(
         redis_address=cluster.redis_address,
-        checkpoint_dir=tmpdir,
+        checkpoint_dir=dirpath,
         register_trainable_fn=inspect.getsource(register_fail_trainable),
         run_register_trainable_fn=register_fail_trainable.__name__)
     run_string_as_driver_nonblocking(script)
 
-    while not os.path.exists(os.path.join(tmpdir, "experiment.state")):
+    while not os.path.exists(os.path.join(dirpath, "experiment.state")):
         time.sleep(0.1)
     ray.shutdown()
     cluster.shutdown()
@@ -430,12 +430,12 @@ tune.run_experiments(
 
     # Inspect the internal trialrunner
     runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(tmpdir)
+    runner.restore(dirpath)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 1
     assert trials[0].status == Trial.PENDING
 
     # Restore properly from checkpoint
     trials = tune.run_experiments(
-        restore_from_path=tmpdir, raise_on_failed_trial=False)
+        restore_from_path=dirpath, raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials)
