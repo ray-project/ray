@@ -140,6 +140,7 @@ class TFMultiGPULearner(LearnerThread):
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
+        self.par_opt = []
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
                 with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
@@ -150,38 +151,39 @@ class TFMultiGPULearner(LearnerThread):
                     else:
                         rnn_inputs = []
                     adam = tf.train.AdamOptimizer(self.lr)
-                    self.par_opt = LocalSyncParallelOptimizer(
-                        adam,
-                        self.devices,
-                        [v for _, v in self.policy.loss_inputs()],
-                        rnn_inputs,
-                        99999999,  # it will get rounded down
-                        self.policy.copy,
-                        num_buffers=num_data_loader_buffers)
+                    for _ in range(num_data_loader_buffers):
+                        self.par_opt.append(
+                            LocalSyncParallelOptimizer(
+                                adam,
+                                self.devices,
+                                [v for _, v in self.policy.loss_inputs()],
+                                rnn_inputs,
+                                999999,  # it will get rounded down
+                                self.policy.copy))
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
-        self.idle_buffers = queue.Queue()
-        self.ready_buffers = queue.Queue()
-        for token in range(num_data_loader_buffers):
-            self.idle_buffers.put(token)
+        self.idle_optimizers = queue.Queue()
+        self.ready_optimizers = queue.Queue()
+        for opt in self.par_opt:
+            self.idle_optimizers.put(opt)
         for i in range(NUM_DATA_LOAD_THREADS):
             self.loader_thread = _LoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
+
         self.minibatch_buffer = MinibatchBuffer(
-            self.ready_buffers, minibatch_buffer_size, num_sgd_passes)
+            self.ready_optimizers, minibatch_buffer_size, num_sgd_passes)
 
     def step(self):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            token, released = self.minibatch_buffer.get()
+            opt, released = self.minibatch_buffer.get()
             if released:
-                self.idle_buffers.put(token)
+                self.idle_optimizers.put(opt)
 
         with self.grad_timer:
-            fetches = self.par_opt.optimize(
-                self.sess, 0, selected_buffer=token)
+            fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
@@ -210,7 +212,7 @@ class _LoaderThread(threading.Thread):
         with self.queue_timer:
             batch = s.inqueue.get()
 
-        token = s.idle_buffers.get()
+        opt = s.idle_optimizers.get()
 
         with self.load_timer:
             tuples = s.policy._get_loss_inputs_dict(batch)
@@ -219,12 +221,10 @@ class _LoaderThread(threading.Thread):
                 state_keys = s.policy._state_inputs + [s.policy._seq_lens]
             else:
                 state_keys = []
-            s.par_opt.load_data(
-                s.sess, [tuples[k] for k in data_keys],
-                [tuples[k] for k in state_keys],
-                selected_buffer=token)
+            opt.load_data(s.sess, [tuples[k] for k in data_keys],
+                          [tuples[k] for k in state_keys])
 
-        s.ready_buffers.put(token)
+        s.ready_optimizers.put(opt)
 
 
 class AsyncSamplesOptimizer(PolicyOptimizer):
