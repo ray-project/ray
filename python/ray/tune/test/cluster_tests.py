@@ -93,7 +93,6 @@ def start_connected_emptyhead_cluster():
 @pytest.mark.timeout(10, method="thread")
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
-
     cluster = start_connected_cluster
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
@@ -356,8 +355,7 @@ tune.run_experiments(
     {"exp1": exp1_args,
      "exp2": exp2_args,
      "exp3": exp3_args,
-     "exp4": exp4_args,
-    ),
+     "exp4": exp4_args},
     checkpoint_dir="{checkpoint_dir}",
     checkpoint_freq=2)
 """.format(
