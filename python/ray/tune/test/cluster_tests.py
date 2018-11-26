@@ -16,7 +16,7 @@ except ImportError:
 import ray
 from ray import tune
 from ray.test.cluster_utils import Cluster
-from ray.test.test_utils import run_string_as_driver_nonblocking
+from ray.test.test_utils import run_string_as_driver
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -43,14 +43,15 @@ def register_test_trainable():
 
 
 def register_fail_trainable():
-    class _Train(tune.Trainable):
+    class _Fail(tune.Trainable):
+        """Fails on the 4th iteration."""
         def _setup(self, config):
-            self.state = {"hi": 1}
+            self.state = {"hi": 0}
 
         def _train(self):
             self.state["hi"] += 1
             time.sleep(0.5)
-            if self.state["hi"] % 2 == 1:
+            if self.state["hi"] % 5 == 4:
                 assert False
             return {}
 
@@ -60,7 +61,7 @@ def register_fail_trainable():
         def _restore(self, state):
             self.state = state
 
-    tune.register_trainable("fail", _Train)
+    tune.register_trainable("test2", _Fail)
 
 
 def _start_new_cluster():
@@ -298,7 +299,10 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     cluster.add_node(resources=dict(CPU=1))
     dirpath = str(tmpdir)
-    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=dirpath)
+    runner = TrialRunner(
+        BasicVariantGenerator(),
+        checkpoint_freq=2,
+        checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -335,6 +339,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
         runner.step()
 
     assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
+    cluster.shutdown()
 
 
 def test_cluster_down_full(start_connected_cluster, tmpdir):
@@ -362,16 +367,13 @@ kwargs = dict(
 tune.run_experiments(
     dict(experiment=kwargs),
     checkpoint_dir="{checkpoint_dir}",
-    checkpoint_freq=3)
+    checkpoint_freq=2)  # start, iter 1
 """.format(
         redis_address=cluster.redis_address,
         checkpoint_dir=dirpath,
         register_trainable_fn=inspect.getsource(register_test_trainable),
         run_register_trainable_fn=register_test_trainable.__name__)
-    run_string_as_driver_nonblocking(script)
-
-    while not os.path.exists(os.path.join(dirpath, "experiment.state")):
-        time.sleep(0.1)
+    run_string_as_driver(script)
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
@@ -381,10 +383,11 @@ tune.run_experiments(
     runner = TrialRunner(BasicVariantGenerator())
     runner.restore(dirpath)
     trials = runner.get_trials()
-    assert trials[0].last_result["training_iteration"] == 1
+    assert trials[0].last_result["training_iteration"] == 2
 
     trials = tune.run_experiments(restore_from_path=dirpath)
     assert all(t.status == Trial.TERMINATED for t in trials)
+    cluster.shutdown()
 
 
 def test_cluster_down_error(start_connected_cluster, tmpdir):
@@ -397,14 +400,13 @@ import time
 import ray
 from ray import tune
 
-
 ray.init(redis_address="{redis_address}")
 
 {register_trainable_fn}
 {run_register_trainable_fn}()
 
 kwargs = dict(
-    run="fail",
+    run="test2",
     stop=dict(training_iteration=5),
     checkpoint_freq=1,
     max_failures=1)
@@ -412,19 +414,16 @@ kwargs = dict(
 tune.run_experiments(
     dict(experiment1=kwargs),
     checkpoint_dir="{checkpoint_dir}",
-    checkpoint_freq=3)
+    checkpoint_freq=3,
+    raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address,
         checkpoint_dir=dirpath,
         register_trainable_fn=inspect.getsource(register_fail_trainable),
         run_register_trainable_fn=register_fail_trainable.__name__)
-    run_string_as_driver_nonblocking(script)
-
-    while not os.path.exists(os.path.join(dirpath, "experiment.state")):
-        time.sleep(0.1)
+    run_string_as_driver(script)
     ray.shutdown()
     cluster.shutdown()
-
     cluster = _start_new_cluster()
     register_fail_trainable()
 
@@ -432,10 +431,11 @@ tune.run_experiments(
     runner = TrialRunner(BasicVariantGenerator())
     runner.restore(dirpath)
     trials = runner.get_trials()
-    assert trials[0].last_result["training_iteration"] == 1
+    assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING
 
     # Restore properly from checkpoint
     trials = tune.run_experiments(
         restore_from_path=dirpath, raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials)
+    cluster.shutdown()
