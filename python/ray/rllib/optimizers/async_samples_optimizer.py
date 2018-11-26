@@ -178,6 +178,8 @@ class TFMultiGPULearner(LearnerThread):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
             token, released = self.minibatch_buffer.get()
+            if released:
+                self.idle_buffers.put(token)
 
         with self.grad_timer:
             fetches = self.par_opt.optimize(
@@ -185,8 +187,6 @@ class TFMultiGPULearner(LearnerThread):
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
-        if released:
-            self.idle_buffers.put(token)
         self.outqueue.put(self.train_batch_size)
         self.learner_queue_size.push(self.inqueue.qsize())
 
