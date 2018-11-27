@@ -587,6 +587,25 @@ class RunExperimentTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
+    def testSimultaneousExperimentRestore(self):
+        tmpdir = tempfile.mkdtemp()
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+        exp1 = Experiment(**{
+            "name": "foo",
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0
+            }
+        })
+        self.assertRaises(
+            AssertionError, lambda: run_experiments(
+                exp1, restore_from_path=tmpdir))
+        shutil.rmtree(tmpdir)
+
     def testExperimentList(self):
         def train(config, reporter):
             for i in range(100):

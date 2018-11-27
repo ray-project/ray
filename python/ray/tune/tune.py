@@ -112,7 +112,9 @@ def run_experiments(experiments=None,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    if restore_from_path and os.path.exists(restore_from_path):
+    if restore_from_path:
+        if not os.path.exists(restore_from_path):
+            raise ValueError("Provided path invalid: %s" % restore_from_path)
         assert experiments is None, (
             "Simultaneous starting experiments and restoring not supported.")
         runner.restore(restore_from_path)

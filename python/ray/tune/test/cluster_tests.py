@@ -316,11 +316,11 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
+
     exp1_args = dict(
         run="__fake",
         stop=dict(training_iteration=3),
-        checkpoint_freq=1,
-        max_failures=1)
+        checkpoint_freq=1)
     exp2_args = dict(run="__fake", stop=dict(training_iteration=3))
     exp3_args = dict(
         run="__fake",
@@ -330,8 +330,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         run="__fake",
         stop=dict(training_iteration=3),
         config=dict(mock_error=True),
-        checkpoint_freq=1,
-        max_failures=1)
+        checkpoint_freq=1)
 
     tune.run_experiments(
         dict(exp1=exp1_args, exp2=exp2_args, exp3=exp3_args, exp4=exp4_args),
