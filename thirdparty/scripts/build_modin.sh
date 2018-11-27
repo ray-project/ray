@@ -21,7 +21,7 @@ pushd $TP_DIR/../python/ray/
 rm -rf modin
 mkdir modin
 pushd modin
-pip download --no-deps modin==$MODIN_VERSION
+$PYTHON_EXECUTABLE -m pip download --no-deps modin==$MODIN_VERSION
 unzip $MODIN_WHEELS
 rm $MODIN_WHEELS
 rm -r "modin-$MODIN_VERSION.dist-info"
