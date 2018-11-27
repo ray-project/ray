@@ -5,11 +5,14 @@ from __future__ import print_function
 import os
 import json
 import signal
+import sys
 import time
 
+import numpy as np
 import pytest
 
 import ray
+from ray.test.cluster_utils import Cluster
 from ray.test.test_utils import run_string_as_driver_nonblocking
 
 
@@ -31,6 +34,27 @@ def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_cluster():
+    num_workers = 8
+    node_args = {
+        "resources": dict(CPU=num_workers),
+        "_internal_config": json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 1000,
+            "num_heartbeats_timeout": 10
+        })
+    }
+    # Start with 4 workers and 4 cores.
+    g = Cluster(initialize_head=True, connect=True, head_node_args=node_args)
+    workers = []
+    for _ in range(4):
+        workers.append(g.add_node(**node_args))
+    g.wait_for_nodes()
+    yield g
+    ray.shutdown()
+    g.shutdown()
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
@@ -345,6 +369,41 @@ def test_plasma_store_failed():
     check_components_alive(ray.services.PROCESS_TYPE_RAYLET, False)
 
     ray.shutdown()
+
+
+def test_actor_creation_node_failure(ray_start_cluster):
+    # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
+    cluster = ray_start_cluster
+
+    @ray.remote
+    class Child(object):
+        def __init__(self, death_probability):
+            self.death_probability = death_probability
+
+        def ping(self):
+            # Exit process with some probability.
+            exit_chance = np.random.rand()
+            if exit_chance < self.death_probability:
+                sys.exit(-1)
+
+    num_children = 100
+    # Children actors will die about half the time.
+    death_probability = 0.5
+
+    children = [Child.remote(death_probability) for _ in range(num_children)]
+    while len(cluster.list_all_nodes()) > 1:
+        for j in range(3):
+            children_out = [child.ping.remote() for child in children]
+            ready, _ = ray.wait(
+                children_out, num_returns=len(children_out), timeout=30000)
+            assert len(ready) == len(children_out)
+
+            for i, out in enumerate(children_out):
+                try:
+                    ray.get(out)
+                except ray.worker.RayGetError:
+                    children[i] = Child.remote(death_probability)
+        cluster.remove_node(cluster.list_all_nodes()[-1])
 
 
 @pytest.mark.skipif(
