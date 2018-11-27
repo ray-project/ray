@@ -393,16 +393,24 @@ def test_actor_creation_node_failure(ray_start_cluster):
     children = [Child.remote(death_probability) for _ in range(num_children)]
     while len(cluster.list_all_nodes()) > 1:
         for j in range(3):
+            # Submit some tasks on the actors. About half of the actors will
+            # fail.
             children_out = [child.ping.remote() for child in children]
+            # Wait for all the tasks to complete. This should trigger
+            # reconstruction for any actor creation tasks that were forwarded
+            # to nodes that then failed.
             ready, _ = ray.wait(
                 children_out, num_returns=len(children_out), timeout=30000)
             assert len(ready) == len(children_out)
 
+            # Replace any actors that died.
             for i, out in enumerate(children_out):
                 try:
                     ray.get(out)
                 except ray.worker.RayGetError:
                     children[i] = Child.remote(death_probability)
+        # Remove a node. Any actor creation tasks that were forwarded to this
+        # node must be reconstructed.
         cluster.remove_node(cluster.list_all_nodes()[-1])
 
 
