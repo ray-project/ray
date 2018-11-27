@@ -651,7 +651,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' first"
+    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.

@@ -64,7 +64,10 @@ else:
 
 optional_ray_files += ray_autoscaler_files
 
-extras = {"rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"]}
+extras = {
+    "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
+    "debug": ["psutil", "setproctitle", "py-spy"],
+}
 
 
 class build_ext(_build_ext.build_ext):
@@ -139,7 +142,6 @@ requires = [
     "pytest",
     "pyyaml",
     "redis",
-    "setproctitle",
     # The six module is required by pyarrow.
     "six >= 1.0.0",
     "flatbuffers",
