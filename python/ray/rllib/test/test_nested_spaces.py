@@ -174,7 +174,7 @@ class NestedSpacesTest(unittest.TestCase):
                     },
                 }))
 
-    def doTestNestedDict(self, make_env):
+    def doTestNestedDict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         pg = PGAgent(
@@ -184,6 +184,7 @@ class NestedSpacesTest(unittest.TestCase):
                 "sample_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
+                    "use_lstm": test_lstm,
                 },
             })
         pg.train()
@@ -229,6 +230,9 @@ class NestedSpacesTest(unittest.TestCase):
 
     def testNestedDictGym(self):
         self.doTestNestedDict(lambda _: NestedDictEnv())
+
+    def testNestedDictGymLSTM(self):
+        self.doTestNestedDict(lambda _: NestedDictEnv(), test_lstm=True)
 
     def testNestedDictVector(self):
         self.doTestNestedDict(

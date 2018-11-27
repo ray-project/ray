@@ -1162,7 +1162,6 @@ def start_worker(node_ip_address,
         sys.executable, "-u", worker_path,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
-        "--local-scheduler-name=" + local_scheduler_name,
         "--redis-address=" + str(redis_address),
         "--temp-dir=" + get_temp_root()
     ]

@@ -79,7 +79,7 @@ class PGPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        # This ads the "advantages" column to the sample batch
+        # This adds the "advantages" column to the sample batch
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
