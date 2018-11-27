@@ -78,8 +78,8 @@ except ImportError:
     setproctitle = None
     logger.warning(
         "WARNING: Not updating worker name since `setproctitle` is not "
-        "installed. Install this with `pip install ray[debug]` to "
-        "enable monitoring of worker processes.")
+        "installed. Install this with `pip install setproctitle "
+        "(or ray[debug])` to enable monitoring of worker processes.")
 
 
 class RayTaskError(Exception):
