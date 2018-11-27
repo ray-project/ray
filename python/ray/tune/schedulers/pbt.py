@@ -47,7 +47,13 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     """
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
-        if isinstance(distribution, list):
+        if isinstance(distribution, dict):
+            new_config.update({
+                key: explore(
+                    config[key], mutations[key],
+                    resample_probability, custom_explore_fn)
+            })
+        elif isinstance(distribution, list):
             if random.random() < resample_probability or \
                     config[key] not in distribution:
                 new_config[key] = random.choice(distribution)
