@@ -15,7 +15,7 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]
+  pip install ray[rllib]  # also recommended: ray[debug]
 
 You might also want to clone the `Ray repo <https://github.com/ray-project/ray>`__ for convenient access to RLlib helper scripts:
 

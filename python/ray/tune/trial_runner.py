@@ -236,7 +236,7 @@ class TrialRunner(object):
             return "Memory usage on this node: {}/{} GB{}".format(
                 round(used_gb, 1), round(total_gb, 1), warn)
         except ImportError:
-            return "Unknown memory usage (`pip install psutil` to resolve)"
+            return "Unknown memory usage (`pip install ray[debug]` to resolve)"
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
