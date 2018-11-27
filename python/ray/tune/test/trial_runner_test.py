@@ -852,14 +852,15 @@ class VariantGeneratorTest(unittest.TestCase):
 
 
 def create_mock_components():
-
     class _MockScheduler(FIFOScheduler):
         errored_trials = []
+
         def on_trial_error(self, trial_runner, trial):
             self.errored_trials += [trial]
 
     class _MockSearchAlg(BasicVariantGenerator):
         errored_trials = []
+
         def on_trial_complete(self, trial_id, error=False, **kwargs):
             if error:
                 self.errored_trials += [trial_id]
@@ -867,6 +868,7 @@ def create_mock_components():
     searchalg = _MockSearchAlg()
     scheduler = _MockScheduler()
     return searchalg, scheduler
+
 
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
