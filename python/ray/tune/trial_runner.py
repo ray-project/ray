@@ -171,11 +171,6 @@ class TrialRunner(object):
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
-            if self._checkpoint_freq:
-                if self._iteration % self._checkpoint_freq == 0:
-                    self.save()
-
-            self._iteration += 1
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:

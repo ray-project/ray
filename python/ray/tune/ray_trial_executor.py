@@ -160,9 +160,6 @@ class RayTrialExecutor(TrialExecutor):
             for result_id in out:
                 self._running.pop(result_id)
 
-            logger.debug("Returning resources for this trial.")
-            self._return_resources(trial.resources)
-
     def continue_training(self, trial):
         """Continues the training of this trial."""
 
