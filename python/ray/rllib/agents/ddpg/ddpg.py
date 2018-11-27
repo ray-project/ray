@@ -16,6 +16,22 @@ OPTIMIZER_SHARED_CONFIGS = [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
+    # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
+    # twin Q-net
+    "twin_q": False,
+    # delayed policy update
+    "policy_delay": 1,
+    # target policy smoothing
+    # this also forces the use of gaussian instead of OU noise for exploration
+    "smooth_target_policy": False,
+    # gaussian stddev of act noise
+    "act_noise": 0.1,
+    # gaussian stddev of target noise
+    "target_noise": 0.2,
+    # target noise limit (bound)
+    "noise_clip": 0.5,
+
     # === Model ===
     # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],
@@ -67,9 +83,11 @@ DEFAULT_CONFIG = with_common_config({
     "compress_observations": False,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
-    "actor_lr": 1e-4,
-    "critic_lr": 1e-3,
+    # Learning rate for adam optimizer.
+    # Instead of using two optimizers, we use two different loss coefficients
+    "lr": 1e-3,
+    "actor_loss_coeff": 0.1,
+    "critic_loss_coeff": 1.0,
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,

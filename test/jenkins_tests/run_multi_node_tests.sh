@@ -235,9 +235,6 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
-
-docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_local.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
