@@ -297,18 +297,15 @@ class TrialRunner(object):
                 if trial.should_recover():
                     self.try_recover(trial, error_msg)
                 else:
-                    self.trial_executor.stop_trial(
-                        trial,
-                        error=error_msg is not None,
-                        error_msg=error_msg)
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
+                    self.trial_executor.stop_trial(
+                        trial, error=True, error_msg=error_msg)
 
     def _checkpoint_if_needed(self, trial):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint():
-
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)

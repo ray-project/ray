@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import time
 import pytest
 try:
     import pytest_timeout
@@ -11,36 +10,12 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray import tune
 from ray.rllib import _register_all
 from ray.test.cluster_utils import Cluster
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
-
-
-def register_fail_trainable():
-    class _Fail(tune.Trainable):
-        """Fails on the 4th iteration."""
-
-        def _setup(self, config):
-            self.state = {"hi": 0}
-
-        def _train(self):
-            self.state["hi"] += 1
-            time.sleep(0.5)
-            if self.state["hi"] >= 4:
-                assert False
-            return {}
-
-        def _save(self, path):
-            return self.state
-
-        def _restore(self, state):
-            self.state = state
-
-    tune.register_trainable("test", _Fail)
 
 
 def _start_new_cluster():
