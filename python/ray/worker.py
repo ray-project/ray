@@ -12,7 +12,6 @@ import logging
 import numpy as np
 import os
 import redis
-import setproctitle
 import signal
 import sys
 import threading
@@ -72,6 +71,15 @@ DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+try:
+    import setproctitle
+except ImportError:
+    setproctitle = None
+    logger.warning(
+        "WARNING: Not updating worker name since `setproctitle` is not "
+        "installed. Install this with `pip install setproctitle` "
+        "(or ray[debug]) to enable monitoring of worker processes.")
 
 
 class RayTaskError(Exception):
@@ -1916,7 +1924,8 @@ def connect(info,
     # Initialize some fields.
     if mode is WORKER_MODE:
         worker.worker_id = random_string()
-        setproctitle.setproctitle("ray_worker")
+        if setproctitle:
+            setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
@@ -2163,9 +2172,11 @@ def disconnect(worker=global_worker):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if setproctitle:
+        setproctitle.setproctitle(title)
     yield
-    setproctitle.setproctitle(next_title)
+    if setproctitle:
+        setproctitle.setproctitle(next_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):
