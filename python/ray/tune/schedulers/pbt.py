@@ -213,8 +213,8 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
-            logger.warning("[pbt]: no checkpoint for trial"
-                           "skip exploit for Trial {}".format(trial))
+            logger.warning("[pbt]: no checkpoint for trial."
+                           " Skip exploit for Trial {}".format(trial))
             return
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,
