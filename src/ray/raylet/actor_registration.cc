@@ -10,7 +10,6 @@ namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
     : actor_table_data_(actor_table_data),
-      alive_(true),
       execution_dependency_(ObjectID::nil()),
       frontier_() {}
 
