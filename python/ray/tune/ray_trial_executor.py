@@ -117,7 +117,7 @@ class RayTrialExecutor(TrialExecutor):
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint(Checkpoint): A Python object or path storing the state
+            checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
             raise_on_failure (bool): To raise exception on failure in starting.
 

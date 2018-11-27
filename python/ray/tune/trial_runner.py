@@ -317,6 +317,10 @@ class TrialRunner(object):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
+
+        Args:
+            trial (Trial): Trial to recover.
+            error_msg (str): Error message from prior to invoking this method.
         """
         try:
             self.trial_executor.stop_trial(
