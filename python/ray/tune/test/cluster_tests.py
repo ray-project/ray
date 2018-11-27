@@ -86,24 +86,24 @@ def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
 
     cluster = start_connected_cluster
-    assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
-    nodes += [cluster.add_node(resources=dict(CPU=1))]
-    assert cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 2
-
+    assert ray.global_state.cluster_resources()["CPU"] == 1
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
-    trials = [Trial("test", **kwargs), Trial("test", **kwargs)]
+    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
     runner.step()  # run 1
+    nodes += [cluster.add_node(resources=dict(CPU=1))]
+    assert cluster.wait_for_nodes()
+    assert ray.global_state.cluster_resources()["CPU"] == 2
     cluster.remove_node(nodes.pop())
     assert cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 1
     runner.step()  # run 2
+    assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 1
 
     for i in range(5):
         nodes += [cluster.add_node(resources=dict(CPU=1))]
@@ -111,12 +111,7 @@ def test_counting_resources(start_connected_cluster):
     assert ray.global_state.cluster_resources()["CPU"] == 6
 
     runner.step()  # 1 result
-
-    for i in range(5):
-        node = nodes.pop()
-        cluster.remove_node(node)
-    assert cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
 
 
 @pytest.mark.skip("Add this test once reconstruction is fixed")
