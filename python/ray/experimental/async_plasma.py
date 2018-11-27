@@ -79,7 +79,6 @@ class PlasmaObjectFuture(asyncio.Future):
 
     def __init__(self, loop, object_id):
         super().__init__(loop=loop)
-        self.ref_count = 0
         self.object_id = object_id
         self.prev = None
         self.next = None
@@ -364,11 +363,12 @@ class PlasmaEventHandler:
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
         del self._waiting_dict[fut.object_id]
 
-    def as_future(self, object_id: ray.ObjectID):
+    def as_future(self, object_id: ray.ObjectID, check_ready=True):
         """Turn an object_id into a Future object.
 
         Args:
             object_id: A Ray's object_id.
+            check_ready (bool): If true, check if the object_id is ready.
 
         Returns:
             PlasmaObjectFuture: A future object that waits the object_id/
@@ -376,15 +376,17 @@ class PlasmaEventHandler:
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
 
-        ready, _ = ray.wait([object_id], timeout=0)
+
         plain_object_id = plasma.ObjectID(object_id.id())
         fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
 
-        if ready:
-            if self._loop.get_debug():
-                logger.info("%s has been ready.", plain_object_id)
-            fut.complete()
-            return fut
+        if check_ready:
+            ready, _ = ray.wait([object_id], timeout=0)
+            if ready:
+                if self._loop.get_debug():
+                    logger.info("%s has been ready.", plain_object_id)
+                fut.complete()
+                return fut
 
         if plain_object_id not in self._waiting_dict:
             linked_list = PlasmaObjectLinkedList(self._loop, plain_object_id)
@@ -397,16 +399,32 @@ class PlasmaEventHandler:
         return fut
 
     def _convert(self, object_ids):
+        original = []
         processed = []
         selection_vector = []
         for i, obj in enumerate(object_ids):
             if isinstance(obj, ray.ObjectID):
-                processed.append(self.as_future(obj))
+                original.append(obj)
                 selection_vector.append(i)
+                processed.append(None)
             elif inspect.isawaitable(obj):
                 processed.append(obj)
             else:
                 raise TypeError("Unsupported type %s" % type(obj))
+
+        mapping = dict(zip(original, selection_vector))
+        ready, pending = ray.wait(original, timeout=0)
+        for object_id in ready:
+            if self._loop.get_debug():
+                logger.info("%s has been ready.", object_id)
+            future = PlasmaObjectFuture(self._loop,
+                                        plasma.ObjectID(object_id.id()))
+            future.complete()
+            processed[mapping[object_id]] = future
+
+        for object_id in pending:
+            processed[mapping[object_id]] = self.as_future(object_id, False)
+
         return processed, selection_vector
 
     async def get(self, object_ids: RayAsyncParamsType):

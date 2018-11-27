@@ -36,13 +36,6 @@ def shutdown():
         protocol = None
 
 
-def as_future(object_id):
-    if handler is None:
-        # Blocking here because we do not want this API to be async.
-        asyncio.get_event_loop().run_until_complete(init())
-    return handler.as_future(object_id)
-
-
 def create_group(return_exceptions=False,
                        keep_duplicated=True,
                        worker=ray.worker.global_worker) -> PlasmaFutureGroup:
@@ -68,7 +61,7 @@ def create_group(return_exceptions=False,
         keep_duplicated=keep_duplicated)
 
 
-async def get(object_ids: RayAsyncParamsType, worker=ray.worker.global_worker):
+async def get(object_ids: RayAsyncParamsType):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -86,7 +79,7 @@ async def get(object_ids: RayAsyncParamsType, worker=ray.worker.global_worker):
         A Python object or a list of Python objects.
     """
 
-    worker.check_connected()
+    ray.worker.global_worker.check_connected()
     if handler is None:
         await init()
     return await handler.get(object_ids)
@@ -94,8 +87,7 @@ async def get(object_ids: RayAsyncParamsType, worker=ray.worker.global_worker):
 
 async def wait(object_ids: RayAsyncParamsType,
                num_returns=1,
-               timeout=None,
-               worker=ray.worker.global_worker):
+               timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -137,7 +129,7 @@ async def wait(object_ids: RayAsyncParamsType,
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
             type(object_ids)))
 
-    worker.check_connected()
+    ray.worker.global_worker.check_connected()
     if handler is None:
         await init()
 

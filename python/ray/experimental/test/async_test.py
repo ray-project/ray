@@ -6,13 +6,14 @@ import asyncio
 import time
 
 import pytest
+
 import ray
 import ray.experimental.async_api as async_api
 
 
 @pytest.fixture
 def init():
-    ray.init()
+    ray.init(num_cpus=4)
     asyncio.get_event_loop().set_debug(False)
     asyncio.get_event_loop().run_until_complete(async_api.init())
     yield
@@ -114,7 +115,7 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [f.remote(1), g(7), f.remote(4), g(2)]
+    tasks = [f.remote(0.1), g(7), f.remote(5), g(2)]
     ready, _ = asyncio.get_event_loop().run_until_complete(
-        async_api.wait(tasks, timeout=3000, num_returns=4))
+        async_api.wait(tasks, timeout=4000, num_returns=4))
     assert set(ready) == {tasks[0], tasks[-1]}
