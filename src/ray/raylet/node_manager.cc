@@ -543,9 +543,9 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       }
       // Maintain the invariant that if a task is in the
       // MethodsWaitingForActorCreation queue, then it is subscribed to its
-      // respective actor creation task. Since the actor location is now known,
-      // we can remove the task from the queue and forget its dependency on the
-      // actor creation task.
+      // respective actor creation task and that task only. Since the actor
+      // location is now known, we can remove the task from the queue and
+      // forget its dependency on the actor creation task.
       RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
           method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
@@ -1164,9 +1164,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // The actor has not yet been created and may have failed. To make sure
       // that the actor is eventually recreated, we maintain the invariant that
       // if a task is in the MethodsWaitingForActorCreation queue, then it is
-      // subscribed to its respective actor creation task.  Once the actor has
-      // been created and this method removed from the waiting queue, the
-      // caller must make the corresponding call to UnsubscribeDependencies.
+      // subscribed to its respective actor creation task and that task only.
+      // Once the actor has been created and this method removed from the
+      // waiting queue, the caller must make the corresponding call to
+      // UnsubscribeDependencies.
       task_dependency_manager_.SubscribeDependencies(spec.TaskId(),
                                                      {spec.ActorCreationDummyObjectId()});
       // Mark the task as pending. It will be canceled once we discover the

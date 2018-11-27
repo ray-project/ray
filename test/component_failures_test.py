@@ -38,15 +38,14 @@ def shutdown_only():
 
 @pytest.fixture
 def ray_start_cluster():
-    num_workers = 8
     node_args = {
-        "resources": dict(CPU=num_workers),
+        "resources": dict(CPU=8),
         "_internal_config": json.dumps({
             "initial_reconstruction_timeout_milliseconds": 1000,
             "num_heartbeats_timeout": 10
         })
     }
-    # Start with 4 workers and 4 cores.
+    # Start with 4 worker nodes and 8 cores each.
     g = Cluster(initialize_head=True, connect=True, head_node_args=node_args)
     workers = []
     for _ in range(4):
