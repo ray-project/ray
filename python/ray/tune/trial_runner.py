@@ -116,11 +116,6 @@ class TrialRunner(object):
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
-            if self._checkpoint_freq:
-                if self._iteration % self._checkpoint_freq == 0:
-                    self.save()
-
-            self._iteration += 1
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
@@ -283,17 +278,14 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                if trial.should_checkpoint(result):
-                    # TODO(rliaw): This is a blocking call
-                    self.trial_executor.save(trial)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                if trial.should_checkpoint(result):
-                    self.trial_executor.save(trial)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -320,11 +312,6 @@ class TrialRunner(object):
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
-
-            try:
-                self._trial_checkpoints[trial] = pickle.dumps(trial)
-            except ValueError:
-                logger.exception("Error checkpointing full trial state.")
 
     def try_recover(self, trial, error_msg):
         """Tries to recover trial.
