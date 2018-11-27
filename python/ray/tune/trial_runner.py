@@ -11,7 +11,7 @@ import traceback
 
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, DEFAULT_RESULTS_DIR
+from ray.tune.result import TIME_THIS_ITER_S
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
