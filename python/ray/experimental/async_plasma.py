@@ -376,7 +376,6 @@ class PlasmaEventHandler:
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
 
-
         plain_object_id = plasma.ObjectID(object_id.id())
         fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
 
