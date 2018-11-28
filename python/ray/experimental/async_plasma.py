@@ -91,8 +91,7 @@ class PlasmaObjectFuture(asyncio.Future):
         self.set_result(self.object_id)
 
     def __repr__(self):
-        return super().__repr__() + "{object_id=%s, ref_count=%d}" % (
-            self.object_id, self.ref_count)
+        return super().__repr__() + "{object_id=%s}" % self.object_id
 
 
 class PlasmaObjectLinkedList(asyncio.Future):
