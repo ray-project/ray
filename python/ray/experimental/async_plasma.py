@@ -114,7 +114,7 @@ class PlasmaObjectLinkedList(asyncio.Future):
 
     def remove(self, future: PlasmaObjectFuture):
         if self._loop.get_debug():
-            logger.info("Removing %s from the linked list.", future)
+            logger.debug("Removing %s from the linked list.", future)
         if future.prev is None:
             assert future is self.head
             self.head = future.next
@@ -382,7 +382,7 @@ class PlasmaEventHandler:
             ready, _ = ray.wait([object_id], timeout=0)
             if ready:
                 if self._loop.get_debug():
-                    logger.info("%s has been ready.", plain_object_id)
+                    logger.debug("%s has been ready.", plain_object_id)
                 fut.complete()
                 return fut
 
@@ -392,15 +392,15 @@ class PlasmaEventHandler:
             self._waiting_dict[plain_object_id] = linked_list
         self._waiting_dict[plain_object_id].append(fut)
         if self._loop.get_debug():
-            logger.info("%s added to the waiting list.", fut)
+            logger.debug("%s added to the waiting list.", fut)
 
         return fut
 
-    def _convert(self, object_ids):
+    def _convert(self, ray_async_objects):
         original = []
         processed = []
         selection_vector = []
-        for i, obj in enumerate(object_ids):
+        for i, obj in enumerate(ray_async_objects):
             if isinstance(obj, ray.ObjectID):
                 original.append(obj)
                 selection_vector.append(i)
@@ -414,7 +414,7 @@ class PlasmaEventHandler:
         ready, pending = ray.wait(original, timeout=0)
         for object_id in ready:
             if self._loop.get_debug():
-                logger.info("%s has been ready.", object_id)
+                logger.debug("%s has been ready.", object_id)
             future = PlasmaObjectFuture(self._loop,
                                         plasma.ObjectID(object_id.id()))
             future.complete()
@@ -425,33 +425,36 @@ class PlasmaEventHandler:
 
         return processed, selection_vector
 
-    async def get(self, object_ids: RayAsyncParamsType):
-        if not isinstance(object_ids, list):
-            if inspect.isawaitable(object_ids):
-                return await object_ids
-            plain_ready_id = await self.as_future(object_ids)
+    async def gather(self, ray_async_objects: List[RayAsyncType]):
+        processed, selection_vector = self._convert(ray_async_objects)
+        fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
+        fut.extend(processed)
+        results = await fut
+        plain_ready_ids = [results[i] for i in selection_vector]
+        objs = self._worker.retrieve_and_deserialize(plain_ready_ids, 0)
+        for i, obj in enumerate(objs):
+            results[selection_vector[i]] = obj
+        return results
+
+    async def get(self, ray_async_objects: RayAsyncParamsType):
+        if not isinstance(ray_async_objects, list):
+            if inspect.isawaitable(ray_async_objects):
+                return await ray_async_objects
+            plain_ready_id = await self.as_future(ray_async_objects)
             return self._worker.retrieve_and_deserialize([plain_ready_id], 0)[
                 0]
         else:
-            processed, selection_vector = self._convert(object_ids)
-            fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
-            fut.extend(processed)
-            results = await fut
-            plain_ready_ids = [results[i] for i in selection_vector]
-            objs = self._worker.retrieve_and_deserialize(plain_ready_ids, 0)
-            for i, obj in enumerate(objs):
-                results[selection_vector[i]] = obj
-            return results
+            return await self.gather(ray_async_objects)
 
     async def wait(self,
-                   object_ids: List[Union[ray.ObjectID, Awaitable]],
+                   ray_async_objects: List[RayAsyncType],
                    num_returns=1,
                    timeout=None,
                    return_exact_num=True):
         """This method corresponds to `ray.wait`.
 
         Args:
-            object_ids (RayAsyncParamsType):
+            ray_async_objects (RayAsyncParamsType):
                 A list of single object_id, future, coroutine.
             timeout (float):
                 The timeout in seconds (`ray.wait` use milliseconds).
@@ -463,7 +466,7 @@ class PlasmaEventHandler:
             Tuple[List, List]: Ready futures & unready ones.
         """
 
-        processed, selection_vector = self._convert(object_ids)
+        processed, selection_vector = self._convert(ray_async_objects)
         temp = {processed[i] for i in selection_vector}
 
         fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)

@@ -26,6 +26,12 @@ async def init():
             sock=rsock)
 
 
+async def _ensure_init():
+    ray.worker.global_worker.check_connected()
+    if handler is None:
+        await init()
+
+
 def shutdown():
     """Cleanup the eventloop. Restore original eventloop."""
     global handler, transport, protocol
@@ -36,32 +42,27 @@ def shutdown():
         protocol = None
 
 
-def create_group(return_exceptions=False,
-                       keep_duplicated=True,
-                       worker=ray.worker.global_worker) -> PlasmaFutureGroup:
+async def create_group(return_exceptions=False,
+                       keep_duplicated=True) -> PlasmaFutureGroup:
     """This function creates an instance of `PlasmaFutureGroup`.
 
     Args:
         return_exceptions(bool): If true, return exceptions as results
             instead of raising them.
         keep_duplicated(bool): If true, an future can be added multiple times.
-        worker: Ray's worker.
 
     Returns:
         A `PlasmaFutureGroup` instance.
     """
 
-    worker.check_connected()
-    if handler is None:
-        # Blocking here because we do not want this API to be async.
-        asyncio.get_event_loop().run_until_complete(init())
+    await _ensure_init()
     return PlasmaFutureGroup(
         handler,
         return_exceptions=return_exceptions,
         keep_duplicated=keep_duplicated)
 
 
-async def get(object_ids: RayAsyncParamsType):
+async def get(ray_async_objects: RayAsyncParamsType):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -71,7 +72,7 @@ async def get(object_ids: RayAsyncParamsType):
     corresponding to each object in the list will be returned.
 
     Args:
-        object_ids (RayAsyncParamsType): Object ID of the object to get
+        ray_async_objects (RayAsyncParamsType): Object ID of the object to get
             or a list of object IDs to get.
             Futures & coroutines containing IDs is also acceptable.
 
@@ -79,13 +80,16 @@ async def get(object_ids: RayAsyncParamsType):
         A Python object or a list of Python objects.
     """
 
-    ray.worker.global_worker.check_connected()
-    if handler is None:
-        await init()
-    return await handler.get(object_ids)
+    await _ensure_init()
+    return await handler.get(ray_async_objects)
 
 
-async def wait(object_ids: RayAsyncParamsType,
+async def gather(ray_async_objects: RayAsyncParamsType):
+    await _ensure_init()
+    return await handler.gather(ray_async_objects)
+
+
+async def wait(ray_async_objects: RayAsyncParamsType,
                num_returns=1,
                timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
@@ -105,7 +109,7 @@ async def wait(object_ids: RayAsyncParamsType,
     list.
 
     Args:
-        object_ids (RayAsyncParamsType): List of object IDs
+        ray_async_objects (RayAsyncParamsType): List of object IDs
             (also futures & coroutines contain an ID) for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
@@ -121,30 +125,28 @@ async def wait(object_ids: RayAsyncParamsType,
             the pending inputs.
     """
 
-    if isinstance(object_ids, ray.ObjectID):
+    if isinstance(ray_async_objects, ray.ObjectID):
         raise TypeError(
             "wait() expected a list of ObjectID, got a single ObjectID")
 
-    if not isinstance(object_ids, list):
+    if not isinstance(ray_async_objects, list):
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
-            type(object_ids)))
+            type(ray_async_objects)))
 
-    ray.worker.global_worker.check_connected()
-    if handler is None:
-        await init()
+    await _ensure_init()
 
     # TODO(rkn): This is a temporary workaround for
     # https://github.com/ray-project/ray/issues/997. However, it should be
     # fixed in Arrow instead of here.
-    if len(object_ids) == 0:
+    if len(ray_async_objects) == 0:
         return [], []
 
-    if len(object_ids) != len(set(object_ids)):
+    if len(ray_async_objects) != len(set(ray_async_objects)):
         raise Exception("Wait requires a list of unique object IDs.")
     if num_returns <= 0:
         raise Exception(
             "Invalid number of objects to return %d." % num_returns)
-    if num_returns > len(object_ids):
+    if num_returns > len(ray_async_objects):
         raise Exception("num_returns cannot be greater than the number "
                         "of objects provided to ray.wait.")
 
@@ -153,4 +155,4 @@ async def wait(object_ids: RayAsyncParamsType,
         timeout = timeout / 1000
 
     return await handler.wait(
-        object_ids, num_returns=num_returns, timeout=timeout)
+        ray_async_objects, num_returns=num_returns, timeout=timeout)
