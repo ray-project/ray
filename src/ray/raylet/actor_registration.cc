@@ -10,7 +10,6 @@ namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
     : actor_table_data_(actor_table_data),
-      alive_(true),
       execution_dependency_(ObjectID::nil()),
       frontier_() {}
 
@@ -44,16 +43,7 @@ bool ActorRegistration::IsAlive() const {
   return actor_table_data_.state == ActorState::ALIVE;
 }
 
-std::string ActorRegistration::DebugString() const {
-  std::stringstream result;
-  if (alive_) {
-    result << "alive";
-  } else {
-    result << "dead";
-  }
-  result << ", num handles: " << frontier_.size();
-  return result.str();
-}
+int ActorRegistration::NumHandles() const { return frontier_.size(); }
 
 }  // namespace raylet
 

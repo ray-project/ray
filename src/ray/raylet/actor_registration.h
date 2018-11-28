@@ -94,17 +94,15 @@ class ActorRegistration {
   /// \return True if the local actor is alive and false if it is dead.
   bool IsAlive() const;
 
-  /// Returns debug string for class.
+  /// Returns num handles to this actor entry.
   ///
-  /// \return string.
-  std::string DebugString() const;
+  /// \return int.
+  int NumHandles() const;
 
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
   ActorTableDataT actor_table_data_;
-  /// True if the actor is alive and false otherwise.
-  bool alive_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.
