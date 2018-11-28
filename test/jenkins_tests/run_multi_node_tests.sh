@@ -258,6 +258,15 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_external_env.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=PG --stop=50
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=PPO --stop=50
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=DQN --stop=50
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \

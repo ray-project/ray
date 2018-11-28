@@ -110,6 +110,11 @@ class PPOAgent(Agent):
                 and not self.config["simple_optimizer"]):
             logger.warn("forcing simple_optimizer=True in multi-agent mode")
             self.config["simple_optimizer"] = True
+        if self.config["observation_filter"] != "NoFilter":
+            # TODO(ekl): consider setting the default to be NoFilter
+            logger.warn(
+                "By default, observations will be normalized with {}".format(
+                    self.config["observation_filter"]))
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
