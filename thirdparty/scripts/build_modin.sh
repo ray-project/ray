@@ -24,7 +24,7 @@ mkdir modin
 pushd modin
 curl -k "$MODIN_WHEELS_URL$MODIN_WHEELS_FNAME.whl" -o "$MODIN_WHEELS_FNAME.whl"
 #mv "$MODIN_WHEELS_FNAME.whl" "$MODIN_WHEELS_FNAME.ZIP"
-unzip $MODIN_WHEELS_FNAME
+unzip "$MODIN_WHEELS_FNAME.whl"
 rm "$MODIN_WHEELS_FNAME.ZIP"
 popd
 popd
