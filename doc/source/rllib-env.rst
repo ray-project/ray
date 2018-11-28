@@ -7,20 +7,22 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 **Compatibility matrix**:
 
-=============  ================  ==================  ===========  ==================
-Algorithm      Discrete Actions  Continuous Actions  Multi-Agent  Recurrent Policies
-=============  ================  ==================  ===========  ==================
-A2C, A3C        **Yes**           **Yes**             **Yes**      **Yes**
-PPO             **Yes**           **Yes**             **Yes**      **Yes**
-PG              **Yes**           **Yes**             **Yes**      **Yes**
-IMPALA          **Yes**           No                  **Yes**      **Yes**
-DQN, Rainbow    **Yes**           No                  **Yes**      No
-DDPG, TD3       No                **Yes**             **Yes**      No
-APEX-DQN        **Yes**           No                  **Yes**      No
-APEX-DDPG       No                **Yes**             **Yes**      No
-ES              **Yes**           **Yes**             No           No
-ARS             **Yes**           **Yes**             No           No
-=============  ================  ==================  ===========  ==================
+=============  =======================  ==================  ===========  ==================
+Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
+=============  =======================  ==================  ===========  ==================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
+DDPG, TD3       No                      **Yes**             **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
+APEX-DDPG       No                      **Yes**             **Yes**      No
+ES              **Yes**                 **Yes**             No           No
+ARS             **Yes**                 **Yes**             No           No
+=============  =======================  ==================  ===========  ==================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 

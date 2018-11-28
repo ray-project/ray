@@ -56,7 +56,7 @@ Algorithms
 
    -  `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
 
-   -  `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
+   -  `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
 
    -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 
@@ -75,6 +75,7 @@ Models and Preprocessors
 * `Custom Models <rllib-models.html#custom-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
 RLlib Concepts
