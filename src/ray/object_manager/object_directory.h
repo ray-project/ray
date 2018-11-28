@@ -104,6 +104,11 @@ class ObjectDirectoryInterface {
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
 
+  /// Get local client id
+  ///
+  /// \return ClientID
+  virtual ray::ClientID GetLocalClientID() = 0;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -144,6 +149,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
+
+  ray::ClientID GetLocalClientID() override;
 
   std::string DebugString() const override;
 
