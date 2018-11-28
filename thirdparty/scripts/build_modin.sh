@@ -22,7 +22,7 @@ pushd $TP_DIR/../python/ray/
 rm -rf modin
 mkdir modin
 pushd modin
-wget --no-check-certificate "$MODIN_WHEELS_URL$MODIN_WHEELS_FNAME"
+curl -k "$MODIN_WHEELS_URL$MODIN_WHEELS_FNAME"
 unzip $MODIN_WHEELS_FNAME
 rm $MODIN_WHEELS_FNAME
 popd
