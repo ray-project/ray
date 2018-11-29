@@ -7,7 +7,13 @@ import json
 import logging
 import numpy as np
 import os
+from six.moves.urllib.parse import urlparse
 import time
+
+try:
+    from smart_open import smart_open
+except ImportError:
+    smart_open = None
 
 from ray.rllib.io.output_writer import OutputWriter
 from ray.rllib.evaluation.sample_batch import SampleBatch
@@ -28,11 +34,16 @@ class JsonWriter(OutputWriter):
         self.path = path
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
-        try:
-            os.makedirs(path)
-        except OSError:
-            pass  # already exists
-        assert os.path.exists(path), "Failed to create {}".format(path)
+        if urlparse(path).scheme:
+            self.path_is_uri = True
+        else:
+            # Try to create local dirs if they don't exist
+            try:
+                os.makedirs(path)
+            except OSError:
+                pass  # already exists
+            assert os.path.exists(path), "Failed to create {}".format(path)
+            self.path_is_uri = False
         self.file_index = 0
         self.bytes_written = 0
         self.cur_file = None
@@ -54,11 +65,17 @@ class JsonWriter(OutputWriter):
             if self.cur_file:
                 self.cur_file.close()
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            self.cur_file = open(
-                os.path.join(
-                    self.path, "output-{}_worker-{}_{}.json".format(
-                        timestr, self.ioctx.worker_index, self.file_index)),
-                "w")
+            path = os.path.join(
+                self.path, "output-{}_worker-{}_{}.json".format(
+                    timestr, self.ioctx.worker_index, self.file_index))
+            if self.path_is_uri:
+                if smart_open is None:
+                    raise ValueError(
+                        "You must install the `smart_open` module to write "
+                        "to URIs like {}".format(path))
+                self.cur_file = smart_open(path, "w")
+            else:
+                self.cur_file = open(path, "w")
             self.file_index += 1
             logger.info("Writing to new output file {}".format(self.cur_file))
         return self.cur_file

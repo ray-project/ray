@@ -22,8 +22,9 @@ def parse_output_spec(spec, logdir):
         elif spec.startswith("json:"):
             path = spec[5:]
         else:
-            raise ValueError("Output spec must be of format: 'json[:path]', "
-                             "got: {}".format(spec))
+            raise ValueError(
+                "Output spec must be of format: 'json[:path|:scheme:uri]', "
+                "got: {}".format(spec))
 
         def spec(ioctx):
             return JsonWriter(ioctx, path)
