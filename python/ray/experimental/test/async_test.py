@@ -17,8 +17,8 @@ def init():
     asyncio.get_event_loop().set_debug(False)
     asyncio.get_event_loop().run_until_complete(async_api.init())
     yield
-    ray.shutdown()
     async_api.shutdown()
+    ray.shutdown()
 
 
 def gen_tasks(time_scale=0.1):

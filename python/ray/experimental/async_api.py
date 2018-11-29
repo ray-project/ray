@@ -33,10 +33,12 @@ async def _ensure_init():
 
 
 def shutdown():
-    """Cleanup the eventloop. Restore original eventloop."""
+    """Manually shutdown the async API.
+    Cancel all related tasks and all the socket transportation."""
     global handler, transport, protocol
     if handler is not None:
         handler.close()
+        transport.close()
         handler = None
         transport = None
         protocol = None

@@ -141,7 +141,8 @@ class PlasmaObjectLinkedList(asyncio.Future):
             self.head = future.next
             if self.head is None:
                 self.tail = None
-                self.set_result(None)
+                if not self.cancelled():
+                    self.set_result(None)
             else:
                 self.head.prev = None
         elif future.next is None:
@@ -149,9 +150,30 @@ class PlasmaObjectLinkedList(asyncio.Future):
             self.tail = future.prev
             if self.tail is None:
                 self.head = None
-                self.set_result(None)
+                if not self.cancelled():
+                    self.set_result(None)
             else:
                 self.tail.prev = None
+
+    def cancel(self, *args, **kwargs):
+        """Manually cancel all tasks assigned to this event loop."""
+        # Because remove all futures will trigger `set_result`,
+        # we cancel itself first.
+        super().cancel()
+        for future in self.traverse():
+            # All cancelled futures should have callbacks to removed itself
+            # from this linked list. However, these callbacks are scheduled in
+            # an event loop, so we could still find them in our list.
+            if not future.cancelled():
+                future.cancel()
+
+    def complete(self):
+        """Complete all tasks. """
+        for future in self.traverse():
+            # All cancelled futures should have callbacks to removed itself
+            # from this linked list. However, these callbacks are scheduled in
+            # an event loop, so we could still find them in our list.
+            future.complete()
 
     def traverse(self):
         """Traverse this linked list.
@@ -395,14 +417,15 @@ class PlasmaEventHandler:
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
                 linked_list = self._waiting_dict[object_id]
-                for future in linked_list.traverse():
-                    if future.cancelled():
-                        continue
-                    future.complete()
+                linked_list.complete()
 
     def close(self):
         """Clean up this handler."""
-        self._waiting_dict.clear()
+        for linked_list in self._waiting_dict.values():
+            linked_list.cancel()
+        # All cancelled linked lists should have callbacks to removed itself
+        # from the waiting dict. However, these callbacks are scheduled in
+        # an event loop, so we don't check them now.
 
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
         del self._waiting_dict[fut.object_id]
