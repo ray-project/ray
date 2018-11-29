@@ -11,7 +11,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
-from ray.rllib.io import NoopOutput
+from ray.rllib.io import NoopOutput, parse_input_spec, parse_output_spec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -128,7 +128,7 @@ COMMON_CONFIG = {
     # "json:/path/to/dir" to specify the default json input reader.
     "input": lambda ioctx: ioctx.default_env_input(),
     # Function that creates an new rllib.io.OutputWriter, or one of
-    # {"json:logdir", "json:/path/to/dir"} to specify the default json writer.
+    # {"json", "json:/path/to/dir"} to specify the default json writer.
     "output": lambda ioctx: NoopOutput(),
 
     # === Multiagent ===
@@ -242,8 +242,8 @@ class Agent(Trainable):
             monitor_path=self.logdir if config["monitor"] else None,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
-            input_creator=config["input"],
-            output_creator=config["output"])
+            input_creator=parse_input_spec(config["input"]),
+            output_creator=parse_output_spec(config["output"], self.logdir))
 
     @classmethod
     def resource_help(cls, config):
