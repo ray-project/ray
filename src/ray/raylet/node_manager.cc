@@ -541,6 +541,13 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                          << " already removed from the lineage cache. This is most "
                             "likely due to reconstruction.";
       }
+      // Maintain the invariant that if a task is in the
+      // MethodsWaitingForActorCreation queue, then it is subscribed to its
+      // respective actor creation task and that task only. Since the actor
+      // location is now known, we can remove the task from the queue and
+      // forget its dependency on the actor creation task.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+          method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
@@ -1154,6 +1161,15 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // The actor has not yet been created and may have failed. To make sure
+      // that the actor is eventually recreated, we maintain the invariant that
+      // if a task is in the MethodsWaitingForActorCreation queue, then it is
+      // subscribed to its respective actor creation task and that task only.
+      // Once the actor has been created and this method removed from the
+      // waiting queue, the caller must make the corresponding call to
+      // UnsubscribeDependencies.
+      task_dependency_manager_.SubscribeDependencies(spec.TaskId(),
+                                                     {spec.ActorCreationDummyObjectId()});
       // Mark the task as pending. It will be canceled once we discover the
       // actor's location and either execute the task ourselves or forward it
       // to another node.
@@ -1431,7 +1447,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
-    RAY_CHECK(actor_registry_.find(actor_id) == actor_registry_.end());
+    RAY_CHECK(actor_registry_.find(actor_id) == actor_registry_.end())
+        << "Created an actor that already exists";
     auto actor_data = std::make_shared<ActorTableDataT>();
     actor_data->actor_id = actor_id.binary();
     actor_data->actor_creation_dummy_object_id =
@@ -1447,6 +1464,10 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // index in the log should succeed.
     auto failure_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
                                const ActorTableDataT &data) {
+      // TODO(swang): Instead of making this a fatal check, we could just kill
+      // the duplicate actor process. If we do this, we must make sure to
+      // either resubmit the tasks that went to the duplicate actor, or wait
+      // for success before handling the actor state transition to ALIVE.
       RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
     };
     RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
