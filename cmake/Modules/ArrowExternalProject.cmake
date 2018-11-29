@@ -18,7 +18,7 @@ set(arrow_URL https://github.com/robertnishihara/arrow.git)
 # The PR for this commit is https://github.com/apache/arrow/pull/2826. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-set(arrow_TAG f4340946caa082199256d4ef8fff0a2e86873a80)
+set(arrow_TAG 0db9154bdcf8c8c2cc99bf81516ca9832f8a4cfc)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
