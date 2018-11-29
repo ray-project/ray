@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
-    # Use the sync samples optimizer instead of the multi-gpu one. This does
+    # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
 })
