@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.io.output_writer import OutputWriter
+
 
 class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
@@ -17,4 +19,5 @@ class JsonWriter(OutputWriter):
         assert os.path.exists(path), "Failed to create {}".format(path)
 
     def write(self, sample_batch):
-        raise NotImplementedError
+        print("Writing to", self.path)
+        print(sample_batch)
