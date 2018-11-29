@@ -19,7 +19,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.io import NoopOutput
+from ray.rllib.io import NoopOutput, IOContext
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter

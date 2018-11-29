@@ -11,7 +11,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
-from ray.rllib.io.output_writer import NoopOutput
+from ray.rllib.io import NoopOutput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
