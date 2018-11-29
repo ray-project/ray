@@ -171,6 +171,9 @@ script:
   # ray temp file tests
   - python -m pytest -v test/tempfile_test.py
 
+  # modin test files
+  - python python/ray/test/test_modin.py
+
 deploy:
   - provider: s3
     access_key_id: AKIAJ2L7XDUSZVTXI5QA
