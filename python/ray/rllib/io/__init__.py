@@ -23,8 +23,8 @@ def parse_output_spec(spec, logdir):
             path = spec[5:]
         else:
             raise ValueError(
-                "Output spec must be of format: "
-                "'json[[:scheme]:/path/to/dir]', got: {}".format(spec))
+                "Output spec must be of format: 'json' or "
+                "'json:[scheme:]/path/to/dir', got: {}".format(spec))
 
         def spec(ioctx):
             return JsonWriter(ioctx, path)

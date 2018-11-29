@@ -124,11 +124,13 @@ COMMON_CONFIG = {
     "collect_metrics_timeout": 180,
 
     # === Experience Input / Output ===
-    # Function that creates a new rllib.io.InputReader, or
-    # "json:/path/to/dir" to specify the default json input reader.
+    # Either a function that creates a new rllib.io.InputReader, an address
+    # to a file or directory of form "json:[scheme:]/path/to/dir", or a Python
+    # list of such addresses to specify sources for a JsonReader.
     "input": lambda ioctx: ioctx.default_env_input(),
-    # Function that creates an new rllib.io.OutputWriter, or of the format
-    # "json[[:scheme]:/path/to/dir]" to specify the default json writer.
+    # Either a function that creates a new rllib.io.OutputWriter, or an address
+    # string like "json" or "json:[scheme:]/path/to/dir" to specify the
+    # destination for a JsonWriter.
     "output": lambda ioctx: NoopOutput(),
 
     # === Multiagent ===
