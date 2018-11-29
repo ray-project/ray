@@ -150,6 +150,8 @@ class Deterministic(ActionDistribution):
 def squash_to_range(dist_cls, low, high):
     """Squashes an action distribution to a range in (low, high).
 
+    This is deprecated. See the clip_actions agent option instead.
+
     Arguments:
         dist_cls (class): ActionDistribution class to wrap.
         low (float|array): Scalar value or array of values.

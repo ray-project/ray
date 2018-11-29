@@ -38,7 +38,7 @@ MODEL_DEFAULTS = {
     "fcnet_hiddens": [256, 256],
     # For control envs, documented in ray.rllib.models.Model
     "free_log_std": False,
-    # Whether to squash the action output to space range
+    # (deprecated) Whether to use sigmoid to squash actions to space range
     "squash_to_range": False,
 
     # == LSTM ==
@@ -114,6 +114,9 @@ class ModelCatalog(object):
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
+                    logger.warn(
+                        "The squash_to_range option is deprecated and will "
+                        "be removed in a future release.")
                     dist = squash_to_range(dist, action_space.low,
                                            action_space.high)
                 return dist, action_space.shape[0] * 2
