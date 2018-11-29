@@ -97,7 +97,12 @@ class _JsonLogger(Logger):
     def _init(self):
         config_out = os.path.join(self.logdir, "params.json")
         with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=_SafeFallbackEncoder)
+            json.dump(
+                self.config,
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=_SafeFallbackEncoder)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
 
