@@ -15,8 +15,7 @@ from ray.rllib.env.async_vector_env import _ExternalEnvToAsync
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
-    squash_to_range)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -114,11 +113,9 @@ class ModelCatalog(object):
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
-                    logger.warn(
-                        "The squash_to_range option is deprecated and will "
-                        "be removed in a future release.")
-                    dist = squash_to_range(dist, action_space.low,
-                                           action_space.high)
+                    raise ValueError(
+                        "The squash_to_range option is deprecated. See the "
+                        "clip_actions agent option instead.")
                 return dist, action_space.shape[0] * 2
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
