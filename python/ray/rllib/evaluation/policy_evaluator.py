@@ -110,6 +110,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_dir=None,
                  log_level=None,
                  callbacks=None,
+                 input_creator=lambda ioctx: ioctx.default_env_input(),
                  output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
@@ -174,6 +175,8 @@ class PolicyEvaluator(EvaluatorInterface):
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (dict): Dict of custom debug callbacks.
+            input_creator (func): Function that returns an InputReader object
+                for loading previous generated experiences.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
         """

@@ -11,6 +11,7 @@ from datetime import datetime
 import tensorflow as tf
 
 import ray
+from ray.rllib.io.output_writer import NoopOutput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -122,6 +123,14 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
+    # === Experience Input / Output ===
+    # Function that creates a new rllib.io.InputReader, or
+    # "json:/path/to/dir" to specify the default json input reader.
+    "input": lambda ioctx: ioctx.default_env_input(),
+    # Function that creates an new rllib.io.OutputWriter, or one of
+    # {"json:logdir", "json:/path/to/dir"} to specify the default json writer.
+    "output": lambda ioctx: NoopOutput(),
+
     # === Multiagent ===
     "multiagent": {
         # Map from policy ids to tuples of (policy_graph_cls, obs_space,
@@ -232,7 +241,9 @@ class Agent(Trainable):
             worker_index=worker_index,
             monitor_path=self.logdir if config["monitor"] else None,
             log_level=config["log_level"],
-            callbacks=config["callbacks"])
+            callbacks=config["callbacks"],
+            input_creator=config["input"],
+            output_creator=config["output"])
 
     @classmethod
     def resource_help(cls, config):
