@@ -23,7 +23,7 @@ class Model(object):
 
     Attributes:
         input_dict (dict): Dictionary of input tensors, including "obs",
-            "prev_action", "prev_reward".
+            "prev_action", "prev_reward", "is_training".
         outputs (Tensor): The output vector of this model, of shape
             [BATCH_SIZE, num_outputs].
         last_layer (Tensor): The feature layer right before the model output,
@@ -108,7 +108,7 @@ class Model(object):
 
         Arguments:
             input_dict (dict): Dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward".
+                "prev_action", "prev_reward", "is_training".
             num_outputs (int): Output tensor must be of size
                 [BATCH_SIZE, num_outputs].
             options (dict): Model options.
@@ -124,6 +124,7 @@ class Model(object):
             >>> print(input_dict)
             {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
              'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+             'is_training': <tf.Tensor shape=(), dtype=bool>,
              'obs': OrderedDict([
                 ('sensors', OrderedDict([
                     ('front_cam', [

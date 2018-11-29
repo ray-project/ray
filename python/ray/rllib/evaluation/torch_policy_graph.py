@@ -72,7 +72,6 @@ class TorchPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
