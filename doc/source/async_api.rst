@@ -1,8 +1,13 @@
 The Async Ray API
 =================
 
-Currently, APIs like `ray.get` or `ray.wait` are blocking, limiting flexibility in some scenarios.
-This document talks about alternative APIs that enable asynchronous execution.
+Many web applications & prediction serving service today heavily rely on asynchronous execution to gain performance.
+Since version 3.5, a set of basic async interfaces has been introduced to Python,
+making it more feasible to program asynchronously,
+and popular async frameworks (aiohttp, aioredis, etc.) are emerging,
+indicating the power of asynchronous APIs.
+
+This document talks about asynchronous APIs in Ray.
 
 Starting Ray
 ------------
@@ -12,16 +17,14 @@ Please refer to `Starting Ray`_ for instructions.
 .. _`Starting Ray`: http://ray.readthedocs.io/en/latest/tutorial.html#starting-ray
 
 
-Initialize & finalize Async Ray APIs
+Initialize & shutdown Async Ray APIs
 ------------------------------------
 
-Async Ray APIs can be initialized by calling any related functions.
-But users could call `ray.experimental.async_api.init` ahead of time to specify properties of the underlying eventloop.
+Async Ray APIs can be initialized automatically by calling any related functions.
+But users could call `ray.experimental.async_api.init` ahead of time.
 
-Once the APIs are initialized, an eventloop will be created and replace the default eventloop in `asyncio`.
-The new eventloop does not support system-related async operations.
-
-Users can shutdown the eventloop and restore the original one by calling `ray.experimental.async_api.shutdown`.
+Users can manually shutdown the APIs by calling `ray.experimental.async_api.shutdown`.
+Shutdown the API will cancel all related pending tasks.
 
 Getting values from object IDs
 ------------------------------
@@ -41,7 +44,7 @@ ID.
 
   @ray.remote
   def f():
-      time.sleep(1000)
+      time.sleep(1)
       return {'key1': ['value']}
 
   # Get one object ID. The async get will return immediately.
@@ -208,32 +211,3 @@ The key is about a method called `set_halt_condition` which could register a con
 Change the condition function to decide when `PlasmaFutureGroup` should be marked as finished.
 
 .. autofunction:: ray.experimental.async_api.create_group
-
-The async mechanism
--------------------
-
-This paragraph says something deeper about the mechanism and how to be more efficient.
-
-If you compare Ray's ObjectID to the socket fd, you will find in some aspects they work quite the same.
-So a simple idea is that we could learn the mature asynchronous mechanism of websocket and apply them to Ray.
-
-Python3.4+ has already have a sophisticated asynchronous socket library called `asyncio`
-and our implementation follows `asyncio` and is compatible to it.
-
-Eventloops and selectors play decisive roles in efficient asynchronous. They are implemented in `ray.experimental.plasma_eventloop`.
-
-`PlasmaSelectorEventLoop` inherits form asyncio's eventloop. It schedules all tasks assigned to it and that comes asynchronous.
-
-Selectors watch over a batch of ObjectIDs and return ready ones within a certain time interval.
-We have implemented two kind of selectors: `PlasmaPoll` & `PlasmaEpoll`.
-`PlasmaPoll` works by making use of `ray.wait`, which makes it something like Linux's `poll` because it is stateless.
-`PlasmaEpoll` works by making use of subscribe interface of plasma_client, which makes it something like Linux's `epoll`.
-
-To be more efficient, a better selector is needed. We could implement selectors in C++ later.
-
-In theory, `PlasmaEpoll` is supposed to be more efficient than `PlasmaPoll` (the known C10K problem).
-But currently we don't really make use of `timeout` in `PlasmaEpoll` because
-the subscribe interface of PlasmaClient hasn't implemented it yet. Watch over https://issues.apache.org/jira/browse/ARROW-2759 for their progress.
-
-Lack of timeout control could suspending the eventloop, making it unable to schedule other jobs
-if there will not be any ready ObjectIDs later (not too often though).

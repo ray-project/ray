@@ -8,7 +8,7 @@ import time
 import pytest
 
 import ray
-import ray.experimental.async_api as async_api
+from ray.experimental import async_api
 
 
 @pytest.fixture
