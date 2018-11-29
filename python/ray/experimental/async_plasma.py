@@ -13,7 +13,7 @@ RayAsyncType = Union[ray.ObjectID, Awaitable]
 RayAsyncParamsType = Union[RayAsyncType, List[RayAsyncType]]
 
 
-def _release_waiter(waiter, *args):
+def _release_waiter(waiter, *_):
     if not waiter.done():
         waiter.set_result(None)
 
@@ -72,9 +72,7 @@ class PlasmaObjectFuture(asyncio.Future):
         the refcount should be decreased.
 
     Attributes:
-        ref_count(int): The reference count.
         object_id: The object_id this Future contains.
-
     """
 
     def __init__(self, loop, object_id):
@@ -88,6 +86,9 @@ class PlasmaObjectFuture(asyncio.Future):
         return ray.ObjectID(self.object_id.binary())
 
     def complete(self):
+        """
+        Mark this future as finished.
+        """
         self.set_result(self.object_id)
 
     def __repr__(self):
@@ -95,13 +96,28 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaObjectLinkedList(asyncio.Future):
-    def __init__(self, loop, object_id: ray.ObjectID):
+    """This class is a doubly-linked list.
+    It holds a ObjectID and maintains futures assigned to the ObjectID.
+
+    Args:
+        loop: an event loop.
+        plain_object_id (plasma.ObjectID):
+            The plasma ObjectID this class holds.
+    """
+
+    def __init__(self, loop, plain_object_id: plasma.ObjectID):
         super().__init__(loop=loop)
-        self.object_id = object_id
+        assert isinstance(plain_object_id, plasma.ObjectID)
+        self.object_id = plain_object_id
         self.head: PlasmaObjectFuture = None
         self.tail: PlasmaObjectFuture = None
 
     def append(self, future: PlasmaObjectFuture):
+        """Append an object to the linked list.
+
+        Args:
+            future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
+        """
         future.prev = self.tail
         if self.tail is None:
             assert self.head is None
@@ -113,6 +129,11 @@ class PlasmaObjectLinkedList(asyncio.Future):
         future.add_done_callback(self.remove)
 
     def remove(self, future: PlasmaObjectFuture):
+        """Remove an object from the linked list.
+
+        Args:
+            future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
+        """
         if self._loop.get_debug():
             logger.debug("Removing %s from the linked list.", future)
         if future.prev is None:
@@ -133,6 +154,11 @@ class PlasmaObjectLinkedList(asyncio.Future):
                 self.tail.prev = None
 
     def traverse(self):
+        """Traverse this linked list.
+
+        Yields:
+            PlasmaObjectFuture: PlasmaObjectFuture instances.
+        """
         current = self.head
         while current is not None:
             yield current
@@ -191,11 +217,10 @@ class PlasmaFutureGroup(asyncio.Future):
 
     def extend(self, iterable):
         """This method behaves like `list.extend`"""
-
         for item in iterable:
             self.append(item)
 
-    def pop(self, index=0):
+    def pop(self, index=None):
         fut = self._children.pop(index)
         fut.remove_done_callback(self._done_callback)
         self._future_set.remove(fut)
@@ -209,8 +234,7 @@ class PlasmaFutureGroup(asyncio.Future):
     def children(self):
         return self._children
 
-    @property
-    def nchildren(self):
+    def __len__(self):
         return len(self._children)
 
     def halt_on_all_finished(self):
@@ -287,6 +311,11 @@ class PlasmaFutureGroup(asyncio.Future):
         return super().__await__()
 
     def cancel(self):
+        """Cancel all tasks in this group.
+
+        Returns:
+            bool: If success, return True; False otherwise.
+        """
         if self.done():
             return False
         ret = False
@@ -296,6 +325,11 @@ class PlasmaFutureGroup(asyncio.Future):
         return ret
 
     def flush_results(self):
+        """Classify all async objects into done ones and pending ones.
+
+        Returns:
+            Tuple[List, List]: Ready futures & unready ones.
+        """
         done, pending = [], []
         for f in self._children:
             if f.done():
@@ -305,6 +339,15 @@ class PlasmaFutureGroup(asyncio.Future):
         return done, pending
 
     async def wait(self, timeout: float = None):
+        """Wait async object to finish within a timeout.
+
+        Args:
+            timeout (float):
+                The timeout in seconds.
+
+        Returns:
+            Tuple[List, List]: Ready async objects & unready ones.
+        """
         if not self._children:
             return [], []
 
@@ -348,8 +391,9 @@ class PlasmaEventHandler:
         self._waiting_dict: Dict[ray.ObjectID, PlasmaObjectLinkedList] = {}
 
     def process_notifications(self, messages: List):
+        """Process notifications."""
         for object_id, object_size, metadata_size in messages:
-            if object_id in self._waiting_dict:
+            if object_size > 0 and object_id in self._waiting_dict:
                 linked_list = self._waiting_dict[object_id]
                 for future in linked_list.traverse():
                     if future.cancelled():
@@ -357,6 +401,7 @@ class PlasmaEventHandler:
                     future.complete()
 
     def close(self):
+        """Clean up this handler."""
         self._waiting_dict.clear()
 
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
@@ -370,7 +415,7 @@ class PlasmaEventHandler:
             check_ready (bool): If true, check if the object_id is ready.
 
         Returns:
-            PlasmaObjectFuture: A future object that waits the object_id/
+            PlasmaObjectFuture: A future object that waits the object_id.
         """
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
@@ -426,6 +471,15 @@ class PlasmaEventHandler:
         return processed, selection_vector
 
     async def gather(self, ray_async_objects: List[RayAsyncType]):
+        """This method corresponds to `asyncio.gather`.
+
+        Args:
+            ray_async_objects (List[RayAsyncType]):
+                A list of single object_id, future, coroutine.
+
+        Returns:
+            Results returned by async objects.
+        """
         processed, selection_vector = self._convert(ray_async_objects)
         fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
         fut.extend(processed)
@@ -437,6 +491,15 @@ class PlasmaEventHandler:
         return results
 
     async def get(self, ray_async_objects: RayAsyncParamsType):
+        """This method corresponds to `ray.get`.
+
+        Args:
+            ray_async_objects (RayAsyncParamsType):
+                Single object_id, future, coroutine or a list of them.
+
+        Returns:
+            Results returned by async objects.
+        """
         if not isinstance(ray_async_objects, list):
             if inspect.isawaitable(ray_async_objects):
                 return await ray_async_objects
@@ -451,10 +514,10 @@ class PlasmaEventHandler:
                    num_returns=1,
                    timeout=None,
                    return_exact_num=True):
-        """This method corresponds to `ray.wait`.
+        """This method corresponds to `ray.wait` and `asyncio.wait`.
 
         Args:
-            ray_async_objects (RayAsyncParamsType):
+            ray_async_objects (List[RayAsyncType]):
                 A list of single object_id, future, coroutine.
             timeout (float):
                 The timeout in seconds (`ray.wait` use milliseconds).
@@ -463,7 +526,7 @@ class PlasmaEventHandler:
                 specified.
 
         Returns:
-            Tuple[List, List]: Ready futures & unready ones.
+            Tuple[List, List]: Ready async objects & unready ones.
         """
 
         processed, selection_vector = self._convert(ray_async_objects)
