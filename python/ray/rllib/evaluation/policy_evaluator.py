@@ -19,6 +19,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.io import NoopOutput
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
@@ -100,13 +101,16 @@ class PolicyEvaluator(EvaluatorInterface):
                  num_envs=1,
                  observation_filter="NoFilter",
                  clip_rewards=None,
+                 clip_actions=True,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
                  monitor_path=None,
+                 log_dir=None,
                  log_level=None,
-                 callbacks=None):
+                 callbacks=None,
+                 output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -155,6 +159,8 @@ class PolicyEvaluator(EvaluatorInterface):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
+            clip_actions (bool): Whether to clip action values to the range
+                specified by the policy action space.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -165,8 +171,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (dict): Dict of custom debug callbacks.
+            output_creator (func): Function that returns an OutputWriter object
+                for saving generated experiences.
         """
 
         if log_level:
@@ -289,7 +298,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess)
+                tf_sess=self.tf_sess,
+                clip_actions=clip_actions)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -302,7 +312,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess)
+                tf_sess=self.tf_sess,
+                clip_actions=clip_actions)
+
+        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
+        self.output_writer = output_creator(self.io_context)
 
         logger.debug("Created evaluator with env {} ({}), policies {}".format(
             self.async_env, self.env, self.policy_map))
@@ -368,6 +382,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
+        self.output_writer.write(batch)
         return batch
 
     @ray.method(num_return_vals=2)
