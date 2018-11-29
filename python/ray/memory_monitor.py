@@ -56,8 +56,9 @@ class MemoryMonitor(object):
         if not psutil:
             logger.warning(
                 "WARNING: Not monitoring node memory since `psutil` is not "
-                "installed. Install this with `pip install psutil` to enable "
-                "debugging of memory-related crashes.")
+                "installed. Install this with `pip install psutil` "
+                "(or ray[debug]) to enable debugging of memory-related "
+                "crashes.")
 
     def raise_if_low_memory(self):
         if not psutil:

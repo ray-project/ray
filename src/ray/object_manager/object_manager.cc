@@ -52,7 +52,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  // TODO(hme) Client ID is never set with this constructor.
+  client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {

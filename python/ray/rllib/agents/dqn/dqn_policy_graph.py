@@ -30,16 +30,21 @@ class QNetwork(object):
                  sigma0=0.5):
         self.model = model
         with tf.variable_scope("action_value"):
-            action_out = model.last_layer
-            for i in range(len(hiddens)):
-                if use_noisy:
-                    action_out = self.noisy_layer("hidden_%d" % i, action_out,
-                                                  hiddens[i], sigma0)
-                else:
-                    action_out = layers.fully_connected(
-                        action_out,
-                        num_outputs=hiddens[i],
-                        activation_fn=tf.nn.relu)
+            if hiddens:
+                action_out = model.last_layer
+                for i in range(len(hiddens)):
+                    if use_noisy:
+                        action_out = self.noisy_layer(
+                            "hidden_%d" % i, action_out, hiddens[i], sigma0)
+                    else:
+                        action_out = layers.fully_connected(
+                            action_out,
+                            num_outputs=hiddens[i],
+                            activation_fn=tf.nn.relu)
+            else:
+                # Avoid postprocessing the outputs. This enables custom models
+                # to be used for parametric action DQN.
+                action_out = model.outputs
             if use_noisy:
                 action_scores = self.noisy_layer(
                     "output",
@@ -47,11 +52,13 @@ class QNetwork(object):
                     num_actions * num_atoms,
                     sigma0,
                     non_linear=False)
-            else:
+            elif hiddens:
                 action_scores = layers.fully_connected(
                     action_out,
                     num_outputs=num_actions * num_atoms,
                     activation_fn=None)
+            else:
+                action_scores = model.outputs
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution
@@ -107,7 +114,7 @@ class QNetwork(object):
                 self.logits = support_logits_per_action
                 self.dist = support_prob_per_action
             else:
-                action_scores_mean = tf.reduce_mean(action_scores, 1)
+                action_scores_mean = _reduce_mean_ignore_inf(action_scores, 1)
                 action_scores_centered = action_scores - tf.expand_dims(
                     action_scores_mean, 1)
                 self.value = state_score + action_scores_centered
@@ -176,11 +183,15 @@ class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps):
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
-        random_actions = tf.random_uniform(
-            tf.stack([batch_size]),
-            minval=0,
-            maxval=num_actions,
-            dtype=tf.int64)
+
+        # Special case masked out actions (q_value ~= -inf) so that we don't
+        # even consider them for exploration.
+        random_valid_action_logits = tf.where(
+            tf.equal(q_values, tf.float32.min),
+            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
+        random_actions = tf.squeeze(
+            tf.multinomial(random_valid_action_logits, 1), axis=1)
+
         chose_random = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(chose_random, random_actions,
@@ -374,8 +385,8 @@ class DQNPolicyGraph(TFPolicyGraph):
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, space, 1, self.config["model"]), self.num_actions,
-            self.config["dueling"], self.config["hiddens"],
+            }, space, self.num_actions, self.config["model"]),
+            self.num_actions, self.config["dueling"], self.config["hiddens"],
             self.config["noisy"], self.config["num_atoms"],
             self.config["v_min"], self.config["v_max"], self.config["sigma0"])
         return qnet.value, qnet.logits, qnet.dist, qnet.model
@@ -511,6 +522,14 @@ def _postprocess_dqn(policy_graph, sample_batch):
         batch.data["weights"] = new_priorities
 
     return batch
+
+
+def _reduce_mean_ignore_inf(x, axis):
+    """Same as tf.reduce_mean() but ignores -inf values."""
+    mask = tf.not_equal(x, tf.float32.min)
+    x_zeroed = tf.where(mask, x, tf.zeros_like(x))
+    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
+        tf.cast(mask, tf.float32), axis))
 
 
 def _huber_loss(x, delta=1.0):

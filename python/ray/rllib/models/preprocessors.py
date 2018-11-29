@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import OrderedDict
 import cv2
 import logging
 import numpy as np
@@ -164,6 +165,8 @@ class DictFlatteningPreprocessor(Preprocessor):
         return (size, )
 
     def transform(self, observation):
+        if not isinstance(observation, OrderedDict):
+            observation = OrderedDict(sorted(list(observation.items())))
         assert len(observation) == len(self.preprocessors), \
             (len(observation), len(self.preprocessors))
         return np.concatenate([
