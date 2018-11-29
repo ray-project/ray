@@ -385,13 +385,11 @@ class Agent(Trainable):
             observation, update=False)
         if state:
             return self.local_evaluator.for_policy(
-                lambda p: p.compute_single_action(
-                    filtered_obs, state, is_training=False),
+                lambda p: p.compute_single_action(filtered_obs, state),
                 policy_id=policy_id)
         return self.local_evaluator.for_policy(
-                lambda p: p.compute_single_action(
-                    filtered_obs, state, is_training=False)[0],
-                policy_id=policy_id)
+            lambda p: p.compute_single_action(filtered_obs, state)[0],
+            policy_id=policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
