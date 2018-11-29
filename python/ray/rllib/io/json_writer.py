@@ -28,7 +28,7 @@ class JsonWriter(OutputWriter):
     def __init__(self,
                  ioctx,
                  path,
-                 max_file_size=64000000,
+                 max_file_size=64 * 1024 * 1024,
                  compress_columns=frozenset(["obs", "new_obs"])):
         self.ioctx = ioctx
         self.path = path
@@ -77,6 +77,7 @@ class JsonWriter(OutputWriter):
             else:
                 self.cur_file = open(path, "w")
             self.file_index += 1
+            self.bytes_written = 0
             logger.info("Writing to new output file {}".format(self.cur_file))
         return self.cur_file
 

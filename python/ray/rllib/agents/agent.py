@@ -127,8 +127,8 @@ COMMON_CONFIG = {
     # Function that creates a new rllib.io.InputReader, or
     # "json:/path/to/dir" to specify the default json input reader.
     "input": lambda ioctx: ioctx.default_env_input(),
-    # Function that creates an new rllib.io.OutputWriter, or one of
-    # {"json", "json:/path/to/dir"} to specify the default json writer.
+    # Function that creates an new rllib.io.OutputWriter, or of the format
+    # "json[[:scheme]:/path/to/dir]" to specify the default json writer.
     "output": lambda ioctx: NoopOutput(),
 
     # === Multiagent ===
