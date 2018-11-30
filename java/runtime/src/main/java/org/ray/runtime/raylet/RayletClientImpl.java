@@ -172,7 +172,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
