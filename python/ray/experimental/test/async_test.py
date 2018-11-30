@@ -15,7 +15,7 @@ from ray.experimental import async_api
 def init():
     ray.init(num_cpus=4)
     asyncio.get_event_loop().set_debug(False)
-    asyncio.get_event_loop().run_until_complete(async_api.init())
+    async_api.sync_init()
     yield
     async_api.shutdown()
     ray.shutdown()
@@ -31,14 +31,15 @@ def gen_tasks(time_scale=0.1):
     return tasks
 
 
-def test_get(init):
+def test_gather(init):
+    loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    fut = async_api.get(tasks)
-    results = asyncio.get_event_loop().run_until_complete(fut)
+    futures = [async_api.as_future(obj_id) for obj_id in tasks]
+    results = loop.run_until_complete(asyncio.gather(*futures))
     assert all(a == b for a, b in zip(results, ray.get(tasks)))
 
 
-def test_get_benchmark(init):
+def test_gather_benchmark(init):
     @ray.remote
     def f(n):
         time.sleep(0.001 * n)
@@ -49,7 +50,8 @@ def test_get_benchmark(init):
         for _ in range(50):
             tasks = [f.remote(n) for n in range(20)]
             start = time.time()
-            await async_api.get(tasks)
+            futures = [async_api.as_future(obj_id) for obj_id in tasks]
+            await asyncio.gather(*futures)
             sum_time += time.time() - start
         return sum_time
 
@@ -74,20 +76,25 @@ def test_get_benchmark(init):
 
 
 def test_wait(init):
+    loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    fut = async_api.wait(tasks, num_returns=len(tasks))
-    results, _ = asyncio.get_event_loop().run_until_complete(fut)
-    assert set(results) == set(tasks)
+    futures = [async_api.as_future(obj_id) for obj_id in tasks]
+    results, _ = loop.run_until_complete(asyncio.wait(futures))
+    assert set(results) == set(futures)
 
 
 def test_wait_timeout(init):
+    loop = asyncio.get_event_loop()
     tasks = gen_tasks(10)
-    fut = async_api.wait(tasks, timeout=5000, num_returns=len(tasks))
-    results, _ = asyncio.get_event_loop().run_until_complete(fut)
-    assert results[0] == tasks[0]
+    futures = [async_api.as_future(obj_id) for obj_id in tasks]
+    fut = asyncio.wait(futures, timeout=5)
+    results, _ = loop.run_until_complete(fut)
+    assert list(results)[0] == futures[0]
 
 
-def test_get_mixup(init):
+def test_gather_mixup(init):
+    loop = asyncio.get_event_loop()
+
     @ray.remote
     def f(n):
         time.sleep(n * 0.1)
@@ -97,12 +104,15 @@ def test_get_mixup(init):
         await asyncio.sleep(n * 0.1)
         return n
 
-    tasks = [f.remote(1), g(2), f.remote(3), g(4)]
-    results = asyncio.get_event_loop().run_until_complete(async_api.get(tasks))
+    tasks = [async_api.as_future(f.remote(1)), g(2),
+             async_api.as_future(f.remote(3)), g(4)]
+    results = loop.run_until_complete(asyncio.gather(*tasks))
     assert results == [1, 2, 3, 4]
 
 
 def test_wait_mixup(init):
+    loop = asyncio.get_event_loop()
+
     @ray.remote
     def f(n):
         time.sleep(n)
@@ -115,7 +125,7 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [f.remote(0.1), g(7), f.remote(5), g(2)]
-    ready, _ = asyncio.get_event_loop().run_until_complete(
-        async_api.wait(tasks, timeout=4000, num_returns=4))
+    tasks = [async_api.as_future(f.remote(0.1)), g(7),
+             async_api.as_future(f.remote(5)), g(2)]
+    ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}

@@ -1,16 +1,11 @@
 import asyncio
-import functools
-import inspect
 import sys
-from typing import Union, List, Callable, Dict, Awaitable
+from typing import List, Dict
 
 import pyarrow.plasma as plasma
 
 import ray
 from ray.services import logger
-
-RayAsyncType = Union[ray.ObjectID, Awaitable]
-RayAsyncParamsType = Union[RayAsyncType, List[RayAsyncType]]
 
 
 def _release_waiter(waiter, *_):
@@ -56,7 +51,7 @@ class PlasmaProtocol(asyncio.Protocol):
         self.on_con_lost.set_result(True)
 
     def eof_received(self):
-        logger.debug('EOF received')
+        logger.debug('PlasmaProtocol - EOF received.')
         self.transport.close()
 
 
@@ -64,12 +59,7 @@ class PlasmaObjectFuture(asyncio.Future):
     """This class manages the lifecycle of a Future contains an object_id.
 
     Note:
-        This Future should be removed from a listening selector
-        when the object_id is done or the ref_count goes to zero.
-
-        Each time we add a task depending on this Future,
-        we increase its refcount. When the task is cancelled or timeout,
-        the refcount should be decreased.
+        This Future is an item in an linked list.
 
     Attributes:
         object_id: The object_id this Future contains.
@@ -84,12 +74,6 @@ class PlasmaObjectFuture(asyncio.Future):
     @property
     def ray_object_id(self):
         return ray.ObjectID(self.object_id.binary())
-
-    def complete(self):
-        """
-        Mark this future as finished.
-        """
-        self.set_result(self.object_id)
 
     def __repr__(self):
         return super().__repr__() + "{object_id=%s}" % self.object_id
@@ -167,13 +151,14 @@ class PlasmaObjectLinkedList(asyncio.Future):
             if not future.cancelled():
                 future.cancel()
 
-    def complete(self):
+    def set_result(self, result):
         """Complete all tasks. """
         for future in self.traverse():
             # All cancelled futures should have callbacks to removed itself
             # from this linked list. However, these callbacks are scheduled in
             # an event loop, so we could still find them in our list.
-            future.complete()
+            future.set_result(result)
+        super().set_result(result)
 
     def traverse(self):
         """Traverse this linked list.
@@ -185,222 +170,6 @@ class PlasmaObjectLinkedList(asyncio.Future):
         while current is not None:
             yield current
             current = current.next
-
-
-class PlasmaFutureGroup(asyncio.Future):
-    """This class groups futures for better management and advanced operation.
-    """
-
-    def __init__(self, loop, return_exceptions=False, keep_duplicated=True):
-        """Initialize this class.
-
-        Args:
-            loop (PlasmaSelectorEventLoop): An eventloop.
-            return_exceptions(bool): If true, return exceptions as results
-                instead of raising them.
-            keep_duplicated(bool): If true,
-                an future can be added multiple times.
-        """
-
-        super().__init__(loop=loop)
-        self._children = []
-        self._future_set = set()
-        self._keep_duplicated = keep_duplicated
-        self.return_exceptions = return_exceptions
-        self.nfinished = 0
-
-    def append(self, coroutine_or_future):
-        """This method append a coroutine or a future into the group
-
-        Args:
-            coroutine_or_future: A coroutine or a future object.
-        """
-
-        if not asyncio.futures.isfuture(coroutine_or_future):
-            fut = asyncio.ensure_future(coroutine_or_future, loop=self._loop)
-            if self._loop is None:
-                self.loop = fut._loop
-            # The caller cannot control this future, the "destroy pending task"
-            # warning should not be emitted.
-            fut._log_destroy_pending = False
-        else:
-            fut = coroutine_or_future
-
-            if self._loop is None:
-                self._loop = fut._loop
-            elif fut._loop is not self._loop:
-                raise ValueError("futures are tied to different event loops")
-
-        if fut in self._future_set and not self._keep_duplicated:
-            return
-        fut.add_done_callback(self._done_callback)
-        self._children.append(fut)
-        self._future_set.add(fut)
-
-    def extend(self, iterable):
-        """This method behaves like `list.extend`"""
-        for item in iterable:
-            self.append(item)
-
-    def pop(self, index=None):
-        fut = self._children.pop(index)
-        fut.remove_done_callback(self._done_callback)
-        self._future_set.remove(fut)
-        return fut
-
-    def clear(self):
-        while self._children:
-            self.pop()
-
-    @property
-    def children(self):
-        return self._children
-
-    def __len__(self):
-        return len(self._children)
-
-    def halt_on_all_finished(self):
-        return self.nfinished >= len(self._children)
-
-    def halt_on_any_finished(self):
-        return self.nfinished > 0
-
-    def halt_on_some_finished(self, n):
-        return self.nfinished >= n
-
-    def _halt_on(self):
-        """This function can be override to change the halt condition.
-
-        Returns:
-            bool: True if we meet the halt condition.
-        """
-
-        return self.halt_on_all_finished()
-
-    def set_halt_condition(self, cond: Callable[['PlasmaFutureGroup'], bool]):
-        """This function sets the halting condition.
-
-        Args:
-            cond (Callable): Halting condition.
-        """
-
-        self._halt_on = cond
-
-    def _collect_results(self):
-        results = []
-
-        for fut in self._children:
-            if fut.cancelled() and self.return_exceptions:
-                res = asyncio.futures.CancelledError()
-            elif fut._exception is not None and self.return_exceptions:
-                res = fut.exception()  # Mark exception retrieved.
-            else:
-                res = fut._result
-            results.append(res)
-
-        return results
-
-    def _done_callback(self, fut: asyncio.Future):
-        if self.done():
-            if not fut.cancelled():
-                # Mark exception retrieved.
-                fut.exception()
-            return
-
-        if not self.return_exceptions:
-            if fut.cancelled():
-                self.set_exception(asyncio.futures.CancelledError())
-                return
-            elif fut._exception is not None:
-                self.set_exception(fut.exception())
-                return
-
-        self.nfinished += 1
-
-        if self._halt_on():
-            self.set_result(self._collect_results())
-
-    def __iter__(self):
-        # Deal with the case that there's nothing to group.
-        if not self.children:
-            self.set_result([])
-        return super().__iter__()
-
-    def __await__(self):
-        # Deal with the case that there's nothing to group.
-        if not self.children:
-            self.set_result([])
-        return super().__await__()
-
-    def cancel(self):
-        """Cancel all tasks in this group.
-
-        Returns:
-            bool: If success, return True; False otherwise.
-        """
-        if self.done():
-            return False
-        ret = False
-        for child in self._children:
-            if child.cancel():
-                ret = True
-        return ret
-
-    def flush_results(self):
-        """Classify all async objects into done ones and pending ones.
-
-        Returns:
-            Tuple[List, List]: Ready futures & unready ones.
-        """
-        done, pending = [], []
-        for f in self._children:
-            if f.done():
-                done.append(f)
-            else:
-                pending.append(f)
-        return done, pending
-
-    async def wait(self, timeout: float = None):
-        """Wait async object to finish within a timeout.
-
-        Args:
-            timeout (float):
-                The timeout in seconds.
-
-        Returns:
-            Tuple[List, List]: Ready async objects & unready ones.
-        """
-        if not self._children:
-            return [], []
-
-        assert timeout is None or timeout >= 0
-        if timeout == 0:
-            return self.flush_results()
-
-        loop = self._loop
-
-        waiter = loop.create_future()
-        timeout_handle = None
-        if timeout is not None:
-            timeout_handle = loop.call_later(timeout, _release_waiter, waiter)
-
-        def _on_completion(_):
-            if timeout_handle is not None:
-                timeout_handle.cancel()
-            if not waiter.done():
-                waiter.set_result(None)
-
-        self.add_done_callback(_on_completion)
-
-        try:
-            await waiter
-        finally:
-            if timeout_handle is not None:
-                timeout_handle.cancel()
-
-        self.remove_done_callback(_on_completion)
-
-        return self.flush_results()
 
 
 class PlasmaEventHandler:
@@ -417,7 +186,7 @@ class PlasmaEventHandler:
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
                 linked_list = self._waiting_dict[object_id]
-                linked_list.complete()
+                self._complete_future(linked_list)
 
     def close(self):
         """Clean up this handler."""
@@ -429,6 +198,10 @@ class PlasmaEventHandler:
 
     def _unregister_callback(self, fut: PlasmaObjectLinkedList):
         del self._waiting_dict[fut.object_id]
+
+    def _complete_future(self, fut):
+        obj = self._worker.retrieve_and_deserialize([fut.object_id], 0)[0]
+        fut.set_result(obj)
 
     def as_future(self, object_id: ray.ObjectID, check_ready=True):
         """Turn an object_id into a Future object.
@@ -451,7 +224,7 @@ class PlasmaEventHandler:
             if ready:
                 if self._loop.get_debug():
                     logger.debug("%s has been ready.", plain_object_id)
-                fut.complete()
+                self._complete_future(fut)
                 return fut
 
         if plain_object_id not in self._waiting_dict:
@@ -463,118 +236,3 @@ class PlasmaEventHandler:
             logger.debug("%s added to the waiting list.", fut)
 
         return fut
-
-    def _convert(self, ray_async_objects):
-        original = []
-        processed = []
-        selection_vector = []
-        for i, obj in enumerate(ray_async_objects):
-            if isinstance(obj, ray.ObjectID):
-                original.append(obj)
-                selection_vector.append(i)
-                processed.append(None)
-            elif inspect.isawaitable(obj):
-                processed.append(obj)
-            else:
-                raise TypeError("Unsupported type %s" % type(obj))
-
-        mapping = dict(zip(original, selection_vector))
-        ready, pending = ray.wait(original, timeout=0)
-        for object_id in ready:
-            if self._loop.get_debug():
-                logger.debug("%s has been ready.", object_id)
-            future = PlasmaObjectFuture(self._loop,
-                                        plasma.ObjectID(object_id.id()))
-            future.complete()
-            processed[mapping[object_id]] = future
-
-        for object_id in pending:
-            processed[mapping[object_id]] = self.as_future(object_id, False)
-
-        return processed, selection_vector
-
-    async def gather(self, ray_async_objects: List[RayAsyncType]):
-        """This method corresponds to `asyncio.gather`.
-
-        Args:
-            ray_async_objects (List[RayAsyncType]):
-                A list of single object_id, future, coroutine.
-
-        Returns:
-            Results returned by async objects.
-        """
-        processed, selection_vector = self._convert(ray_async_objects)
-        fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
-        fut.extend(processed)
-        results = await fut
-        plain_ready_ids = [results[i] for i in selection_vector]
-        objs = self._worker.retrieve_and_deserialize(plain_ready_ids, 0)
-        for i, obj in enumerate(objs):
-            results[selection_vector[i]] = obj
-        return results
-
-    async def get(self, ray_async_objects: RayAsyncParamsType):
-        """This method corresponds to `ray.get`.
-
-        Args:
-            ray_async_objects (RayAsyncParamsType):
-                Single object_id, future, coroutine or a list of them.
-
-        Returns:
-            Results returned by async objects.
-        """
-        if not isinstance(ray_async_objects, list):
-            if inspect.isawaitable(ray_async_objects):
-                return await ray_async_objects
-            plain_ready_id = await self.as_future(ray_async_objects)
-            return self._worker.retrieve_and_deserialize([plain_ready_id], 0)[
-                0]
-        else:
-            return await self.gather(ray_async_objects)
-
-    async def wait(self,
-                   ray_async_objects: List[RayAsyncType],
-                   num_returns=1,
-                   timeout=None,
-                   return_exact_num=True):
-        """This method corresponds to `ray.wait` and `asyncio.wait`.
-
-        Args:
-            ray_async_objects (List[RayAsyncType]):
-                A list of single object_id, future, coroutine.
-            timeout (float):
-                The timeout in seconds (`ray.wait` use milliseconds).
-            num_returns (int): The minimal number of ready object returns.
-            return_exact_num (bool): If true, return no more than the amount
-                specified.
-
-        Returns:
-            Tuple[List, List]: Ready async objects & unready ones.
-        """
-
-        processed, selection_vector = self._convert(ray_async_objects)
-        temp = {processed[i] for i in selection_vector}
-
-        fut = PlasmaFutureGroup(loop=self._loop, return_exceptions=False)
-        fut.set_halt_condition(
-            functools.partial(
-                fut.halt_on_some_finished,
-                n=num_returns,
-            ))
-        fut.extend(processed)
-        _done, _pending = await fut.wait(timeout)
-        fut.return_exceptions = True  # Ignore `CancelledError`.
-
-        # Release temporary futures
-        for f in _pending:
-            if isinstance(f, PlasmaObjectFuture) and f in temp:
-                f.cancel()
-
-        done = [fut.ray_object_id if isinstance(fut, PlasmaObjectFuture) else
-                fut for fut in _done]
-        pending = [fut.ray_object_id if isinstance(fut, PlasmaObjectFuture)
-                   else fut for fut in _pending]
-
-        if return_exact_num and len(done) > num_returns:
-            done, pending = done[:num_returns], done[num_returns:] + pending
-        return done, pending
