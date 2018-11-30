@@ -651,7 +651,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' first"
+    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.
@@ -674,16 +674,15 @@ done
 
 cli.add_command(start)
 cli.add_command(stop)
-cli.add_command(create_or_update)
 cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
-cli.add_command(rsync_down)
-cli.add_command(rsync_up)
+cli.add_command(rsync_down, name="rsync_down")
+cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
-cli.add_command(get_head_ip)
+cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(stack)
 
 

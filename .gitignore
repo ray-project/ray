@@ -12,6 +12,9 @@
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
 
+# Modin source files
+/python/ray/modin
+
 # Redis temporary files
 *dump.rdb
 
