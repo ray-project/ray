@@ -131,7 +131,7 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 self._start_trial(trial, checkpoint)
-            except Exception as exc:
+            except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)

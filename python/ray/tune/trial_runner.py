@@ -296,7 +296,7 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
                 if trial.should_recover():
-                    self.try_recover(trial, error_msg)
+                    self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
@@ -311,7 +311,7 @@ class TrialRunner(object):
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
 
-    def try_recover(self, trial, error_msg):
+    def _try_recover(self, trial, error_msg):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
