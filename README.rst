@@ -1,6 +1,7 @@
 .. image:: https://github.com/devin-petersohn/ray/blob/docs/update_readme/doc/source/images/ray_logo.png
     :target: http://ray.readthedocs.io/en/latest/index.html
-    :align: center
+    :align: right
+    :width: 30%
     :alt: Ray Logo
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
@@ -14,7 +15,7 @@
 
 |
 
-Ray is a flexible, high-performance distributed execution framework.
+**Ray is a flexible, high-performance distributed execution framework.**
 
 
 Ray is easy to install: ``pip install ray``
