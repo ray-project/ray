@@ -1,4 +1,4 @@
-.. image:: doc/source/images/ray_log.png
+.. image:: https://github.com/devin-petersohn/ray/blob/docs/update_readme/doc/source/images/ray_logo.png
    :align: center
    :alt: Ray Logo
 
