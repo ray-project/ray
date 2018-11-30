@@ -1,6 +1,6 @@
 .. raw:: html
 
-    <a href=http://ray.readthedocs.io/en/latest/index.html><img style="position: absolute; top: 0; right: 0; border: 0; width: 30%" src="https://github.com/devin-petersohn/ray/raw/docs/update_readme/doc/source/images/ray_logo.png"></a>
+    <a href=http://ray.readthedocs.io/en/latest/index.html><img style="align:right; width: 30%" src="https://github.com/devin-petersohn/ray/raw/docs/update_readme/doc/source/images/ray_logo.png"></a>
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
