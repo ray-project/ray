@@ -1,5 +1,6 @@
-Ray
-===
+.. image:: doc/source/images/ray_log.png
+   :align: center
+   :alt: Ray Logo
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
