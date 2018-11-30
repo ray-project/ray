@@ -27,10 +27,13 @@ async def init():
 def sync_init():
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        raise Exception("You cannot initialize async_api when the eventloop"
-                        " is running. Try to initialize it before you run the "
-                        "eventloop or use the async `init()` instead.")
-    asyncio.get_event_loop().run_until_complete(init())
+        raise Exception(
+            "You cannot initialize async_api when the eventloop"
+            " is running. Try to initialize it before you run the "
+            "eventloop or use the async `init()` instead.")
+    else:
+        # Initialize synchronously.
+        asyncio.get_event_loop().run_until_complete(init())
 
 
 def as_future(object_id):
@@ -43,7 +46,7 @@ def as_future(object_id):
         PlasmaObjectFuture: A future object that waits the object_id.
     """
     if handler is None:
-        raise Exception("async_api hasn't been initialized.")
+        sync_init()
     return handler.as_future(object_id)
 
 
