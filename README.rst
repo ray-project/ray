@@ -1,12 +1,16 @@
 .. image:: https://github.com/devin-petersohn/ray/blob/docs/update_readme/doc/source/images/ray_logo.png
-   :align: center
-   :alt: Ray Logo
+    :target: http://ray.readthedocs.io/en/latest/index.html
+    :align: center
+    :alt: Ray Logo
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
+
+.. image:: https://img.shields.io/badge/pypi-0.5.3-blue.svg
+    :target: https://pypi.org/project/ray/
 
 |
 
