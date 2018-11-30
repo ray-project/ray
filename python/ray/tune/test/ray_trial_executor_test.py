@@ -56,9 +56,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("asdf", resources=Resources(1, 0))
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.ERROR, trial.status)
-        self.assertRaises(
-            Exception, lambda: self.trial_executor.start_trial(
-                trial, raise_on_error=True))
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""

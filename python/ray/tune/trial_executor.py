@@ -31,14 +31,13 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None, raise_on_failure=False):
+    def start_trial(self, trial, checkpoint=None):
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
             trial (Trial): Trial to be started.
             checkpoint(Checkpoint): A Python object or path storing the state
             of trial.
-            raise_on_failure (bool): To raise exception on failure in starting.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")

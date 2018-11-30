@@ -329,12 +329,13 @@ class TrialRunner(object):
             if self.trial_executor.has_resources(trial.resources):
                 logger.info("Attempting to recover"
                             " trial state from last checkpoint.")
-                self.trial_executor.start_trial(trial, raise_on_failure=True)
+                self.trial_executor.start_trial(trial)
+                if trial.status == Trial.ERROR:
+                    raise RuntimeError("Trial did not start correctly.")
             else:
                 logger.debug("Notifying Scheduler and requeueing trial.")
                 self._requeue_trial(trial)
         except Exception:
-            error_msg = traceback.format_exc()
             logger.exception("Error recovering trial from checkpoint, abort.")
             self._scheduler_alg.on_trial_error(self, trial)
             self._search_alg.on_trial_complete(trial.trial_id, error=True)

@@ -110,7 +110,7 @@ class RayTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.close_logger()
 
-    def start_trial(self, trial, checkpoint=None, raise_on_failure=False):
+    def start_trial(self, trial, checkpoint=None):
         """Starts the trial.
 
         Will not return resources if trial repeatedly fails on start.
@@ -119,10 +119,6 @@ class RayTrialExecutor(TrialExecutor):
             trial (Trial): Trial to be started.
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
-            raise_on_failure (bool): To raise exception on failure in starting.
-
-        Raises:
-            Exception after 1 retries if `raise_on_failure` is True.
         """
 
         self._commit_resources(trial.resources)
@@ -141,8 +137,6 @@ class RayTrialExecutor(TrialExecutor):
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost
-                if raise_on_failure:
-                    raise exc
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
