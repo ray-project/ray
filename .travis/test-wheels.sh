@@ -59,7 +59,7 @@ if [[ "$platform" == "linux" ]]; then
   if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
-    exit 1
+    exit 2
   fi
 
 elif [[ "$platform" == "macosx" ]]; then
@@ -94,5 +94,5 @@ elif [[ "$platform" == "macosx" ]]; then
   done
 else
   echo "Unrecognized environment."
-  exit 1
+  exit 3
 fi
