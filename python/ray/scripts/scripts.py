@@ -591,9 +591,21 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cmd = " ".join(["python", target] + list(script_args))
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
                  cluster_name, port_forward)
-    if tmux:
-        logger.info("Use `ray attach {} --tmux` "
-                    "to check on command status.".format(cluster_config_file))
+
+    if tmux or screen:
+        attach_command_parts = ["ray attach", cluster_config_file]
+        if cluster_name is not None:
+            attach_command_parts.append(
+                "--cluster-name={}".format(cluster_name))
+        if tmux:
+            attach_command_parts.append("--tmux")
+        elif screen:
+            attach_command_parts.append("--screen")
+
+        attach_command = " ".join(attach_command_parts)
+        attach_info = "Use `{}` to check on command status.".format(
+            attach_command)
+        logger.info(attach_info)
 
 
 @cli.command()
