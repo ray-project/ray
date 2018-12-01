@@ -15,7 +15,6 @@ from ray.experimental import async_api
 def init():
     ray.init(num_cpus=4)
     asyncio.get_event_loop().set_debug(False)
-    async_api.sync_init()
     yield
     async_api.shutdown()
     ray.shutdown()
