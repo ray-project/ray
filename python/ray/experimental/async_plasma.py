@@ -14,13 +14,14 @@ def _release_waiter(waiter, *_):
 
 
 class PlasmaProtocol(asyncio.Protocol):
-
-    def __init__(self, loop, plasma_client,
+    """
+    Protocol control for the asyncio connection.
+    """
+    def __init__(self, plasma_client,
                  plasma_event_handler: 'PlasmaEventHandler'):
         self.plasma_client = plasma_client
         self.plasma_event_handler = plasma_event_handler
         self.transport = None
-        self.on_con_lost = loop.create_future()
         self._buffer = b''
 
     def connection_made(self, transport):
@@ -42,13 +43,9 @@ class PlasmaProtocol(asyncio.Protocol):
         self._buffer = self._buffer[i:]
         self.plasma_event_handler.process_notifications(messages)
 
-        # We are done: close the transport;
-        # connection_lost() will be called automatically.
-        # self.transport.close()
-
     def connection_lost(self, exc):
         # The socket has been closed
-        self.on_con_lost.set_result(True)
+        logger.debug('PlasmaProtocol - connection lost.')
 
     def eof_received(self):
         logger.debug('PlasmaProtocol - EOF received.')
