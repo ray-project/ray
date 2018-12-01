@@ -356,6 +356,11 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
 
+Stack Traces
+~~~~~~~~~~~~
+
+You can use the ``ray stack`` command to dump the stack traces of all the Python processes on a single node. This can be useful for debugging unexpected hangs or performance issues.
+
 REST API
 --------
 
