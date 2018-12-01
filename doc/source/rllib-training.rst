@@ -307,13 +307,13 @@ Approach 2: Use the callbacks API to update the environment on new training resu
 
     def on_train_result(info):
         result = info["result"]
-        agent = info["agent"]
         if result["episode_reward_mean"] > 200:
             phase = 2
         elif result["episode_reward_mean"]) > 100:
             phase = 1
         else:
             phase = 0
+        agent = info["agent"]
         agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
 
     run_experiments({
