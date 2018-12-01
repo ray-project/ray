@@ -140,7 +140,7 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self._obs_filters, self.clip_rewards, self.pack, self.clip_actions,
+            self._obs_filters, self.clip_rewards, self.clip_actions, self.pack,
             self.callbacks, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
@@ -202,8 +202,8 @@ def _env_runner(async_vector_env,
                 horizon,
                 obs_filters,
                 clip_rewards,
-                pack,
                 clip_actions,
+                pack,
                 callbacks,
                 tf_sess=None):
     """This implements the common experience collection logic.
