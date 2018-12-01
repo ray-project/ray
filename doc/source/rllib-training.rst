@@ -359,7 +359,7 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
 Stack Traces
 ~~~~~~~~~~~~
 
-You can use the ``ray stack`` command to dump the stack traces of all the Python processes on a single node. This can be useful for debugging unexpected hangs or performance issues.
+You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
 REST API
 --------
