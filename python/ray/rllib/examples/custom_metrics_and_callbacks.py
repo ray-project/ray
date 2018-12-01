@@ -35,6 +35,11 @@ def on_sample_end(info):
     print("returned sample batch of size {}".format(info["samples"].count))
 
 
+def on_train_result(info):
+    print("agent.train() result: {} -> {} episodes".format(
+        info["agent"].__name__, info["result"]["episodes_this_iter"]))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-iters", type=int, default=2000)
@@ -54,6 +59,7 @@ if __name__ == "__main__":
                     "on_episode_step": tune.function(on_episode_step),
                     "on_episode_end": tune.function(on_episode_end),
                     "on_sample_end": tune.function(on_sample_end),
+                    "on_train_result": tune.function(on_train_result),
                 },
             },
         }

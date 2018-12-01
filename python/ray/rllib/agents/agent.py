@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-import os
-import logging
-import pickle
-import tempfile
 from datetime import datetime
+import copy
+import logging
+import os
+import pickle
+import six
+import tempfile
 import tensorflow as tf
 
 import ray
@@ -15,7 +16,7 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Resources
 from ray.tune.logger import UnifiedLogger
@@ -40,6 +41,7 @@ COMMON_CONFIG = {
         "on_episode_step": None,   # arg: {"env": .., "episode": ...}
         "on_episode_end": None,    # arg: {"env": .., "episode": ...}
         "on_sample_end": None,     # arg: {"samples": .., "evaluator": ...}
+        "on_train_result": None,   # arg: {"agent": ..., "result": ...}
     },
 
     # === Policy ===
@@ -274,7 +276,7 @@ class Agent(Trainable):
         self.global_vars = {"timestep": 0}
 
         # Agents allow env ids to be passed directly to the constructor.
-        self._env_id = env or config.get("env")
+        self._env_id = _register_if_needed(env or config.get("env"))
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -316,7 +318,13 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
-        return Trainable.train(self)
+        result = Trainable.train(self)
+        if self.config["callbacks"].get("on_train_step"):
+            self.config["callbacks"]["on_train_step"]({
+                "agent": self,
+                "result": result,
+            })
+        return result
 
     def _setup(self, config):
         env = self._env_id
@@ -442,6 +450,19 @@ class Agent(Trainable):
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
+
+
+def _register_if_needed(env_object):
+    if isinstance(env_object, six.string_types):
+        return env_object
+    elif isinstance(env_object, type):
+        name = env_object.__name__
+        register_env(name, lambda config: env_object(config))
+        return name
+    else:
+        raise ValueError(
+            "Improper 'env' - must be string or class, not {}.".format(
+                type(env_object)))
 
 
 def get_agent_class(alg):
