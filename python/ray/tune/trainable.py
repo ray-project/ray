@@ -74,7 +74,7 @@ class Trainable(object):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(self.config, self.logdir, None)
+            self._result_logger = UnifiedLogger(self.config, self.logdir)
 
         self._iteration = 0
         self._time_total = 0.0

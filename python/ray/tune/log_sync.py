@@ -28,7 +28,7 @@ GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
 
-def get_syncer(local_dir, remote_dir=None):
+def get_syncer(local_dir, remote_dir=None, sync_cmd_tmpl=None):
     if remote_dir:
         if not any(
                 remote_dir.startswith(prefix)
@@ -53,7 +53,7 @@ def get_syncer(local_dir, remote_dir=None):
 
     key = (local_dir, remote_dir)
     if key not in _syncers:
-        _syncers[key] = _LogSyncer(local_dir, remote_dir)
+        _syncers[key] = _LogSyncer(local_dir, remote_dir, sync_cmd_tmpl)
 
     return _syncers[key]
 
@@ -69,9 +69,13 @@ class _LogSyncer(object):
     This syncs files from workers to the local node, and optionally also from
     the local node to a remote directory (e.g. S3)."""
 
-    def __init__(self, local_dir, remote_dir=None):
+    def __init__(self, local_dir, remote_dir=None, sync_cmd_tmpl=None):
+        if sync_cmd_tmpl:
+            assert "{remote_dir}" in sync_cmd_tmpl, "Sync command template needs to include '{remote_dir}'."
+            assert "{local_dir}" in sync_cmd_tmpl, "Sync command template needs to include '{local_dir}'."
         self.local_dir = local_dir
         self.remote_dir = remote_dir
+        self.sync_cmd_tmpl = sync_cmd_tmpl
         self.last_sync_time = 0
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
@@ -116,12 +120,7 @@ class _LogSyncer(object):
                     quote(ssh_key), quote(source), quote(target)))
 
         if self.remote_dir:
-            if self.remote_dir.startswith(S3_PREFIX):
-                local_to_remote_sync_cmd = ("aws s3 sync {} {}".format(
-                    quote(self.local_dir), quote(self.remote_dir)))
-            elif self.remote_dir.startswith(GCS_PREFIX):
-                local_to_remote_sync_cmd = ("gsutil rsync -r {} {}".format(
-                    quote(self.local_dir), quote(self.remote_dir)))
+            local_to_remote_sync_cmd = self.get_remote_sync_cmd()
         else:
             local_to_remote_sync_cmd = None
 
@@ -148,3 +147,19 @@ class _LogSyncer(object):
     def wait(self):
         if self.sync_process:
             self.sync_process.wait()
+
+    def get_remote_sync_cmd(self):
+        if self.sync_cmd_tmpl:
+            local_to_remote_sync_cmd = (self.sync_cmd_tmpl.format(
+                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+        elif self.remote_dir.startswith(S3_PREFIX):
+            local_to_remote_sync_cmd = ("aws s3 sync {local_dir} {remote_dir}".format(
+                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+        elif self.remote_dir.startswith(GCS_PREFIX):
+            local_to_remote_sync_cmd = ("gsutil rsync -r {local_dir} {remote_dir}".format(
+                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+        else:
+            logger.warning("Remote sync unsupported, skipping.")
+            local_to_remote_sync_cmd = None
+
+        return local_to_remote_sync_cmd

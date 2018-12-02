@@ -60,15 +60,26 @@ class UnifiedLogger(Logger):
 
     This class also periodically syncs output to the given upload uri."""
 
+    def __init__(self, config, logdir, upload_uri=None, custom_loggers=None, sync_cmd_tmpl=None):
+        self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
+        self._sync_cmd_tmpl = sync_cmd_tmpl
+        if custom_loggers:
+            assert isinstance(custom_loggers, list), "Improper custom loggers."
+            self._logger_list += custom_loggers
+        Logger.__init__(self, config, logdir, upload_uri=None)
+
     def _init(self):
         self._loggers = []
-        for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
+        for cls in self._logger_list:
             if cls is _TFLogger and tf is None:
                 logger.info("TF not installed - "
                             "cannot log with {}...".format(cls))
                 continue
-            self._loggers.append(cls(self.config, self.logdir, self.uri))
-        self._log_syncer = get_syncer(self.logdir, self.uri)
+            try:
+                self._loggers.append(cls(self.config, self.logdir, self.uri))
+            except Exception:
+                logger.exception("Could not instantiate {} - skipping.")
+        self._log_syncer = get_syncer(self.logdir, self.uri, sync_cmd_tmpl=self._sync_cmd_tmpl)
 
     def on_result(self, result):
         for logger in self._loggers:

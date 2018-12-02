@@ -107,6 +107,15 @@ def make_parser(parser_creator=None, **kwargs):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
+        "--sync-cmd-tmpl",
+        default="",
+        type=str,  # TODO(rliaw): fix this
+        help="Optional URI to sync training results to (e.g. s3://bucket).")
+    parser.add_argument(
+        "--custom-loggers",
+        default=None,
+        help="Optional URI to sync training results to (e.g. s3://bucket).")
+    parser.add_argument(
         "--checkpoint-freq",
         default=0,
         type=int,
@@ -198,5 +207,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
+        custom_loggers=args.custom_loggers,
+        sync_cmd_tmpl=args.sync_cmd_tmpl,
         max_failures=args.max_failures,
         **trial_kwargs)

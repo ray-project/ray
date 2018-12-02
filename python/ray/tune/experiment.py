@@ -44,6 +44,8 @@ class Experiment(object):
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
             to (e.g. ``s3://bucket``).
+        custom_loggers (list):
+        sync_cmd_tmpl (str):
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
@@ -86,6 +88,8 @@ class Experiment(object):
                  num_samples=1,
                  local_dir=None,
                  upload_dir=None,
+                 custom_loggers=None,
+                 sync_cmd_tmpl=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  max_failures=3,
@@ -98,6 +102,8 @@ class Experiment(object):
             "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
+            "custom_loggers": custom_loggers,
+            "sync_cmd_tmpl": sync_cmd_tmpl or "",  # See `upload_dir`.
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,

@@ -124,6 +124,8 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
+                 custom_loggers=None,
+                 sync_cmd_tmpl=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -146,6 +148,8 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.custom_loggers = custom_loggers
+        self.sync_cmd_tmpl = sync_cmd_tmpl
         self.verbose = True
         self.max_failures = max_failures
 
@@ -182,7 +186,9 @@ class Trial(object):
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               self.upload_dir)
+                                               upload_uri=self.upload_dir,
+                                               custom_loggers=self.custom_loggers,
+                                               sync_cmd_tmpl=self.sync_cmd_tmpl)
 
     def close_logger(self):
         """Close logger."""
