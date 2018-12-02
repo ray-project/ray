@@ -37,7 +37,9 @@ def on_sample_end(info):
 
 def on_train_result(info):
     print("agent.train() result: {} -> {} episodes".format(
-        info["agent"].__name__, info["result"]["episodes_this_iter"]))
+        info["agent"], info["result"]["episodes_this_iter"]))
+    # you can mutate the result dict to add new fields to return
+    info["result"]["callback_ok"] = True
 
 
 if __name__ == "__main__":
@@ -70,3 +72,4 @@ if __name__ == "__main__":
     print(custom_metrics)
     assert "mean_pole_angle" in custom_metrics
     assert type(custom_metrics["mean_pole_angle"]) is float
+    assert "callback_ok" in trials[0].last_result
