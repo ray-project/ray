@@ -456,9 +456,9 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes, clip_actions):
             eval_results[k] = builder.get(v)
 
     if clip_actions:
-        for policy_id, actions in eval_results.items():
+        for policy_id, results in eval_results.items():
             policy = _get_or_raise(policies, policy_id)
-            actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+            actions, rnn_out_cols, pi_info_cols = results
             eval_results[policy_id] = (_clip_actions(
                 actions, policy.action_space), rnn_out_cols, pi_info_cols)
 
