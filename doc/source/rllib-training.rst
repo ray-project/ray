@@ -282,22 +282,36 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
 
 .. code-block:: python
 
+    import ray
+    from ray import tune
+    from ray.rllib.agents.ppo import PPOAgent
+
     def train(config, reporter):
-        agent = PPOAgent(config=config, env=env)
+        agent = PPOAgent(config=config, env=YourEnv)
         while True:
             result = agent.train()
             reporter(**result)
             if result["episode_reward_mean"] > 200:
                 phase = 2
-            elif result["episode_reward_mean"]) > 100:
+            elif result["episode_reward_mean"] > 100:
                 phase = 1
             else:
                 phase = 0
             agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
 
-    run_experiments({
+    ray.init()
+    tune.run_experiments({
         "curriculum": {
             "run": train,
+            "config": {
+                "num_gpus": 0,
+                "num_workers": 2,
+            },
+            "trial_resources": {
+                "cpu": 1,
+                "gpu": lambda spec: spec.config.num_gpus,
+                "extra_cpu": lambda spec: spec.config.num_workers,
+            },
         },
     })
 
@@ -305,23 +319,28 @@ Approach 2: Use the callbacks API to update the environment on new training resu
 
 .. code-block:: python
 
+    import ray
+    from ray import tune
+
     def on_train_result(info):
         result = info["result"]
         if result["episode_reward_mean"] > 200:
             phase = 2
-        elif result["episode_reward_mean"]) > 100:
+        elif result["episode_reward_mean"] > 100:
             phase = 1
         else:
             phase = 0
         agent = info["agent"]
         agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
 
-    run_experiments({
+    ray.init()
+    tune.run_experiments({
         "curriculum": {
             "run": "PPO",
+            "env": YourEnv,
             "config": {
                 "callbacks": {
-                    "on_train_result": on_train_result,
+                    "on_train_result": tune.function(on_train_result),
                 },
             },
         },
