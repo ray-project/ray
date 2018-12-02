@@ -18,6 +18,7 @@ from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
+_large_batch_warned = False
 
 RolloutMetrics = namedtuple(
     "RolloutMetrics",
@@ -308,6 +309,21 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             episode.length += 1
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
+
+        if (not _large_batch_warned and
+                episode.batch_builder.total() > max(1000, unroll_length * 10)):
+            global _large_batch_warned
+            _large_batch_warned = True
+            logger.warn(
+                "More than {} observations for {} env steps ".format(
+                    episode.batch_builder.total(),
+                    episode.batch_builder.count) + "are buffered in "
+                "the sampler. If this is not intentional, check that the "
+                "the `horizon` config is set correctly, or consider setting "
+                "`batch_mode` to 'truncate_episodes'. Note that in "
+                "multi-agent environments, `sample_batch_size` sets the "
+                "batch size based on environment steps, not the steps of "
+                "individual agents.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
