@@ -319,8 +319,8 @@ class Agent(Trainable):
                 self.local_evaluator.filters))
 
         result = Trainable.train(self)
-        if self.config["callbacks"].get("on_train_step"):
-            self.config["callbacks"]["on_train_step"]({
+        if self.config["callbacks"].get("on_train_result"):
+            self.config["callbacks"]["on_train_result"]({
                 "agent": self,
                 "result": result,
             })
