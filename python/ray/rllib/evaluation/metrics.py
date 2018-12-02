@@ -82,8 +82,13 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
 
     for k, v_list in custom_metrics.copy().items():
         custom_metrics[k + "_mean"] = np.mean(v_list)
-        custom_metrics[k + "_min"] = np.min(v_list)
-        custom_metrics[k + "_max"] = np.max(v_list)
+        filt = [v for v in v_list if not np.isnan(v)]
+        if filt:
+            custom_metrics[k + "_min"] = np.min(filt)
+            custom_metrics[k + "_max"] = np.max(filt)
+        else:
+            custom_metrics[k + "_min"] = float("nan")
+            custom_metrics[k + "_max"] = float("nan")
         del custom_metrics[k]
 
     return dict(
