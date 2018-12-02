@@ -747,6 +747,63 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 lambda x: x),
             {10.0, 100.0})
 
+        def deep_add(seen, new_values):
+            for k, new_value in new_values.items():
+                if isinstance(new_value, dict):
+                    if k not in seen:
+                        seen[k] = {}
+                    seen[k].update(deep_add(seen[k], new_value))
+                else:
+                    if k not in seen:
+                        seen[k] = set()
+                    seen[k].add(new_value)
+
+            return seen
+
+        def assertNestedProduces(fn, values):
+            random.seed(0)
+            seen = {}
+            for _ in range(100):
+                new_config = fn()
+                seen = deep_add(seen, new_config)
+            self.assertEqual(seen, values)
+
+        # Nested mutation and spec
+        assertNestedProduces(
+            lambda: explore(
+                {
+                    "a": {
+                        "b": 4
+                    },
+                    "1": {
+                        "2": {
+                            "3": 100
+                        }
+                    },
+                },
+                {
+                    "a": {
+                        "b": [3, 4, 8, 10]
+                    },
+                    "1": {
+                        "2": {
+                            "3": lambda: random.choice([10, 100])
+                        }
+                    },
+                },
+                0.0,
+                lambda x: x),
+            {
+                "a": {
+                    "b": {3, 8}
+                },
+                "1": {
+                    "2": {
+                        "3": {80, 120}
+                    }
+                },
+            })
+
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
