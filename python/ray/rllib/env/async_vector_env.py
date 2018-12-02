@@ -291,6 +291,8 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
+            assert obs.keys() == rewards.keys()
+            assert obs.keys() == infos.keys()
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)

@@ -256,7 +256,7 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
 
 .. code-block:: python
 
@@ -273,10 +273,10 @@ You can provide callback functions to be called at points during policy evaluati
 
     def on_episode_end(info):
         episode = info["episode"]
-        mean_pole_angle = np.mean(episode.user_data["pole_angles"])
+        pole_angle = np.mean(episode.user_data["pole_angles"])
         print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, mean_pole_angle))
-        episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
+            episode.episode_id, episode.length, pole_angle))
+        episode.custom_metrics["pole_angle"] = pole_angle
 
     ray.init()
     trials = tune.run_experiments({

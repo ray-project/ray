@@ -340,6 +340,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
+            episode._set_last_info(agent_id, infos[env_id][agent_id])
 
             # Record transition info if applicable
             if last_observation is not None and \
