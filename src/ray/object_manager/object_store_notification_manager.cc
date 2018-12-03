@@ -47,7 +47,9 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error.value() != boost::system::errc::success) {
-    RAY_LOG(FATAL) << boost_to_ray_status(error).ToString();
+    RAY_LOG(FATAL)
+        << "Problem communicating with the object store from raylet, check logs or "
+        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
   }
 
   const auto &object_info =
@@ -68,12 +70,14 @@ void ObjectStoreNotificationManager::ProcessStoreAdd(
   for (auto &handler : add_handlers_) {
     handler(object_info);
   }
+  num_adds_processed_++;
 }
 
 void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
   for (auto &handler : rem_handlers_) {
     handler(object_id);
   }
+  num_removes_processed_++;
 }
 
 void ObjectStoreNotificationManager::SubscribeObjAdded(
@@ -84,6 +88,14 @@ void ObjectStoreNotificationManager::SubscribeObjAdded(
 void ObjectStoreNotificationManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
   rem_handlers_.push_back(std::move(callback));
+}
+
+std::string ObjectStoreNotificationManager::DebugString() const {
+  std::stringstream result;
+  result << "ObjectStoreNotificationManager:";
+  result << "\n- num adds processed: " << num_adds_processed_;
+  result << "\n- num removes processed: " << num_removes_processed_;
+  return result.str();
 }
 
 }  // namespace ray

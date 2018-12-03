@@ -1,6 +1,7 @@
 #include "scheduling_resources.h"
 
 #include <cmath>
+#include <sstream>
 
 #include "ray/util/logging.h"
 
@@ -144,8 +145,8 @@ const std::string ResourceSet::ToString() const {
   // Convert the first element to a string.
   if (it != resource_capacity_.end()) {
     return_string += "{" + it->first + "," + std::to_string(it->second) + "}";
+    it++;
   }
-  it++;
 
   // Add the remaining elements to the string (along with a comma).
   for (; it != resource_capacity_.end(); ++it) {
@@ -511,6 +512,13 @@ bool SchedulingResources::Release(const ResourceSet &resources) {
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return resources_available_.SubtractResourcesStrict(resources);
 }
+
+std::string SchedulingResources::DebugString() const {
+  std::stringstream result;
+  result << "\n- total: " << resources_total_.ToString();
+  result << "\n- avail: " << resources_available_.ToString();
+  return result.str();
+};
 
 }  // namespace raylet
 

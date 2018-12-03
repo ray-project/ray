@@ -83,6 +83,9 @@ void ServerConnection<T>::ReadBuffer(
 template <class T>
 ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
+  sync_writes_ += 1;
+  bytes_written_ += length;
+
   std::vector<boost::asio::const_buffer> message_buffers;
   auto write_version = RayConfig::instance().ray_protocol_version();
   message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
@@ -96,6 +99,9 @@ template <class T>
 void ServerConnection<T>::WriteMessageAsync(
     int64_t type, int64_t length, const uint8_t *message,
     const std::function<void(const ray::Status &)> &handler) {
+  async_writes_ += 1;
+  bytes_written_ += length;
+
   auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
   write_buffer->write_version = RayConfig::instance().ray_protocol_version();
   write_buffer->write_type = type;
@@ -106,7 +112,7 @@ void ServerConnection<T>::WriteMessageAsync(
 
   auto size = async_write_queue_.size();
   auto size_is_power_of_two = (size & (size - 1)) == 0;
-  if (size > 100 && size_is_power_of_two) {
+  if (size > 1000 && size_is_power_of_two) {
     RAY_LOG(WARNING) << "ServerConnection has " << size << " buffered async writes";
   }
 
@@ -183,7 +189,7 @@ ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
       debug_label_(debug_label) {}
 
 template <class T>
-const ClientID &ClientConnection<T>::GetClientID() {
+const ClientID &ClientConnection<T>::GetClientId() {
   return client_id_;
 }
 
@@ -220,6 +226,7 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   RAY_CHECK(read_version_ == RayConfig::instance().ray_protocol_version());
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
+  ServerConnection<T>::bytes_read_ += read_length_;
   // Wait for the message to be read.
   boost::asio::async_read(
       ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
@@ -240,6 +247,22 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
     RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_
                      << " took " << interval << " ms.";
   }
+}
+
+template <class T>
+std::string ServerConnection<T>::DebugString() const {
+  std::stringstream result;
+  result << "\n- bytes read: " << bytes_read_;
+  result << "\n- bytes written: " << bytes_written_;
+  result << "\n- num async writes: " << async_writes_;
+  result << "\n- num sync writes: " << sync_writes_;
+  result << "\n- writing: " << async_write_in_flight_;
+  int64_t num_bytes = 0;
+  for (auto &buffer : async_write_queue_) {
+    num_bytes += buffer->write_length;
+  }
+  result << "\n- pending async bytes: " << num_bytes;
+  return result.str();
 }
 
 template class ServerConnection<boost::asio::local::stream_protocol>;

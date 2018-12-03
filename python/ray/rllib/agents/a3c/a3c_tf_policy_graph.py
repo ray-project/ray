@@ -53,7 +53,8 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.model = ModelCatalog.get_model({
             "obs": self.observations,
             "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards
+            "prev_rewards": prev_rewards,
+            "is_training": self._get_is_training_placeholder(),
         }, observation_space, logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)
         self.vf = self.model.value_function()
@@ -94,7 +95,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=self.observations,
             action_sampler=action_dist.sample(),
-            loss=self.loss.total_loss,
+            loss=self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,

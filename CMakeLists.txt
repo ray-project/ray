@@ -111,7 +111,10 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     list(APPEND ray_file_list "src/credis/redis/src/redis-server")
   endif()
 
-  if (DEFINED ENV{INCLUDE_UI} AND "$ENV{INCLUDE_UI}" STREQUAL "1")
+  # The goal of the if statement below is to require the catapult files to be
+  # present INCLUDE_UI=1 is set and to include the UI files if they are present.
+  # This should match the logic in build_ui.sh.
+  if (EXISTS "${CMAKE_BINARY_DIR}/src/catapult_files/index.html" OR "$ENV{INCLUDE_UI}" STREQUAL "1")
     list(APPEND ray_file_list "src/catapult_files/index.html")
     list(APPEND ray_file_list "src/catapult_files/trace_viewer_full.html")
   endif()

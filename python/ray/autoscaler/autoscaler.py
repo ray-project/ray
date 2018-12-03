@@ -69,6 +69,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
+            "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
         },
         REQUIRED),
 
@@ -490,8 +491,10 @@ class StandardAutoscaler(object):
     def recover_if_needed(self, node_id):
         if not self.can_update(node_id):
             return
-        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
-            self.provider.internal_ip(node_id), 0)
+        key = self.provider.internal_ip(node_id)
+        if key not in self.load_metrics.last_heartbeat_time_by_ip:
+            self.load_metrics.last_heartbeat_time_by_ip[key] = time.time()
+        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
         delta = time.time() - last_heartbeat_time
         if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return

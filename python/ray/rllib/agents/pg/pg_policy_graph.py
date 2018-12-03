@@ -35,7 +35,8 @@ class PGPolicyGraph(TFPolicyGraph):
         self.model = ModelCatalog.get_model({
             "obs": obs,
             "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards
+            "prev_rewards": prev_rewards,
+            "is_training": self._get_is_training_placeholder(),
         }, obs_space, self.logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 
@@ -64,7 +65,7 @@ class PGPolicyGraph(TFPolicyGraph):
             sess,
             obs_input=obs,
             action_sampler=action_dist.sample(),
-            loss=loss,
+            loss=self.model.loss() + loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -78,7 +79,7 @@ class PGPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        # This ads the "advantages" column to the sample batch
+        # This adds the "advantages" column to the sample batch
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
 

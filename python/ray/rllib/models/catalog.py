@@ -11,8 +11,8 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
-from ray.rllib.env.async_vector_env import _ServingEnvToAsync
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.async_vector_env import _ExternalEnvToAsync
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
@@ -189,7 +189,7 @@ class ModelCatalog(object):
             seq_in (Tensor): Optional RNN sequence length tensor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
 
         assert isinstance(input_dict, dict)
@@ -200,9 +200,16 @@ class ModelCatalog(object):
         if options.get("use_lstm"):
             copy = dict(input_dict)
             copy["obs"] = model.last_layer
-            model = LSTM(copy, obs_space, num_outputs, options, state_in,
+            feature_space = gym.spaces.Box(
+                -1, 1, shape=(model.last_layer.shape[1], ))
+            model = LSTM(copy, feature_space, num_outputs, options, state_in,
                          seq_lens)
 
+        logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
+            model, input_dict, obs_space, state_in, seq_lens, model.outputs,
+            model.state_out))
+
+        model._validate_output_shape()
         return model
 
     @staticmethod
@@ -210,7 +217,7 @@ class ModelCatalog(object):
                    seq_lens):
         if options.get("custom_model"):
             model = options["custom_model"]
-            logger.info("Using custom model {}".format(model))
+            logger.debug("Using custom model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
                 input_dict,
                 obs_space,
@@ -238,7 +245,7 @@ class ModelCatalog(object):
             options (dict): Optional args to pass to the model constructor.
 
         Returns:
-            model (Model): Neural network model.
+            model (models.Model): Neural network model.
         """
         from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
                                                     PyTorchFCNet)
@@ -267,7 +274,7 @@ class ModelCatalog(object):
         """Returns a suitable processor for the given environment.
 
         Args:
-            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
+            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
@@ -282,18 +289,22 @@ class ModelCatalog(object):
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
-            return _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
+            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
+        else:
+            cls = get_preprocessor(env.observation_space)
+            prep = cls(env.observation_space, options)
 
-        preprocessor = get_preprocessor(env.observation_space)
-        return preprocessor(env.observation_space, options)
+        logger.debug("Created preprocessor {}: {} -> {}".format(
+            prep, env.observation_space, prep.shape))
+        return prep
 
     @staticmethod
     def get_preprocessor_as_wrapper(env, options=None):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
-            env (gym.Env|VectorEnv|ServingEnv): The environment to wrap.
+            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
@@ -306,8 +317,8 @@ class ModelCatalog(object):
             return _RLlibPreprocessorWrapper(env, preprocessor)
         elif isinstance(env, VectorEnv):
             return _RLlibVectorPreprocessorWrapper(env, preprocessor)
-        elif isinstance(env, ServingEnv):
-            return _ServingEnvToAsync(env, preprocessor)
+        elif isinstance(env, ExternalEnv):
+            return _ExternalEnvToAsync(env, preprocessor)
         else:
             raise ValueError("Don't know how to wrap {}".format(env))
 

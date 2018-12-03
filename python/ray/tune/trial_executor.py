@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import traceback
 
 from ray.tune.trial import Trial, Checkpoint
 
@@ -61,24 +60,24 @@ class TrialExecutor(object):
                                   "stop_trial() method")
 
     def restart_trial(self, trial, error_msg=None):
-        """Restarts the trial.
+        """Restarts or requeues the trial.
 
-        The state of the trial should restore from the last checkpoint.
+        The state of the trial should restore from the last checkpoint. Trial
+        is requeued if the cluster no longer has resources to accomodate it.
 
         Args:
             error_msg (str): Optional error message.
         """
-        try:
-            logger.info(
-                "Attempting to recover trial state from last checkpoint")
-            self.stop_trial(
-                trial, error=True, error_msg=error_msg, stop_logger=False)
-            trial.result_logger.flush()
+        self.stop_trial(
+            trial,
+            error=error_msg is not None,
+            error_msg=error_msg,
+            stop_logger=False)
+        trial.result_logger.flush()
+        if self.has_resources(trial.resources):
             self.start_trial(trial)
-        except Exception:
-            error_msg = traceback.format_exc()
-            logger.exception("Error recovering trial from checkpoint, abort.")
-            self.stop_trial(trial, error=True, error_msg=error_msg)
+        else:
+            trial.status = Trial.PENDING
 
     def continue_training(self, trial):
         """Continues the training of this trial."""
@@ -158,7 +157,11 @@ class TrialExecutor(object):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-        pass
+        raise NotImplementedError
+
+    def resource_string(self):
+        """Returns a string describing the total resources available."""
+        raise NotImplementedError
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.

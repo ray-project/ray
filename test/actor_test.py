@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import random
 import numpy as np
 import os
@@ -919,13 +920,16 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
         num_local_schedulers=num_local_schedulers,
         redirect_output=True,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
-        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+        num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]),
+        _internal_config=json.dumps({
+            "num_heartbeats_timeout": 1000
+        }))
 
     @ray.remote
-    def create_actors(n):
+    def create_actors(i, n):
         @ray.remote(num_gpus=1)
         class Actor(object):
-            def __init__(self):
+            def __init__(self, i, j):
                 self.gpu_ids = ray.get_gpu_ids()
 
             def get_location_and_ids(self):
@@ -933,14 +937,43 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
                     ray.worker.global_worker.plasma_client.store_socket_name),
                         tuple(self.gpu_ids))
 
-        # Create n actors.
-        for _ in range(n):
-            Actor.remote()
+            def sleep(self):
+                time.sleep(100)
 
-    ray.get([
-        create_actors.remote(num_gpus_per_scheduler)
-        for _ in range(num_local_schedulers)
+        # Create n actors.
+        actors = []
+        for j in range(n):
+            actors.append(Actor.remote(i, j))
+
+        locations = ray.get(
+            [actor.get_location_and_ids.remote() for actor in actors])
+
+        # Put each actor to sleep for a long time to prevent them from getting
+        # terminated.
+        for actor in actors:
+            actor.sleep.remote()
+
+        return locations
+
+    all_locations = ray.get([
+        create_actors.remote(i, num_gpus_per_scheduler)
+        for i in range(num_local_schedulers)
     ])
+
+    # Make sure that no two actors are assigned to the same GPU.
+    node_names = {
+        location
+        for locations in all_locations for location, gpu_id in locations
+    }
+    assert len(node_names) == num_local_schedulers
+
+    # Keep track of which GPU IDs are being used for each location.
+    gpus_in_use = {node_name: [] for node_name in node_names}
+    for locations in all_locations:
+        for location, gpu_ids in locations:
+            gpus_in_use[location].extend(gpu_ids)
+    for node_name in node_names:
+        assert len(set(gpus_in_use[node_name])) == num_gpus_per_scheduler
 
     @ray.remote(num_gpus=1)
     class Actor(object):
@@ -987,7 +1020,7 @@ def test_actors_and_tasks_with_gpus(shutdown_only):
     @ray.remote(num_gpus=1)
     def f1():
         t1 = time.monotonic()
-        time.sleep(0.1)
+        time.sleep(0.2)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
@@ -998,7 +1031,7 @@ def test_actors_and_tasks_with_gpus(shutdown_only):
     @ray.remote(num_gpus=2)
     def f2():
         t1 = time.monotonic()
-        time.sleep(0.1)
+        time.sleep(0.2)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
@@ -1227,7 +1260,14 @@ def test_blocking_actor_task(shutdown_only):
 
 
 def test_exception_raised_when_actor_node_dies(shutdown_only):
-    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=1)
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200,
+            "num_heartbeats_timeout": 10,
+        }))
 
     @ray.remote
     class Counter(object):
@@ -1254,11 +1294,11 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
         ray.services.PROCESS_TYPE_PLASMA_STORE][1]
     process.kill()
 
-    # Submit some new actor tasks.
-    x_ids = [actor.inc.remote() for _ in range(5)]
-
-    # Make sure that getting the result raises an exception.
+    # Submit some new actor tasks both before and after the node failure is
+    # detected. Make sure that getting the result raises an exception.
     for _ in range(10):
+        # Submit some new actor tasks.
+        x_ids = [actor.inc.remote() for _ in range(5)]
         for x_id in x_ids:
             with pytest.raises(ray.worker.RayGetError):
                 # There is some small chance that ray.get will actually
@@ -1833,7 +1873,6 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skip("This test does not work yet.")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1850,7 +1889,6 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skip("This test does not work yet.")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 

@@ -12,7 +12,7 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
     const std::shared_ptr<ray::LocalClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -24,15 +24,9 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool RemoveWorker(std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
                   const std::shared_ptr<ray::raylet::Worker> &worker) {
-  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
-    if (*it == worker) {
-      worker_pool.erase(it);
-      return true;
-    }
-  }
-  return false;
+  return worker_pool.erase(worker) > 0;
 }
 
 }  // namespace
@@ -152,7 +146,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  state.registered_workers.push_back(std::move(worker));
+  state.registered_workers.insert(std::move(worker));
 
   auto it = starting_worker_processes_.find(pid);
   RAY_CHECK(it != starting_worker_processes_.end());
@@ -165,7 +159,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
 void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.push_back(driver);
+  state.registered_drivers.insert(std::move(driver));
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
@@ -197,7 +191,7 @@ void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   // Add the worker to the idle pool.
   if (worker->GetActorId().is_nil()) {
-    state.idle.push_back(std::move(worker));
+    state.idle.insert(std::move(worker));
   } else {
     state.idle_actor[worker->GetActorId()] = std::move(worker);
   }
@@ -209,8 +203,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   std::shared_ptr<Worker> worker = nullptr;
   if (actor_id.is_nil()) {
     if (!state.idle.empty()) {
-      worker = std::move(state.idle.back());
-      state.idle.pop_back();
+      worker = std::move(*state.idle.begin());
+      state.idle.erase(state.idle.begin());
     }
   } else {
     auto actor_entry = state.idle_actor.find(actor_id);
@@ -254,6 +248,16 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   }
 
   return workers;
+}
+
+std::string WorkerPool::DebugString() const {
+  std::stringstream result;
+  result << "WorkerPool:";
+  for (const auto &entry : states_by_lang_) {
+    result << "\n- num workers: " << entry.second.registered_workers.size();
+    result << "\n- num drivers: " << entry.second.registered_drivers.size();
+  }
+  return result.str();
 }
 
 }  // namespace raylet

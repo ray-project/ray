@@ -14,7 +14,8 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
+                             EPISODES_TOTAL)
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -184,6 +185,21 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
+
+    def testUploadDirNone(self):
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "upload_dir": None,
+                "config": {
+                    "a": "b"
+                },
+            }
+        })
+        self.assertFalse(trial.upload_dir)
 
     def testLogdirStartingWithTilde(self):
         local_dir = '~/ray_results/local_dir'
@@ -419,9 +435,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
 
-        def train3(config, reporter):
+        def train2(config, reporter):
             for i in range(10):
                 reporter(timesteps_total=5)
+
+        [trial2] = run_experiments({
+            "foo": {
+                "run": train2,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_this_iter=0, episodes_this_iter=0)
 
         [trial3] = run_experiments({
             "foo": {
@@ -431,8 +462,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
-        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
-        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 0)
+        self.assertEqual(trial3.last_result[EPISODES_TOTAL], 0)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -970,6 +1001,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.RUNNING)
 
+    def testMultiStepRun2(self):
+        """Checks that runner.step throws when overstepping."""
+        ray.init(num_cpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertRaises(TuneError, runner.step)
+
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())
@@ -991,6 +1046,12 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+
+    def testThrowOnOverstep(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        runner.step()
+        self.assertRaises(TuneError, runner.step)
 
     def testFailureRecoveryDisabled(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -1390,17 +1451,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(runner.is_finished())
 
     def testSearchAlgFinishes(self):
-        """SearchAlg changing state in `next_trials` does not crash."""
+        """Empty SearchAlg changing state in `next_trials` does not crash."""
 
         class FinishFastAlg(SuggestionAlgorithm):
-            def next_trials(self):
-                self._finished = True
-                return []
+            _index = 0
 
-        ray.init(num_cpus=4, num_gpus=2)
+            def next_trials(self):
+                trials = []
+                self._index += 1
+
+                for trial in self._trial_generator:
+                    trials += [trial]
+                    break
+
+                if self._index > 4:
+                    self._finished = True
+                return trials
+
+            def _suggest(self, trial_id):
+                return {}
+
+        ray.init(num_cpus=2)
         experiment_spec = {
             "run": "__fake",
-            "num_samples": 3,
+            "num_samples": 2,
             "stop": {
                 "training_iteration": 1
             }
@@ -1410,9 +1484,20 @@ class TrialRunnerTest(unittest.TestCase):
         searcher.add_configurations(experiments)
 
         runner = TrialRunner(search_alg=searcher)
-        runner.step()  # This should not fail
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This launches a new run
+        runner.step()  # This launches a 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the first run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # this converts self._finished to True
         self.assertTrue(searcher.is_finished())
-        self.assertTrue(runner.is_finished())
+        self.assertRaises(TuneError, runner.step)
 
 
 if __name__ == "__main__":

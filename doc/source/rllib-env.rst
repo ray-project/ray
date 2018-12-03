@@ -7,20 +7,22 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 **Compatibility matrix**:
 
-=============  ================  ==================  ===========  ==================
-Algorithm      Discrete Actions  Continuous Actions  Multi-Agent  Recurrent Policies
-=============  ================  ==================  ===========  ==================
-A2C, A3C        **Yes**           **Yes**             **Yes**      **Yes**
-PPO             **Yes**           **Yes**             **Yes**      **Yes**
-PG              **Yes**           **Yes**             **Yes**      **Yes**
-IMPALA          **Yes**           No                  **Yes**      **Yes**
-DQN, Rainbow    **Yes**           No                  **Yes**      No
-DDPG            No                **Yes**             **Yes**      No
-APEX-DQN        **Yes**           No                  **Yes**      No
-APEX-DDPG       No                **Yes**             **Yes**      No
-ES              **Yes**           **Yes**             No           No
-ARS             **Yes**           **Yes**             No           No
-=============  ================  ==================  ===========  ==================
+=============  =======================  ==================  ===========  ==================
+Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
+=============  =======================  ==================  ===========  ==================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
+DDPG, TD3       No                      **Yes**             **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
+APEX-DDPG       No                      **Yes**             **Yes**      No
+ES              **Yes**                 **Yes**             No           No
+ARS             **Yes**                 **Yes**             No           No
+=============  =======================  ==================  ===========  ==================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
 In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
 
@@ -199,9 +201,9 @@ There is a full example of this in the `example training script <https://github.
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Implementing a shared critic between multiple policies requires the definition of custom policy graphs. It can be done as follows:
+Implementing a centralized critic that takes as input the observations and actions of other concurrent agents requires the definition of custom policy graphs. It can be done as follows:
 
-1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. This assumes you use variable sharing to access the critic network from multiple policies. The critic predictions can then be added to the postprocessed trajectory. Here's an example:
+1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
 
 .. code-block:: python
 
@@ -212,32 +214,30 @@ Implementing a shared critic between multiple policies requires the definition o
             axis=1)
         # add the global obs and global critic value
         sample_batch["global_obs"] = global_obs_batch
-        sample_batch["global_vf"] = self.sess.run(
-            self.global_critic_network, feed_dict={"obs": global_obs_batch})
-        # metrics like "global reward" can be retrieved from the info return of the environment
-        sample_batch["global_rewards"] = [
-            info["global_reward"] for info in sample_batch["infos"]]
+        sample_batch["central_vf"] = self.sess.run(
+            self.critic_network, feed_dict={"obs": global_obs_batch})
         return sample_batch
 
-2. Updating the critic: the centralized critic loss can be added to the loss of some arbitrary policy graph. The policy graph that is chosen must add the inputs for the critic loss to its postprocessed trajectory batches.
+2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
 
-For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+Interfacing with External Agents
+--------------------------------
 
-Agent-Driven
-------------
+In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time.
+RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
-RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+ExternalEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
 
-For example, ServingEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
+Logging off-policy actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Offline Data
-~~~~~~~~~~~~
+ExternalEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
 
-ServingEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
+Data ingest
+~~~~~~~~~~~
 
-The ``log_action`` API of ServingEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ServingEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
+The ``log_action`` API of ExternalEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ExternalEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
 
 Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/env_context.py>`__ passed into the environment constructor.
 

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import logging
 import time
 
@@ -15,7 +16,8 @@ class Cluster(object):
     def __init__(self,
                  initialize_head=False,
                  connect=False,
-                 head_node_args=None):
+                 head_node_args=None,
+                 shutdown_at_exit=True):
         """Initializes the cluster.
 
         Args:
@@ -24,8 +26,10 @@ class Cluster(object):
             connect (bool): If `initialize_head=True` and `connect=True`,
                 ray.init will be called with the redis address of this cluster
                 passed in.
-            head_node_args (kwargs): Arguments to be passed into
+            head_node_args (dict): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
+            shutdown_at_exit (bool): If True, registers an exit hook
+                for shutting down all started processes.
         """
         self.head_node = None
         self.worker_nodes = {}
@@ -38,9 +42,12 @@ class Cluster(object):
             self.add_node(**head_node_args)
             if connect:
                 redis_password = head_node_args.get("redis_password")
-                ray.init(
+                output_info = ray.init(
                     redis_address=self.redis_address,
                     redis_password=redis_password)
+                logger.info(output_info)
+        if shutdown_at_exit:
+            atexit.register(self.shutdown)
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -88,7 +95,7 @@ class Cluster(object):
                 services.all_processes[key] = []
             node = Node(process_dict_copy)
             self.worker_nodes[node] = address_info
-        logging.info("Starting Node with raylet socket {}".format(
+        logger.info("Starting Node with raylet socket {}".format(
             address_info["raylet_socket_names"]))
 
         return node
@@ -111,17 +118,24 @@ class Cluster(object):
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self, retries=20):
+    def wait_for_nodes(self, retries=30):
         """Waits for all nodes to be registered with global state.
+
+        By default, waits for 3 seconds.
 
         Args:
             retries (int): Number of times to retry checking client table.
+
+        Returns:
+            True if successfully registered nodes as expected.
         """
+
         for i in range(retries):
             if not ray.is_initialized() or not self._check_registered_nodes():
-                time.sleep(0.3)
+                time.sleep(0.1)
             else:
-                break
+                return True
+        return False
 
     def _check_registered_nodes(self):
         registered = len([
@@ -151,12 +165,18 @@ class Cluster(object):
         return nodes
 
     def shutdown(self):
+        """Removes all nodes."""
+
         # We create a list here as a copy because `remove_node`
         # modifies `self.worker_nodes`.
         all_nodes = list(self.worker_nodes)
         for node in all_nodes:
             self.remove_node(node)
-        self.remove_node(self.head_node)
+
+        if self.head_node:
+            self.remove_node(self.head_node)
+        else:
+            logger.warning("No headnode exists!")
 
 
 class Node(object):

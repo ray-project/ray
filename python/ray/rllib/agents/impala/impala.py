@@ -8,7 +8,6 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.tune.trial import Resources
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
@@ -21,6 +20,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "num_parallel_data_loaders",
     "grad_clip",
     "max_sample_requests_in_flight_per_worker",
+    "broadcast_interval",
 ]
 
 # yapf: disable
@@ -36,8 +36,6 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    "num_cpus_per_worker": 1,
-    "num_gpus_per_worker": 0,
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
@@ -45,6 +43,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_parallel_data_loaders": 1,
     # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
+    # max number of workers to broadcast one set of weights to
+    "broadcast_interval": 1,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
@@ -77,15 +77,6 @@ class ImpalaAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"] and cf["num_gpus"] * cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
     def _init(self):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
@@ -97,8 +88,7 @@ class ImpalaAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"],
-            {"num_cpus": 1})
+            self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])

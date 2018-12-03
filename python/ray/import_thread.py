@@ -110,7 +110,7 @@ class ImportThread(object):
          run_on_other_drivers) = self.redis_client.hmget(
              key, ["driver_id", "function", "run_on_other_drivers"])
 
-        if (run_on_other_drivers == "False"
+        if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
                 and driver_id != self.worker.task_driver_id.id()):
             return

@@ -31,6 +31,9 @@ class Worker {
   Language GetLanguage() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
+  bool AddBlockedTaskId(const TaskID &task_id);
+  bool RemoveBlockedTaskId(const TaskID &task_id);
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   void AssignDriverId(const DriverID &driver_id);
   const DriverID &GetAssignedDriverId() const;
   void AssignActorId(const ActorID &actor_id);
@@ -72,6 +75,7 @@ class Worker {
   /// The specific resource IDs that this worker currently owns for the duration
   // of a task.
   ResourceIdSet task_resource_ids_;
+  std::unordered_set<TaskID> blocked_task_ids_;
 };
 
 }  // namespace raylet

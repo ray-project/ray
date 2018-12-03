@@ -58,6 +58,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 2}' \
+    --config '{"num_gpus": 0.1}' \
+    --ray-num-gpus 1
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "lr": 1e-4, "sgd_minibatch_size": 64, "train_batch_size": 2000, "num_workers": 1, "use_gae": false, "batch_mode": "complete_episodes"}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
@@ -99,7 +107,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run APEX \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "gpu": false, "min_iter_time_s": 1}'
+    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "num_gpus": 0, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -235,9 +243,6 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
-
-docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_local.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
@@ -250,16 +255,43 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_nested_spaces.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/test/test_serving_env.py
+    python /ray/python/ray/rllib/test/test_external_env.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=PG --stop=50
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=PPO --stop=50
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=DQN --stop=50
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_lstm.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=PPO
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=PG
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=DQN
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/examples/batch_norm_model.py --num-iters=1 --run=DDPG
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_multi_agent_env.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_supported_spaces.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    pytest /ray/python/ray/tune/test/cluster_tests.py
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/test/test_env_with_subprocess.py
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     /ray/python/ray/rllib/test/test_rollout.sh
@@ -326,27 +358,37 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/examples/custom_metrics_and_callbacks.py --num-iters=2
 
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=simple
 
-docker run  -e "RAY_USE_XRAY=1" --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
         --batch-size=1 --strategy=ps
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+        --num-workers=1 --devices-per-worker=1 --strategy=ps
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+        --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
+    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84, "channel_major": true}, "preprocessor_pref": "rllib"}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v1 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_workers": 2, "use_pytorch": true}'
+    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA python -m pytest /ray/test/object_manager_test.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \

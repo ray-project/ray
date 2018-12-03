@@ -23,7 +23,7 @@ class Model(object):
 
     Attributes:
         input_dict (dict): Dictionary of input tensors, including "obs",
-            "prev_action", "prev_reward".
+            "prev_action", "prev_reward", "is_training".
         outputs (Tensor): The output vector of this model, of shape
             [BATCH_SIZE, num_outputs].
         last_layer (Tensor): The feature layer right before the model output,
@@ -62,6 +62,7 @@ class Model(object):
             self.seq_lens = tf.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
 
+        self._num_outputs = num_outputs
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
@@ -73,18 +74,6 @@ class Model(object):
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
 
-        # Validate the output shape
-        try:
-            out = tf.convert_to_tensor(self.outputs)
-            shape = out.shape.as_list()
-        except Exception:
-            raise ValueError("Output is not a tensor: {}".format(self.outputs))
-        else:
-            if len(shape) != 2 or shape[1] != num_outputs:
-                raise ValueError(
-                    "Expected output shape of [None, {}], got {}".format(
-                        num_outputs, shape))
-
         if options.get("free_log_std", False):
             log_std = tf.get_variable(
                 name="log_std",
@@ -92,6 +81,19 @@ class Model(object):
                 initializer=tf.zeros_initializer)
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
+
+    def _validate_output_shape(self):
+        """Checks that the model has the correct number of outputs."""
+        try:
+            out = tf.convert_to_tensor(self.outputs)
+            shape = out.shape.as_list()
+        except Exception:
+            raise ValueError("Output is not a tensor: {}".format(self.outputs))
+        else:
+            if len(shape) != 2 or shape[1] != self._num_outputs:
+                raise ValueError(
+                    "Expected output shape of [None, {}], got {}".format(
+                        self._num_outputs, shape))
 
     def _build_layers(self, inputs, num_outputs, options):
         """Builds and returns the output and last layer of the network.
@@ -106,7 +108,7 @@ class Model(object):
 
         Arguments:
             input_dict (dict): Dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward".
+                "prev_action", "prev_reward", "is_training".
             num_outputs (int): Output tensor must be of size
                 [BATCH_SIZE, num_outputs].
             options (dict): Model options.
@@ -122,6 +124,7 @@ class Model(object):
             >>> print(input_dict)
             {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
              'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+             'is_training': <tf.Tensor shape=(), dtype=bool>,
              'obs': OrderedDict([
                 ('sensors', OrderedDict([
                     ('front_cam', [
@@ -143,6 +146,18 @@ class Model(object):
         """
         return tf.reshape(
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
+
+    def loss(self):
+        """Builds any built-in (self-supervised) loss for the model.
+
+        For example, this can be used to incorporate auto-encoder style losses.
+        Note that this loss has to be included in the policy graph loss to have
+        an effect (done for built-in algorithms).
+
+        Returns:
+            Scalar tensor for the self-supervised loss.
+        """
+        return tf.constant(0.0)
 
 
 def _restore_original_dimensions(input_dict, obs_space):
