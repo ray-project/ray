@@ -316,15 +316,21 @@ class PolicyEvaluator(EvaluatorInterface):
                 if isinstance(obs_space, gym.spaces.Dict):
                     raise ValueError(
                         "Found raw Dict space as input to policy graph. "
+                        "RLlib does not automatically preprocess these in "
+                        "multi-agent environments. "
                         "Please preprocess the observations inside your env "
-                        "with DictFlatteningPreprocessor and set the env "
-                        "obs space to `preprocessor.observation_space`.")
+                        "with a DictFlatteningPreprocessor and set the "
+                        "obs space for the policy to the value of the "
+                        "`preprocessor.observation_space`.")
                 elif isinstance(obs_space, gym.spaces.Tuple):
                     raise ValueError(
                         "Found raw Tuple space as input to policy graph. "
+                        "RLlib does not automatically preprocess these in "
+                        "multi-agent environments. "
                         "Please preprocess the observations inside your env "
-                        "with TupleFlatteningPreprocessor and set the env "
-                        "obs space to `preprocessor.observation_space`.")
+                        "with a TupleFlatteningPreprocessor and set the "
+                        "obs space for the policy to the value of the "
+                        "`preprocessor.observation_space`.")
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map
 
