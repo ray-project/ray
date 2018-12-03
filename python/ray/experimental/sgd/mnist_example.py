@@ -55,8 +55,11 @@ class MNISTModel(Model):
         if error:
             raise ValueError("Failed to import data", error)
 
+    def build(self):
+
         # Set seed and build layers
         tf.set_random_seed(0)
+
         self.x = tf.placeholder(tf.float32, [None, 784], name="x")
         self.y_ = tf.placeholder(tf.float32, [None, 10], name="y_")
         y_conv, self.keep_prob = deepnn(self.x)
@@ -73,6 +76,15 @@ class MNISTModel(Model):
         correct_prediction = tf.equal(
             tf.argmax(y_conv, 1), tf.argmax(self.y_, 1))
         self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def get_loss(self):
+        return self.loss
+
+    def get_optimizer(self):
+        return self.optimizer
+
+    def get_variables(self):
+        return self.variables
 
     def get_feed_dict(self):
         batch = self.mnist.train.next_batch(50)
@@ -101,8 +113,8 @@ def train_mnist(config, reporter):
         strategy=args.strategy)
 
     # Important: synchronize the initial weights of all model replicas
-    w0 = sgd.for_model(lambda m: m.variables.get_flat())
-    sgd.foreach_model(lambda m: m.variables.set_flat(w0))
+    w0 = sgd.for_model(lambda m: m.get_variables().get_flat())
+    sgd.foreach_model(lambda m: m.get_variables().set_flat(w0))
 
     for i in range(args.num_iters):
         if i % 10 == 0:
