@@ -33,7 +33,8 @@ You can pass either a string name or a Python class to specify an environment. B
 
     class MyEnv(gym.Env):
         def __init__(self, env_config):
-            self.env_config = env_config
+            self.action_space = ...
+            self.observation_space = ...
         ...
 
     ray.init()
