@@ -90,8 +90,8 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
       UniqueId currentTaskId) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
+    if (RayLog.core.isDebugEnabled()) {
+      RayLog.core.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
     nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
@@ -172,7 +172,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
