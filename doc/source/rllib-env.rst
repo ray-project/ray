@@ -52,7 +52,7 @@ You can also register a custom env creator function with a string name. This fun
     from ray.tune.registry import register_env
 
     def env_creator(env_config):
-        return MyEnv(...)  # return an env object
+        return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
