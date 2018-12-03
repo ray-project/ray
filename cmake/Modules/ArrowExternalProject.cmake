@@ -15,7 +15,7 @@
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/pcmoritz/arrow.git)
-# The PR for this commit is https://github.com/apache/arrow/pull/2826. We
+# The PR for this commit is https://github.com/apache/arrow/pull/2551. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
 set(arrow_TAG c7ca3b7002bd839c0fb8107479fe58c4262bbcd5)
