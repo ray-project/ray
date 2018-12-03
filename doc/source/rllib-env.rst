@@ -51,8 +51,7 @@ You can also register a custom env creator function with a string name. This fun
     from ray.tune.registry import register_env
 
     def env_creator(env_config):
-        import gym
-        return gym.make("CartPole-v0")  # or return your own custom env
+        return MyEnv(env_config)  # return an env object
 
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
