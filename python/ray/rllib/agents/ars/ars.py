@@ -13,7 +13,6 @@ import time
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.tune.trial import Resources
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
@@ -161,11 +160,6 @@ class ARSAgent(Agent):
 
     _agent_name = "ARS"
     _default_config = DEFAULT_CONFIG
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
         env = self.env_creator(self.config["env_config"])

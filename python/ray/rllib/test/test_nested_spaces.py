@@ -17,7 +17,7 @@ from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
-from ray.rllib.test.test_serving_env import SimpleServing
+from ray.rllib.test.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 
 DICT_SPACE = spaces.Dict({
@@ -93,6 +93,11 @@ class InvalidModel(Model):
         return "not", "valid"
 
 
+class InvalidModel2(Model):
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        return tf.constant(0), tf.constant(0)
+
+
 class DictSpyModel(Model):
     capture_index = 0
 
@@ -158,7 +163,18 @@ class NestedSpacesTest(unittest.TestCase):
                 },
             }))
 
-    def doTestNestedDict(self, make_env):
+    def testInvalidModel2(self):
+        ModelCatalog.register_custom_model("invalid2", InvalidModel2)
+        self.assertRaisesRegexp(
+            ValueError, "Expected output.*",
+            lambda: PGAgent(
+                env="CartPole-v0", config={
+                    "model": {
+                        "custom_model": "invalid2",
+                    },
+                }))
+
+    def doTestNestedDict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         pg = PGAgent(
@@ -168,6 +184,7 @@ class NestedSpacesTest(unittest.TestCase):
                 "sample_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
+                    "use_lstm": test_lstm,
                 },
             })
         pg.train()
@@ -213,6 +230,9 @@ class NestedSpacesTest(unittest.TestCase):
 
     def testNestedDictGym(self):
         self.doTestNestedDict(lambda _: NestedDictEnv())
+
+    def testNestedDictGymLSTM(self):
+        self.doTestNestedDict(lambda _: NestedDictEnv(), test_lstm=True)
 
     def testNestedDictVector(self):
         self.doTestNestedDict(

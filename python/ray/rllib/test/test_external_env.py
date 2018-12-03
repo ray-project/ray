@@ -12,15 +12,15 @@ import ray
 from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.test.test_policy_evaluator import BadPolicyGraph, \
     MockPolicyGraph, MockEnv
 from ray.tune.registry import register_env
 
 
-class SimpleServing(ServingEnv):
+class SimpleServing(ExternalEnv):
     def __init__(self, env):
-        ServingEnv.__init__(self, env.action_space, env.observation_space)
+        ExternalEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
 
     def run(self):
@@ -36,9 +36,9 @@ class SimpleServing(ServingEnv):
                 eid = self.start_episode()
 
 
-class PartOffPolicyServing(ServingEnv):
+class PartOffPolicyServing(ExternalEnv):
     def __init__(self, env, off_pol_frac):
-        ServingEnv.__init__(self, env.action_space, env.observation_space)
+        ExternalEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
         self.off_pol_frac = off_pol_frac
 
@@ -59,9 +59,9 @@ class PartOffPolicyServing(ServingEnv):
                 eid = self.start_episode()
 
 
-class SimpleOffPolicyServing(ServingEnv):
+class SimpleOffPolicyServing(ExternalEnv):
     def __init__(self, env, fixed_action):
-        ServingEnv.__init__(self, env.action_space, env.observation_space)
+        ExternalEnv.__init__(self, env.action_space, env.observation_space)
         self.env = env
         self.fixed_action = fixed_action
 
@@ -79,12 +79,12 @@ class SimpleOffPolicyServing(ServingEnv):
                 eid = self.start_episode()
 
 
-class MultiServing(ServingEnv):
+class MultiServing(ExternalEnv):
     def __init__(self, env_creator):
         self.env_creator = env_creator
         self.env = env_creator()
-        ServingEnv.__init__(self, self.env.action_space,
-                            self.env.observation_space)
+        ExternalEnv.__init__(self, self.env.action_space,
+                             self.env.observation_space)
 
     def run(self):
         envs = [self.env_creator() for _ in range(5)]
@@ -107,8 +107,8 @@ class MultiServing(ServingEnv):
                     del cur_obs[i]
 
 
-class TestServingEnv(unittest.TestCase):
-    def testServingEnvCompleteEpisodes(self):
+class TestExternalEnv(unittest.TestCase):
+    def testExternalEnvCompleteEpisodes(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
@@ -118,7 +118,7 @@ class TestServingEnv(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
 
-    def testServingEnvTruncateEpisodes(self):
+    def testExternalEnvTruncateEpisodes(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
@@ -128,7 +128,7 @@ class TestServingEnv(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
 
-    def testServingEnvOffPolicy(self):
+    def testExternalEnvOffPolicy(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_graph=MockPolicyGraph,
@@ -140,7 +140,7 @@ class TestServingEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][0], 42)
             self.assertEqual(batch["actions"][-1], 42)
 
-    def testServingEnvBadActions(self):
+    def testExternalEnvBadActions(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=BadPolicyGraph,
@@ -185,15 +185,14 @@ class TestServingEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testServingEnvHorizonNotSupported(self):
+    def testExternalEnvHorizonNotSupported(self):
         ev = PolicyEvaluator(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_graph=MockPolicyGraph,
             episode_horizon=20,
             batch_steps=10,
             batch_mode="complete_episodes")
-        ev.sample()
-        self.assertRaises(Exception, lambda: ev.sample())
+        self.assertRaises(ValueError, lambda: ev.sample())
 
 
 if __name__ == '__main__':

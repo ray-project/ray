@@ -108,36 +108,33 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        if self.is_finished():
+            raise TuneError("Called step when all trials finished?")
         self.trial_executor.on_step_begin()
         next_trial = self._get_next_trial()
         if next_trial is not None:
             self.trial_executor.start_trial(next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()
-        elif self.is_finished():
-            # We check `is_finished` again here because the experiment
-            # may have finished while getting the next trial.
-            pass
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
                     if not self.has_resources(trial.resources):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster summary: {} "
+                             "trial requested {} but the cluster has only {}. "
                              "Pass `queue_trials=True` in "
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                  trial.resources.summary_string(),
-                                 self.trial_executor.debug_string(),
+                                 self.trial_executor.resource_string(),
                                  trial._get_trainable_cls().resource_help(
                                      trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
-            raise TuneError("Called step when all trials finished?")
 
         if self._server:
             self._process_requests()
@@ -219,7 +216,28 @@ class TrialRunner(object):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         messages.append(self.trial_executor.debug_string())
+        messages.append(self._memory_debug_string())
         return messages
+
+    def _memory_debug_string(self):
+        try:
+            import psutil
+            total_gb = psutil.virtual_memory().total / 1e9
+            used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            if used_gb > total_gb * 0.9:
+                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
+                        "this node is available for use. This can cause "
+                        "unexpected crashes. Consider "
+                        "reducing the memory used by your application "
+                        "or reducing the Ray object store size by setting "
+                        "`object_store_memory` when calling `ray.init`.")
+            else:
+                warn = ""
+            return "Memory usage on this node: {}/{} GB{}".format(
+                round(used_gb, 1), round(total_gb, 1), warn)
+        except ImportError:
+            return ("Unknown memory usage. Please run `pip install psutil` "
+                    "(or ray[debug]) to resolve)")
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -280,7 +298,7 @@ class TrialRunner(object):
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
-                if trial.has_checkpoint() and \
+                if trial.should_recover() and \
                         trial.num_failures < trial.max_failures:
                     self._try_recover(trial, error_msg)
                 else:
@@ -306,13 +324,15 @@ class TrialRunner(object):
 
         Args:
             blocking (bool): Blocks until either a trial is available
-                or the Runner finishes (i.e., timeout or search algorithm
-                finishes).
+                or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()
+            # Checking `is_finished` instead of _search_alg.is_finished
+            # is fine because blocking only occurs if all trials are
+            # finished and search_algorithm is not yet finished
             while (not trials and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")

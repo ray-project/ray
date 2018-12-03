@@ -16,6 +16,7 @@
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/ordered_set.h"
 // clang-format on
 
 namespace ray {
@@ -39,10 +40,14 @@ struct NodeManagerConfig {
   std::unordered_map<Language, std::vector<std::string>> worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
+  /// The time between debug dumps in milliseconds, or -1 to disable.
+  uint64_t debug_dump_period_ms;
   /// the maximum lineage size.
   uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
+  /// The path to the ray temp dir.
+  std::string temp_dir;
 };
 
 class NodeManager {
@@ -92,6 +97,11 @@ class NodeManager {
   /// \return Status indicating whether this was done successfully or not.
   ray::Status RegisterGcs();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Methods for handling clients.
 
@@ -108,6 +118,9 @@ class NodeManager {
   /// Send heartbeats to the GCS.
   void Heartbeat();
 
+  /// Write out debug state to a file.
+  void DumpDebugState();
+
   /// Get profiling information from the object manager and push it to the GCS.
   ///
   /// \return Void.
@@ -115,12 +128,14 @@ class NodeManager {
 
   /// Handler for a heartbeat notification from the GCS.
   ///
-  /// \param client The GCS client.
   /// \param id The ID of the node manager that sent the heartbeat.
   /// \param data The heartbeat data including load information.
   /// \return Void.
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
+  void HeartbeatAdded(const ClientID &id, const HeartbeatTableDataT &data);
+  /// Handler for a heartbeat batch notification from the GCS
+  ///
+  /// \param heartbeat_batch The batch of heartbeat data.
+  void HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch);
 
   /// Methods for task scheduling.
 
@@ -130,14 +145,17 @@ class NodeManager {
   /// \param task The task in question.
   /// \return Void.
   void EnqueuePlaceableTask(const Task &task);
-  /// This will treat the task as if it had been executed and failed. This is
-  /// done by looping over the task return IDs and for each ID storing an object
-  /// that represents a failure in the object store. When clients retrieve these
-  /// objects, they will raise application-level exceptions.
+  /// This will treat a task removed from the local queue as if it had been
+  /// executed and failed. This is done by looping over the task return IDs and
+  /// for each ID storing an object that represents a failure in the object
+  /// store. When clients retrieve these objects, they will raise
+  /// application-level exceptions. State for the task will be cleaned up as if
+  /// it were any other task that had been assigned, executed, and removed from
+  /// the local queue.
   ///
   /// \param spec The specification of the task.
   /// \return Void.
-  void TreatTaskAsFailed(const TaskSpecification &spec);
+  void TreatTaskAsFailed(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
@@ -150,8 +168,8 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
-  /// \return Void.
-  void AssignTask(Task &task);
+  /// \return true, if tasks was assigned to a worker, false otherwise.
+  bool AssignTask(const Task &task);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param The worker that fiished the task.
@@ -195,34 +213,46 @@ class NodeManager {
 
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
-  void DispatchTasks();
-  /// Handle a worker becoming blocked in a `ray.get`.
   ///
-  /// \param worker The worker that is blocked.
-  /// \return Void.
-  void HandleWorkerBlocked(std::shared_ptr<Worker> worker);
-  /// Handle a worker exiting a `ray.get`.
-  ///
-  /// \param worker The worker that is unblocked.
-  /// \return Void.
-  void HandleWorkerUnblocked(std::shared_ptr<Worker> worker);
+  /// This function is called in the following cases:
+  ///   (1) A set of new tasks is added to the ready queue.
+  ///   (2) New resources are becoming available on the local node.
+  ///   (3) A new worker becomes available.
+  /// Note in case (1) we only need to look at the new tasks added to the
+  /// ready queue, as we know that the old tasks in the ready queue cannot
+  /// be scheduled (We checked those tasks last time new resources or
+  /// workers became available, and nothing changed since then.) In this case,
+  /// tasks_with_resources contains only the newly added tasks to the
+  /// ready queue. Otherwise, tasks_with_resources points to entire ready queue.
+  /// \param tasks_with_resources Mapping from resource shapes to tasks with
+  /// that resource shape.
+  void DispatchTasks(
+      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
 
-  /// Handle a client that is blocked. This could be a worker or a driver. This
-  /// can be triggered when a client starts a get call or a wait call.
+  /// Handle a task that is blocked. This could be a task assigned to a worker,
+  /// an out-of-band task (e.g., a thread created by the application), or a
+  /// driver task. This can be triggered when a client starts a get call or a
+  /// wait call.
   ///
-  /// \param client The client that is blocked.
+  /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param current_task_id The task that is blocked.
   /// \return Void.
-  void HandleClientBlocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids);
+  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                         const std::vector<ObjectID> &required_object_ids,
+                         const TaskID &current_task_id);
 
-  /// Handle a client that is unblocked. This could be a worker or a driver.
-  /// This can be triggered when a client is finished with a get call or a wait
-  /// call. It is ok to call this even if the client is not actually blocked.
+  /// Handle a task that is unblocked. This could be a task assigned to a
+  /// worker, an out-of-band task (e.g., a thread created by the application),
+  /// or a driver task. This can be triggered when a client finishes a get call
+  /// or a wait call. The given task must be blocked, via a previous call to
+  /// HandleTaskBlocked.
   ///
-  /// \param client The client that is unblocked.
+  /// \param client The client that is executing the unblocked task.
+  /// \param current_task_id The task that is unblocked.
   /// \return Void.
-  void HandleClientUnblocked(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
+                           const TaskID &current_task_id);
 
   /// Kill a worker.
   ///
@@ -231,20 +261,21 @@ class NodeManager {
   void KillWorker(std::shared_ptr<Worker> worker);
 
   /// Methods for actor scheduling.
-  /// Handler for the creation of an actor, possibly on a remote node.
+  /// Handler for an actor state transition, for a newly created actor or an
+  /// actor that died. This method is idempotent and will ignore old state
+  /// transitions.
   ///
   /// \param actor_id The actor ID of the actor that was created.
-  /// \param data Data associated with the actor creation event.
+  /// \param data Data associated with the actor state transition.
   /// \return Void.
-  void HandleActorCreation(const ActorID &actor_id,
-                           const std::vector<ActorTableDataT> &data);
+  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
 
-  /// When an actor dies, loop over all of the queued tasks for that actor and
-  /// treat them as failed.
+  /// Handler for an actor dying. The actor may be remote.
   ///
-  /// \param actor_id The actor that died.
+  /// \param actor_id The actor ID of the actor that died.
+  /// \param was_local Whether the actor was local.
   /// \return Void.
-  void CleanUpTasksForDeadActor(const ActorID &actor_id);
+  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local);
 
   /// When a driver dies, loop over all of the queued tasks for that driver and
   /// treat them as failed.
@@ -312,12 +343,12 @@ class NodeManager {
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
-  /// Process client message of ReconstructObjects
+  /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessReconstructObjectsMessage(
+  void ProcessFetchOrReconstructMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Process client message of WaitRequest
@@ -346,12 +377,18 @@ class NodeManager {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The period between debug state dumps.
+  int64_t debug_dump_period_;
+  /// The path to the ray temp dir.
+  std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and
   /// push it to the GCS.
   boost::asio::steady_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
+  /// The time that the last debug string was logged to the console.
+  uint64_t last_debug_dump_at_ms_;
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   /// The resources (and specific resource IDs) that are currently available.

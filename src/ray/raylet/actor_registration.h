@@ -36,6 +36,16 @@ class ActorRegistration {
     ObjectID execution_dependency;
   };
 
+  /// Get the actor table data.
+  ///
+  /// \return The actor table data.
+  const ActorTableDataT &GetTableData() const { return actor_table_data_; }
+
+  /// Get the actor's current state (ALIVE or DEAD).
+  ///
+  /// \return The actor's current state.
+  const ActorState &GetState() const { return actor_table_data_.state; }
+
   /// Get the actor's node manager location.
   ///
   /// \return The actor's node manager location. All tasks for the actor should
@@ -66,6 +76,9 @@ class ActorRegistration {
   /// that handle.
   const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
+  /// Get all the dummy objects of this actor's tasks.
+  const std::vector<ObjectID> &GetDummyObjects() const { return dummy_objects_; }
+
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
   ///
@@ -81,16 +94,15 @@ class ActorRegistration {
   /// \return True if the local actor is alive and false if it is dead.
   bool IsAlive() const;
 
-  /// Mark the actor as dead.
-  /// \return Void.
-  void MarkDead();
+  /// Returns num handles to this actor entry.
+  ///
+  /// \return int.
+  int NumHandles() const;
 
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
   ActorTableDataT actor_table_data_;
-  /// True if the actor is alive and false otherwise.
-  bool alive_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.
@@ -99,6 +111,8 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+  /// All of the dummy object IDs from this actor's tasks.
+  std::vector<ObjectID> dummy_objects_;
 };
 
 }  // namespace raylet

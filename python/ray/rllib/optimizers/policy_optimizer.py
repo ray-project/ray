@@ -57,6 +57,9 @@ class PolicyOptimizer(object):
         self.num_steps_trained = 0
         self.num_steps_sampled = 0
 
+        logger.debug("Created policy optimizer with {}: {}".format(
+            config, self))
+
     def _init(self):
         """Subclasses should prefer overriding this instead of __init__."""
 
@@ -139,6 +142,10 @@ class PolicyOptimizer(object):
             for i, ev in enumerate(self.remote_evaluators)
         ])
         return local_result + remote_results
+
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
 
     @staticmethod
     def _check_not_multiagent(sample_batch):

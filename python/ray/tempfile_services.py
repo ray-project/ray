@@ -27,6 +27,7 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp/ray"):
         the returned name will look like
         "{directory_name}/{prefix}.{unique_index}{suffix}"
     """
+    directory_name = os.path.expanduser(directory_name)
     index = _incremental_dict[suffix, prefix, directory_name]
     # `tempfile.TMP_MAX` could be extremely large,
     # so using `range` in Python2.x should be avoided.
@@ -51,6 +52,7 @@ def try_to_create_directory(directory_path):
     Args:
         directory_path: The path of the directory to create.
     """
+    directory_path = os.path.expanduser(directory_path)
     if not os.path.exists(directory_path):
         try:
             os.makedirs(directory_path)
@@ -126,9 +128,8 @@ def get_ipython_notebook_path(port):
     # the user.
     notebook_name = make_inc_temp(
         suffix=".ipynb", prefix="ray_ui", directory_name=get_temp_root())
-    new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
-    shutil.copy(notebook_filepath, new_notebook_filepath)
-    new_notebook_directory = os.path.dirname(new_notebook_filepath)
+    shutil.copy(notebook_filepath, notebook_name)
+    new_notebook_directory = os.path.dirname(notebook_name)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
         port, os.path.basename(notebook_name), token))

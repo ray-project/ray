@@ -6,15 +6,6 @@ namespace asio = boost::asio;
 
 namespace object_manager_protocol = ray::object_manager::protocol;
 
-namespace {
-
-void CheckIOError(ray::Status &status, const std::string &operation) {
-  RAY_CHECK(status.IsIOError());
-  RAY_LOG(ERROR) << "Failed to contact remote object manager during " << operation;
-}
-
-}  // namespace
-
 namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -31,7 +22,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -56,10 +48,11 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config_.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_() {
+      connection_pool_(),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  // TODO(hme) Client ID is never set with this constructor.
+  client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -103,7 +96,7 @@ void ObjectManager::HandleObjectAdded(
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   RAY_CHECK(local_objects_.count(object_id) == 0);
-  local_objects_[object_id] = object_info;
+  local_objects_[object_id].object_info = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 
@@ -183,15 +176,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
             it->second.timer_set = false;
           }
         } else {
-          // New object locations were found.
-          if (!it->second.timer_set) {
-            // The timer was not set, which means that we weren't trying any
-            // clients. We now have some clients to try, so begin trying to
-            // Pull from one.  If we fail to receive an object within the pull
-            // timeout, then this will try the rest of the clients in the list
-            // in succession.
-            TryPull(object_id);
-          }
+          // New object locations were found, so begin trying to pull from a
+          // client. This will be called every time a new client location
+          // appears.
+          TryPull(object_id);
         }
       });
 }
@@ -202,19 +190,30 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
-  // The timer should never fire if there are no expected client locations.
-  RAY_CHECK(!it->second.client_locations.empty());
-  RAY_CHECK(local_objects_.count(object_id) == 0);
+  auto &client_vector = it->second.client_locations;
 
-  // Get the next client to try.
-  const ClientID client_id = std::move(it->second.client_locations.back());
-  it->second.client_locations.pop_back();
+  // The timer should never fire if there are no expected client locations.
+  RAY_CHECK(!client_vector.empty());
+  RAY_CHECK(local_objects_.count(object_id) == 0);
+  // Make sure that there is at least one client which is not the local client.
+  // TODO(rkn): It may actually be possible for this check to fail.
+  RAY_CHECK(client_vector.size() != 1 || client_vector[0] != client_id_);
+
+  // Choose a random client to pull the object from.
+  // Generate a random index.
+  std::uniform_int_distribution<int> distribution(0, client_vector.size() - 1);
+  int client_index = distribution(gen_);
+  ClientID client_id = client_vector[client_index];
+  // If the object manager somehow ended up choosing itself, choose a different
+  // object manager.
   if (client_id == client_id_) {
-    // If we're trying to pull from ourselves, skip this client and try the
-    // next one.
-    RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
-    const ClientID client_id = std::move(it->second.client_locations.back());
-    it->second.client_locations.pop_back();
+    std::swap(client_vector[client_index], client_vector[client_vector.size() - 1]);
+    client_vector.pop_back();
+    RAY_LOG(ERROR) << "The object manager with client ID " << client_id_
+                   << " is trying to pull object " << object_id
+                   << " but the object table suggests that this object manager "
+                   << "already has the object.";
+    client_id = client_vector[client_index % client_vector.size()];
     RAY_CHECK(client_id != client_id_);
   }
 
@@ -278,6 +277,7 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 
   if (conn != nullptr) {
     PullSendRequest(object_id, conn);
+    connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
   }
 }
 
@@ -292,11 +292,11 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
   fbb.Finish(message);
   conn->WriteMessageAsync(
       static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
-      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) mutable {
-        if (status.ok()) {
-          connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-        } else {
-          CheckIOError(status, "Pull");
+      fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
+        if (!status.ok()) {
+          RAY_CHECK(status.IsIOError())
+              << "Failed to contact remote object manager during Pull";
+          connection_pool_.RemoveSender(conn);
         }
       });
 }
@@ -387,10 +387,33 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     return;
   }
 
+  // If we haven't pushed this object to this same object manager yet, then push
+  // it. If we have, but it was a long time ago, then push it. If we have and it
+  // was recent, then don't do it again.
+  auto &recent_pushes = local_objects_[object_id].recent_pushes;
+  auto it = recent_pushes.find(client_id);
+  if (it == recent_pushes.end()) {
+    // We haven't pushed this specific object to this specific object manager
+    // yet (or if we have then the object must have been evicted and recreated
+    // locally).
+    recent_pushes[client_id] = current_sys_time_ms();
+  } else {
+    int64_t current_time = current_sys_time_ms();
+    if (current_time - it->second <=
+        RayConfig::instance().object_manager_repeated_push_delay_ms()) {
+      // We pushed this object to the object manager recently, so don't do it
+      // again.
+      return;
+    } else {
+      it->second = current_time;
+    }
+  }
+
   RemoteConnectionInfo connection_info(client_id);
   object_directory_->LookupRemoteConnectionInfo(connection_info);
   if (connection_info.Connected()) {
-    const object_manager::protocol::ObjectInfoT &object_info = local_objects_[object_id];
+    const object_manager::protocol::ObjectInfoT &object_info =
+        local_objects_[object_id].object_info;
     uint64_t data_size =
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
@@ -405,11 +428,11 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         // object manager from another object manager.
         ray::Status status = ExecuteSendObject(
             client_id, object_id, data_size, metadata_size, chunk_index, connection_info);
+        double end_time = current_sys_time_seconds();
 
         // Notify the main thread that we have finished sending the chunk.
         main_service_->post(
-            [this, object_id, client_id, chunk_index, start_time, status]() {
-              double end_time = current_sys_time_seconds();
+            [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
               HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
                                  status);
             });
@@ -439,7 +462,9 @@ ray::Status ObjectManager::ExecuteSendObject(
   if (conn != nullptr) {
     status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
     if (!status.ok()) {
-      CheckIOError(status, "Push");
+      RAY_CHECK(status.IsIOError())
+          << "Failed to contact remote object manager during Push";
+      connection_pool_.RemoveSender(conn);
     }
   }
   return status;
@@ -603,9 +628,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                                               const ObjectID &subscribe_object_id) {
             if (!client_ids.empty()) {
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
-              // We never expect to handle a subscription notification for a wait that has
-              // already completed.
-              RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
+              if (object_id_wait_state == active_wait_requests_.end()) {
+                // Depending on the timing of calls to the object directory, we
+                // may get a subscription notification after the wait call has
+                // already completed. If so, then don't process the
+                // notification.
+                return;
+              }
               auto &wait_state = object_id_wait_state->second;
               RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
               wait_state.found.insert(subscribe_object_id);
@@ -683,8 +712,6 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
     RAY_LOG(ERROR) << "Failed to connect to remote object manager.";
   } else {
     // Register the new connection.
-    // TODO(Yuhong): Implement ConnectionPool::RemoveSender and call it if the client
-    // disconnects.
     connection_pool_.RegisterSender(type, info.client_id, conn);
     // Prepare client connection info buffer
     flatbuffers::FlatBufferBuilder fbb;
@@ -754,6 +781,9 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
   connection_pool_.RemoveReceiver(conn);
+
+  // We don't need to clean up unfulfilled_push_requests_ because the
+  // unfulfilled push timers will fire and clean it up.
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -785,15 +815,16 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   uint64_t metadata_size = object_header->metadata_size();
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
-    const ClientID client_id = conn->GetClientID();
+    const ClientID client_id = conn->GetClientId();
     auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
                                        chunk_index, *conn);
+    double end_time = current_sys_time_seconds();
     // Notify the main thread that we have finished receiving the object.
-    main_service_->post([this, object_id, client_id, chunk_index, start_time, status]() {
-      double end_time = current_sys_time_seconds();
-      HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
-                            status);
-    });
+    main_service_->post(
+        [this, object_id, client_id, chunk_index, start_time, end_time, status]() {
+          HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time,
+                                status);
+        });
 
   });
 }
@@ -820,7 +851,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Create Chunk Failed index = " << chunk_index << ": "
+    RAY_LOG(DEBUG) << "Create Chunk Failed index = " << chunk_index << ": "
                    << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
@@ -880,13 +911,16 @@ void ObjectManager::SpreadFreeObjectRequest(const std::vector<ObjectID> &object_
     }
 
     if (conn != nullptr) {
-      // TODO(swang): Make this a WriteMessageAsync.
-      ray::Status status = conn->WriteMessage(
+      conn->WriteMessageAsync(
           static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest),
-          fbb.GetSize(), fbb.GetBufferPointer());
-      if (status.ok()) {
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
-      }
+          fbb.GetSize(), fbb.GetBufferPointer(), [this, conn](ray::Status status) {
+            if (!status.ok()) {
+              RAY_CHECK(status.IsIOError())
+                  << "Failed to contact remote object manager during Free";
+              connection_pool_.RemoveSender(conn);
+            }
+          });
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
     }
   }
 }
@@ -903,6 +937,21 @@ ProfileTableDataT ObjectManager::GetAndResetProfilingInfo() {
   profile_events_.clear();
 
   return profile_info;
+}
+
+std::string ObjectManager::DebugString() const {
+  std::stringstream result;
+  result << "ObjectManager:";
+  result << "\n- num local objects: " << local_objects_.size();
+  result << "\n- num active wait requests: " << active_wait_requests_.size();
+  result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
+  result << "\n- num pull requests: " << pull_requests_.size();
+  result << "\n- num buffered profile events: " << profile_events_.size();
+  result << "\n" << object_directory_->DebugString();
+  result << "\n" << store_notification_.DebugString();
+  result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << connection_pool_.DebugString();
+  return result.str();
 }
 
 }  // namespace ray

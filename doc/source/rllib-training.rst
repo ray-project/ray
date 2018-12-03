@@ -50,11 +50,11 @@ An example of evaluating a previously trained DQN agent is as follows:
 .. code-block:: bash
 
     python ray/python/ray/rllib/rollout.py \
-          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
+          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
           --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
+located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
 Configuration
@@ -73,12 +73,12 @@ In an example below, we train A2C by specifying 8 workers through the config fla
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 8}'
 
-.. image:: rllib-config.svg
-
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. Many agents also provide a ``num_gpus`` or ``gpu`` option. In addition, you can allocate a fraction of a GPU by setting ``gpu_fraction: f``. For example, with DQN you can pack five agents onto one GPU by setting ``gpu_fraction: 0.2``. Note that in Ray < 0.6.0 fractional GPU support requires setting the environment variable ``RAY_USE_XRAY=1``.
+You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five agents onto one GPU by setting ``num_gpus: 0.2``. Note that in Ray < 0.6.0 fractional GPU support requires setting the environment variable ``RAY_USE_XRAY=1``.
+
+.. image:: rllib-config.svg
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -300,7 +300,7 @@ Custom metrics can be accessed and visualized like any other training result:
 REST API
 --------
 
-In some cases (i.e., when interacting with an external environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's serving env `interface <rllib-env.html#agent-driven>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:

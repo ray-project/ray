@@ -47,6 +47,8 @@ class CustomModel1(Model):
                 auxiliary_name_scope=False):
             last_layer = slim.fully_connected(
                 input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        last_layer = slim.fully_connected(
+            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
             last_layer, num_outputs, activation_fn=None, scope="fc_out")
         return output, last_layer
@@ -61,6 +63,8 @@ class CustomModel2(Model):
                 auxiliary_name_scope=False):
             last_layer = slim.fully_connected(
                 input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        last_layer = slim.fully_connected(
+            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
             last_layer, num_outputs, activation_fn=None, scope="fc_out")
         return output, last_layer
@@ -84,7 +88,7 @@ if __name__ == "__main__":
             "model": {
                 "custom_model": ["model1", "model2"][i % 2],
             },
-            "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+            "gamma": random.choice([0.95, 0.99]),
         }
         return (PPOPolicyGraph, obs_space, act_space, config)
 

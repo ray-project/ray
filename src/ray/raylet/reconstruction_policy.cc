@@ -203,6 +203,13 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   }
 }
 
+std::string ReconstructionPolicy::DebugString() const {
+  std::stringstream result;
+  result << "ReconstructionPolicy:";
+  result << "\n- num reconstructing: " << listening_tasks_.size();
+  return result.str();
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

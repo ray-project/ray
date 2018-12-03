@@ -1,0 +1,60 @@
+# This configuration can expect to reach -160 reward in 10k-20k timesteps
+pendulum-ddpg:
+    env: Pendulum-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: -160
+        time_total_s: 600 # 10 minutes
+    config:
+        # === Tricks ===
+        twin_q: True
+        policy_delay: 2
+        smooth_target_policy: True
+        act_noise: 0.1
+        target_noise: 0.2
+        noise_clip: 0.5
+
+        # === Model ===
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+        env_config: {}
+
+        # === Exploration ===
+        schedule_max_timesteps: 100000
+        timesteps_per_iteration: 600
+        exploration_fraction: 0.1
+        exploration_final_eps: 0.02
+        noise_scale: 0.1
+        exploration_theta: 0.15
+        exploration_sigma: 0.2
+        target_network_update_freq: 0
+        tau: 0.001
+
+        # === Replay buffer ===
+        buffer_size: 10000
+        prioritized_replay: True
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: False
+
+        # === Optimization ===
+        lr: 0.001
+        actor_loss_coeff: 0.1
+        critic_loss_coeff: 1.0
+        use_huber: True
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        sample_batch_size: 1
+        train_batch_size: 64
+
+        # === Parallelism ===
+        num_workers: 0
+        num_gpus_per_worker: 0
+        optimizer_class: "SyncReplayOptimizer"
+        per_worker_exploration: False
+        worker_side_prioritization: False

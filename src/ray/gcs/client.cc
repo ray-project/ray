@@ -109,6 +109,7 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
   error_table_.reset(new ErrorTable({primary_context_}, this));
   driver_table_.reset(new DriverTable({primary_context_}, this));
+  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
   actor_table_.reset(new ActorTable(shard_contexts_, this));
@@ -179,6 +180,21 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   return Status::OK();
 }
 
+std::string AsyncGcsClient::DebugString() const {
+  std::stringstream result;
+  result << "AsyncGcsClient:";
+  result << "\n- TaskTable: " << raylet_task_table_->DebugString();
+  result << "\n- ActorTable: " << actor_table_->DebugString();
+  result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
+  result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
+  result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
+  result << "\n- ErrorTable: " << error_table_->DebugString();
+  result << "\n- ProfileTable: " << profile_table_->DebugString();
+  result << "\n- ClientTable: " << client_table_->DebugString();
+  result << "\n- DriverTable: " << driver_table_->DebugString();
+  return result.str();
+}
+
 ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
@@ -198,6 +214,10 @@ FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
+
+HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
+  return *heartbeat_batch_table_;
+}
 
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 

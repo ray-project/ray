@@ -1,5 +1,7 @@
 #include "ray/raylet/node_manager.h"
 
+#include <fstream>
+
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -50,12 +52,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      debug_dump_period_(config.debug_dump_period_ms),
+      temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       local_resources_(config.resource_config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    config.maximum_startup_concurrency, config.worker_commands),
-      local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
@@ -132,9 +135,11 @@ ray::Status NodeManager::RegisterGcs() {
       task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback for actor creation notifications.
-  auto actor_creation_callback = [this](
-      gcs::AsyncGcsClient *client, const ActorID &actor_id,
-      const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
+  auto actor_creation_callback = [this](gcs::AsyncGcsClient *client,
+                                        const ActorID &actor_id,
+                                        const std::vector<ActorTableDataT> &data) {
+    HandleActorStateTransition(actor_id, data.back());
+  };
 
   RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), actor_creation_callback, nullptr));
@@ -152,15 +157,16 @@ ray::Status NodeManager::RegisterGcs() {
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
-  // Subscribe to node manager heartbeats.
-  const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                      const HeartbeatTableDataT &heartbeat_data) {
-    HeartbeatAdded(client, id, heartbeat_data);
+  // Subscribe to heartbeat batches from the monitor.
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableDataT &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_added, nullptr,
+  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added, nullptr,
       [](gcs::AsyncGcsClient *client) {
-        RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
+        RAY_LOG(DEBUG) << "Heartbeat batch table subscription done.";
       }));
 
   // Subscribe to driver table updates.
@@ -174,6 +180,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
+  last_debug_dump_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -275,6 +282,12 @@ void NodeManager::Heartbeat() {
     RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
   }
   RAY_CHECK_OK(status);
+
+  if (debug_dump_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
+    DumpDebugState();
+    last_debug_dump_at_ms_ = now_ms;
+  }
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -386,16 +399,21 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
 
   // Remove the remote server connection.
   remote_server_connections_.erase(client_id);
+
+  // For any live actors that were on the dead node, broadcast a notification
+  // about the actor's death
+  // TODO(swang): This could be very slow if there are many actors.
+  for (const auto &actor_entry : actor_registry_) {
+    if (actor_entry.second.GetNodeManagerId() == client_id &&
+        actor_entry.second.IsAlive()) {
+      HandleDisconnectedActor(actor_entry.first, /*was_local=*/false);
+    }
+  }
 }
 
-void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
+void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  if (client_id == local_client_id) {
-    // Skip heartbeats from self.
-    return;
-  }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(client_id);
@@ -416,48 +434,94 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
-
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
   // Extract decision for this local scheduler.
+  auto decision = scheduling_policy_.SpillOver(remote_resources);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto task = local_queues_.RemoveTask(task_id);
+    TaskState state;
+    const auto task = local_queues_.RemoveTask(task_id, &state);
     // Since we are spilling back from the ready and waiting queues, we need
     // to unsubscribe the dependencies.
-    task_dependency_manager_.UnsubscribeDependencies(task_id);
+    if (state != TaskState::INFEASIBLE) {
+      // Don't unsubscribe for infeasible tasks because we never subscribed in
+      // the first place.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(task_id));
+    }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
     ForwardTaskOrResubmit(task, client_id);
   }
 }
 
-void NodeManager::HandleActorCreation(const ActorID &actor_id,
-                                      const std::vector<ActorTableDataT> &data) {
-  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id;
+void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableDataT &heartbeat_batch) {
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  // Update load information provided by each heartbeat.
+  for (const auto &heartbeat_data : heartbeat_batch.batch) {
+    const ClientID &client_id = ClientID::from_binary(heartbeat_data->client_id);
+    if (client_id == local_client_id) {
+      // Skip heartbeats from self.
+      continue;
+    }
+    HeartbeatAdded(client_id, *heartbeat_data);
+  }
+}
 
-  // TODO(swang): In presence of failures, data may have size > 1, since the
-  // actor will have been created multiple times. In that case, we should
-  // only consider the last entry as valid. All previous entries should have
-  // a dead node_manager_id.
-  RAY_CHECK(data.size() == 1);
+void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local) {
+  RAY_LOG(DEBUG) << "Actor disconnected " << actor_id;
+  auto actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+
+  // Release all the dummy objects for the dead actor.
+  if (was_local) {
+    for (auto &dummy_object : actor_entry->second.GetDummyObjects()) {
+      HandleObjectMissing(dummy_object);
+    }
+  }
+
+  auto new_actor_data =
+      std::make_shared<ActorTableDataT>(actor_entry->second.GetTableData());
+  new_actor_data->state = ActorState::DEAD;
+  HandleActorStateTransition(actor_id, *new_actor_data);
+  ray::gcs::ActorTable::WriteCallback failure_callback = nullptr;
+  if (was_local) {
+    // The actor was local to this node, so we are the only one who should try
+    // to update the log.
+    failure_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
+                          const ActorTableDataT &data) {
+      RAY_LOG(FATAL) << "Failed to update state to DEAD for actor " << id;
+    };
+  }
+  // Actor reconstruction is disabled, so the actor can only go from ALIVE to
+  // DEAD. The DEAD entry must therefore be at the second index in the log.
+  RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(JobID::nil(), actor_id, new_actor_data,
+                                                   nullptr, failure_callback,
+                                                   /*log_index=*/1));
+}
+
+void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
+                                             const ActorTableDataT &data) {
+  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id << " "
+                 << static_cast<int>(data.state);
 
   // Register the new actor.
-  ActorRegistration actor_registration(data.back());
-  ClientID received_node_manager_id = actor_registration.GetNodeManagerId();
-  // Extend the frontier to include the actor creation task. NOTE(swang): The
-  // creator of the actor is always assigned nil as the actor handle ID.
-  actor_registration.ExtendFrontier(ActorHandleID::nil(),
-                                    actor_registration.GetActorCreationDependency());
-  auto inserted = actor_registry_.emplace(actor_id, std::move(actor_registration));
-  if (!inserted.second) {
-    // If we weren't able to insert the actor's location, check that the
-    // existing entry is the same as the new one.
-    // TODO(swang): This is not true in the case of failures.
-    RAY_CHECK(received_node_manager_id == inserted.first->second.GetNodeManagerId())
-        << "Actor scheduled on " << inserted.first->second.GetNodeManagerId()
-        << ", but received notification for " << received_node_manager_id;
+  ActorRegistration actor_registration(data);
+  // Update local registry.
+  auto it = actor_registry_.find(actor_id);
+  if (it == actor_registry_.end()) {
+    it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
+    RAY_CHECK(it->second.GetNodeManagerId() == actor_registration.GetNodeManagerId());
+    if (actor_registration.GetState() > it->second.GetState()) {
+      // The new state is later than our current state.
+      it->second = actor_registration;
+    } else {
+      // Our state is already at or past the update, so skip the update.
+      return;
+    }
+  }
+
+  if (it->second.IsAlive()) {
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -477,22 +541,26 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
                          << " already removed from the lineage cache. This is most "
                             "likely due to reconstruction.";
       }
+      // Maintain the invariant that if a task is in the
+      // MethodsWaitingForActorCreation queue, then it is subscribed to its
+      // respective actor creation task and that task only. Since the actor
+      // location is now known, we can remove the task from the queue and
+      // forget its dependency on the actor creation task.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+          method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
       SubmitTask(method, Lineage());
     }
-  }
-}
-
-void NodeManager::CleanUpTasksForDeadActor(const ActorID &actor_id) {
-  auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-  auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-
-  for (auto const &task : removed_tasks) {
-    const TaskSpecification &spec = task.GetTaskSpecification();
-    TreatTaskAsFailed(spec);
-    task_dependency_manager_.TaskCanceled(spec.TaskId());
+  } else {
+    // When an actor dies, loop over all of the queued tasks for that actor
+    // and treat them as failed.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
+    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
+    for (auto const &task : removed_tasks) {
+      TreatTaskAsFailed(task);
+    }
   }
 }
 
@@ -508,28 +576,36 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-void NodeManager::DispatchTasks() {
-  // Work with a copy of scheduled tasks.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  auto ready_tasks = local_queues_.GetReadyTasks();
-  // Return if there are no tasks to schedule.
-  if (ready_tasks.empty()) {
-    return;
+// A helper function to create a mapping from resource shapes to
+// tasks with that resource shape from a given list of tasks.
+std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
+    const std::vector<Task> &tasks) {
+  std::unordered_map<ResourceSet, ordered_set<TaskID>> result;
+  for (const auto &task : tasks) {
+    auto spec = task.GetTaskSpecification();
+    result[spec.GetRequiredResources()].push_back(spec.TaskId());
   }
+  return result;
+}
 
-  for (const auto &task : ready_tasks) {
-    const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
-    if (!local_available_resources_.Contains(task_resources)) {
-      // Not enough local resources for this task right now, skip this task.
-      // TODO(rkn): We should always skip node managers that have 0 CPUs.
-      continue;
+void NodeManager::DispatchTasks(
+    const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
+  std::unordered_set<TaskID> removed_task_ids;
+  for (const auto &it : tasks_with_resources) {
+    for (const auto &task_id : it.second) {
+      const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
+      const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+      if (!local_available_resources_.Contains(task_resources)) {
+        // All the tasks in it.second have the same resource shape, so
+        // once the first task is not feasible, we can break out of this loop
+        break;
+      }
+      if (AssignTask(task)) {
+        removed_task_ids.insert(task_id);
+      }
     }
-    // We have enough resources for this task. Assign task.
-    // TODO(atumanov): perform the task state/queue transition inside AssignTask.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    auto dispatched_task = local_queues_.RemoveTask(task.GetTaskSpecification().TaskId());
-    AssignTask(dispatched_task);
   }
+  local_queues_.RemoveTasks(removed_task_ids);
 }
 
 void NodeManager::ProcessClientMessage(
@@ -572,11 +648,12 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
-  case protocol::MessageType::ReconstructObjects: {
-    ProcessReconstructObjectsMessage(client, message_data);
+  case protocol::MessageType::FetchOrReconstruct: {
+    ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
-    HandleClientUnblocked(client);
+    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
+    HandleTaskUnblocked(client, from_flatbuf(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -611,7 +688,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
-    DispatchTasks();
+    DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
   } else {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
@@ -640,32 +717,41 @@ void NodeManager::ProcessGetTaskMessage(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks();
+  DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool push_warning) {
-  const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  const std::shared_ptr<Worker> driver = worker_pool_.GetRegisteredDriver(client);
-  // This client can't be a worker and a driver.
-  RAY_CHECK(worker == nullptr || driver == nullptr);
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  bool is_worker = false, is_driver = false;
+  if (worker) {
+    // The client is a worker.
+    is_worker = true;
+  } else {
+    worker = worker_pool_.GetRegisteredDriver(client);
+    if (worker) {
+      // The client is a driver.
+      is_driver = true;
+    } else {
+      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
+                    << "been disconnected.";
+    }
+  }
+  RAY_CHECK(!(is_worker && is_driver));
 
-  // If both worker and driver are null, then this method has already been
-  // called, so just return.
-  if (worker == nullptr && driver == nullptr) {
-    RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                  << "been disconnected.";
-    return;
+  // If the client has any blocked tasks, mark them as unblocked. In
+  // particular, we are no longer waiting for their dependencies.
+  if (worker) {
+    while (!worker->GetBlockedTaskIds().empty()) {
+      // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
+      // not safe to pass in the iterator directly.
+      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+      HandleTaskUnblocked(client, task_id);
+    }
   }
 
-  // If the client is blocked, we need to treat it as unblocked. In particular,
-  // we are no longer waiting for its dependencies. If the client is not
-  // blocked, this won't do anything.
-  HandleClientUnblocked(client);
-
   // Remove the dead client from the pool and stop listening for messages.
-
-  if (worker) {
+  if (is_worker) {
     // The client is a worker. Handle the case where the worker is killed
     // while executing a task. Clean up the assigned task's resources, push
     // an error to the driver.
@@ -675,13 +761,10 @@ void NodeManager::ProcessDisconnectClientMessage(
       // If the worker was killed intentionally, e.g., when the driver that created
       // the task that this worker is currently executing exits, the task for this
       // worker has already been removed from queue, so the following are skipped.
-      task_dependency_manager_.TaskCanceled(task_id);
-      // task_dependency_manager_.UnsubscribeDependencies(current_task_id);
       const Task &task = local_queues_.RemoveTask(task_id);
-      const TaskSpecification &spec = task.GetTaskSpecification();
       // Handle the task failure in order to raise an exception in the
       // application.
-      TreatTaskAsFailed(spec);
+      TreatTaskAsFailed(task);
 
       const JobID &job_id = worker->GetAssignedDriverId();
 
@@ -701,15 +784,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was an actor, add it to the list of dead actors.
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      // TODO(rkn): Consider broadcasting a message to all of the other
-      // node managers so that they can mark the actor as dead.
-      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died.";
-      auto actor_entry = actor_registry_.find(actor_id);
-      RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.MarkDead();
-      // For dead actors, if there are remaining tasks for this actor, we
-      // should handle them.
-      CleanUpTasksForDeadActor(actor_id);
+      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died on "
+                     << gcs_client_->client_table().GetLocalClientId();
+      HandleDisconnectedActor(actor_id, /*was_local=*/true);
     }
 
     const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
@@ -729,19 +806,18 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "driver_id: " << worker->GetAssignedDriverId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks();
-  } else {
+    DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
+  } else if (is_driver) {
     // The client is a driver.
-    RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientID(),
+    RAY_CHECK_OK(gcs_client_->driver_table().AppendDriverData(client->GetClientId(),
                                                               /*is_dead=*/true));
-    RAY_CHECK(driver);
-    auto driver_id = driver->GetAssignedTaskId();
+    auto driver_id = worker->GetAssignedTaskId();
     RAY_CHECK(!driver_id.is_nil());
     local_queues_.RemoveDriverTaskId(driver_id);
-    worker_pool_.DisconnectDriver(driver);
+    worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(DEBUG) << "Driver (pid=" << driver->Pid() << ") is disconnected. "
-                   << "driver_id: " << driver->GetAssignedDriverId();
+    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
+                   << "driver_id: " << worker->GetAssignedDriverId();
   }
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
@@ -761,29 +837,31 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   SubmitTask(task, Lineage());
 }
 
-void NodeManager::ProcessReconstructObjectsMessage(
+void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::ReconstructObjects>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < message->object_ids()->size(); ++i) {
     ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));
-    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-      if (message->fetch_only()) {
-        // If only a fetch is required, then do not subscribe to the
-        // dependencies to the task dependency manager.
+    if (message->fetch_only()) {
+      // If only a fetch is required, then do not subscribe to the
+      // dependencies to the task dependency manager.
+      if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+        // Fetch the object if it's not already local.
         RAY_CHECK_OK(object_manager_.Pull(object_id));
-      } else {
-        // If reconstruction is also required, then add any missing objects
-        // to the list to subscribe to in the task dependency manager. These
-        // objects will be pulled from remote node managers and reconstructed
-        // if necessary.
-        required_object_ids.push_back(object_id);
       }
+    } else {
+      // If reconstruction is also required, then add any requested objects to
+      // the list to subscribe to in the task dependency manager. These objects
+      // will be pulled from remote node managers and reconstructed if
+      // necessary.
+      required_object_ids.push_back(object_id);
     }
   }
 
   if (!required_object_ids.empty()) {
-    HandleClientBlocked(client, required_object_ids);
+    const TaskID task_id = from_flatbuf(*message->task_id());
+    HandleTaskBlocked(client, required_object_ids, task_id);
   }
 }
 
@@ -806,15 +884,16 @@ void NodeManager::ProcessWaitRequestMessage(
     }
   }
 
+  const TaskID &current_task_id = from_flatbuf(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    HandleClientBlocked(client, required_object_ids);
+    HandleTaskBlocked(client, required_object_ids, current_task_id);
   }
 
   ray::Status status = object_manager_.Wait(
       object_ids, wait_ms, num_required_objects, wait_local,
-      [this, client_blocked, client](std::vector<ObjectID> found,
-                                     std::vector<ObjectID> remaining) {
+      [this, client_blocked, client, current_task_id](std::vector<ObjectID> found,
+                                                      std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -827,7 +906,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (client_blocked) {
-            HandleClientUnblocked(client);
+            HandleTaskUnblocked(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -979,7 +1058,8 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
+void NodeManager::TreatTaskAsFailed(const Task &task) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
@@ -1005,6 +1085,17 @@ void NodeManager::TreatTaskAsFailed(const TaskSpecification &spec) {
       ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
     }
   }
+  // A task failing is equivalent to assigning and finishing the task, so clean
+  // up any leftover state as for any task dispatched and removed from the
+  // local queue.
+  lineage_cache_.AddReadyTask(task);
+  task_dependency_manager_.TaskCanceled(spec.TaskId());
+  // Notify the task dependency manager that we no longer need this task's
+  // object dependencies. TODO(swang): Ideally, we would check the return value
+  // here. However, we don't know at this point if the task was in the WAITING
+  // or READY queue before, in which case we would not have been subscribed to
+  // its dependencies.
+  task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
@@ -1029,27 +1120,21 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     if (actor_entry != actor_registry_.end()) {
-      // We have a known location for the actor.
-      auto node_manager_id = actor_entry->second.GetNodeManagerId();
-      if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-        // The actor is local. Check if the actor is still alive.
-        if (!actor_entry->second.IsAlive()) {
-          // Handle the fact that this actor is dead.
-          TreatTaskAsFailed(spec);
-        } else {
+      if (!actor_entry->second.IsAlive()) {
+        TreatTaskAsFailed(task);
+      } else {
+        // We have a known location for the actor.
+        auto node_manager_id = actor_entry->second.GetNodeManagerId();
+        if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
           // Queue the task for local execution, bypassing placement.
           EnqueuePlaceableTask(task);
-        }
-      } else {
-        // The actor is remote. Forward the task to the node manager that owns
-        // the actor.
-        if (gcs_client_->client_table().IsRemoved(node_manager_id)) {
-          // The remote node manager is dead, so handle the fact that this actor
-          // is also dead.
-          TreatTaskAsFailed(spec);
         } else {
-          // Attempt to forward the task. If this fails to forward the task,
-          // the task will be resubmit locally.
+          // If the node manager has been removed, then it must have already been
+          // marked as DEAD in the handler for a removed GCS client.
+          RAY_CHECK(!gcs_client_->client_table().IsRemoved(node_manager_id));
+          // The actor is remote. Attempt to forward the task to the node manager
+          // that owns the actor. If this fails to forward the task, the task
+          // will be resubmitted locally.
           ForwardTaskOrResubmit(task, node_manager_id);
         }
       }
@@ -1064,7 +1149,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                                     const std::vector<ActorTableDataT> &data) {
         if (!data.empty()) {
           // The actor has been created.
-          HandleActorCreation(actor_id, data);
+          HandleActorStateTransition(actor_id, data.back());
         } else {
           // The actor has not yet been created.
           // TODO(swang): Set a timer for reconstructing the actor creation
@@ -1076,6 +1161,15 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // The actor has not yet been created and may have failed. To make sure
+      // that the actor is eventually recreated, we maintain the invariant that
+      // if a task is in the MethodsWaitingForActorCreation queue, then it is
+      // subscribed to its respective actor creation task and that task only.
+      // Once the actor has been created and this method removed from the
+      // waiting queue, the caller must make the corresponding call to
+      // UnsubscribeDependencies.
+      task_dependency_manager_.SubscribeDependencies(spec.TaskId(),
+                                                     {spec.ActorCreationDummyObjectId()});
       // Mark the task as pending. It will be canceled once we discover the
       // actor's location and either execute the task ourselves or forward it
       // to another node.
@@ -1091,140 +1185,120 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
     }
   }
 }
 
-void NodeManager::HandleWorkerBlocked(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(worker);
-  if (worker->IsBlocked()) {
-    return;
-  }
-  // If the worker isn't already blocked, then release any CPU resources that
-  // it acquired for its assigned task while it is blocked. The resources will
-  // be acquired again once the worker is unblocked.
-  RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
-  // Get the CPU resources required by the running task.
-  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-  double required_cpus = required_resources.GetNumCpus();
-  const std::unordered_map<std::string, double> cpu_resources = {
-      {kCPU_ResourceLabel, required_cpus}};
-
-  // Release the CPU resources.
-  auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
-  local_available_resources_.Release(cpu_resource_ids);
-  RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-      ResourceSet(cpu_resources)));
-
-  // Mark the task as blocked.
-  local_queues_.QueueBlockedTasks({task});
-  worker->MarkBlocked();
-
-  DispatchTasks();
-}
-
-void NodeManager::HandleWorkerUnblocked(std::shared_ptr<Worker> worker) {
-  RAY_CHECK(worker);
-  if (!worker->IsBlocked()) {
-    return;
-  }
-
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(worker->GetAssignedTaskId());
-  // Get the CPU resources required by the running task.
-  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-  double required_cpus = required_resources.GetNumCpus();
-  const ResourceSet cpu_resources(
-      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
-
-  // Check if we can reacquire the CPU resources.
-  bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
-
-  if (!oversubscribed) {
-    // Reacquire the CPU resources for the worker. Note that care needs to be
-    // taken if the user is using the specific CPU IDs since the IDs that we
-    // reacquire here may be different from the ones that the task started with.
-    auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
-    worker->AcquireTaskCpuResources(resource_ids);
-    RAY_CHECK(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-            cpu_resources));
-  } else {
-    // In this case, we simply don't reacquire the CPU resources for the worker.
-    // The worker can keep running and when the task finishes, it will simply
-    // not have any CPU resources to release.
-    RAY_LOG(WARNING)
-        << "Resources oversubscribed: "
-        << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-               .GetAvailableResources()
-               .ToString();
-  }
-
-  // Mark the task as running again.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  local_queues_.QueueRunningTasks({task});
-  worker->MarkUnblocked();
-}
-
-void NodeManager::HandleClientBlocked(
-    const std::shared_ptr<LocalClientConnection> &client,
-    const std::vector<ObjectID> &required_object_ids) {
+void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+                                    const std::vector<ObjectID> &required_object_ids,
+                                    const TaskID &current_task_id) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
-    // The client is a worker. Mark the worker as blocked. This
-    // temporarily releases any resources that the worker holds while it is
-    // blocked.
-    HandleWorkerBlocked(worker);
+    // The client is a worker. If the worker is not already blocked and the
+    // blocked task matches the one assigned to the worker, then mark the
+    // worker as blocked. This temporarily releases any resources that the
+    // worker holds while it is blocked.
+    if (!worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+      const auto task = local_queues_.RemoveTask(current_task_id);
+      local_queues_.QueueRunningTasks({task});
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = required_resources.GetNumCpus();
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+
+      // Release the CPU resources.
+      auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+      local_available_resources_.Release(cpu_resource_ids);
+      RAY_CHECK(
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+              ResourceSet(cpu_resources)));
+      worker->MarkBlocked();
+
+      // Try dispatching tasks since we may have released some resources.
+      DispatchTasks(local_queues_.GetReadyQueue().GetTasksWithResources());
+    }
   } else {
-    // The client is a driver. Drivers do not hold resources, so we simply
-    // mark the driver as blocked.
+    // The client is a driver. Drivers do not hold resources, so we simply mark
+    // the task as blocked.
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
-    worker->MarkBlocked();
   }
-  const TaskID current_task_id = worker->GetAssignedTaskId();
-  RAY_CHECK(!current_task_id.is_nil());
+
+  RAY_CHECK(worker);
+  // Mark the task as blocked.
+  worker->AddBlockedTaskId(current_task_id);
+  if (local_queues_.GetBlockedTaskIds().count(current_task_id) == 0) {
+    local_queues_.AddBlockedTaskId(current_task_id);
+  }
+
   // Subscribe to the objects required by the ray.get. These objects will
   // be fetched and/or reconstructed as necessary, until the objects become
   // local or are unsubscribed.
   task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids);
 }
 
-void NodeManager::HandleClientUnblocked(
-    const std::shared_ptr<LocalClientConnection> &client) {
+void NodeManager::HandleTaskUnblocked(
+    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
-  // Re-acquire the CPU resources for the task that was assigned to the
-  // unblocked worker.
   // TODO(swang): Because the object dependencies are tracked in the task
   // dependency manager, we could actually remove this message entirely and
   // instead unblock the worker once all the objects become available.
-  bool was_blocked;
   if (worker) {
-    was_blocked = worker->IsBlocked();
-    // Mark the worker as unblocked. This returns the temporarily released
-    // resources to the worker.
-    HandleWorkerUnblocked(worker);
+    // The client is a worker. If the worker is not already unblocked and the
+    // unblocked task matches the one assigned to the worker, then mark the
+    // worker as unblocked. This returns the temporarily released resources to
+    // the worker.
+    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+      // (See design_docs/task_states.rst for the state transition diagram.)
+      const auto task = local_queues_.RemoveTask(current_task_id);
+      local_queues_.QueueRunningTasks({task});
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = required_resources.GetNumCpus();
+      const ResourceSet cpu_resources(
+          std::unordered_map<std::string, double>({{kCPU_ResourceLabel, required_cpus}}));
+
+      // Check if we can reacquire the CPU resources.
+      bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+
+      if (!oversubscribed) {
+        // Reacquire the CPU resources for the worker. Note that care needs to be
+        // taken if the user is using the specific CPU IDs since the IDs that we
+        // reacquire here may be different from the ones that the task started with.
+        auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+        worker->AcquireTaskCpuResources(resource_ids);
+        RAY_CHECK(
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+                cpu_resources));
+      } else {
+        // In this case, we simply don't reacquire the CPU resources for the worker.
+        // The worker can keep running and when the task finishes, it will simply
+        // not have any CPU resources to release.
+        RAY_LOG(WARNING)
+            << "Resources oversubscribed: "
+            << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                   .GetAvailableResources()
+                   .ToString();
+      }
+      worker->MarkUnblocked();
+    }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply
     // mark the driver as unblocked.
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
-    was_blocked = worker->IsBlocked();
-    worker->MarkUnblocked();
   }
+
+  RAY_CHECK(worker);
+  // If the task was previously blocked, then stop waiting for its dependencies
+  // and mark the task as unblocked.
+  worker->RemoveBlockedTaskId(current_task_id);
   // Unsubscribe to the objects. Any fetch or reconstruction operations to
   // make the objects local are canceled.
-  if (was_blocked) {
-    const TaskID current_task_id = worker->GetAssignedTaskId();
-    RAY_CHECK(!current_task_id.is_nil());
-    task_dependency_manager_.UnsubscribeDependencies(current_task_id);
-  }
+  RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(current_task_id));
+  local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
 void NodeManager::EnqueuePlaceableTask(const Task &task) {
@@ -1238,8 +1312,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueReadyTasks({task});
-    // Try to dispatch the newly ready task.
-    DispatchTasks();
+    DispatchTasks(MakeTasksWithResources({task}));
   } else {
     local_queues_.QueueWaitingTasks({task});
   }
@@ -1249,14 +1322,14 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-void NodeManager::AssignTask(Task &task) {
+bool NodeManager::AssignTask(const Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      // Drop tasks that have already been executed.
-      return;
+      // This actor has been already assigned, so ignore it.
+      return true;
     }
   }
 
@@ -1269,11 +1342,8 @@ void NodeManager::AssignTask(Task &task) {
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
     }
-    // Queue this task for future assignment. The task will be assigned to a
-    // worker once one becomes available.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-    return;
+    // We couldn't assign this task, as no worker available.
+    return false;
   }
 
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
@@ -1300,11 +1370,13 @@ void NodeManager::AssignTask(Task &task) {
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
+  // Give the callback a copy of the task so it can modify it.
+  Task assigned_task(task);
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, task](ray::Status status) mutable {
+      fbb.GetBufferPointer(), [this, worker, assigned_task](ray::Status status) mutable {
         if (status.ok()) {
-          auto spec = task.GetTaskSpecification();
+          auto spec = assigned_task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
@@ -1325,34 +1397,39 @@ void NodeManager::AssignTask(Task &task) {
             // we may lose updates that are in flight to the task table. We only
             // guarantee deterministic reconstruction ordering for tasks whose
             // updates are reflected in the task table.
-            task.SetExecutionDependencies({execution_dependency});
-            // Extend the frontier to include the executing task.
-            actor_entry->second.ExtendFrontier(spec.ActorHandleId(),
-                                               spec.ActorDummyObject());
+            // (SetExecutionDependencies takes a non-const so copy task in a
+            //  on-const variable.)
+            assigned_task.SetExecutionDependencies({execution_dependency});
           }
           // We started running the task, so the task is ready to write to GCS.
-          if (!lineage_cache_.AddReadyTask(task)) {
+          if (!lineage_cache_.AddReadyTask(assigned_task)) {
             RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
                                                             "This is most likely due to "
                                                             "reconstruction.";
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+          local_queues_.QueueRunningTasks(std::vector<Task>({assigned_task}));
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
-          task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+          RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
         } else {
           RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
           // We failed to send the task to the worker, so disconnect the worker.
           ProcessDisconnectClientMessage(worker->Connection());
-          // Queue this task for future assignment. The task will be assigned to a
-          // worker once one becomes available.
+          // Queue this task for future assignment. We need to do this since
+          // DispatchTasks() removed it from the ready queue. The task will be
+          // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-          DispatchTasks();
+          local_queues_.QueueReadyTasks({assigned_task});
+          DispatchTasks(MakeTasksWithResources({assigned_task}));
         }
       });
+
+  // We assigned this task to a worker.
+  // (Note this means that we sent the task to the worker. The assignment
+  //  might still fail if the worker fails in the meantime, for instance.)
+  return true;
 }
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
@@ -1370,18 +1447,31 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
-    auto actor_notification = std::make_shared<ActorTableDataT>();
-    actor_notification->actor_id = actor_id.binary();
-    actor_notification->actor_creation_dummy_object_id =
+    RAY_CHECK(actor_registry_.find(actor_id) == actor_registry_.end())
+        << "Created an actor that already exists";
+    auto actor_data = std::make_shared<ActorTableDataT>();
+    actor_data->actor_id = actor_id.binary();
+    actor_data->actor_creation_dummy_object_id =
         task.GetTaskSpecification().ActorDummyObject().binary();
-    actor_notification->driver_id = driver_id.binary();
-    actor_notification->node_manager_id =
-        gcs_client_->client_table().GetLocalClientId().binary();
+    actor_data->driver_id = driver_id.binary();
+    actor_data->node_manager_id = gcs_client_->client_table().GetLocalClientId().binary();
+    actor_data->state = ActorState::ALIVE;
 
     RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id
                    << " driver_id: " << driver_id;
-    RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
-                                                   actor_notification, nullptr));
+    HandleActorStateTransition(actor_id, *actor_data);
+    // The actor should not have been created before, so writing to the first
+    // index in the log should succeed.
+    auto failure_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
+                               const ActorTableDataT &data) {
+      // TODO(swang): Instead of making this a fatal check, we could just kill
+      // the duplicate actor process. If we do this, we must make sure to
+      // either resubmit the tasks that went to the duplicate actor, or wait
+      // for success before handling the actor state transition to ALIVE.
+      RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
+    };
+    RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
+        JobID::nil(), actor_id, actor_data, nullptr, failure_callback, /*log_index=*/0));
 
     // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.
@@ -1402,7 +1492,26 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // removing the objects, e.g., when an actor is terminated.
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {
+    ActorID actor_id;
+    ActorHandleID actor_handle_id;
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      actor_id = task.GetTaskSpecification().ActorCreationId();
+      actor_handle_id = ActorHandleID::nil();
+    } else {
+      actor_id = task.GetTaskSpecification().ActorId();
+      actor_handle_id = task.GetTaskSpecification().ActorHandleId();
+    }
+    auto actor_entry = actor_registry_.find(actor_id);
+    RAY_CHECK(actor_entry != actor_registry_.end());
     auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+    // Extend the actor's frontier to include the executed task.
+    actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+    // Mark the dummy object as locally available to indicate that the actor's
+    // state has changed and the next method can run.
+    // NOTE(swang): The dummy objects must be marked as local whenever
+    // ExtendFrontier is called, and vice versa, so that we can clean up the
+    // dummy objects properly in case the actor fails and needs to be
+    // reconstructed.
     HandleObjectLocal(dummy_object);
   }
 
@@ -1419,8 +1528,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
-  RAY_LOG(INFO) << "Reconstructing task " << task_id << " on client "
-                << gcs_client_->client_table().GetLocalClientId();
   // Retrieve the task spec in order to re-execute the task.
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::nil(), task_id,
@@ -1445,11 +1552,23 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 }
 
 void NodeManager::ResubmitTask(const Task &task) {
-  // Actor reconstruction is turned off by default right now. If this is an
-  // actor task, treat the task as failed and do not resubmit it.
   if (task.GetTaskSpecification().IsActorTask()) {
-    TreatTaskAsFailed(task.GetTaskSpecification());
-    return;
+    // Actor reconstruction is turned off by default right now.
+    const ActorID actor_id = task.GetTaskSpecification().ActorId();
+    auto it = actor_registry_.find(actor_id);
+    RAY_CHECK(it != actor_registry_.end());
+    if (it->second.IsAlive()) {
+      // If the actor is still alive, then do not resubmit.
+      RAY_LOG(ERROR) << "The output of an actor task is required, but the actor may "
+                        "still be alive. If the output has been evicted, the job may "
+                        "hang.";
+      return;
+    }
+    // The actor is dead. The actor task will get resubmitted, at which point
+    // it will be treated as failed.
+  } else {
+    RAY_LOG(INFO) << "Reconstructing task " << task.GetTaskSpecification().TaskId()
+                  << " on client " << gcs_client_->client_table().GetLocalClientId();
   }
 
   // Driver tasks cannot be reconstructed. If this is a driver task, push an
@@ -1481,17 +1600,20 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
-    // Transition tasks from waiting to scheduled.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.MoveTasks(ready_task_id_set, TaskState::WAITING, TaskState::READY);
-    // New ready tasks appeared in the queue, try to dispatch them.
-    DispatchTasks();
 
-    // Check that remaining tasks that could not be transitioned are blocked
-    // workers or drivers.
+    // First filter out the tasks that should not be moved to READY.
     local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
     local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
-    RAY_CHECK(ready_task_id_set.empty());
+
+    // Make sure that the remaining tasks are all WAITING.
+    auto ready_task_id_set_copy = ready_task_id_set;
+    local_queues_.FilterState(ready_task_id_set_copy, TaskState::WAITING);
+    RAY_CHECK(ready_task_id_set_copy.empty());
+
+    // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
+    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+    local_queues_.QueueReadyTasks(ready_tasks);
+    DispatchTasks(MakeTasksWithResources(ready_tasks));
   }
 }
 
@@ -1550,8 +1672,8 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
             // Timer killing will receive the boost::asio::error::operation_aborted,
             // we only handle the timeout event.
             RAY_CHECK(!error);
-            RAY_LOG(DEBUG) << "Resubmitting task " << task_id
-                           << " because ForwardTask failed.";
+            RAY_LOG(INFO) << "Resubmitting task " << task_id
+                          << " because ForwardTask failed.";
             SubmitTask(task, Lineage());
           });
       // Remove the task from the lineage cache. The task will get added back
@@ -1562,7 +1684,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
       // node immediately. Send it to the scheduling policy to be placed again.
       local_queues_.QueuePlaceableTasks({task});
       ScheduleTasks(cluster_resource_map_);
-      DispatchTasks();
     }
   });
 }
@@ -1639,6 +1760,54 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           on_error(status);
         }
       });
+}
+
+void NodeManager::DumpDebugState() {
+  std::fstream fs;
+  fs.open(temp_dir_ + "/debug_state.txt", std::fstream::out | std::fstream::trunc);
+  fs << DebugString();
+  fs.close();
+}
+
+std::string NodeManager::DebugString() const {
+  std::stringstream result;
+  uint64_t now_ms = current_time_ms();
+  result << "NodeManager:";
+  result << "\nLocalResources: " << local_resources_.DebugString();
+  result << "\nClusterResources:";
+  for (auto &pair : cluster_resource_map_) {
+    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
+  }
+  result << "\n" << object_manager_.DebugString();
+  result << "\n" << gcs_client_->DebugString();
+  result << "\n" << worker_pool_.DebugString();
+  result << "\n" << local_queues_.DebugString();
+  result << "\n" << reconstruction_policy_.DebugString();
+  result << "\n" << task_dependency_manager_.DebugString();
+  result << "\n" << lineage_cache_.DebugString();
+  result << "\nActorRegistry:";
+  int live_actors = 0;
+  int dead_actors = 0;
+  int max_num_handles = 0;
+  for (auto &pair : actor_registry_) {
+    if (pair.second.IsAlive()) {
+      live_actors += 1;
+    } else {
+      dead_actors += 1;
+    }
+    if (pair.second.NumHandles() > max_num_handles) {
+      max_num_handles = pair.second.NumHandles();
+    }
+  }
+  result << "\n- num live actors: " << live_actors;
+  result << "\n- num dead actors: " << dead_actors;
+  result << "\n- max num handles: " << max_num_handles;
+  result << "\nRemoteConnections:";
+  for (auto &pair : remote_server_connections_) {
+    result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
+  }
+  result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  return result.str();
 }
 
 }  // namespace raylet

@@ -16,6 +16,22 @@ OPTIMIZER_SHARED_CONFIGS = [
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
+    # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
+    # twin Q-net
+    "twin_q": False,
+    # delayed policy update
+    "policy_delay": 1,
+    # target policy smoothing
+    # this also forces the use of gaussian instead of OU noise for exploration
+    "smooth_target_policy": False,
+    # gaussian stddev of act noise
+    "act_noise": 0.1,
+    # gaussian stddev of target noise
+    "target_noise": 0.2,
+    # target noise limit (bound)
+    "noise_clip": 0.5,
+
     # === Model ===
     # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],
@@ -67,9 +83,11 @@ DEFAULT_CONFIG = with_common_config({
     "compress_observations": False,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
-    "actor_lr": 1e-4,
-    "critic_lr": 1e-3,
+    # Learning rate for adam optimizer.
+    # Instead of using two optimizers, we use two different loss coefficients
+    "lr": 1e-3,
+    "actor_loss_coeff": 0.1,
+    "critic_loss_coeff": 1.0,
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
@@ -90,16 +108,10 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 256,
 
     # === Parallelism ===
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Optimizer class to use.
     "optimizer_class": "SyncReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
@@ -124,9 +136,16 @@ class DDPGAgent(DQNAgent):
         if self.config["per_worker_exploration"]:
             assert self.config["num_workers"] > 1, \
                 "This requires multiple workers"
-            exponent = (
-                1 + worker_index / float(self.config["num_workers"] - 1) * 7)
-            return ConstantSchedule(self.config["noise_scale"] * 0.4**exponent)
+            if worker_index >= 0:
+                exponent = (
+                    1 +
+                    worker_index / float(self.config["num_workers"] - 1) * 7)
+                return ConstantSchedule(
+                    self.config["noise_scale"] * 0.4**exponent)
+            else:
+                # local ev should have zero exploration so that eval rollouts
+                # run properly
+                return ConstantSchedule(0.0)
         else:
             return LinearSchedule(
                 schedule_timesteps=int(self.config["exploration_fraction"] *

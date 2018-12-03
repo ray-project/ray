@@ -1,7 +1,7 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
-#include <list>
+#include <deque>
 #include <memory>
 
 #include <boost/asio.hpp>
@@ -72,6 +72,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
     socket_.close(ec);
   }
 
+  std::string DebugString() const;
+
  protected:
   /// A private constructor for a server connection.
   ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
@@ -92,10 +94,22 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   const int async_write_max_messages_;
 
   /// List of pending messages to write.
-  std::list<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
+  std::deque<std::unique_ptr<AsyncWriteBuffer>> async_write_queue_;
 
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
+
+  /// Count of async messages sent total.
+  int64_t async_writes_ = 0;
+
+  /// Count of sync messages sent total.
+  int64_t sync_writes_ = 0;
+
+  /// Count of bytes sent total.
+  int64_t bytes_written_ = 0;
+
+  /// Count of bytes read total.
+  int64_t bytes_read_ = 0;
 
  private:
   /// Asynchronously flushes the write queue. While async writes are running, the flag
@@ -138,7 +152,7 @@ class ClientConnection : public ServerConnection<T> {
   }
 
   /// \return The ClientID of the remote client.
-  const ClientID &GetClientID();
+  const ClientID &GetClientId();
 
   /// \param client_id The ClientID of the remote client.
   void SetClientID(const ClientID &client_id);

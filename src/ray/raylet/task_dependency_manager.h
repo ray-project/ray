@@ -61,7 +61,8 @@ class TaskDependencyManager {
   /// then they will be canceled.
   ///
   /// \param task_id The ID of the task whose dependencies to unsubscribe from.
-  void UnsubscribeDependencies(const TaskID &task_id);
+  /// \return Whether the task was subscribed before.
+  bool UnsubscribeDependencies(const TaskID &task_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed
@@ -110,6 +111,11 @@ class TaskDependencyManager {
   ///
   /// \param task_ids The collection of task IDs.
   void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;

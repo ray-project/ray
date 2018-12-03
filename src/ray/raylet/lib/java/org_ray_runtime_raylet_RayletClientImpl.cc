@@ -118,12 +118,13 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestro
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeReconstructObjects
+ * Method:    nativeFetchOrReconstruct
  * Signature: (J[[BZ)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
-    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
+    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly,
+    jbyteArray currentTaskId) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -133,8 +134,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
   }
+  UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_reconstruct_objects(conn, object_ids, fetchOnly);
+  local_scheduler_fetch_or_reconstruct(conn, object_ids, fetchOnly, *current_task_id.PID);
 }
 
 /*
@@ -143,9 +145,10 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeReconstructObjects(
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *, jclass, jlong client) {
+    JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
+  UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_notify_unblocked(conn);
+  local_scheduler_notify_unblocked(conn, *current_task_id.PID);
 }
 
 /*
@@ -156,7 +159,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
 JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
     JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jint numReturns,
-    jint timeoutMillis, jboolean isWaitLocal) {
+    jint timeoutMillis, jboolean isWaitLocal, jbyteArray currentTaskId) {
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -166,12 +169,14 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
   }
+  UniqueIdFromJByteArray current_task_id(env, currentTaskId);
 
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = local_scheduler_wait(
-      conn, object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal));
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
+      local_scheduler_wait(conn, object_ids, numReturns, timeoutMillis,
+                           static_cast<bool>(isWaitLocal), *current_task_id.PID);
 
   // Convert result to java object.
   jboolean put_value = true;

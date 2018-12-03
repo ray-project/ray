@@ -44,14 +44,15 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
+      timeoutMs, UniqueId currentTaskId) {
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
     boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
-        numReturns, timeoutMs, false);
+        numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -87,12 +88,14 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void reconstructObjects(List<UniqueId> objectIds, boolean fetchOnly) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Reconstructing objects for task {}, object IDs are {}",
+  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
+      UniqueId currentTaskId) {
+    if (RayLog.core.isDebugEnabled()) {
+      RayLog.core.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeReconstructObjects(client, UniqueIdUtil.getIdBytes(objectIds), fetchOnly);
+    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+        fetchOnly, currentTaskId.getBytes());
   }
 
   @Override
@@ -102,8 +105,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void notifyUnblocked() {
-    nativeNotifyUnblocked(client);
+  public void notifyUnblocked(UniqueId currentTaskId) {
+    nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
@@ -169,7 +172,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
@@ -271,15 +274,15 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeDestroy(long client);
 
-  private static native void nativeReconstructObjects(long client, byte[][] objectIds,
-      boolean fetchOnly);
+  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
+      boolean fetchOnly, byte[] currentTaskId);
 
-  private static native void nativeNotifyUnblocked(long client);
+  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId);
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal);
+      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId);
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);

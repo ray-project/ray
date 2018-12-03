@@ -25,7 +25,6 @@ class MockPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         return [0] * len(obs_batch), [], {}
 
@@ -43,7 +42,6 @@ class BadPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         raise Exception("intentional error")
 
@@ -53,6 +51,18 @@ class BadPolicyGraph(PolicyGraph):
                                episode=None):
         assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+
+
+class FailOnStepEnv(gym.Env):
+    def __init__(self):
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        raise ValueError("kaboom")
+
+    def step(self, action):
+        raise ValueError("kaboom")
 
 
 class MockEnv(gym.Env):
@@ -140,6 +150,20 @@ class TestPolicyEvaluator(unittest.TestCase):
                          to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
 
+    # 11/23/18: Samples per second 8501.125113727468
+    def testBaselinePerformance(self):
+        ev = PolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_graph=MockPolicyGraph,
+            batch_steps=100)
+        start = time.time()
+        count = 0
+        while time.time() - start < 1:
+            count += ev.sample().count
+        print()
+        print("Samples per second {}".format(count / (time.time() - start)))
+        print()
+
     def testGlobalVarsUpdate(self):
         agent = A2CAgent(
             env="CartPole-v0",
@@ -150,6 +174,11 @@ class TestPolicyEvaluator(unittest.TestCase):
         self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
         result2 = agent.train()
         self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
+
+    def testNoStepOnInit(self):
+        register_env("fail", lambda _: FailOnStepEnv())
+        pg = PGAgent(env="fail", config={"num_workers": 1})
+        self.assertRaises(Exception, lambda: pg.train())
 
     def testCallbacks(self):
         counts = Counter()

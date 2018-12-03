@@ -151,6 +151,7 @@ script:
   - python -m pytest -v test/monitor_test.py
   - python -m pytest -v test/cython_test.py
   - python -m pytest -v test/credis_test.py
+  - python -m pytest -v test/node_manager_test.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
@@ -169,6 +170,9 @@ script:
 
   # ray temp file tests
   - python -m pytest -v test/tempfile_test.py
+
+  # modin test files
+  - python python/ray/test/test_modin.py
 
 deploy:
   - provider: s3
