@@ -270,6 +270,8 @@ class QLoss(object):
                 importance_weights * _huber_loss(self.td_error))
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
                 "mean_td_error": tf.reduce_mean(self.td_error),
             }
 
