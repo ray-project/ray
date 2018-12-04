@@ -314,8 +314,10 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+            env = self.config["env"]
+            if isinstance(env, type):
+                env = env.__name__
+            identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
         if self.experiment_tag:
