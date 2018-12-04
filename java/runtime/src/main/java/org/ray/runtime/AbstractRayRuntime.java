@@ -75,7 +75,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public <T> void put(UniqueId objectId, T obj) {
     UniqueId taskId = workerContext.getCurrentTask().taskId;
-    RayLog.core.info("Putting object {}, for task {} ", objectId, taskId);
+    RayLog.core.debug("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.put(objectId, obj, null);
   }
 

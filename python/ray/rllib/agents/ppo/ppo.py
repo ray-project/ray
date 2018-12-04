@@ -24,7 +24,7 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 200,
     # Number of timesteps collected for each SGD round
     "train_batch_size": 4000,
-    # Total SGD batch size across all devices for SGD (multi-gpu only)
+    # Total SGD batch size across all devices for SGD
     "sgd_minibatch_size": 128,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
@@ -49,7 +49,8 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
-    # Use the sync samples optimizer instead of the multi-gpu one
+    # Uses the sync samples optimizer instead of the multi-gpu one. This does
+    # not support minibatches.
     "simple_optimizer": False,
 })
 # __sphinx_doc_end__
@@ -110,6 +111,11 @@ class PPOAgent(Agent):
                 and not self.config["simple_optimizer"]):
             logger.warn("forcing simple_optimizer=True in multi-agent mode")
             self.config["simple_optimizer"] = True
+        if self.config["observation_filter"] != "NoFilter":
+            # TODO(ekl): consider setting the default to be NoFilter
+            logger.warn(
+                "By default, observations will be normalized with {}".format(
+                    self.config["observation_filter"]))
 
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled

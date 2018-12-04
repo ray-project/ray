@@ -42,6 +42,7 @@ MOCK_MODULES = [
     "ray.core.generated.ClientTableData",
     "ray.core.generated.GcsTableEntry",
     "ray.core.generated.HeartbeatTableData",
+    "ray.core.generated.HeartbeatBatchTableData",
     "ray.core.generated.DriverTableData",
     "ray.core.generated.ErrorTableData",
     "ray.core.generated.ProfileTableData",

@@ -7,41 +7,55 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 **Compatibility matrix**:
 
-=============  ================  ==================  ===========  ==================
-Algorithm      Discrete Actions  Continuous Actions  Multi-Agent  Recurrent Policies
-=============  ================  ==================  ===========  ==================
-A2C, A3C        **Yes**           **Yes**             **Yes**      **Yes**
-PPO             **Yes**           **Yes**             **Yes**      **Yes**
-PG              **Yes**           **Yes**             **Yes**      **Yes**
-IMPALA          **Yes**           No                  **Yes**      **Yes**
-DQN, Rainbow    **Yes**           No                  **Yes**      No
-DDPG, TD3       No                **Yes**             **Yes**      No
-APEX-DQN        **Yes**           No                  **Yes**      No
-APEX-DDPG       No                **Yes**             **Yes**      No
-ES              **Yes**           **Yes**             No           No
-ARS             **Yes**           **Yes**             No           No
-=============  ================  ==================  ===========  ==================
+=============  =======================  ==================  ===========  ==================
+Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
+=============  =======================  ==================  ===========  ==================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
+DDPG, TD3       No                      **Yes**             **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
+APEX-DDPG       No                      **Yes**             **Yes**      No
+ES              **Yes**                 **Yes**             No           No
+ARS             **Yes**                 **Yes**             No           No
+=============  =======================  ==================  ===========  ==================
 
-In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
     import ray
-    from ray.tune.registry import register_env
     from ray.rllib.agents import ppo
 
-    def env_creator(env_config):
-        import gym
-        return gym.make("CartPole-v0")  # or return your own custom env
+    class MyEnv(gym.Env):
+        def __init__(self, env_config):
+            self.action_space = ...
+            self.observation_space = ...
+        ...
 
-    register_env("my_env", env_creator)
     ray.init()
-    trainer = ppo.PPOAgent(env="my_env", config={
-        "env_config": {},  # config to pass to env creator
+    trainer = ppo.PPOAgent(env=MyEnv, config={
+        "env_config": {},  # config to pass to env class
     })
 
     while True:
         print(trainer.train())
+
+You can also register a custom env creator function with a string name. This function must take a single ``env_config`` parameter and return an env instance:
+
+.. code-block:: python
+
+    from ray.tune.registry import register_env
+
+    def env_creator(env_config):
+        return MyEnv(...)  # return an env instance
+
+    register_env("my_env", env_creator)
+    trainer = ppo.PPOAgent(env="my_env")
 
 Configuring Environments
 ------------------------

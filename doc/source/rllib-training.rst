@@ -73,12 +73,12 @@ In an example below, we train A2C by specifying 8 workers through the config fla
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 8}'
 
-.. image:: rllib-config.svg
-
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most agents. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five agents onto one GPU by setting ``num_gpus: 0.2``. Note that in Ray < 0.6.0 fractional GPU support requires setting the environment variable ``RAY_USE_XRAY=1``.
+
+.. image:: rllib-config.svg
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -224,6 +224,128 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
 
 Ray actors provide high levels of performance, so in more complex cases they can be used implement communication patterns such as parameter servers and allreduce.
 
+Callbacks and Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+
+.. code-block:: python
+
+    def on_episode_start(info):
+        print(info.keys())  # -> "env", 'episode"
+        episode = info["episode"]
+        print("episode {} started".format(episode.episode_id))
+        episode.user_data["pole_angles"] = []
+
+    def on_episode_step(info):
+        episode = info["episode"]
+        pole_angle = abs(episode.last_observation_for()[2])
+        episode.user_data["pole_angles"].append(pole_angle)
+
+    def on_episode_end(info):
+        episode = info["episode"]
+        mean_pole_angle = np.mean(episode.user_data["pole_angles"])
+        print("episode {} ended with length {} and pole angles {}".format(
+            episode.episode_id, episode.length, mean_pole_angle))
+        episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
+
+    def on_train_result(info):
+        print("agent.train() result: {} -> {} episodes".format(
+            info["agent"].__name__, info["result"]["episodes_this_iter"]))
+
+    ray.init()
+    trials = tune.run_experiments({
+        "test": {
+            "env": "CartPole-v0",
+            "run": "PG",
+            "config": {
+                "callbacks": {
+                    "on_episode_start": tune.function(on_episode_start),
+                    "on_episode_step": tune.function(on_episode_step),
+                    "on_episode_end": tune.function(on_episode_end),
+                    "on_train_result": tune.function(on_train_result),
+                },
+            },
+        }
+    })
+
+Custom metrics can be accessed and visualized like any other training result:
+
+.. image:: custom_metric.png
+
+Example: Curriculum Learning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
+
+Approach 1: Use the Agent API and update the environment between calls to ``train()``. This example shows the agent being run inside a Tune function:
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from ray.rllib.agents.ppo import PPOAgent
+
+    def train(config, reporter):
+        agent = PPOAgent(config=config, env=YourEnv)
+        while True:
+            result = agent.train()
+            reporter(**result)
+            if result["episode_reward_mean"] > 200:
+                phase = 2
+            elif result["episode_reward_mean"] > 100:
+                phase = 1
+            else:
+                phase = 0
+            agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+
+    ray.init()
+    tune.run_experiments({
+        "curriculum": {
+            "run": train,
+            "config": {
+                "num_gpus": 0,
+                "num_workers": 2,
+            },
+            "trial_resources": {
+                "cpu": 1,
+                "gpu": lambda spec: spec.config.num_gpus,
+                "extra_cpu": lambda spec: spec.config.num_workers,
+            },
+        },
+    })
+
+Approach 2: Use the callbacks API to update the environment on new training results:
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+
+    def on_train_result(info):
+        result = info["result"]
+        if result["episode_reward_mean"] > 200:
+            phase = 2
+        elif result["episode_reward_mean"] > 100:
+            phase = 1
+        else:
+            phase = 0
+        agent = info["agent"]
+        agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+
+    ray.init()
+    tune.run_experiments({
+        "curriculum": {
+            "run": "PPO",
+            "env": YourEnv,
+            "config": {
+                "callbacks": {
+                    "on_train_result": tune.function(on_train_result),
+                },
+            },
+        },
+    })
+
 Debugging
 ---------
 
@@ -253,49 +375,10 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
     python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
 
-Callbacks and Custom Metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Stack Traces
+~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
-
-.. code-block:: python
-
-    def on_episode_start(info):
-        print(info.keys())  # -> "env", 'episode"
-        episode = info["episode"]
-        print("episode {} started".format(episode.episode_id))
-        episode.user_data["pole_angles"] = []
-
-    def on_episode_step(info):
-        episode = info["episode"]
-        pole_angle = abs(episode.last_observation_for()[2])
-        episode.user_data["pole_angles"].append(pole_angle)
-
-    def on_episode_end(info):
-        episode = info["episode"]
-        mean_pole_angle = np.mean(episode.user_data["pole_angles"])
-        print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, mean_pole_angle))
-        episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
-
-    ray.init()
-    trials = tune.run_experiments({
-        "test": {
-            "env": "CartPole-v0",
-            "run": "PG",
-            "config": {
-                "callbacks": {
-                    "on_episode_start": tune.function(on_episode_start),
-                    "on_episode_step": tune.function(on_episode_step),
-                    "on_episode_end": tune.function(on_episode_end),
-                },
-            },
-        }
-    })
-
-Custom metrics can be accessed and visualized like any other training result:
-
-.. image:: custom_metric.png
+You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
 REST API
 --------

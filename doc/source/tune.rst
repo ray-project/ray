@@ -45,7 +45,7 @@ You'll need to first `install ray <installation.html>`__ to import Tune.
 
 .. code-block:: bash
 
-    pip install ray
+    pip install ray  # also recommended: ray[debug]
 
 
 Quick Start

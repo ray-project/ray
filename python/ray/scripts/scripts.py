@@ -591,9 +591,21 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cmd = " ".join(["python", target] + list(script_args))
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
                  cluster_name, port_forward)
-    if tmux:
-        logger.info("Use `ray attach {} --tmux` "
-                    "to check on command status.".format(cluster_config_file))
+
+    if tmux or screen:
+        attach_command_parts = ["ray attach", cluster_config_file]
+        if cluster_name is not None:
+            attach_command_parts.append(
+                "--cluster-name={}".format(cluster_name))
+        if tmux:
+            attach_command_parts.append("--tmux")
+        elif screen:
+            attach_command_parts.append("--screen")
+
+        attach_command = " ".join(attach_command_parts)
+        attach_info = "Use `{}` to check on command status.".format(
+            attach_command)
+        logger.info(attach_info)
 
 
 @cli.command()
@@ -627,11 +639,24 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
+
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
                  cluster_name, port_forward)
-    if tmux:
-        logger.info("Use `ray attach {} --tmux` "
-                    "to check on command status.".format(cluster_config_file))
+
+    if tmux or screen:
+        attach_command_parts = ["ray attach", cluster_config_file]
+        if cluster_name is not None:
+            attach_command_parts.append(
+                "--cluster-name={}".format(cluster_name))
+        if tmux:
+            attach_command_parts.append("--tmux")
+        elif screen:
+            attach_command_parts.append("--screen")
+
+        attach_command = " ".join(attach_command_parts)
+        attach_info = "Use `{}` to check on command status.".format(
+            attach_command)
+        logger.info(attach_info)
 
 
 @cli.command()
@@ -651,7 +676,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' first"
+    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.
@@ -674,16 +699,15 @@ done
 
 cli.add_command(start)
 cli.add_command(stop)
-cli.add_command(create_or_update)
 cli.add_command(create_or_update, name="up")
 cli.add_command(attach)
 cli.add_command(exec_cmd, name="exec")
-cli.add_command(rsync_down)
-cli.add_command(rsync_up)
+cli.add_command(rsync_down, name="rsync_down")
+cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
-cli.add_command(get_head_ip)
+cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(stack)
 
 
