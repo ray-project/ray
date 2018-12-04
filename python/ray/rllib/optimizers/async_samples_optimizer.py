@@ -96,7 +96,7 @@ class LearnerThread(threading.Thread):
     def step(self):
         with self.queue_timer:
             batch, _ = self.minibatch_buffer.get()
-
+            print(batch['obs'].shape)
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
             self.weights_updated = True
@@ -171,6 +171,7 @@ class TFMultiGPULearner(LearnerThread):
             self.ready_buffers, minibatch_buffer_size, num_sgd_passes)
 
     def step(self):
+        print("NANI")
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
             token, released = self.minibatch_buffer.get()
@@ -249,12 +250,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
-
-        if num_data_loader_buffers < minibatch_buffer_size:
-            raise ValueError(
-                "Must have at least as many parallel data loader buffers as "
-                "minibatch buffers: {} vs {}".format(num_data_loader_buffers,
-                                                     minibatch_buffer_size))
         self.minibatch_buffer = MinibatchBuffer(
             num_data_loader_buffers, minibatch_buffer_size, num_sgd_passes)
 

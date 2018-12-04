@@ -20,6 +20,7 @@ from ray.rllib.models.action_dist import (
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.autoencoder import AutoEncoder
 from ray.rllib.models.lstm import LSTM
 
 logger = logging.getLogger(__name__)
@@ -206,8 +207,8 @@ class ModelCatalog(object):
         logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
             model, input_dict, obs_space, state_in, seq_lens, model.outputs,
             model.state_out))
-
-        model._validate_output_shape()
+        if not options["use_autoencoder"]:
+                model._validate_output_shape()
         return model
 
     @staticmethod
@@ -227,6 +228,9 @@ class ModelCatalog(object):
         obs_rank = len(input_dict["obs"].shape) - 1
 
         if obs_rank > 1:
+            if options["use_autoencoder"]:
+                print("YO")
+                return AutoEncoder(input_dict, obs_space, num_outputs, options)
             return VisionNetwork(input_dict, obs_space, num_outputs, options)
 
         return FullyConnectedNetwork(input_dict, obs_space, num_outputs,

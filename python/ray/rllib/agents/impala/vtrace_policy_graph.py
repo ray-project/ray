@@ -64,7 +64,6 @@ class VTraceLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
-        print(clip_param)
         def to_batches(tensor):
             T = 50
             B = tf.shape(tensor)[0] // T
@@ -87,9 +86,6 @@ class VTraceLoss(object):
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
-        use_ppo = True
-        print(use_ppo)
-        print("nani")
         if use_ppo:
             logp_ratio = to_batches(tf.exp(curr_action_dist.logp(unmodified_actions) - prev_action_dist.logp(unmodified_actions)))[:-1]
 
@@ -170,17 +166,51 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
-        self.model = ModelCatalog.get_model(
-            {
-                "obs": observations,
-                "prev_actions": prev_actions,
-                "prev_rewards": prev_rewards,
-            },
-            observation_space,
-            logit_dim,
-            self.config["model"],
-            state_in=existing_state_in,
-            seq_lens=existing_seq_lens)
+        
+        # Modified for AutoEncoder
+        print("AUTOENCODER CHECK")
+        print(self.config["use_autoencoder"])
+        print(self.config["model"])
+        if self.config["use_autoencoder"]:
+            print("YEEET")
+            self.config["model"]["use_autoencoder"] = True
+            self.autoencoder = ModelCatalog.get_model(
+                {
+                    "obs": observations,
+                },
+                observation_space,
+                logit_dim,
+                self.config["model"] 
+            )
+            print(observation_space)
+            print(self.autoencoder.last_layer)
+            # self.autoencoder.outputs is decoder output, self.autoencoder.last_layer is encoder output
+            # For now, self.autoencoder.last_layer is size batchx21x21x4 (stride 2) for testing purposes
+            self.config["model"]["use_autoencoder"] = False
+            self.config["model"]["dim"] = 21
+            self.model = ModelCatalog.get_model(
+                {
+                    "obs": self.autoencoder.last_layer,
+                    "prev_actions": prev_actions,
+                    "prev_rewards": prev_rewards,
+                },
+                observation_space,
+                logit_dim,
+                self.config["model"],
+                state_in=existing_state_in,
+                seq_lens=existing_seq_lens)
+        else:
+            self.model = ModelCatalog.get_model(
+                {
+                    "obs": observations,
+                    "prev_actions": prev_actions,
+                    "prev_rewards": prev_rewards,
+                },
+                observation_space,
+                logit_dim,
+                self.config["model"],
+                state_in=existing_state_in,
+                seq_lens=existing_seq_lens)
         action_dist = dist_class(self.model.outputs)
 
         prev_action_dist = dist_class(behaviour_logits)
@@ -211,10 +241,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.reshape(mask, [-1])
         else:
             mask = tf.ones_like(rewards)
-        print(self.config)
-        print(self.config["sample_batch_size"])
-        print(self.config["train_batch_size"])
-        print("OMG")
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             curr_action_dist = action_dist,
@@ -266,7 +292,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
-            loss=self.model.loss() + self.loss.total_loss,
+            loss=self.model.loss() + self.loss.total_loss + self.autoencoder.loss() if self.config["use_autoencoder"] else self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,

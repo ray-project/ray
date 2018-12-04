@@ -60,7 +60,7 @@ DEFAULT_CONFIG = with_common_config({
     # an effect if `num_sgd_passes > 1`.
     "minibatch_buffer_size": 1,
     # number of passes to make over each train batch
-    "num_sgd_passes": 1,
+    "num_sgd_passes": 3,
     # set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
@@ -90,6 +90,8 @@ DEFAULT_CONFIG = with_common_config({
     "clip_param": 0.4,
     "kl_coeff": 0.2,
     "kl_target": 0.01,
+
+    "use_autoencoder": True,
 
 })
 

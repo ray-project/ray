@@ -3,18 +3,22 @@ pong-impala-fast:
     run: IMPALA
     stop:
         episode_reward_mean: 20.0
-        timesteps_total: 20000000 
+        timesteps_total: 7000000
     config:
         sample_batch_size: 50
-        train_batch_size: 1000
-        num_workers: 47
-        broadcast_interval: 5
-        max_sample_requests_in_flight_per_worker: 1
-        num_data_loader_buffers: 4
+        train_batch_size: 1000   
+        num_workers: 32
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 2
+        num_data_loader_buffers: 1
         num_envs_per_worker: 5
+        minibatch_buffer_size: 1
         num_sgd_passes: 1
         vf_loss_coeff: 1.0
-        clip_param: 0.4
+        clip_param: 0.3
         num_gpus: 1
+        use_autoencoder: True
+        use_ppo: False
         model:
+          use_autoencoder: False
           dim: 42
