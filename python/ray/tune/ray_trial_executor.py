@@ -110,19 +110,27 @@ class RayTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.close_logger()
 
-    def start_trial(self, trial, checkpoint_obj=None):
-        """Starts the trial."""
+    def start_trial(self, trial, checkpoint=None):
+        """Starts the trial.
+
+        Will not return resources if trial repeatedly fails on start.
+
+        Args:
+            trial (Trial): Trial to be started.
+            checkpoint (Checkpoint): A Python object or path storing the state
+                of trial.
+        """
 
         self._commit_resources(trial.resources)
         try:
-            self._start_trial(trial, checkpoint_obj)
+            self._start_trial(trial, checkpoint)
         except Exception:
             logger.exception("Error stopping runner - retrying...")
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                self._start_trial(trial)
+                self._start_trial(trial, checkpoint)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
@@ -140,6 +148,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
+            logger.debug("Returning resources for this trial.")
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
