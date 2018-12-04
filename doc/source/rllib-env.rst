@@ -95,6 +95,10 @@ RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_wo
 Multi-Agent
 -----------
 
+.. note::
+
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
+
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
 .. image:: multi-agent.svg
