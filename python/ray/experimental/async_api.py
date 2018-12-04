@@ -20,7 +20,7 @@ async def init():
         rsock = worker.plasma_client.get_notification_socket()
         handler = PlasmaEventHandler(loop, worker)
         transport, protocol = await loop.create_connection(
-            lambda: PlasmaProtocol(loop, worker.plasma_client, handler),
+            lambda: PlasmaProtocol(worker.plasma_client, handler),
             sock=rsock)
 
 
