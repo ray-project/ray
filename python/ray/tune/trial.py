@@ -329,8 +329,13 @@ class Trial(object):
         return identifier
 
     def __getstate__(self):
+        """Memento generator for Trial.
+
+        Sets RUNNING trials to PENDING, and flushes the result logger.
+        Note this can only occur if the trial holds a DISK checkpoint.
+        """
         if not self._checkpoint.storage == Checkpoint.DISK:
-            raise ValueError("Most recent checkpoint cannot be in-memory.")
+            raise ValueError("Checkpoint cannot be in-memory.")
         state = self.__dict__.copy()
 
         if state["status"] == Trial.RUNNING:
