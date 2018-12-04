@@ -671,6 +671,7 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
+
         if (worker.mode == ray.worker.SCRIPT_MODE
                 and self._ray_actor_driver_id.id() != worker.worker_id):
             # If the worker is a driver and driver id has changed because
