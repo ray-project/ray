@@ -61,6 +61,8 @@ COMMON_CONFIG = {
     # Whether to clip rewards prior to experience postprocessing. Setting to
     # None means clip for Atari only.
     "clip_rewards": None,
+    # Whether to np.clip() actions to the action space low/high range spec.
+    "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
 
@@ -226,6 +228,7 @@ class Agent(Trainable):
             num_envs=config["num_envs_per_worker"],
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
+            clip_actions=config["clip_actions"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,
