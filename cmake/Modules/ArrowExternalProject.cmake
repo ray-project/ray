@@ -14,11 +14,11 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-set(arrow_URL https://github.com/pcmoritz/arrow.git)
-# The PR for this commit is https://github.com/apache/arrow/pull/2826. We
+set(arrow_URL https://github.com/apache/arrow.git)
+# The PR for this commit is https://github.com/apache/arrow/pull/3082. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-set(arrow_TAG f47a356951036caa8e8d10c55622f20216fb213e)
+set(arrow_TAG 4ac4eb569978b214e41c9d4254533b4b2ac09875)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
@@ -54,6 +54,7 @@ set(ARROW_CMAKE_ARGS
   -DARROW_GANDIVA_JAVA=off
   -DARROW_GANDIVA_BUILD_TESTS=off
   -DLLVM_DIR=$ENV{LLVM_DIR}
+  -DARROW_RPATH_ORIGIN=on
   -DARROW_WITH_BROTLI=off
   -DARROW_WITH_LZ4=off
   -DARROW_WITH_ZSTD=off
