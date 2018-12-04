@@ -14,12 +14,9 @@ class MockDataset():
 
 class TFBenchModel(Model):
     def __init__(self, batch=64, use_cpus=False):
-        self._batch = batch
-        self._use_cpus = use_cpus
 
-    def build(self):
-        image_shape = [self._batch, 224, 224, 3]
-        labels_shape = [self._batch]
+        image_shape = [batch, 224, 224, 3]
+        labels_shape = [batch]
 
         # Synthetic image should be within [0, 255].
         images = tf.truncated_normal(
@@ -41,7 +38,7 @@ class TFBenchModel(Model):
 
         model = model_config.get_model_config("resnet101", MockDataset())
         logits, aux = model.build_network(
-            inputs, data_format=self._use_cpus and "NHWC" or "NCHW")
+            inputs, data_format=use_cpus and "NHWC" or "NCHW")
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=logits, labels=labels)
 

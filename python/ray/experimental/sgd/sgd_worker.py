@@ -54,7 +54,6 @@ class SGDWorker(object):
                 with tf.device(device):
                     with tf.variable_scope("device_%d" % device_idx):
                         model = model_creator(worker_index, device_idx)
-                        model.build()
                         self.models.append(model)
                         optimizer = model.get_optimizer()
                         loss = model.get_loss()

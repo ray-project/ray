@@ -142,10 +142,7 @@ class DistributedSGD(object):
             List of results from applying the function.
         """
         results = ray.get([w.foreach_model.remote(fn) for w in self.workers])
-        out = []
-        for r in results:
-            out.extend(r)
-        return out
+        return results
 
     def for_model(self, fn):
         """Apply the given function to a single model replica.

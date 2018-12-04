@@ -55,8 +55,6 @@ class MNISTModel(Model):
         if error:
             raise ValueError("Failed to import data", error)
 
-    def build(self):
-
         # Set seed and build layers
         tf.set_random_seed(0)
 
@@ -94,13 +92,14 @@ class MNISTModel(Model):
             self.keep_prob: 0.5,
         }
 
-    def test_accuracy(self):
-        return self.accuracy.eval(
-            feed_dict={
-                self.x: self.mnist.test.images,
-                self.y_: self.mnist.test.labels,
-                self.keep_prob: 1.0,
-            })
+    def get_metrics(self):
+        accuracy = self.accuracy.eval(
+                feed_dict={
+                    self.x: self.mnist.test.images,
+                    self.y_: self.mnist.test.labels,
+                    self.keep_prob: 1.0,
+                    })
+        return {"accuracy": accuracy}
 
 
 def train_mnist(config, reporter):
@@ -120,7 +119,9 @@ def train_mnist(config, reporter):
         if i % 10 == 0:
             start = time.time()
             loss = sgd.step(fetch_stats=True)["loss"]
-            acc = sgd.foreach_model(lambda model: model.test_accuracy())
+            metrics = sgd.foreach_model(lambda model: model.get_metrics())
+            #TODO metrics worker_num * device_num matrix
+            acc = [m[0]["accuracy"] for m in metrics]
             print("Iter", i, "loss", loss, "accuracy", acc)
             print("Time per iteration", time.time() - start)
             assert len(set(acc)) == 1, ("Models out of sync", acc)
