@@ -39,9 +39,11 @@ def head_node_cluster():
     cluster = ray.test.cluster_utils.Cluster(
         initialize_head=True,
         connect=True,
-        internal_config={
-            "initial_reconstruction_timeout_milliseconds": 200,
-            "num_heartbeats_timeout": 10,
+        head_node_args={
+            "_internal_config": json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200,
+                "num_heartbeats_timeout": 10,
+            })
         })
     yield cluster
     # The code after the yield will run as teardown code.

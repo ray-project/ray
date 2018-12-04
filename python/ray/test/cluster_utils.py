@@ -17,8 +17,7 @@ class Cluster(object):
                  initialize_head=False,
                  connect=False,
                  head_node_args=None,
-                 shutdown_at_exit=True,
-                 internal_config={}):
+                 shutdown_at_exit=True):
         """Initializes the cluster.
 
         Args:
@@ -43,18 +42,17 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                self.connect(head_node_args, internal_config)
+                self.connect(head_node_args)
         if shutdown_at_exit:
             atexit.register(self.shutdown)
 
-    def connect(self, head_node_args, internal_config):
+    def connect(self, head_node_args):
         assert self.redis_address is not None
         assert not self.connected
         redis_password = head_node_args.get("redis_password")
         output_info = ray.init(
             redis_address=self.redis_address,
-            redis_password=redis_password,
-            _internal_config=json.dumps(internal_config))
+            redis_password=redis_password)
         logger.info(output_info)
         self.connected = True
 
