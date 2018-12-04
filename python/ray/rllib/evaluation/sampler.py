@@ -353,7 +353,8 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
         # For each agent in the environment
         for agent_id, raw_obs in agent_obs.items():
             policy_id = episode.policy_for(agent_id)
-            prep_obs = _get_or_raise(preprocessors, policy_id)(raw_obs)
+            prep_obs = _get_or_raise(preprocessors,
+                                     policy_id).transform(raw_obs)
             filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
             agent_done = bool(all_done or dones[env_id].get(agent_id))
             if not agent_done:
@@ -425,7 +426,8 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id = episode.policy_for(agent_id)
                     policy = _get_or_raise(policies, policy_id)
-                    prep_obs = _get_or_raise(preprocessors, policy_id)(raw_obs)
+                    prep_obs = _get_or_raise(preprocessors,
+                                             policy_id).transform(raw_obs)
                     filtered_obs = _get_or_raise(obs_filters,
                                                  policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)

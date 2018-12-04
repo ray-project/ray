@@ -314,7 +314,7 @@ class PolicyEvaluator(EvaluatorInterface):
             merged_conf = merge_dicts(policy_config, conf)
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf["model"])
+                    obs_space, merged_conf.get("model"))
                 preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
@@ -550,6 +550,11 @@ def _validate_and_canonicalize(policy_graph, env):
     elif not issubclass(policy_graph, PolicyGraph):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
     else:
+        if (isinstance(env, MultiAgentEnv)
+                and not hasattr(env, "observation_space")):
+            raise ValueError(
+                "MultiAgentEnv must have observation_space defined if run "
+                "in a single-agent configuration.")
         return {
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
