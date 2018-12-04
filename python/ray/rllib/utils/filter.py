@@ -44,7 +44,7 @@ class NoFilter(Filter):
     def __call__(self, x, update=True):
         try:
             return np.asarray(x)
-        except Exception as e:
+        except Exception:
             raise ValueError("Failed to convert to array", x)
 
     def apply_changes(self, other, *args, **kwargs):

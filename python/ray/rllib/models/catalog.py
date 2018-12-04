@@ -271,15 +271,26 @@ class ModelCatalog(object):
 
     @staticmethod
     def get_preprocessor(env, options=None):
-        """Returns a suitable processor for the given environment.
+        """Returns a suitable preprocessor for the given env.
+
+        This is a wrapper for get_preprocessor_for_space().
+        """
+
+        return ModelCatalog.get_preprocessor_for_space(env.observation_space,
+                                                       options)
+
+    @staticmethod
+    def get_preprocessor_for_space(observation_space, options=None):
+        """Returns a suitable preprocessor for the given observation space.
 
         Args:
-            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
+            observation_space (Space): The input observation space.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
-            preprocessor (Preprocessor): Preprocessor for the env observations.
+            preprocessor (Preprocessor): Preprocessor for the observations.
         """
+
         options = options or MODEL_DEFAULTS
         for k in options.keys():
             if k not in MODEL_DEFAULTS:
@@ -290,13 +301,13 @@ class ModelCatalog(object):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
             prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                env.observation_space, options)
+                observation_space, options)
         else:
-            cls = get_preprocessor(env.observation_space)
-            prep = cls(env.observation_space, options)
+            cls = get_preprocessor(observation_space)
+            prep = cls(observation_space, options)
 
         logger.debug("Created preprocessor {}: {} -> {}".format(
-            prep, env.observation_space, prep.shape))
+            prep, observation_space, prep.shape))
         return prep
 
     @staticmethod
