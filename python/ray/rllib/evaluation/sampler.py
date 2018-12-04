@@ -318,9 +318,9 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
+        global _large_batch_warned
         if (not _large_batch_warned and
                 episode.batch_builder.total() > max(1000, unroll_length * 10)):
-            global _large_batch_warned
             _large_batch_warned = True
             logger.warn(
                 "More than {} observations for {} env steps ".format(
