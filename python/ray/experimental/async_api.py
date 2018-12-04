@@ -60,3 +60,6 @@ def shutdown():
         handler = None
         transport = None
         protocol = None
+
+# Initialize
+sync_init()

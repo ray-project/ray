@@ -2167,9 +2167,6 @@ def connect(info,
         # Export cached remote functions and actors to the workers.
         worker.function_actor_manager.export_cached()
     worker.cached_functions_to_run = None
-    if sys.version_info >= (3, 5):
-        from ray.experimental import async_api
-        async_api.sync_init()
 
 
 def disconnect(worker=global_worker):
