@@ -318,7 +318,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
-                preprocessors[name] = NoPreprocessor(obs_space, {})
+                preprocessors[name] = NoPreprocessor(obs_space)
             if isinstance(obs_space, gym.spaces.Dict) or \
                     isinstance(obs_space, gym.spaces.Tuple):
                 raise ValueError(
