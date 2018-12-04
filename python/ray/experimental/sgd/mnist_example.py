@@ -120,8 +120,7 @@ def train_mnist(config, reporter):
             start = time.time()
             loss = sgd.step(fetch_stats=True)["loss"]
             metrics = sgd.foreach_model(lambda model: model.get_metrics())
-            #TODO metrics worker_num * device_num matrix
-            acc = [m[0]["accuracy"] for m in metrics]
+            acc = [m["accuracy"] for m in metrics]
             print("Iter", i, "loss", loss, "accuracy", acc)
             print("Time per iteration", time.time() - start)
             assert len(set(acc)) == 1, ("Models out of sync", acc)

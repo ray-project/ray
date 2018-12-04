@@ -19,7 +19,7 @@ class Model(object):
         """
         raise NotImplementedError("get_loss of %s is not implemented" % self.__class__.__name__)
 
-    #TODO support complex way of updating gradient, e.g. using different optimizers
+    # TODO support complex way of updating gradient, e.g. using different optimizers
     def get_optimizer(self):
         """Return optimizer for the model
 
