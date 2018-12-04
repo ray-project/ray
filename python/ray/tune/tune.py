@@ -100,8 +100,6 @@ def run_experiments(experiments=None,
     if search_alg is None:
         search_alg = BasicVariantGenerator()
 
-    search_alg.add_configurations(experiments)
-
     runner = TrialRunner(
         search_alg,
         scheduler=scheduler,

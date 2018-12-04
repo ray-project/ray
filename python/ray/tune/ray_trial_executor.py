@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class RayTrialExecutor(TrialExecutor):
     """An implemention of TrialExecutor based on Ray."""
 
-    def __init__(self, queue_trials=False, track_checkpoints=False):
-        super(RayTrialExecutor, self).__init__(queue_trials, track_checkpoints)
+    def __init__(self, queue_trials=False, checkpoint_mode=False):
+        super(RayTrialExecutor, self).__init__(queue_trials, checkpoint_mode)
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.

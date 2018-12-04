@@ -84,7 +84,7 @@ class TrialRunner(object):
         self._trials = []
         self.trial_executor = trial_executor or \
             RayTrialExecutor(queue_trials=queue_trials,
-                             track_checkpoints=checkpoint_freq > 0)
+                             checkpoint_mode=checkpoint_freq > 0)
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -109,13 +109,12 @@ class TrialRunner(object):
             logger.debug("Checkpoint directory newly created.")
             os.makedirs(checkpoint_dir)
         logger.warning("Search Algorithm and Scheduler not checkpointed.")
-        # search_alg_checkpoint = self._search_alg.save(checkpoint_dir)
-        # scheduler_alg_checkpoint = self._scheduler_alg.save(checkpoint_dir)
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "total_time": self._total_time,
-            "stop_queue": self._stop_queue
+            "stop_queue": self._stop_queue,
+            "iteration": self._iteration
         }
         with open(os.path.join(checkpoint_dir, "experiment.state"), "wb") as f:
             pickle.dump(runner_state, f)
@@ -145,6 +144,7 @@ class TrialRunner(object):
 
         self._total_time = runner_state["total_time"]
         self._stop_queue = runner_state["stop_queue"]
+        self._iteration = runner_state["iteration"]
 
     def is_finished(self):
         """Returns whether all trials have finished running."""

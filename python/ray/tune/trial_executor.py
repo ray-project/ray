@@ -16,7 +16,7 @@ class TrialExecutor(object):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False, track_checkpoints=False):
+    def __init__(self, queue_trials=False, checkpoint_mode=False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -24,9 +24,11 @@ class TrialExecutor(object):
                 not currently have enough resources to launch one. This should
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
+            checkpoint_mode (bool): Whether to track metadata on status
+                change.
         """
         self._queue_trials = queue_trials
-        self._track_checkpoints = track_checkpoints
+        self._checkpoint_mode = checkpoint_mode
         self._checkpoints = {}
 
     def set_status(self, trial, status):
@@ -50,7 +52,7 @@ class TrialExecutor(object):
         Args:
             trial (Trial): Trial to checkpoint.
         """
-        if self._track_checkpoints and trial.checkpoint_freq > 0:
+        if self._checkpoint_mode and trial.checkpoint_freq > 0:
             if trial._checkpoint.storage == Checkpoint.MEMORY:
                 logger.debug("Not saving data for trial w/ memory checkpoint.")
                 return
