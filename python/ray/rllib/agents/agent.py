@@ -459,10 +459,6 @@ def _register_if_needed(env_object):
         name = env_object.__name__
         register_env(name, lambda config: env_object(config))
         return name
-    else:
-        raise ValueError(
-            "Improper 'env' - must be string or class, not {}.".format(
-                type(env_object)))
 
 
 def get_agent_class(alg):
