@@ -67,7 +67,14 @@ class _LogSyncer(object):
     """Log syncer for tune.
 
     This syncs files from workers to the local node, and optionally also from
-    the local node to a remote directory (e.g. S3)."""
+    the local node to a remote directory (e.g. S3).
+
+    Arguments:
+        logdir (str): Directory to sync from.
+        upload_uri (str): Directory to sync to.
+        sync_cmd_tmpl (str): Optional template for syncer to run. Needs to
+            include replacement fields "{local_dir}" and "{remote_dir}".
+    """
 
     def __init__(self, local_dir, remote_dir=None, sync_cmd_tmpl=None):
         if sync_cmd_tmpl:

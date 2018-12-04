@@ -109,8 +109,9 @@ def make_parser(parser_creator=None, **kwargs):
     parser.add_argument(
         "--sync-cmd-tmpl",
         default="",
-        type=str,  # TODO(rliaw): fix this
-        help="Optional URI to sync training results to (e.g. s3://bucket).")
+        type=str,
+        help="Optional template for syncer to run. Needs to"
+             "include replacement fields '{local_dir}' and '{remote_dir}'.")
     parser.add_argument(
         "--custom-loggers",
         default=None,
@@ -207,7 +208,8 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
-        custom_loggers=args.custom_loggers,
-        sync_cmd_tmpl=args.sync_cmd_tmpl,
+        custom_loggers=spec.get("custom_loggers"),
+        # str(None) doesn't create None
+        sync_cmd_tmpl=spec.get("sync_cmd_tmpl"),
         max_failures=args.max_failures,
         **trial_kwargs)

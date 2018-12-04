@@ -28,6 +28,11 @@ class Logger(object):
 
     By default, the UnifiedLogger implementation is used which logs results in
     multiple formats (TensorBoard, rllab/viskit, plain json) at once.
+
+    Arguments:
+        config: Configuration passed to all logger creators.
+        logdir: Directory for all logger creators to log to.
+        upload_uri (str): Optional URI where the logdir is sync'ed to.
     """
 
     def __init__(self, config, logdir, upload_uri=None):
@@ -58,7 +63,17 @@ class Logger(object):
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
-    This class also periodically syncs output to the given upload uri."""
+    This class also periodically syncs output to the given upload uri.
+
+    Arguments:
+        config: Configuration passed to all logger creators.
+        logdir: Directory for all logger creators to log to.
+        upload_uri (str): Optional URI where the logdir is sync'ed to.
+        custom_loggers (list): List of custom logger creators.
+        sync_cmd_tmpl (str): Optional template for syncer to run. Needs to
+            include replacement fields "{local_dir}" and "{remote_dir}".
+            See ray/python/ray/tune/log_sync.py
+    """
 
     def __init__(self, config, logdir, upload_uri=None, custom_loggers=None, sync_cmd_tmpl=None):
         self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
@@ -66,15 +81,12 @@ class UnifiedLogger(Logger):
         if custom_loggers:
             assert isinstance(custom_loggers, list), "Improper custom loggers."
             self._logger_list += custom_loggers
-        Logger.__init__(self, config, logdir, upload_uri=None)
+
+        Logger.__init__(self, config, logdir, upload_uri)
 
     def _init(self):
         self._loggers = []
         for cls in self._logger_list:
-            if cls is _TFLogger and tf is None:
-                logger.info("TF not installed - "
-                            "cannot log with {}...".format(cls))
-                continue
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
