@@ -419,14 +419,14 @@ class Worker(object):
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
         except (TypeError, Exception):
-            # It could because the __dict__ of an instance is not serializable
-            # for cloudpickle, typically some cython objects. But the instance
-            # itself could have an `__reduce__` method.
+            # This error can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need these extra
+            # fallbacks here to start from the beginning. Hopefully the object
+            # could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = ("WARNING: Pickling the class {} "
-                               "failed, so we are using pickle "
-                               "and only registering the class "
-                               "locally.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 

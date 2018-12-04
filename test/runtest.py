@@ -379,7 +379,8 @@ def test_custom_serializers(shutdown_only):
 
 
 def test_serialization_final_fallback(ray_start):
-    pytest.importorskip('catboost')
+    pytest.importorskip("catboost")
+    # This test will only run when "catboost" is installed.
     from catboost import CatBoostClassifier
 
     @ray.remote
