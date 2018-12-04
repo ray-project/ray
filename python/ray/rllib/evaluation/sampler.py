@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gym
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -49,7 +50,8 @@ class SyncSampler(object):
                  callbacks,
                  horizon=None,
                  pack=False,
-                 tf_sess=None):
+                 tf_sess=None,
+                 clip_actions=True):
         self.async_vector_env = AsyncVectorEnv.wrap_async(env)
         self.unroll_length = unroll_length
         self.horizon = horizon
@@ -61,8 +63,8 @@ class SyncSampler(object):
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self.preprocessors, self.obs_filters, clip_rewards, pack,
-            callbacks, tf_sess)
+            self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
+            pack, callbacks, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -109,7 +111,8 @@ class AsyncSampler(threading.Thread):
                  callbacks,
                  horizon=None,
                  pack=False,
-                 tf_sess=None):
+                 tf_sess=None,
+                 clip_actions=True):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -129,6 +132,7 @@ class AsyncSampler(threading.Thread):
         self.pack = pack
         self.tf_sess = tf_sess
         self.callbacks = callbacks
+        self.clip_actions = clip_actions
 
     def run(self):
         try:
@@ -141,8 +145,8 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self.preprocessors, self.obs_filters, self.clip_rewards, self.pack,
-            self.callbacks, self.tf_sess)
+            self.preprocessors, self.obs_filters, self.clip_rewards,
+            self.clip_actions, self.pack, self.callbacks, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -204,6 +208,7 @@ def _env_runner(async_vector_env,
                 preprocessors,
                 obs_filters,
                 clip_rewards,
+                clip_actions,
                 pack,
                 callbacks,
                 tf_sess=None):
@@ -226,6 +231,7 @@ def _env_runner(async_vector_env,
         clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `unroll_length` in size.
+        clip_actions (bool): Whether to clip actions to the space range.
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
@@ -281,7 +287,7 @@ def _env_runner(async_vector_env,
 
         # Do batched policy eval
         eval_results = _do_policy_eval(tf_sess, to_eval, policies,
-                                       active_episodes)
+                                       active_episodes, clip_actions)
 
         # Process results and update episode state
         actions_to_send = _process_policy_eval_results(
@@ -442,7 +448,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
     return active_envs, to_eval, outputs
 
 
-def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
+def _do_policy_eval(tf_sess, to_eval, policies, active_episodes, clip_actions):
     """Call compute actions on observation batches to get next actions.
 
     Returns:
@@ -476,6 +482,13 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
+
+    if clip_actions:
+        for policy_id, results in eval_results.items():
+            policy = _get_or_raise(policies, policy_id)
+            actions, rnn_out_cols, pi_info_cols = results
+            eval_results[policy_id] = (_clip_actions(
+                actions, policy.action_space), rnn_out_cols, pi_info_cols)
 
     return eval_results
 
@@ -543,6 +556,31 @@ def _fetch_atari_metrics(async_vector_env):
         for eps_rew, eps_len in monitor.next_episode_results():
             atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}))
     return atari_out
+
+
+def _clip_actions(actions, space):
+    """Called to clip actions to the specified range of this policy.
+
+    Arguments:
+        actions: Batch of actions or TupleActions.
+        space: Action space the actions should be present in.
+
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(actions, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if not isinstance(actions, TupleActions):
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                actions, space))
+        out = []
+        for a, s in zip(actions.batches, space.spaces):
+            out.append(_clip_actions(a, s))
+        return TupleActions(out)
+    else:
+        return actions
 
 
 def _unbatch_tuple_actions(action_batch):
