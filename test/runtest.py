@@ -393,7 +393,7 @@ def test_serialization_final_fallback(ray_start):
     test_data = np.random.randint(0, 100, size=(50, 10))
     model = CatBoostClassifier(iterations=2, depth=2, learning_rate=1,
                                loss_function='Logloss',
-                               logging_level='Verbose')
+                               logging_level="Verbose")
     model = ray.get(fit.remote(model))
     preds_class = model.predict(test_data)
     preds_proba = model.predict_proba(test_data)
