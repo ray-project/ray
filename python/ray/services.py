@@ -1055,11 +1055,6 @@ def determine_plasma_store_config(object_store_memory=None,
         else:
             plasma_directory = "/tmp"
 
-    # Do some sanity checks.
-    if object_store_memory > system_memory:
-        raise Exception("The requested object store memory size is greater "
-                        "than the total available memory.")
-
     if not os.path.isdir(plasma_directory):
         raise Exception("The file {} does not exist or is not a directory."
                         .format(plasma_directory))
