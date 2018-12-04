@@ -64,7 +64,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_info = {}
         self.i = 0
         self.num = num
-        self.observation_space = gym.spaces.Discrete(2)
+        self.observation_space = gym.spaces.Discrete(5)
         self.action_space = gym.spaces.Discrete(2)
 
     def reset(self):
