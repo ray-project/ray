@@ -26,7 +26,7 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5
       install:
-        - ./.travis/install-dependencies.sh
+        - source ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
       script:
       - ./java/test.sh
@@ -45,7 +45,7 @@ matrix:
         - .travis/check-git-clang-format-output.sh
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
-        - ./.travis/install-dependencies.sh
+        - source ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
@@ -63,7 +63,7 @@ matrix:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
       install:
-        - ./.travis/install-dependencies.sh
+        - source ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
 
@@ -77,7 +77,7 @@ matrix:
       dist: trusty
       env: LINUX_WHEELS=1
       install:
-        - ./.travis/install-dependencies.sh
+        - source ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
       script:
@@ -88,7 +88,7 @@ matrix:
       osx_image: xcode7
       env: MAC_WHEELS=1
       install:
-        - ./.travis/install-dependencies.sh
+        - source ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - ./python/build-wheel-macos.sh
       script:
@@ -103,7 +103,7 @@ matrix:
 
 
 install:
-  - ./.travis/install-dependencies.sh
+  - source ./.travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - ./.travis/install-ray.sh
   - ./.travis/install-cython-examples.sh
