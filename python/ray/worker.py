@@ -418,6 +418,17 @@ class Worker(object):
             logger.info(
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
+        except (TypeError, Exception):
+            # It could because the __dict__ of an instance is not serializable
+            # for cloudpickle, typically some cython objects. But the instance
+            # itself could have an `__reduce__` method.
+            register_custom_serializer(type(value), use_pickle=True)
+            warning_message = ("WARNING: Pickling the class {} "
+                               "failed, so we are using pickle "
+                               "and only registering the class "
+                               "locally.".format(type(value)))
+            logger.warning(warning_message)
+            self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
