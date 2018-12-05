@@ -1028,9 +1028,6 @@ def determine_plasma_store_config(object_store_memory=None,
                 "when calling ray.init() or ray start.")
             object_store_memory = MAX_DEFAULT_MEM
 
-    if plasma_directory is not None:
-        plasma_directory = os.path.abspath(plasma_directory)
-
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
     # in which case we default to /tmp on Linux.
@@ -1054,6 +1051,15 @@ def determine_plasma_store_config(object_store_memory=None,
                     .format(shm_avail))
         else:
             plasma_directory = "/tmp"
+
+        # Do some sanity checks.
+        if object_store_memory > system_memory:
+            raise Exception("The requested object store memory size is greater "
+                            "than the total available memory.")
+    else:
+        plasma_directory = os.path.abspath(plasma_directory)
+        logger.warning("WARNING: object_store_memory is not verified when "
+                       "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise Exception("The file {} does not exist or is not a directory."
