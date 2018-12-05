@@ -128,10 +128,10 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Experience Data Input / Output ===
+    # === Offline Data Input / Output ===
     # Specify how to generate experiences:
-    #  - "sampler": generate experiences via simulation
-    #  - a local file glob expression (e.g., "/tmp/*.json")
+    #  - "sampler": generate experiences via online simulation (default)
+    #  - a local directory or file glob expression (e.g., "/tmp/*.json")
     #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
     #    "s3://bucket/2.json"])
     #  - a dict with string keys and sampling probabilities as values (e.g.,
@@ -153,6 +153,10 @@ COMMON_CONFIG = {
     #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
     #  - a function that returns a rllib.io.OutputWriter
     "output": None,
+    # Whether to run postprocess_trajectory() on the trajectory fragments from
+    # offline inputs. Whether this makes sense is algorithm-specific.
+    # TODO(ekl) implement this and multi-agent batch handling
+    "postprocess_inputs": False,
 
     # === Multiagent ===
     "multiagent": {
@@ -317,6 +321,10 @@ class Agent(Trainable):
             raise ValueError(
                 "The `use_gpu_for_workers` config is deprecated, please use "
                 "`num_gpus_per_worker=1` instead.")
+        if (config["input"] == "sampler"
+                and config["input_evaluation"] is not None):
+            raise ValueError(
+                "`input_evaluation` should not be set when input=sampler")
 
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
