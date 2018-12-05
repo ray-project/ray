@@ -123,7 +123,7 @@ COMMON_CONFIG = {
         "intra_op_parallelism_threads": 8,
         "inter_op_parallelism_threads": 8,
     },
-    # Whether to LZ4 compress observations
+    # Whether to LZ4 compress individual observations
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
@@ -153,6 +153,8 @@ COMMON_CONFIG = {
     #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
     #  - a function that returns a rllib.io.OutputWriter
     "output": None,
+    # What sample batch columns to LZ4 compress in the output data.
+    "output_compress_columns": ["obs", "new_obs"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Whether this makes sense is algorithm-specific.
     # TODO(ekl) implement this and multi-agent batch handling
@@ -270,7 +272,10 @@ class Agent(Trainable):
         else:
 
             def output_creator(ioctx):
-                return JsonWriter(ioctx, config["output"])
+                return JsonWriter(
+                    ioctx,
+                    config["output"],
+                    compress_columns=config["output_compress_columns"])
 
         return cls(
             env_creator,
@@ -338,7 +343,6 @@ class Agent(Trainable):
         """
 
         config = config or {}
-        Agent._validate_config(config)
 
         # Vars to synchronize to evaluators on each train call
         self.global_vars = {"timestep": 0}
@@ -412,6 +416,7 @@ class Agent(Trainable):
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        Agent._validate_config(self.config)
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
