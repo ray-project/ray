@@ -60,7 +60,8 @@ class JsonWriter(OutputWriter):
         f = self._get_file()
         f.write(data)
         f.write("\n")
-        f.flush()
+        if hasattr(f, "flush"):  # legacy smart_open impls
+            f.flush()
         self.bytes_written += len(data)
         logger.debug("Wrote {} bytes to {} in {}s".format(
             len(data), f,

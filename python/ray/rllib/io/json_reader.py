@@ -43,7 +43,12 @@ class JsonReader(InputReader):
                 logger.warn(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
-            self.files = glob.glob(inputs)
+            if urlparse(inputs).scheme:
+                raise ValueError(
+                    "Don't know how to glob over `{}`, ".format(inputs) +
+                    "please specify a list of files to read instead.")
+            else:
+                self.files = glob.glob(inputs)
         elif type(inputs) is list:
             self.files = inputs
         else:
@@ -86,7 +91,8 @@ class JsonReader(InputReader):
         tries = 0
         while not line and tries < 100:
             tries += 1
-            self.cur_file.close()
+            if hasattr(self.cur_file, "close"):  # legacy smart_open impls
+                self.cur_file.close()
             self.cur_file = self._next_file()
             line = self.cur_file.readline()
             if not line:
@@ -109,6 +115,8 @@ class JsonReader(InputReader):
 
 
 def _from_json(batch):
+    if isinstance(batch, bytes):  # smart_open S3 doesn't respect "r"
+        batch = batch.decode("utf-8")
     data = json.loads(batch)
     for k, v in data.items():
         data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
