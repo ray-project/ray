@@ -33,11 +33,8 @@ class JsonWriter(OutputWriter):
 
         Arguments:
             ioctx (IOContext): current IO context object.
-            path (str): either "logdir" or a path/URI for the output path.
+            path (str): a path/URI of the output directory to save files in.
         """
-
-        if path == "logdir":
-            path = ioctx.log_dir
 
         self.ioctx = ioctx
         self.path = path

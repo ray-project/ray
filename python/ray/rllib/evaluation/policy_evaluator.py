@@ -354,6 +354,10 @@ class PolicyEvaluator(EvaluatorInterface):
         logger.debug("Created evaluator with env {} ({}), policies {}".format(
             self.async_env, self.env, self.policy_map))
 
+    def __del__(self):
+        if isinstance(self.sampler, AsyncSampler):
+            self.sampler.shutdown = True
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         for name, (cls, obs_space, act_space,

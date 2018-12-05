@@ -2,13 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import numpy as np
 import os
 import shutil
 import tempfile
+import time
 import unittest
 
 import ray
+from ray.rllib.agents.pg import PGAgent
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.io import IOContext, JsonWriter, JsonReader
 from ray.rllib.io.json_writer import _to_json
@@ -26,6 +29,90 @@ def make_sample_batch(i):
     })
 
 
+class AgentIOTest(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def writeOutputs(self, output):
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "output": output,
+                "sample_batch_size": 250,
+            })
+        agent.train()
+        return agent
+
+    def testAgentOutputOk(self):
+        self.writeOutputs(self.test_dir)
+        self.assertEqual(len(os.listdir(self.test_dir)), 1)
+        ioctx = IOContext(self.test_dir, {}, 0, None)
+        reader = JsonReader(ioctx, self.test_dir + "/*.json")
+        reader.next()
+
+    def testAgentOutputLogdir(self):
+        agent = self.writeOutputs("logdir")
+        self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
+
+    def testAgentInputDir(self):
+        self.writeOutputs(self.test_dir)
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "input": self.test_dir,
+                "input_evaluation": None,
+            })
+        result = agent.train()
+        self.assertEqual(result["timesteps_total"], 250)  # read from input
+        self.assertTrue(np.isnan(result["episode_reward_mean"]))
+
+    def testAgentInputEvalSim(self):
+        self.writeOutputs(self.test_dir)
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "input": self.test_dir,
+                "input_evaluation": "simulation",
+            })
+        for _ in range(50):
+            result = agent.train()
+            if not np.isnan(result["episode_reward_mean"]):
+                return  # simulation ok
+            time.sleep(0.1)
+        assert False, "did not see any simulation results"
+
+    def testAgentInputList(self):
+        self.writeOutputs(self.test_dir)
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "input": glob.glob(self.test_dir + "/*.json"),
+                "input_evaluation": None,
+                "sample_batch_size": 99,
+            })
+        result = agent.train()
+        self.assertEqual(result["timesteps_total"], 250)  # read from input
+        self.assertTrue(np.isnan(result["episode_reward_mean"]))
+
+    def testAgentInputDict(self):
+        self.writeOutputs(self.test_dir)
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "input": {
+                    self.test_dir: 0.1,
+                    "sampler": 0.9,
+                },
+                "train_batch_size": 2000,
+                "input_evaluation": None,
+            })
+        result = agent.train()
+        self.assertTrue(not np.isnan(result["episode_reward_mean"]))
+
+
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -36,7 +123,7 @@ class JsonIOTest(unittest.TestCase):
     def testWriteSimple(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx, "logdir", max_file_size=1000, compress_columns=["obs"])
+            ioctx, self.test_dir, max_file_size=1000, compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         writer.write(SAMPLES)
         writer.write(SAMPLES)
@@ -144,4 +231,5 @@ class JsonIOTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    ray.init(num_cpus=1)
     unittest.main(verbosity=2)

@@ -155,6 +155,8 @@ COMMON_CONFIG = {
     "output": None,
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
+    # Max output file size before rolling over to a new file.
+    "output_max_file_size": 64 * 1024 * 1024,
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Whether this makes sense is algorithm-specific.
     # TODO(ekl) implement this and multi-agent batch handling
@@ -269,12 +271,21 @@ class Agent(Trainable):
 
             def output_creator(ioctx):
                 return NoopOutput()
+        elif config["output"] == "logdir":
+
+            def output_creator(ioctx):
+                return JsonWriter(
+                    ioctx,
+                    ioctx.log_dir,
+                    max_file_size=config["output_max_file_size"],
+                    compress_columns=config["output_compress_columns"])
         else:
 
             def output_creator(ioctx):
                 return JsonWriter(
                     ioctx,
                     config["output"],
+                    max_file_size=config["output_max_file_size"],
                     compress_columns=config["output_compress_columns"])
 
         return cls(
@@ -299,6 +310,7 @@ class Agent(Trainable):
             policy_config=config,
             worker_index=worker_index,
             monitor_path=self.logdir if config["monitor"] else None,
+            log_dir=self.logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,

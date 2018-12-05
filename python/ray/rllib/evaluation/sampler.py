@@ -128,6 +128,7 @@ class AsyncSampler(threading.Thread):
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
+        self.shutdown = False
 
     def run(self):
         try:
@@ -142,7 +143,7 @@ class AsyncSampler(threading.Thread):
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self._obs_filters, self.clip_rewards, self.clip_actions, self.pack,
             self.callbacks, self.tf_sess)
-        while True:
+        while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
