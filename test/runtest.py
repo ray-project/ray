@@ -391,8 +391,8 @@ def test_serialization_final_fallback(ray_start):
         logging_level="Verbose")
 
     reconstructed_model = ray.get(ray.put(model))
-    assert (sorted(model.__reduce__()[-1].items()) ==
-            sorted(reconstructed_model.__reduce__()[-1].items()))
+    assert (sorted(model.__reduce__()[-1].items()) == sorted(
+        reconstructed_model.__reduce__()[-1].items()))
 
 
 def test_register_class(shutdown_only):
