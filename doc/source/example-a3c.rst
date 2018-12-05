@@ -29,7 +29,7 @@ You can run the code with
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Pong-ram-v4 --run=A3C --config='{"num_workers": N}'
+  rllib train --env=Pong-ram-v4 --run=A3C --config='{"num_workers": N}'
 
 Reinforcement Learning
 ----------------------

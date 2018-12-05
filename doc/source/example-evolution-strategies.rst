@@ -18,13 +18,13 @@ on the ``Humanoid-v1`` gym environment.
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Humanoid-v1 --run=ES
+  rllib train --env=Humanoid-v1 --run=ES
 
 To train a policy on a cluster (e.g., using 900 workers), run the following.
 
 .. code-block:: bash
 
-  python ray/python/ray/rllib/train.py \
+  rllib train \
       --env=Humanoid-v1 \
       --run=ES \
       --redis-address=<redis-address> \
