@@ -51,8 +51,7 @@ class Cluster(object):
         assert not self.connected
         redis_password = head_node_args.get("redis_password")
         output_info = ray.init(
-            redis_address=self.redis_address,
-            redis_password=redis_password)
+            redis_address=self.redis_address, redis_password=redis_password)
         logger.info(output_info)
         self.connected = True
 
