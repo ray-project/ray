@@ -290,7 +290,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 else:
                     with self.timers["get_samples"]:
                         samples = ray.get(replay)
-                    self.learner.inqueue.put((ra, samples))
+                    self.learner.inqueue.put((ra, samples.copy()))
 
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
