@@ -541,8 +541,6 @@ def _clip_actions(actions, space):
         Clipped batch of actions.
     """
 
-    raise ValueError("oops")
-
     if isinstance(space, gym.spaces.Box):
         return np.clip(actions, space.low, space.high)
     elif isinstance(space, gym.spaces.Tuple):
