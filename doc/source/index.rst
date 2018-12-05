@@ -15,46 +15,22 @@ Ray is easy to install: ``pip install ray``
 Example Use
 -----------
 
-+----------------------------------------+-----------------------------------------------------+
-| **Basic Python**                       | **Distributed with Ray**                            |
-+----------------------------------------+-----------------------------------------------------+
-| .. code-block:: python                 | .. code-block:: python                              |
-|                                        |                                                     |
-|   # Execute f serially.                |   # Execute f in parallel.                          |
-|                                        |                                                     |
-|                                        |                                                     |
-|   def f():                             |   @ray.remote                                       |
-|     time.sleep(1)                      |   def f():                                          |
-|     return 1                           |       time.sleep(1)                                 |
-|                                        |       return 1                                      |
-|                                        |                                                     |
-|                                        |   ray.init()                                        |
-|   results = [f() for i in range(4)]    |   results = ray.get([f.remote() for i in range(4)]) |
-+----------------------------------------+-----------------------------------------------------+
-| **Async Python**                       | **Async Ray**                                       |
-+----------------------------------------+-----------------------------------------------------+
-| .. code-block:: python                 | .. code-block:: python                              |
-|                                        |                                                     |
-|   # Execute f asynchronously.          |   # Execute f and g in parallel asynchronously.     |
-|                                        |                                                     |
-|                                        |   from ray.exprimental import async_api             |
-|                                        |                                                     |
-|   async def f():                       |   async def f():                                    |
-|       await asyncio.sleep(1)           |       await asyncio.sleep(1)                        |
-|       return 1                         |       return 1                                      |
-|                                        |                                                     |
-|                                        |   @ray.remote                                       |
-|                                        |   def g():                                          |
-|                                        |       time.sleep(1)                                 |
-|                                        |       return 1                                      |
-|                                        |                                                     |
-|                                        |   ray.init()                                        |
-|   loop = asyncio.get_event_loop()      |   loop = asyncio.get_event_loop()                   |
-|   tasks = [f() for i in range(4)]      |   tasks = [f(), g.remote(), f(), g.remote()]        |
-|   results = loop.run_until_complete(   |   results = loop.run_until_complete(                |
-|       asyncio.gather(tasks))           |       async_api.gather(tasks))                      |
-+----------------------------------------+-----------------------------------------------------+
-
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code-block:: python                          |.. code-block:: python                              |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
 
 
 View the `codebase on GitHub`_.
@@ -85,10 +61,10 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
    tutorial.rst
    api.rst
-   async_api.rst
    actors.rst
    using-ray-with-gpus.rst
    webui.rst
+   async_api.rst
 
 .. toctree::
    :maxdepth: 1

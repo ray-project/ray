@@ -30,6 +30,17 @@ def gen_tasks(time_scale=0.1):
     return tasks
 
 
+def test_simple(init):
+    @ray.remote
+    def f():
+        time.sleep(1)
+        return {'key1': ['value']}
+
+    future = async_api.as_future(f.remote())
+    result = asyncio.get_event_loop().run_until_complete(future)
+    assert result['key1'] == ['value']
+
+
 def test_gather(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()

@@ -1,6 +1,5 @@
 import asyncio
 import sys
-from typing import List, Dict
 
 import pyarrow.plasma as plasma
 
@@ -17,8 +16,7 @@ class PlasmaProtocol(asyncio.Protocol):
     """
     Protocol control for the asyncio connection.
     """
-    def __init__(self, plasma_client,
-                 plasma_event_handler: 'PlasmaEventHandler'):
+    def __init__(self, plasma_client, plasma_event_handler):
         self.plasma_client = plasma_client
         self.plasma_event_handler = plasma_event_handler
         self.transport = None
@@ -86,14 +84,14 @@ class PlasmaObjectLinkedList(asyncio.Future):
             The plasma ObjectID this class holds.
     """
 
-    def __init__(self, loop, plain_object_id: plasma.ObjectID):
+    def __init__(self, loop, plain_object_id):
         super().__init__(loop=loop)
         assert isinstance(plain_object_id, plasma.ObjectID)
         self.object_id = plain_object_id
-        self.head: PlasmaObjectFuture = None
-        self.tail: PlasmaObjectFuture = None
+        self.head = None
+        self.tail = None
 
-    def append(self, future: PlasmaObjectFuture):
+    def append(self, future):
         """Append an object to the linked list.
 
         Args:
@@ -109,7 +107,7 @@ class PlasmaObjectLinkedList(asyncio.Future):
         # Once done, it will be removed from the list.
         future.add_done_callback(self.remove)
 
-    def remove(self, future: PlasmaObjectFuture):
+    def remove(self, future):
         """Remove an object from the linked list.
 
         Args:
@@ -155,7 +153,8 @@ class PlasmaObjectLinkedList(asyncio.Future):
             # from this linked list. However, these callbacks are scheduled in
             # an event loop, so we could still find them in our list.
             future.set_result(result)
-        super().set_result(result)
+        if not self.done():
+            super().set_result(result)
 
     def traverse(self):
         """Traverse this linked list.
@@ -174,11 +173,11 @@ class PlasmaEventHandler:
 
     def __init__(self, loop, worker):
         super().__init__()
-        self._loop: asyncio.BaseEventLoop = loop
+        self._loop = loop
         self._worker = worker
-        self._waiting_dict: Dict[ray.ObjectID, PlasmaObjectLinkedList] = {}
+        self._waiting_dict = {}
 
-    def process_notifications(self, messages: List):
+    def process_notifications(self, messages):
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
@@ -193,14 +192,14 @@ class PlasmaEventHandler:
         # from the waiting dict. However, these callbacks are scheduled in
         # an event loop, so we don't check them now.
 
-    def _unregister_callback(self, fut: PlasmaObjectLinkedList):
+    def _unregister_callback(self, fut):
         del self._waiting_dict[fut.object_id]
 
     def _complete_future(self, fut):
         obj = self._worker.retrieve_and_deserialize([fut.object_id], 0)[0]
         fut.set_result(obj)
 
-    def as_future(self, object_id: ray.ObjectID, check_ready=True):
+    def as_future(self, object_id, check_ready=True):
         """Turn an object_id into a Future object.
 
         Args:
