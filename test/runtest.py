@@ -383,25 +383,16 @@ def test_serialization_final_fallback(ray_start):
     # This test will only run when "catboost" is installed.
     from catboost import CatBoostClassifier
 
-    @ray.remote
-    def fit(model):
-        train_data = np.random.randint(0, 100, size=(100, 10))
-        train_label = np.random.randint(0, 2, size=100)
-        model.fit(train_data, train_label, cat_features=[0, 2, 5])
-        return model
-
-    test_data = np.random.randint(0, 100, size=(50, 10))
     model = CatBoostClassifier(
         iterations=2,
         depth=2,
         learning_rate=1,
         loss_function="Logloss",
         logging_level="Verbose")
-    model = ray.get(fit.remote(model))
-    preds_class = model.predict(test_data)
-    preds_proba = model.predict_proba(test_data)
-    assert len(preds_class) == 50
-    assert len(preds_proba) == 50
+
+    reconstructed_model = ray.get(ray.put(model))
+    assert (sorted(model.__reduce__()[-1].items()) ==
+            sorted(reconstructed_model.__reduce__()[-1].items()))
 
 
 def test_register_class(shutdown_only):
