@@ -318,9 +318,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     dirpath = str(tmpdir)
 
     exp1_args = dict(
-        run="__fake",
-        stop=dict(training_iteration=3),
-        checkpoint_freq=1)
+        run="__fake", stop=dict(training_iteration=3), checkpoint_freq=1)
     exp2_args = dict(run="__fake", stop=dict(training_iteration=3))
     exp3_args = dict(
         run="__fake",

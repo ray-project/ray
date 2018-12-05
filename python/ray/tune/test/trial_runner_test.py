@@ -589,6 +589,7 @@ class RunExperimentTest(unittest.TestCase):
 
     def testSimultaneousExperimentRestore(self):
         tmpdir = tempfile.mkdtemp()
+
         def train(config, reporter):
             for i in range(100):
                 reporter(timesteps_total=i)
@@ -602,8 +603,8 @@ class RunExperimentTest(unittest.TestCase):
             }
         })
         self.assertRaises(
-            AssertionError, lambda: run_experiments(
-                exp1, restore_from_path=tmpdir))
+            AssertionError,
+            lambda: run_experiments(exp1, restore_from_path=tmpdir))
         shutil.rmtree(tmpdir)
 
     def testExperimentList(self):

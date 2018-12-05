@@ -495,7 +495,6 @@ class TrialRunner(object):
 
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
-
     def __getstate__(self):
         state = self.__dict__.copy()
 
@@ -503,7 +502,7 @@ class TrialRunner(object):
 
         if not isinstance(state["_scheduler_alg"], FIFOScheduler):
             # TODO(rliaw): Remove this once component FT is implemented
-            state["_scheduler_alg"] =
+            state["_scheduler_alg"] = None
 
         state["_search_alg"] = None
 
@@ -513,7 +512,6 @@ class TrialRunner(object):
         state["_trials"] = []
         state["_trial_checkpoints"] = {}
         return state
-
 
     def __setstate__(self, state):
         if "_launch_web_server" in state:
