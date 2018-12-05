@@ -13,7 +13,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             # Handle everything as if multiagent
             if isinstance(samples, SampleBatch):
                 samples = MultiAgentBatch({
-                    DEFAULT_POLICY_ID: batch
-                }, batch.count)
+                    DEFAULT_POLICY_ID: samples
+                }, samples.count)
 
         for _, batch in samples.policy_batches.items():
             for field in self.standardize_fields:
