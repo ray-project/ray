@@ -326,9 +326,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
-            if input_evaluation_method == "simulation":
-                self.sampler.blackhole_outputs = True
+                clip_actions=clip_actions,
+                blackhole_outputs=input_evaluation_method == "simulation")
             self.sampler.start()
         else:
             self.sampler = SyncSampler(

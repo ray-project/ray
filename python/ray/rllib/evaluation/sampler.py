@@ -145,7 +145,8 @@ class AsyncSampler(threading.Thread):
             extra_batches_putter = (lambda x: None)
         else:
             queue_putter = self.queue.put
-            extra_batches_putter = self.extra_batches.put
+            extra_batches_putter = (
+                lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
             self.async_vector_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
@@ -159,7 +160,7 @@ class AsyncSampler(threading.Thread):
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
-                queue_putter(item, timeout=600.0)
+                queue_putter(item)
 
     def get_data(self):
         rollout = self.queue.get(timeout=600.0)
