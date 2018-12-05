@@ -225,6 +225,7 @@ class SampleBatch(object):
         for k, v in self.data.copy().items():
             assert type(k) == str, self
             lengths.append(len(v))
+            self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, "data columns must be same length"
