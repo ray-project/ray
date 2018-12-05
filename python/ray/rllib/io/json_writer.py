@@ -16,8 +16,7 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.io.output_writer import OutputWriter
-from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.utils.compression import pack, unpack
+from ray.rllib.utils.compression import pack
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +29,16 @@ class JsonWriter(OutputWriter):
                  path,
                  max_file_size=64 * 1024 * 1024,
                  compress_columns=frozenset(["obs", "new_obs"])):
+        """Initialize a JsonWriter.
+
+        Arguments:
+            ioctx (IOContext): current IO context object.
+            path (str): either "logdir" or a path/URI for the output path.
+        """
+
+        if path == "logdir":
+            path = ioctx.log_dir
+
         self.ioctx = ioctx
         self.path = path
         self.max_file_size = max_file_size
@@ -50,7 +59,7 @@ class JsonWriter(OutputWriter):
 
     def write(self, sample_batch):
         start = time.time()
-        data = to_json(sample_batch, self.compress_columns)
+        data = _to_json(sample_batch, self.compress_columns)
         f = self._get_file()
         f.write(data)
         f.write("\n")
@@ -90,18 +99,8 @@ def _to_jsonable(v, compress):
     return v
 
 
-def to_json(batch, compress_columns):
+def _to_json(batch, compress_columns):
     return json.dumps({
         k: _to_jsonable(v, compress=k in compress_columns)
         for k, v in batch.data.items()
     })
-
-
-def from_json(batch):
-    data = json.loads(batch)
-    for k, v in data.items():
-        if type(v) is str:
-            data[k] = unpack(v)
-        else:
-            data[k] = np.array(v)
-    return SampleBatch(data)

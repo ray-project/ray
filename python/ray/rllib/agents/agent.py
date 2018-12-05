@@ -12,7 +12,7 @@ import tempfile
 import tensorflow as tf
 
 import ray
-from ray.rllib.io import NoopOutput, parse_input_spec, parse_output_spec
+from ray.rllib.io import NoopOutput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -127,14 +127,13 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Experience Input / Output ===
-    # Either a function that creates a new rllib.io.InputReader, an address
-    # to a file or directory of form "json:[scheme:]/path/to/dir", or a Python
-    # list of such addresses to specify sources for a JsonReader.
+    # === Experience Data Input / Output ===
+    # Either a function that creates a new rllib.io.InputReader, a local
+    # file global expression (e.g., "/tmp/**/*.json"), or a list of individual
+    # file paths/URIs (e.g., ["/tmp/1.json", "hdfs:/data/2.json"]).
     "input": lambda ioctx: ioctx.default_env_input(),
-    # Either a function that creates a new rllib.io.OutputWriter, or an address
-    # string like "json" or "json:[scheme:]/path/to/dir" to specify the
-    # destination for a JsonWriter.
+    # Either a function that creates a new rllib.io.OutputWriter, "logdir" to
+    # use the agent log dir, or a path/URI to a custom output directory.
     "output": lambda ioctx: NoopOutput(),
 
     # === Multiagent ===
@@ -249,8 +248,8 @@ class Agent(Trainable):
             monitor_path=self.logdir if config["monitor"] else None,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
-            input_creator=parse_input_spec(config["input"]),
-            output_creator=parse_output_spec(config["output"], self.logdir))
+            input_creator=config["input"],
+            output_creator=config["output"])
 
     @classmethod
     def resource_help(cls, config):
