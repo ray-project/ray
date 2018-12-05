@@ -81,7 +81,6 @@ class TrialRunner(object):
         """
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
-        self._trials = []
         self.trial_executor = trial_executor or \
             RayTrialExecutor(queue_trials=queue_trials,
                              checkpoint_mode=checkpoint_freq > 0)
@@ -92,17 +91,21 @@ class TrialRunner(object):
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
         self._iteration = 0
-        self._server = None
-        if launch_web_server:
-            self._server = TuneServer(self, server_port)
-        self._stop_queue = []
         self._verbose = verbose
         self._queue_trials = queue_trials
+
+        self._server = None
+        if launch_web_server:
+            self._server_port = server_port
+            self._server = TuneServer(self, server_port)
+
+        self._trials = []
+        self._stop_queue = []
+        self._trial_checkpoints = {}
         self._checkpoint_dir = checkpoint_dir
         self._checkpoint_freq = checkpoint_freq
-        self._trial_checkpoints = {}
 
-    def save(self):
+    def checkpoint(self):
         """Saves all trial checkpoints to `self._checkpoint_dir.`"""
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
@@ -112,16 +115,15 @@ class TrialRunner(object):
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
-            "total_time": self._total_time,
-            "stop_queue": self._stop_queue,
-            "iteration": self._iteration
+            "runner": self
         }
         with open(os.path.join(checkpoint_dir, "experiment.state"), "wb") as f:
             pickle.dump(runner_state, f)
 
         return checkpoint_dir
 
-    def restore(self, checkpoint_dir):
+    @classmethod
+    def restore(cls, checkpoint_dir, trial_executor=None):
         """Restores all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -129,22 +131,33 @@ class TrialRunner(object):
 
         Args:
             checkpoint_dir (str): Path to checkpoint (previously specified).
-        """
-        logger.debug("Stopping all trials.")
-        for trial in self._trials:
-            self.stop_trial(trial)
 
+        Returns:
+            runner (TrialRunner): A TrialRunner to resume experiments from.
+        """
         with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             runner_state = pickle.load(f)
 
-        logger.info("Replacing all trials with checkpoint state.")
+        runner = runner_state["runner"]
+
+        logger.warning(
+            "Tune recovery is still experimental."
+            "There is limited search algorithm recovery support."
+            "Restoring with a BasicVariantGenerator and FIFOScheduler.")
+
+        from ray.tune.suggest import BasicVariantGenerator
+        runner._search_alg = BasicVariantGenerator()
+        runner._scheduler_alg = FIFOScheduler()
+
+        runner.trial_executor = trial_executor or \
+            RayTrialExecutor(queue_trials=runner._queue_trials,
+                             checkpoint_mode=runner._checkpoint_freq > 0)
+
+        logger.info("Adding all trials with checkpoint state.")
         for ckpt in runner_state["checkpoints"]:
             trial = pickle.loads(ckpt)
-            self.add_trial(trial)
-
-        self._total_time = runner_state["total_time"]
-        self._stop_queue = runner_state["stop_queue"]
-        self._iteration = runner_state["iteration"]
+            runner.add_trial(trial)
+        return runner
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -194,7 +207,7 @@ class TrialRunner(object):
         if self._checkpoint_freq:
             if (self._iteration % self._checkpoint_freq == 0
                     or self.is_finished()):
-                self.save()
+                self.checkpoint()
 
         self._iteration += 1
 
@@ -481,3 +494,30 @@ class TrialRunner(object):
                 error = True
 
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
+
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+
+        state["trial_executor"] = None
+
+        if not isinstance(state["_scheduler_alg"], FIFOScheduler):
+            # TODO(rliaw): Remove this once component FT is implemented
+            state["_scheduler_alg"] =
+
+        state["_search_alg"] = None
+
+        if state["_server"]:
+            state["_launch_web_server"] = True
+        state["_stop_queue"] = []
+        state["_trials"] = []
+        state["_trial_checkpoints"] = {}
+        return state
+
+
+    def __setstate__(self, state):
+        if "_launch_web_server" in state:
+            state.pop("_launch_web_server")
+            state["_server"] = TuneServer(self, state["_server_port"])
+
+        self.__dict__.update(state)

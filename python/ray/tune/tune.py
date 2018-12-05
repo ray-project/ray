@@ -94,31 +94,31 @@ def run_experiments(experiments=None,
 
     """
 
-    if scheduler is None:
-        scheduler = FIFOScheduler()
-
-    if search_alg is None:
-        search_alg = BasicVariantGenerator()
-
-    runner = TrialRunner(
-        search_alg,
-        scheduler=scheduler,
-        checkpoint_dir=checkpoint_dir or DEFAULT_RESULTS_DIR,
-        checkpoint_freq=checkpoint_freq,
-        launch_web_server=with_server,
-        server_port=server_port,
-        verbose=verbose,
-        queue_trials=queue_trials,
-        trial_executor=trial_executor)
-
     if restore_from_path:
         if not os.path.exists(restore_from_path):
             raise ValueError("Provided path invalid: %s" % restore_from_path)
         assert experiments is None, (
             "Simultaneous starting experiments and restoring not supported.")
-        runner.restore(restore_from_path)
+        runner = TrialRunner.restore(restore_from_path)
     else:
+        if scheduler is None:
+            scheduler = FIFOScheduler()
+
+        if search_alg is None:
+            search_alg = BasicVariantGenerator()
+
         search_alg.add_configurations(experiments)
+
+        runner = TrialRunner(
+            search_alg,
+            scheduler=scheduler,
+            checkpoint_dir=checkpoint_dir or DEFAULT_RESULTS_DIR,
+            checkpoint_freq=checkpoint_freq,
+            launch_web_server=with_server,
+            server_port=server_port,
+            verbose=verbose,
+            queue_trials=queue_trials,
+            trial_executor=trial_executor)
 
     logger.info(runner.debug_string(max_debug=99999))
     last_debug = 0

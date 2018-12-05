@@ -291,7 +291,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     runner.step()  # start2
     runner.step()  # step
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
-    runner.save()
+    runner.checkpoint()
 
     cluster.shutdown()
     ray.shutdown()
