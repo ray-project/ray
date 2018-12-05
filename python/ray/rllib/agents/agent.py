@@ -253,40 +253,28 @@ class Agent(Trainable):
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
-
-            def input_creator(ioctx):
-                return ioctx.default_sampler_input()
+            input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-
-            def input_creator(ioctx):
-                return MixedInput(ioctx, config["input"])
+            input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
         else:
-
-            def input_creator(ioctx):
-                return JsonReader(ioctx, config["input"])
+            input_creator = (lambda ioctx: JsonReader(ioctx, config["input"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
         elif config["output"] is None:
-
-            def output_creator(ioctx):
-                return NoopOutput()
+            output_creator = (lambda ioctx: NoopOutput())
         elif config["output"] == "logdir":
-
-            def output_creator(ioctx):
-                return JsonWriter(
-                    ioctx,
-                    ioctx.log_dir,
-                    max_file_size=config["output_max_file_size"],
-                    compress_columns=config["output_compress_columns"])
+            output_creator = (lambda ioctx: JsonWriter(
+                ioctx,
+                ioctx.log_dir,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
         else:
-
-            def output_creator(ioctx):
-                return JsonWriter(
+            output_creator = (lambda ioctx: JsonWriter(
                     ioctx,
                     config["output"],
                     max_file_size=config["output_max_file_size"],
-                    compress_columns=config["output_compress_columns"])
+                    compress_columns=config["output_compress_columns"]))
 
         return cls(
             env_creator,

@@ -20,7 +20,6 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.io import NoopOutput, IOContext, OutputWriter, InputReader
-from ray.rllib.io.utils import BlackHoleConsumer
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
@@ -328,9 +327,9 @@ class PolicyEvaluator(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions)
-            self.sampler.start()
             if input_evaluation_method == "simulation":
-                BlackHoleConsumer(self.sampler).start()
+                self.sampler.blackhole_outputs = True
+            self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 self.async_env,
