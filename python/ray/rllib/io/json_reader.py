@@ -5,6 +5,7 @@ from __future__ import print_function
 import glob
 import json
 import logging
+import numpy as np
 import os
 import random
 from six.moves.urllib.parse import urlparse
@@ -119,5 +120,5 @@ def _from_json(batch):
         batch = batch.decode("utf-8")
     data = json.loads(batch)
     for k, v in data.items():
-        data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
+        data[k] = np.array([unpack_if_needed(x) for x in unpack_if_needed(v)])
     return SampleBatch(data)
