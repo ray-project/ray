@@ -13,13 +13,17 @@ from ray.rllib.evaluation import SampleBatch
 from ray.rllib.io import IOContext, JsonWriter, JsonReader
 from ray.rllib.io.json_writer import _to_json
 
-SAMPLES = SampleBatch(
-    {"actions": np.array([1, 2, 3]), "obs": np.array([4, 5, 6])})
+SAMPLES = SampleBatch({
+    "actions": np.array([1, 2, 3]),
+    "obs": np.array([4, 5, 6])
+})
 
 
 def make_sample_batch(i):
-    return SampleBatch(
-        {"actions": np.array([i, i, i]), "obs": np.array([i, i, i])})
+    return SampleBatch({
+        "actions": np.array([i, i, i]),
+        "obs": np.array([i, i, i])
+    })
 
 
 class JsonIOTest(unittest.TestCase):
@@ -41,7 +45,9 @@ class JsonIOTest(unittest.TestCase):
     def testWriteFileURI(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx, "file:" + self.test_dir, max_file_size=1000,
+            ioctx,
+            "file:" + self.test_dir,
+            max_file_size=1000,
             compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         writer.write(SAMPLES)
@@ -95,6 +101,27 @@ class JsonIOTest(unittest.TestCase):
             batch = reader.next()
             seen_a.add(batch["actions"][0])
         self.assertEqual(len(seen_a), 2)
+
+    def testSkipsOverCorruptedLines(self):
+        ioctx = IOContext(self.test_dir, {}, 0, None)
+        with open(self.test_dir + "/f1", "w") as f:
+            f.write(_to_json(make_sample_batch(0), []))
+            f.write("\n")
+            f.write(_to_json(make_sample_batch(1), []))
+            f.write("\n")
+            f.write(_to_json(make_sample_batch(2), []))
+            f.write("\n")
+            f.write(_to_json(make_sample_batch(3), []))
+            f.write("\n")
+            f.write("{..corrupted_json_record")
+        reader = JsonReader(ioctx, [
+            self.test_dir + "/f1",
+        ])
+        seen_a = set()
+        for i in range(10):
+            batch = reader.next()
+            seen_a.add(batch["actions"][0])
+        self.assertEqual(len(seen_a), 4)
 
     def testAbortOnAllEmptyInputs(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)

@@ -10,9 +10,10 @@ import pickle
 import six
 import tempfile
 import tensorflow as tf
+from types import FunctionType
 
 import ray
-from ray.rllib.io import NoopOutput
+from ray.rllib.io import NoopOutput, JsonReader, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -131,7 +132,16 @@ COMMON_CONFIG = {
     # Either a function that creates a new rllib.io.InputReader, a local
     # file global expression (e.g., "/tmp/**/*.json"), or a list of individual
     # file paths/URIs (e.g., ["/tmp/1.json", "hdfs:/data/2.json"]).
-    "input": lambda ioctx: ioctx.default_env_input(),
+    "input": lambda ioctx: ioctx.default_sampler_input(),
+    # How to evaluate the current policy. This only applies when the input is
+    # reading offline data. Options are:
+    #  - "none": don't evaluate the policy. The episode reward and other
+    #    metrics will be NaN.
+    #  - "simulation": run the environment in the background, but use
+    #    this data for evaluation only and not for learning.
+    #  - "counterfactual": use counterfactual policy evaluation to estimate
+    #    performance (this option is not implemented yet).
+    "input_evaluation": "none",
     # Either a function that creates a new rllib.io.OutputWriter, "logdir" to
     # use the agent log dir, or a path/URI to a custom output directory.
     "output": lambda ioctx: NoopOutput(),
@@ -248,8 +258,13 @@ class Agent(Trainable):
             monitor_path=self.logdir if config["monitor"] else None,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
-            input_creator=config["input"],
-            output_creator=config["output"])
+            input_creator=(config["input"]
+                           if isinstance(config["input"], FunctionType) else
+                           lambda ioctx: JsonReader(ioctx, config["input"])),
+            input_evaluation_method=config["input_evaluation"],
+            output_creator=(config["output"]
+                            if isinstance(config["output"], FunctionType) else
+                            lambda ioctx: JsonWriter(ioctx, config["output"])))
 
     @classmethod
     def resource_help(cls, config):

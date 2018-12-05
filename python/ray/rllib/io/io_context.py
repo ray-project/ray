@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.io.input_reader import SamplerInput
+
 
 class IOContext(object):
     """Attributes to pass to input / output class constructors.
@@ -21,3 +23,6 @@ class IOContext(object):
         self.config = config
         self.worker_index = worker_index
         self.evaluator = evaluator
+
+    def default_sampler_input(self):
+        return SamplerInput(self.evaluator.sampler)

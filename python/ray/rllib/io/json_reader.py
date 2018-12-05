@@ -2,12 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from datetime import datetime
 import glob
 import json
 import logging
-import numpy as np
 import os
+import numpy as np
 import random
 from six.moves.urllib.parse import urlparse
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class JsonReader(InputReader):
     """Reader object that loads experiences from JSON file chunks.
-    
+
     The input files will be read from in an random order."""
 
     def __init__(self, ioctx, inputs):
@@ -40,6 +39,11 @@ class JsonReader(InputReader):
 
         self.ioctx = ioctx
         if type(inputs) is str:
+            if os.path.isdir(inputs):
+                inputs = os.path.join(inputs, "*.json")
+                logger.warn(
+                    "Treating input directory as glob pattern: {}".format(
+                        inputs))
             self.files = glob.glob(inputs)
         elif type(inputs) is list:
             self.files = inputs
@@ -53,17 +57,28 @@ class JsonReader(InputReader):
         self.cur_file = None
 
     def next(self):
-        line = self._next_line().strip()
+        batch = self._try_parse(self._next_line())
         tries = 0
-        while not line and tries < 100:
+        while not batch and tries < 100:
             tries += 1
             logger.debug("Skipping empty line in {}".format(self.cur_file))
-            line = self._next_line().strip()
-        if not line:
+            batch = self._try_parse(self._next_line())
+        if not batch:
             raise ValueError(
-                "Failed to read non-empty line from file: {}".format(
+                "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return _from_json(line)
+        return batch
+
+    def _try_parse(self, line):
+        line = line.strip()
+        if not line:
+            return None
+        try:
+            return _from_json(line)
+        except Exception as e:
+            logger.warn("Ignoring corrupt json record in {}: {}: {}".format(
+                self.cur_file, line, e))
+            return None
 
     def _next_line(self):
         if not self.cur_file:
@@ -78,8 +93,8 @@ class JsonReader(InputReader):
             if not line:
                 logger.debug("Ignoring empty file {}".format(self.cur_file))
         if not line:
-            raise ValueError(
-                "Failed to read next line from files: {}".format(self.files))
+            raise ValueError("Failed to read next line from files: {}".format(
+                self.files))
         return line
 
     def _next_file(self):

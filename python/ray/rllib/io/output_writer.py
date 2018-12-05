@@ -15,7 +15,7 @@ class OutputWriter(object):
         raise NotImplementedError
 
 
-class NoopOutput(object):
+class NoopOutput(OutputWriter):
     """Output writer that discards its outputs."""
 
     def write(self, sample_batch):
