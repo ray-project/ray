@@ -98,9 +98,9 @@ def run_experiments(experiments=None,
     if restore_from_path:
         if not os.path.exists(restore_from_path):
             raise ValueError("Provided path invalid: %s" % restore_from_path)
-        assert experiments is None, (
+        assert not experiments, (
             "Simultaneous starting experiments and restoring not supported.")
-        runner = TrialRunner.restore(restore_from_path)
+        runner = TrialRunner.restore(restore_from_path, trial_executor)
     else:
         if scheduler is None:
             scheduler = FIFOScheduler()
