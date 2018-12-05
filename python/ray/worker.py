@@ -13,6 +13,7 @@ import numpy as np
 import os
 import redis
 import signal
+from six.moves import queue
 import sys
 import threading
 import time
@@ -836,6 +837,16 @@ class Worker(object):
             failure_object for _ in range(len(return_object_ids))
         ]
         self._store_outputs_in_object_store(return_object_ids, failure_objects)
+        # Log the error message.
+        ray.utils.push_error_to_driver(
+            self,
+            ray_constants.TASK_PUSH_ERROR,
+            str(failure_object),
+            driver_id=self.task_driver_id.id(),
+            data={
+                "function_id": function_id.id(),
+                "function_name": function_name
+            })
         # Mark the actor init as failed
         if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
             self.mark_actor_init_failed(error)
@@ -1719,12 +1730,38 @@ def custom_excepthook(type, value, tb):
 
 sys.excepthook = custom_excepthook
 
+# The last time we raised a TaskError in this process. We use this value to
+# suppress redundant error messages pushed from the workers.
+last_task_error_raise_time = 0
 
-def print_error_messages_raylet(worker):
-    """Print error messages in the background on the driver.
+# The max amount of seconds to wait before printing out an uncaught error.
+UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
-    This runs in a separate thread on the driver and prints error messages in
-    the background.
+
+def print_error_messages_raylet(task_error_queue):
+    """Prints message received in the given output queue.
+
+    This checks periodically if any un-raised errors occured in the background.
+    """
+
+    while True:
+        error, t = task_error_queue.get()
+        # Delay errors a little bit of time to attempt to suppress redundant
+        # messages originating from the worker.
+        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
+            time.sleep(1)
+        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
+            logger.debug("Suppressing error from worker: {}".format(error))
+        else:
+            logger.error(
+                "Possible unhandled error from worker: {}".format(error))
+
+
+def listen_error_messages_raylet(worker, task_error_queue):
+    """Listen to error messages in the background on the driver.
+
+    This runs in a separate thread on the driver and pushes (error, time)
+    tuples to the output queue.
     """
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
@@ -1761,7 +1798,12 @@ def print_error_messages_raylet(worker):
                 continue
 
             error_message = ray.utils.decode(error_data.ErrorMessage())
-            logger.error(error_message)
+            if (ray.utils.decode(
+                    error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
+                # Delay it a bit to see if we can suppress it
+                task_error_queue.put((error_message, time.time()))
+            else:
+                logger.error(error_message)
 
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -2043,14 +2085,19 @@ def connect(info,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
-        t = threading.Thread(
+        q = queue.Queue()
+        listener = threading.Thread(
+            target=listen_error_messages_raylet,
+            name="ray_listen_error_messages",
+            args=(worker, q))
+        printer = threading.Thread(
             target=print_error_messages_raylet,
             name="ray_print_error_messages",
-            args=(worker, ))
-        # Making the thread a daemon causes it to exit when the main thread
-        # exits.
-        t.daemon = True
-        t.start()
+            args=(q, ))
+        listener.daemon = True
+        listener.start()
+        printer.daemon = True
+        printer.start()
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
@@ -2278,10 +2325,12 @@ def get(object_ids, worker=global_worker):
             # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
+        global last_task_error_raise_time
         if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
+                    last_task_error_raise_time = time.time()
                     raise value
             return values
         else:
@@ -2290,6 +2339,7 @@ def get(object_ids, worker=global_worker):
                 # If the result is a RayTaskError, then the task that created
                 # this object failed, and we should propagate the error message
                 # here.
+                last_task_error_raise_time = time.time()
                 raise value
             return value
 
