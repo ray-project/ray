@@ -58,8 +58,8 @@ class SGDWorker(object):
                         optimizer = model.get_optimizer()
                         loss = model.get_loss()
                         grads = [
-                            t for t in optimizer.compute_gradients(
-                                loss) if t[0] is not None
+                            t for t in optimizer.compute_gradients(loss)
+                            if t[0] is not None
                         ]
                         grad_ops.append(grads)
 
@@ -176,10 +176,9 @@ class SGDWorker(object):
         apply_ops = []
         to_apply = unpacked_gv[0]
         for ix, m in enumerate(self.models):
-            apply_ops.append(
-                m.get_optimizer().apply_gradients(
-                    [(g, v)
-                     for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])]))
+            apply_ops.append(m.get_optimizer().apply_gradients([
+                (g, v) for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])
+            ]))
         self.apply_op = tf.group(*apply_ops)
         init_op = tf.group(tf.global_variables_initializer(),
                            tf.local_variables_initializer())
@@ -209,12 +208,11 @@ class SGDWorker(object):
         feed_dict = self._grad_feed_dict()
         # We only need to fetch the first per_device_grad, since they are
         # averaged across all devices by allreduce.
-        fetches = self.sess.run(
-            [
-                self.models[0].get_loss(), self.per_device_grads[0],
-                self.nccl_control_out
-            ],
-            feed_dict=feed_dict)
+        fetches = self.sess.run([
+            self.models[0].get_loss(), self.per_device_grads[0],
+            self.nccl_control_out
+        ],
+                                feed_dict=feed_dict)
         logger.debug(
             "Compute grad interior time {}".format(time.time() - start))
         return fetches

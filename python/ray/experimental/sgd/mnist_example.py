@@ -94,11 +94,11 @@ class MNISTModel(Model):
 
     def get_metrics(self):
         accuracy = self.accuracy.eval(
-                feed_dict={
-                    self.x: self.mnist.test.images,
-                    self.y_: self.mnist.test.labels,
-                    self.keep_prob: 1.0,
-                    })
+            feed_dict={
+                self.x: self.mnist.test.images,
+                self.y_: self.mnist.test.labels,
+                self.keep_prob: 1.0,
+            })
         return {"accuracy": accuracy}
 
 
