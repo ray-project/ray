@@ -418,7 +418,7 @@ class Worker(object):
             logger.info(
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
-        except (TypeError, Exception):
+        except TypeError:
             # This error can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need these extra
             # fallbacks here to start from the beginning. Hopefully the object
