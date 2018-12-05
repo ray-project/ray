@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 import time
 import unittest
 
@@ -24,6 +25,11 @@ from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
 from ray.tune.suggest.variant_generator import RecursiveDependencyError
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import patch
+else:
+    from mock import patch
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -845,6 +851,25 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(searcher.next_trials()), 0)
 
 
+def create_mock_components():
+    class _MockScheduler(FIFOScheduler):
+        errored_trials = []
+
+        def on_trial_error(self, trial_runner, trial):
+            self.errored_trials += [trial]
+
+    class _MockSearchAlg(BasicVariantGenerator):
+        errored_trials = []
+
+        def on_trial_complete(self, trial_id, error=False, **kwargs):
+            if error:
+                self.errored_trials += [trial_id]
+
+    searchalg = _MockSearchAlg()
+    scheduler = _MockScheduler()
+    return searchalg, scheduler
+
+
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
@@ -888,16 +913,6 @@ class TrialRunnerTest(unittest.TestCase):
                 trial_executor.start_trial(trial)
                 self.assertLessEqual(len(trial.logdir), 200)
                 trial_executor.stop_trial(trial)
-
-    def testTrialErrorOnStart(self):
-        ray.init()
-        trial_executor = RayTrialExecutor()
-        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = Trial("asdf", resources=Resources(1, 0))
-        try:
-            trial_executor.start_trial(trial)
-        except Exception as e:
-            self.assertIn("a class", str(e))
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
@@ -1055,7 +1070,9 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryDisabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -1074,10 +1091,15 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 1)
+        self.assertEqual(len(searchalg.errored_trials), 1)
+        self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryEnabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
+
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -1098,6 +1120,40 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].num_failures, 1)
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(len(searchalg.errored_trials), 0)
+        self.assertEqual(len(scheduler.errored_trials), 0)
+
+    def testFailureRecoveryNodeRemoval(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
+
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 1,
+            "config": {
+                "mock_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        with patch('ray.global_state.cluster_resources') as resource_mock:
+            resource_mock.return_value = {"CPU": 1, "GPU": 1}
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.RUNNING)
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.RUNNING)
+
+            # Mimic a node failure
+            resource_mock.return_value = {"CPU": 0, "GPU": 0}
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.PENDING)
+            self.assertEqual(trials[0].num_failures, 1)
+            self.assertEqual(len(searchalg.errored_trials), 0)
+            self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)

@@ -101,6 +101,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  num_envs=1,
                  observation_filter="NoFilter",
                  clip_rewards=None,
+                 clip_actions=True,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -159,6 +160,8 @@ class PolicyEvaluator(EvaluatorInterface):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
+            clip_actions (bool): Whether to clip action values to the range
+                specified by the policy action space.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -298,7 +301,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess)
+                tf_sess=self.tf_sess,
+                clip_actions=clip_actions)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -311,7 +315,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess)
+                tf_sess=self.tf_sess,
+                clip_actions=clip_actions)
 
         self.io_context = IOContext(log_dir, policy_config, worker_index, self)
         self.output_writer = output_creator(self.io_context)

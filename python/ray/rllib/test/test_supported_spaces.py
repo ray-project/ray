@@ -120,12 +120,15 @@ class ModelSupportedSpaces(unittest.TestCase):
             stats,
             check_bounds=True)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
-        check_support("A3C", {
-            "num_workers": 1,
-            "optimizer": {
-                "grads_per_step": 1
-            }
-        }, stats)
+        check_support(
+            "A3C", {
+                "num_workers": 1,
+                "optimizer": {
+                    "grads_per_step": 1
+                }
+            },
+            stats,
+            check_bounds=True)
         check_support(
             "PPO", {
                 "num_workers": 1,
@@ -133,9 +136,6 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "train_batch_size": 10,
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
-                "model": {
-                    "squash_to_range": True
-                },
             },
             stats,
             check_bounds=True)
@@ -153,7 +153,13 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_rollouts": 1,
                 "rollouts_used": 1
             }, stats)
-        check_support("PG", {"num_workers": 1, "optimizer": {}}, stats)
+        check_support(
+            "PG", {
+                "num_workers": 1,
+                "optimizer": {}
+            },
+            stats,
+            check_bounds=True)
         num_unexpected_errors = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
             if stat not in ["ok", "unsupported"]:

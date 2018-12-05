@@ -216,16 +216,18 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self, result):
+    def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        result = self.last_result or {}
 
         if result.get(DONE) and self.checkpoint_at_end:
             return True
 
-        if not self.checkpoint_freq:
+        if self.checkpoint_freq:
+            return result.get(TRAINING_ITERATION,
+                              0) % self.checkpoint_freq == 0
+        else:
             return False
-
-        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -281,10 +283,12 @@ class Trial(object):
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
-        This is if a checkpoint frequency is set, which includes settings
-        where there may not yet be a checkpoint.
+        This is if a checkpoint frequency is set and has not failed more than
+        max_failures. This may return true even when there may not yet
+        be a checkpoint.
         """
-        return self.checkpoint_freq > 0
+        return (self.checkpoint_freq > 0
+                and self.num_failures < self.max_failures)
 
     def update_last_result(self, result, terminate=False):
         if terminate:
@@ -314,8 +318,10 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+            env = self.config["env"]
+            if isinstance(env, type):
+                env = env.__name__
+            identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
         if self.experiment_tag:

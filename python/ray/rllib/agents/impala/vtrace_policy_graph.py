@@ -133,6 +133,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "obs": observations,
                 "prev_actions": prev_actions,
                 "prev_rewards": prev_rewards,
+                "is_training": self._get_is_training_placeholder(),
             },
             observation_space,
             logit_dim,

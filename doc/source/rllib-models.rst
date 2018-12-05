@@ -30,7 +30,7 @@ The following is a list of the built-in model hyperparameters:
 Custom Models
 -------------
 
-Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
+Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -44,7 +44,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
 
             Arguments:
                 input_dict (dict): Dictionary of input tensors, including "obs",
-                    "prev_action", "prev_reward".
+                    "prev_action", "prev_reward", "is_training".
                 num_outputs (int): Output tensor must be of size
                     [BATCH_SIZE, num_outputs].
                 options (dict): Model options.
@@ -60,6 +60,7 @@ Custom models should subclass the common RLlib `model class <https://github.com/
                 >>> print(input_dict)
                 {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
                  'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
+                 'is_training': <tf.Tensor shape=(), dtype=bool>,
                  'obs': OrderedDict([
                     ('sensors', OrderedDict([
                         ('front_cam', [
@@ -115,7 +116,6 @@ Custom Recurrent Models
 
 Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. The only difference from a normal custom model is that you have to define ``self.state_init``, ``self.state_in``, and ``self.state_out``. You can refer to the existing `lstm.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__ model as an example to implement your own model:
 
-
 .. code-block:: python
 
     class MyCustomLSTM(Model):
@@ -146,6 +146,11 @@ Instead of using the ``use_lstm: True`` option, it can be preferable use a custo
             logits = linear(last_layer, num_outputs, "action",
                             normc_initializer(0.01))
             return logits, last_layer
+
+Batch Normalization
+~~~~~~~~~~~~~~~~~~~
+
+You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy_graph.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/tf_policy_graph.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 Custom Preprocessors
 --------------------
@@ -228,7 +233,7 @@ In this example we overrode existing methods of the existing DDPG policy graph, 
 Variable-length / Parametric Action Spaces
 ------------------------------------------
 
-Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, that is, the ``a`` in ``Q(s, a)`` is just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
+Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
 
 1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
 
@@ -283,7 +288,8 @@ With a custom policy graph, you can also perform model-based rollouts and option
              def compute_actions(self,
                                  obs_batch,
                                  state_batches,
-                                 is_training=False,
+                                 prev_action_batch=None,
+                                 prev_reward_batch=None,
                                  episodes=None):
                 # compute a batch of actions based on the current obs_batch
                 # and state of each episode (i.e., for multiagent). You can do

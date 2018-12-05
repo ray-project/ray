@@ -628,9 +628,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                                               const ObjectID &subscribe_object_id) {
             if (!client_ids.empty()) {
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
-              // We never expect to handle a subscription notification for a wait that has
-              // already completed.
-              RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
+              if (object_id_wait_state == active_wait_requests_.end()) {
+                // Depending on the timing of calls to the object directory, we
+                // may get a subscription notification after the wait call has
+                // already completed. If so, then don't process the
+                // notification.
+                return;
+              }
               auto &wait_state = object_id_wait_state->second;
               RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
               wait_state.found.insert(subscribe_object_id);
