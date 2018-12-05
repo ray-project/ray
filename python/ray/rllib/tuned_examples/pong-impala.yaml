@@ -1,12 +1,13 @@
 pong-impala-fast:
     env: PongNoFrameskip-v4
     run: IMPALA
+    local_dir: "/data/mluo/ray_results1"
     stop:
-        episode_reward_mean: 20.0
+        episode_reward_mean: 18.0
         timesteps_total: 7000000
     config:
         sample_batch_size: 50
-        train_batch_size: 1000   
+        train_batch_size: 750  
         num_workers: 32
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 2
@@ -20,5 +21,4 @@ pong-impala-fast:
         use_autoencoder: True
         use_ppo: False
         model:
-          use_autoencoder: False
           dim: 42

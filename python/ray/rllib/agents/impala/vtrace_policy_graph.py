@@ -187,7 +187,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             # self.autoencoder.outputs is decoder output, self.autoencoder.last_layer is encoder output
             # For now, self.autoencoder.last_layer is size batchx21x21x4 (stride 2) for testing purposes
             self.config["model"]["use_autoencoder"] = False
-            self.config["model"]["dim"] = 21
+            #self.config["model"]["dim"] = 21
+            self.config["model"]["fcnet_hiddens"] = [128, 64, 32]
             self.model = ModelCatalog.get_model(
                 {
                     "obs": self.autoencoder.last_layer,

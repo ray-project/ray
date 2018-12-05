@@ -91,7 +91,7 @@ DEFAULT_CONFIG = with_common_config({
     "kl_coeff": 0.2,
     "kl_target": 0.01,
 
-    "use_autoencoder": True,
+    "use_autoencoder": False,
 
 })
 
