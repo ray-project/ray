@@ -6,7 +6,6 @@ import glob
 import json
 import logging
 import os
-import numpy as np
 import random
 from six.moves.urllib.parse import urlparse
 
@@ -17,7 +16,7 @@ except ImportError:
 
 from ray.rllib.io.input_reader import InputReader
 from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.utils.compression import unpack
+from ray.rllib.utils.compression import unpack_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class JsonReader(InputReader):
             ioctx (IOContext): current IO context object.
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
-                ["hdfs:/dir/file.json", "hdfs:/dir/file2.json"].
+                ["s3://bucket/file.json", "s3://bucket/file2.json"].
         """
 
         self.ioctx = ioctx
@@ -112,8 +111,5 @@ class JsonReader(InputReader):
 def _from_json(batch):
     data = json.loads(batch)
     for k, v in data.items():
-        if type(v) is str:
-            data[k] = unpack(v)
-        else:
-            data[k] = np.array(v)
+        data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
     return SampleBatch(data)

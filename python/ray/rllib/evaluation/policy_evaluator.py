@@ -112,7 +112,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_level=None,
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
-                 input_evaluation_method="none",
+                 input_evaluation_method=None,
                  output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
@@ -181,13 +181,13 @@ class PolicyEvaluator(EvaluatorInterface):
                 for loading previous generated experiences.
             input_evaluation_method (str): How to evaluate the current policy.
                 This only applies when the input is reading offline data.
-                Options are:           
-                  - "none": don't evaluate the policy. The episode reward and
+                Options are:
+                  - None: don't evaluate the policy. The episode reward and
                     other metrics will be NaN.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
                   - "counterfactual": use counterfactual policy evaluation to
-                    estimate performance (this option is not implemented yet).
+                    estimate performance.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
         """
@@ -309,7 +309,7 @@ class PolicyEvaluator(EvaluatorInterface):
             sample_async = True
         elif input_evaluation_method == "counterfactual":
             raise NotImplementedError
-        elif input_evaluation_method == "none":
+        elif input_evaluation_method is None:
             pass
         else:
             raise ValueError("Unknown evaluation method: {}".format(

@@ -13,7 +13,7 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.io import NoopOutput, JsonReader, JsonWriter
+from ray.rllib.io import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -129,22 +129,30 @@ COMMON_CONFIG = {
     "collect_metrics_timeout": 180,
 
     # === Experience Data Input / Output ===
-    # Either a function that creates a new rllib.io.InputReader, a local
-    # file global expression (e.g., "/tmp/**/*.json"), or a list of individual
-    # file paths/URIs (e.g., ["/tmp/1.json", "hdfs:/data/2.json"]).
-    "input": lambda ioctx: ioctx.default_sampler_input(),
-    # How to evaluate the current policy. This only applies when the input is
-    # reading offline data. Options are:
-    #  - "none": don't evaluate the policy. The episode reward and other
-    #    metrics will be NaN.
+    # Specify how to generate experiences:
+    #  - "sampler": generate experiences via simulation
+    #  - a local file glob expression (e.g., "/tmp/*.json")
+    #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
+    #    "s3://bucket/2.json"])
+    #  - a dict with string keys and sampling probabilities as values (e.g.,
+    #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+    #  - a function that returns a rllib.io.InputReader
+    "input": "sampler",
+    # Specify how to evaluate the current policy. This only makes sense to set
+    # when the input is not already generating simulation data:
+    #  - None: don't evaluate the policy. The episode reward and other
+    #    metrics will be NaN if using offline data.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
     #  - "counterfactual": use counterfactual policy evaluation to estimate
     #    performance (this option is not implemented yet).
-    "input_evaluation": "none",
-    # Either a function that creates a new rllib.io.OutputWriter, "logdir" to
-    # use the agent log dir, or a path/URI to a custom output directory.
-    "output": lambda ioctx: NoopOutput(),
+    "input_evaluation": None,
+    # Specify where experiences should be saved:
+    #  - None: don't save any experiences
+    #  - "logdir" to save to the agent log dir
+    #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
+    #  - a function that returns a rllib.io.OutputWriter
+    "output": None,
 
     # === Multiagent ===
     "multiagent": {
@@ -234,6 +242,32 @@ class Agent(Trainable):
             return tf.Session(
                 config=tf.ConfigProto(**config["tf_session_args"]))
 
+        if isinstance(config["input"], FunctionType):
+            input_creator = config["input"]
+        elif config["input"] == "sampler":
+
+            def input_creator(ioctx):
+                return ioctx.default_sampler_input()
+        elif isinstance(config["input"], dict):
+
+            def input_creator(ioctx):
+                return MixedInput(ioctx, config["input"])
+        else:
+
+            def input_creator(ioctx):
+                return JsonReader(ioctx, config["input"])
+
+        if isinstance(config["output"], FunctionType):
+            output_creator = config["output"]
+        elif config["output"] is None:
+
+            def output_creator(ioctx):
+                return NoopOutput()
+        else:
+
+            def output_creator(ioctx):
+                return JsonWriter(ioctx, config["output"])
+
         return cls(
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
@@ -258,13 +292,9 @@ class Agent(Trainable):
             monitor_path=self.logdir if config["monitor"] else None,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
-            input_creator=(config["input"]
-                           if isinstance(config["input"], FunctionType) else
-                           lambda ioctx: JsonReader(ioctx, config["input"])),
+            input_creator=input_creator,
             input_evaluation_method=config["input_evaluation"],
-            output_creator=(config["output"]
-                            if isinstance(config["output"], FunctionType) else
-                            lambda ioctx: JsonWriter(ioctx, config["output"])))
+            output_creator=output_creator)
 
     @classmethod
     def resource_help(cls, config):

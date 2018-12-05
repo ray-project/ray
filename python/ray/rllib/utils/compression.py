@@ -7,6 +7,7 @@ import time
 import base64
 import numpy as np
 import pyarrow
+from six import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def unpack(data):
 
 
 def unpack_if_needed(data):
-    if isinstance(data, bytes):
+    if isinstance(data, bytes) or isinstance(data, string_types):
         data = unpack(data)
     return data
 
