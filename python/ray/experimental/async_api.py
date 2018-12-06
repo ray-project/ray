@@ -11,7 +11,7 @@ transport = None
 protocol = None
 
 
-async def init():
+async def _async_init():
     global handler, transport, protocol
     if handler is None:
         worker = ray.worker.global_worker
@@ -23,15 +23,17 @@ async def init():
             lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
 
 
-def _initialize_if_needed():
+def init():
+    """
+    Initialize synchronously.
+    """
     loop = asyncio.get_event_loop()
     if loop.is_running():
         raise Exception("You cannot initialize async_api when the eventloop"
                         " is running. Try to initialize it before you run the "
                         "eventloop or use the async `init()` instead.")
     else:
-        # Initialize synchronously.
-        asyncio.get_event_loop().run_until_complete(init())
+        asyncio.get_event_loop().run_until_complete(_async_init())
 
 
 def as_future(object_id):
@@ -44,7 +46,7 @@ def as_future(object_id):
         PlasmaObjectFuture: A future object that waits the object_id.
     """
     if handler is None:
-        sync_init()
+        init()
     return handler.as_future(object_id)
 
 

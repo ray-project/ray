@@ -2170,7 +2170,7 @@ def connect(info,
     if sys.version_info >= (3, 5):
         from ray.experimental import async_api
         # Initialize
-        async_api.sync_init()
+        async_api.init()
 
 
 def disconnect(worker=global_worker):
