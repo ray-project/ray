@@ -1305,7 +1305,8 @@ def test_free_objects_multi_node(shutdown_only):
         # Current Plasma Client Cache will maintain 64-item list.
         # If the number changed, this will fail.
         logger.info("Start Flush!")
-        ray.get([actor.get.remote() for _ in range(64) for actor in actors])
+        for i in range(64):
+            ray.get([actor.get.remote() for actor in actors])
         logger.info("Flush finished!")
 
     def run_one_test(actors, local_only):
