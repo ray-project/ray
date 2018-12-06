@@ -155,9 +155,9 @@ class TFPolicyGraph(PolicyGraph):
                         prev_reward_batch=None,
                         episodes=None):
         builder = TFRunBuilder(self._sess, "compute_actions")
-        fetches = self._build_compute_actions(builder, obs_batch, state_batches,
-                                             prev_action_batch,
-                                             prev_reward_batch)
+        fetches = self._build_compute_actions(builder, obs_batch,
+                                              state_batches, prev_action_batch,
+                                              prev_reward_batch)
         return builder.get(fetches)
 
     @override(PolicyGraph)
@@ -225,12 +225,12 @@ class TFPolicyGraph(PolicyGraph):
         return optimizer.compute_gradients(self._loss)
 
     def _build_compute_actions(self,
-                              builder,
-                              obs_batch,
-                              state_batches=None,
-                              prev_action_batch=None,
-                              prev_reward_batch=None,
-                              episodes=None):
+                               builder,
+                               obs_batch,
+                               state_batches=None,
+                               prev_action_batch=None,
+                               prev_reward_batch=None,
+                               episodes=None):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)
