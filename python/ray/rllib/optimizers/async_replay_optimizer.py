@@ -20,8 +20,8 @@ from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
-from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -148,7 +148,19 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         }
         if self.debug:
             stats.update(debug_stats)
+        if self.learner.stats:
+            stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)
+
+    # For https://github.com/ray-project/ray/issues/2541 only
+    def set_evaluators(self, remote_evaluators):
+        self.remote_evaluators = remote_evaluators
+        weights = self.local_evaluator.get_weights()
+        for ev in self.remote_evaluators:
+            ev.set_weights.remote(weights)
+            self.steps_since_update[ev] = 0
+            for _ in range(SAMPLE_QUEUE_DEPTH):
+                self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
@@ -198,16 +210,6 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 train_timesteps += count
 
         return sample_timesteps, train_timesteps
-
-    # For https://github.com/ray-project/ray/issues/2541 only
-    def _set_evaluators(self, remote_evaluators):
-        self.remote_evaluators = remote_evaluators
-        weights = self.local_evaluator.get_weights()
-        for ev in self.remote_evaluators:
-            ev.set_weights.remote(weights)
-            self.steps_since_update[ev] = 0
-            for _ in range(SAMPLE_QUEUE_DEPTH):
-                self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
 
 @ray.remote(num_cpus=0)
@@ -316,6 +318,7 @@ class LearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
+        self.stats = {}
 
     def run(self):
         while not self.stopped:
@@ -332,6 +335,8 @@ class LearnerThread(threading.Thread):
                     prio_dict[pid] = (
                         replay.policy_batches[pid]["batch_indexes"],
                         info["td_error"])
+                    if "stats" in info:
+                        self.stats[pid] = info["stats"]
             # send `replay` back also so that it gets released by the original
             # thread: https://github.com/ray-project/ray/issues/2610
             self.outqueue.put((ra, replay, prio_dict, replay.count))
