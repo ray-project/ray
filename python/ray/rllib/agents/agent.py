@@ -207,6 +207,18 @@ class Agent(Trainable):
 
         Trainable.__init__(self, config, logger_creator)
 
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        Agent._validate_config(cf)
+        # TODO(ekl): add custom resources here once tune supports them
+        return Resources(
+            cpu=cf["num_cpus_for_driver"],
+            gpu=cf["num_gpus"],
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+
     @override(Trainable)
     def train(self):
         """Overrides super.train to synchronize global vars."""
@@ -261,18 +273,6 @@ class Agent(Trainable):
         # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
             self._init()
-
-    @classmethod
-    @override(Trainable)
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        Agent._validate_config(cf)
-        # TODO(ekl): add custom resources here once tune supports them
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Trainable)
     def _stop(self):
