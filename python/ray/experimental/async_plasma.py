@@ -13,9 +13,7 @@ def _release_waiter(waiter, *_):
 
 
 class PlasmaProtocol(asyncio.Protocol):
-    """
-    Protocol control for the asyncio connection.
-    """
+    """Protocol control for the asyncio connection."""
 
     def __init__(self, plasma_client, plasma_event_handler):
         self.plasma_client = plasma_client
@@ -30,6 +28,7 @@ class PlasmaProtocol(asyncio.Protocol):
         self._buffer += data
         messages = []
         i = 0
+        # 8 is the size of int64_t
         while i + 8 <= len(self._buffer):
             msg_len = int.from_bytes(self._buffer[i:i + 8], sys.byteorder)
             if i + 8 + msg_len > len(self._buffer):
@@ -44,10 +43,10 @@ class PlasmaProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc):
         # The socket has been closed
-        logger.debug('PlasmaProtocol - connection lost.')
+        logger.debug("PlasmaProtocol - connection lost.")
 
     def eof_received(self):
-        logger.debug('PlasmaProtocol - EOF received.')
+        logger.debug("PlasmaProtocol - EOF received.")
         self.transport.close()
 
 
