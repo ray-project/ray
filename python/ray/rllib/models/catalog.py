@@ -207,8 +207,7 @@ class ModelCatalog(object):
         logger.debug("Created model {}: ({} of {}, {}, {}) -> {}, {}".format(
             model, input_dict, obs_space, state_in, seq_lens, model.outputs,
             model.state_out))
-        if not options["use_autoencoder"]:
-                model._validate_output_shape()
+        model._validate_output_shape()
         return model
 
     @staticmethod
@@ -229,7 +228,7 @@ class ModelCatalog(object):
 
         if obs_rank > 1:
             if options["use_autoencoder"]:
-                print("YO")
+                print("YO AUTOENCODER TIME")
                 return AutoEncoder(input_dict, obs_space, num_outputs, options)
             return VisionNetwork(input_dict, obs_space, num_outputs, options)
 

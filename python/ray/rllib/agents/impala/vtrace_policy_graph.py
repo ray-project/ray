@@ -137,7 +137,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             shape=(),
             trainable=False,
             dtype=tf.float32)
-
+        print(self.config["grad_clip"])
         # Create input placeholders
         if existing_inputs:
             actions, dones, behaviour_logits, rewards, observations, \
@@ -169,29 +169,11 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         
         # Modified for AutoEncoder
         print("AUTOENCODER CHECK")
-        print(self.config["use_autoencoder"])
-        print(self.config["model"])
-        if self.config["use_autoencoder"]:
-            print("YEEET")
-            self.config["model"]["use_autoencoder"] = True
-            self.autoencoder = ModelCatalog.get_model(
-                {
-                    "obs": observations,
-                },
-                observation_space,
-                logit_dim,
-                self.config["model"] 
-            )
-            print(observation_space)
-            print(self.autoencoder.last_layer)
-            # self.autoencoder.outputs is decoder output, self.autoencoder.last_layer is encoder output
-            # For now, self.autoencoder.last_layer is size batchx21x21x4 (stride 2) for testing purposes
-            self.config["model"]["use_autoencoder"] = False
-            #self.config["model"]["dim"] = 21
-            self.config["model"]["fcnet_hiddens"] = [128, 64, 32]
+        print(self.config["model"]["use_autoencoder"])
+        if self.config["model"]["use_autoencoder"]:
             self.model = ModelCatalog.get_model(
                 {
-                    "obs": self.autoencoder.last_layer,
+                    "obs": observations,
                     "prev_actions": prev_actions,
                     "prev_rewards": prev_rewards,
                 },
@@ -273,7 +255,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.mean_KL = tf.reduce_mean(self.KLs)
         self.max_KL = tf.reduce_max(self.KLs)
         self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
-
         # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
@@ -293,7 +274,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
-            loss=self.model.loss() + self.loss.total_loss + self.autoencoder.loss() if self.config["use_autoencoder"] else self.model.loss() + self.loss.total_loss,
+            loss=self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
             state_outputs=self.model.state_out,
@@ -307,6 +288,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.stats_fetches = {
             "stats": {
+                "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
