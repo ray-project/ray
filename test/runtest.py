@@ -1277,17 +1277,17 @@ def test_free_objects_multi_node(shutdown_only):
         _internal_config=config)
 
     @ray.remote(resources={"Custom0": 1})
-    class ActorOnNode0:
+    class ActorOnNode0(object):
         def get(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
     @ray.remote(resources={"Custom1": 1})
-    class ActorOnNode1:
+    class ActorOnNode1(object):
         def get(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
     @ray.remote(resources={"Custom2": 1})
-    class ActorOnNode2:
+    class ActorOnNode2(object):
         def get(self):
             return ray.worker.global_worker.plasma_client.store_socket_name
 
