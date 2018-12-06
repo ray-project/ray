@@ -20,17 +20,15 @@ async def init():
         rsock = worker.plasma_client.get_notification_socket()
         handler = PlasmaEventHandler(loop, worker)
         transport, protocol = await loop.create_connection(
-            lambda: PlasmaProtocol(worker.plasma_client, handler),
-            sock=rsock)
+            lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
 
 
 def sync_init():
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        raise Exception(
-            "You cannot initialize async_api when the eventloop"
-            " is running. Try to initialize it before you run the "
-            "eventloop or use the async `init()` instead.")
+        raise Exception("You cannot initialize async_api when the eventloop"
+                        " is running. Try to initialize it before you run the "
+                        "eventloop or use the async `init()` instead.")
     else:
         # Initialize synchronously.
         asyncio.get_event_loop().run_until_complete(init())

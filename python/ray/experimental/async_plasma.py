@@ -16,6 +16,7 @@ class PlasmaProtocol(asyncio.Protocol):
     """
     Protocol control for the asyncio connection.
     """
+
     def __init__(self, plasma_client, plasma_event_handler):
         self.plasma_client = plasma_client
         self.plasma_event_handler = plasma_event_handler
@@ -34,7 +35,7 @@ class PlasmaProtocol(asyncio.Protocol):
             if i + 8 + msg_len > len(self._buffer):
                 break
             i += 8
-            segment = self._buffer[i: i + msg_len]
+            segment = self._buffer[i:i + msg_len]
             i += msg_len
             messages.append(self.plasma_client.decode_notification(segment))
 
