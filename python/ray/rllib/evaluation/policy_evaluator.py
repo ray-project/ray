@@ -8,7 +8,6 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.models import ModelCatalog
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
@@ -20,6 +19,8 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.io import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
@@ -210,22 +211,20 @@ class PolicyEvaluator(EvaluatorInterface):
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
+        self.preprocessing_enabled = True
 
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
-
-            if model_config.get("custom_preprocessor"):
-                raise ValueError(
-                    "Custom preprocessors are not supported for env types "
-                    "MultiAgentEnv and AsyncVectorEnv. Please preprocess "
-                    "observations in your env directly.")
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
         elif is_atari(self.env) and \
                 not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
+
+            # Deepmind wrappers already handle all preprocessing
+            self.preprocessing_enabled = False
 
             if clip_rewards is None:
                 clip_rewards = True
@@ -241,8 +240,6 @@ class PolicyEvaluator(EvaluatorInterface):
         else:
 
             def wrap(env):
-                env = ModelCatalog.get_preprocessor_as_wrapper(
-                    env, model_config)
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
@@ -265,11 +262,11 @@ class PolicyEvaluator(EvaluatorInterface):
                         config=tf.ConfigProto(
                             gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
-                    self.policy_map = self._build_policy_map(
-                        policy_dict, policy_config)
+                    self.policy_map, self.preprocessors = \
+                        self._build_policy_map(policy_dict, policy_config)
         else:
-            self.policy_map = self._build_policy_map(policy_dict,
-                                                     policy_config)
+            self.policy_map, self.preprocessors = self._build_policy_map(
+                policy_dict, policy_config)
 
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
@@ -319,6 +316,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
+                self.preprocessors,
                 self.filters,
                 clip_rewards,
                 unroll_length,
@@ -334,6 +332,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.async_env,
                 self.policy_map,
                 policy_mapping_fn,
+                self.preprocessors,
                 self.filters,
                 clip_rewards,
                 unroll_length,
@@ -358,24 +357,26 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
+        preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             merged_conf = merge_dicts(policy_config, conf)
+            if self.preprocessing_enabled:
+                preprocessor = ModelCatalog.get_preprocessor_for_space(
+                    obs_space, merged_conf.get("model"))
+                preprocessors[name] = preprocessor
+                obs_space = preprocessor.observation_space
+            else:
+                preprocessors[name] = NoPreprocessor(obs_space)
+            if isinstance(obs_space, gym.spaces.Dict) or \
+                    isinstance(obs_space, gym.spaces.Tuple):
+                raise ValueError(
+                    "Found raw Tuple|Dict space as input to policy graph. "
+                    "Please preprocess these observations with a "
+                    "Tuple|DictFlatteningPreprocessor.")
             with tf.variable_scope(name):
-                if isinstance(obs_space, gym.spaces.Dict):
-                    raise ValueError(
-                        "Found raw Dict space as input to policy graph. "
-                        "Please preprocess your environment observations "
-                        "with DictFlatteningPreprocessor and set the "
-                        "obs space to `preprocessor.observation_space`.")
-                elif isinstance(obs_space, gym.spaces.Tuple):
-                    raise ValueError(
-                        "Found raw Tuple space as input to policy graph. "
-                        "Please preprocess your environment observations "
-                        "with TupleFlatteningPreprocessor and set the "
-                        "obs space to `preprocessor.observation_space`.")
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
-        return policy_map
+        return policy_map, preprocessors
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
@@ -598,6 +599,11 @@ def _validate_and_canonicalize(policy_graph, env):
     elif not issubclass(policy_graph, PolicyGraph):
         raise ValueError("policy_graph must be a rllib.PolicyGraph class")
     else:
+        if (isinstance(env, MultiAgentEnv)
+                and not hasattr(env, "observation_space")):
+            raise ValueError(
+                "MultiAgentEnv must have observation_space defined if run "
+                "in a single-agent configuration.")
         return {
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})

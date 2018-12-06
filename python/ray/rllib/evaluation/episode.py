@@ -60,6 +60,7 @@ class MultiAgentEpisode(object):
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}
         self._agent_to_last_obs = {}
+        self._agent_to_last_info = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
         self._agent_to_prev_action = {}
@@ -80,6 +81,11 @@ class MultiAgentEpisode(object):
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
+
+    def last_info_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the last info for the specified agent."""
+
+        return self._agent_to_last_info.get(agent_id)
 
     def last_action_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last action for the specified agent, or zeros."""
@@ -136,6 +142,9 @@ class MultiAgentEpisode(object):
 
     def _set_last_observation(self, agent_id, obs):
         self._agent_to_last_obs[agent_id] = obs
+
+    def _set_last_info(self, agent_id, info):
+        self._agent_to_last_info[agent_id] = info
 
     def _set_last_action(self, agent_id, action):
         self._agent_to_last_action[agent_id] = action

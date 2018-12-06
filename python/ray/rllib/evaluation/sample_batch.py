@@ -79,6 +79,11 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_to_policy = {}
         self.count = 0  # increment this manually
 
+    def total(self):
+        """Returns summed number of steps across all agent buffers."""
+
+        return sum(p.count for p in self.policy_builders.values())
+
     def has_pending_data(self):
         """Returns whether there is pending unprocessed data."""
 

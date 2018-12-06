@@ -378,6 +378,23 @@ def test_custom_serializers(shutdown_only):
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
 
+def test_serialization_final_fallback(ray_start):
+    pytest.importorskip("catboost")
+    # This test will only run when "catboost" is installed.
+    from catboost import CatBoostClassifier
+
+    model = CatBoostClassifier(
+        iterations=2,
+        depth=2,
+        learning_rate=1,
+        loss_function="Logloss",
+        logging_level="Verbose")
+
+    reconstructed_model = ray.get(ray.put(model))
+    assert set(model.get_params().items()) == set(
+        reconstructed_model.get_params().items())
+
+
 def test_register_class(shutdown_only):
     ray.init(num_cpus=2)
 
