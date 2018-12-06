@@ -6,6 +6,8 @@ import json
 import logging
 import numpy as np
 import os
+import pyarrow
+import pyarrow.plasma as plasma
 import time
 import tensorflow as tf
 
@@ -120,31 +122,11 @@ class Timeline(object):
         logger.info("Wrote chrome timeline to", filename)
 
 
-# Soft file lock -- behavior depends on the underlying filesystem.
-# For a proper lock with additional dependencies see the "filelock"
-# package.
-class SoftFileLock(object):
-    def __init__(self, lock_path):
-        self._lock_path = lock_path
-
-    def acquire(self):
-        open_mode = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_TRUNC
-        while True:
-            try:
-                self._lock_file = os.open(self._lock_path, open_mode)
-            except OSError:
-                logger.info("Waiting for file lock " + self._lock_path)
-                time.sleep(2.0)
-            else:
-                break
-
-    def release(self):
-        os.close(self._lock_file)
-        try:
-            os.remove(self._lock_path)
-        except OSError:
-            pass
-
+def build_plasma_tensorflow_op():
+    lock_path = os.path.join(pyarrow.__path__[0], "tensorflow",
+                             "compile_op.lock")
+    with filelock.FileLock(lock_path):
+        plasma.build_plasma_tensorflow_op()
 
 if __name__ == "__main__":
     a = Timeline(1)
@@ -162,20 +144,3 @@ if __name__ == "__main__":
     b.end("b1")
     a.merge(b)
     a.chrome_trace_format("test.json")
-
-    import threading
-    import random
-    print("Testing file lock, this will take a few seconds...")
-    lock_id = random.randint(0, 100000)
-    lock_path = "/tmp/test" + str(lock_id) + ".lock"
-    lock1 = SoftFileLock(lock_path)
-
-    def try_hold_lock():
-        lock2 = SoftFileLock(lock_path)
-        lock2.acquire()
-        time.sleep(10.0)
-        lock2.release()
-
-    threading.Thread(target=try_hold_lock).start()
-    lock1.acquire()
-    print("Locking test successful!")

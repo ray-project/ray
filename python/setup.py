@@ -136,6 +136,7 @@ def find_version(*filepath):
 
 requires = [
     "numpy",
+    "filelock",
     "funcsigs",
     "click",
     "colorama",

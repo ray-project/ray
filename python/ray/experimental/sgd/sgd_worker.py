@@ -2,18 +2,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import filelock
 import logging
 import os
 import time
 
-import pyarrow
 import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import fetch, run_timeline, SoftFileLock, warmup
-from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
-    unpack_small_tensors
+from ray.experimental.sgd.util import (
+    fetch, run_timeline, build_plasma_tensorflow_op, warmup)
+from ray.experimental.sgd.modified_allreduce import (
+    sum_gradients_all_reduce, unpack_small_tensors)
 
 logger = logging.getLogger(__name__)
 
@@ -115,12 +116,7 @@ class SGDWorker(object):
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
             if not plasma.tf_plasma_op:
-                lock_path = os.path.join(pyarrow.__path__[0], "tensorflow",
-                                         "compile_op.lock")
-                lock = SoftFileLock(lock_path)
-                lock.acquire()
-                plasma.build_plasma_tensorflow_op()
-                lock.release()
+                build_plasma_tensorflow_op()
 
             # For fetching grads -> plasma
             self.plasma_in_grads = []
