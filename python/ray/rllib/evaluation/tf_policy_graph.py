@@ -9,8 +9,9 @@ import numpy as np
 import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,46 @@ class TFPolicyGraph(PolicyGraph):
         logger.debug("Created {} with loss inputs: {}".format(
             self, self._loss_input_dict))
 
+    @override(PolicyGraph)
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches=None,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        episodes=None):
+        builder = TFRunBuilder(self._sess, "compute_actions")
+        fetches = self.build_compute_actions(builder, obs_batch, state_batches,
+                                             prev_action_batch,
+                                             prev_reward_batch)
+        return builder.get(fetches)
+
+    @override(PolicyGraph)
+    def compute_gradients(self, postprocessed_batch):
+        builder = TFRunBuilder(self._sess, "compute_gradients")
+        fetches = self.build_compute_gradients(builder, postprocessed_batch)
+        return builder.get(fetches)
+
+
+    @override(PolicyGraph)
+    def apply_gradients(self, gradients):
+        builder = TFRunBuilder(self._sess, "apply_gradients")
+        fetches = self.build_apply_gradients(builder, gradients)
+        return builder.get(fetches)
+
+    @override(PolicyGraph)
+    def compute_apply(self, postprocessed_batch):
+        builder = TFRunBuilder(self._sess, "compute_apply")
+        fetches = self.build_compute_apply(builder, postprocessed_batch)
+        return builder.get(fetches)
+
+    @override(PolicyGraph)
+    def get_weights(self):
+        return self._variables.get_flat()
+
+    @override(PolicyGraph)
+    def set_weights(self, weights):
+        return self._variables.set_flat(weights)
+
     def build_compute_actions(self,
                               builder,
                               obs_batch,
@@ -170,17 +211,70 @@ class TFPolicyGraph(PolicyGraph):
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        episodes=None):
-        builder = TFRunBuilder(self._sess, "compute_actions")
-        fetches = self.build_compute_actions(builder, obs_batch, state_batches,
-                                             prev_action_batch,
-                                             prev_reward_batch)
-        return builder.get(fetches)
+    def build_compute_gradients(self, builder, postprocessed_batch):
+        builder.add_feed_dict(self.extra_compute_grad_feed_dict())
+        builder.add_feed_dict({self._is_training: True})
+        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
+        fetches = builder.add_fetches(
+            [self._grads, self.extra_compute_grad_fetches()])
+        return fetches[0], fetches[1]
+
+    def build_apply_gradients(self, builder, gradients):
+        assert len(gradients) == len(self._grads), (gradients, self._grads)
+        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
+        builder.add_feed_dict({self._is_training: True})
+        builder.add_feed_dict(dict(zip(self._grads, gradients)))
+        fetches = builder.add_fetches(
+            [self._apply_op, self.extra_apply_grad_fetches()])
+        return fetches[1]
+
+    def build_compute_apply(self, builder, postprocessed_batch):
+        builder.add_feed_dict(self.extra_compute_grad_feed_dict())
+        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
+        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
+        builder.add_feed_dict({self._is_training: True})
+        fetches = builder.add_fetches([
+            self._apply_op,
+            self.extra_compute_grad_fetches(),
+            self.extra_apply_grad_fetches()
+        ])
+        return fetches[1], fetches[2]
+
+    def extra_compute_action_feed_dict(self):
+        return {}
+
+    def extra_compute_action_fetches(self):
+        return {}  # e.g, value function
+
+    def extra_compute_grad_feed_dict(self):
+        return {}  # e.g, kl_coeff
+
+    def extra_compute_grad_fetches(self):
+        return {}  # e.g, td error
+
+    def extra_apply_grad_feed_dict(self):
+        return {}
+
+    def extra_apply_grad_fetches(self):
+        return {}  # e.g., batch norm updates
+
+    def optimizer(self):
+        return tf.train.AdamOptimizer()
+
+    def gradients(self, optimizer):
+        return optimizer.compute_gradients(self._loss)
+
+    def loss_inputs(self):
+        return self._loss_inputs
+
+    def _get_is_training_placeholder(self):
+        """Get the placeholder for _is_training, i.e., for batch norm layers.
+
+        This can be called safely before __init__ has run.
+        """
+        if not hasattr(self, "_is_training"):
+            self._is_training = tf.placeholder_with_default(False, ())
+        return self._is_training
 
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}
@@ -222,92 +316,6 @@ class TFPolicyGraph(PolicyGraph):
         feed_dict[self._seq_lens] = seq_lens
         return feed_dict
 
-    def build_compute_gradients(self, builder, postprocessed_batch):
-        builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict({self._is_training: True})
-        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
-        fetches = builder.add_fetches(
-            [self._grads, self.extra_compute_grad_fetches()])
-        return fetches[0], fetches[1]
-
-    def compute_gradients(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess, "compute_gradients")
-        fetches = self.build_compute_gradients(builder, postprocessed_batch)
-        return builder.get(fetches)
-
-    def build_apply_gradients(self, builder, gradients):
-        assert len(gradients) == len(self._grads), (gradients, self._grads)
-        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
-        builder.add_feed_dict({self._is_training: True})
-        builder.add_feed_dict(dict(zip(self._grads, gradients)))
-        fetches = builder.add_fetches(
-            [self._apply_op, self.extra_apply_grad_fetches()])
-        return fetches[1]
-
-    def apply_gradients(self, gradients):
-        builder = TFRunBuilder(self._sess, "apply_gradients")
-        fetches = self.build_apply_gradients(builder, gradients)
-        return builder.get(fetches)
-
-    def build_compute_apply(self, builder, postprocessed_batch):
-        builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict(self.extra_apply_grad_feed_dict())
-        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
-        builder.add_feed_dict({self._is_training: True})
-        fetches = builder.add_fetches([
-            self._apply_op,
-            self.extra_compute_grad_fetches(),
-            self.extra_apply_grad_fetches()
-        ])
-        return fetches[1], fetches[2]
-
-    def compute_apply(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess, "compute_apply")
-        fetches = self.build_compute_apply(builder, postprocessed_batch)
-        return builder.get(fetches)
-
-    def get_weights(self):
-        return self._variables.get_flat()
-
-    def set_weights(self, weights):
-        return self._variables.set_flat(weights)
-
-    def extra_compute_action_feed_dict(self):
-        return {}
-
-    def extra_compute_action_fetches(self):
-        return {}  # e.g, value function
-
-    def extra_compute_grad_feed_dict(self):
-        return {}  # e.g, kl_coeff
-
-    def extra_compute_grad_fetches(self):
-        return {}  # e.g, td error
-
-    def extra_apply_grad_feed_dict(self):
-        return {}
-
-    def extra_apply_grad_fetches(self):
-        return {}  # e.g., batch norm updates
-
-    def optimizer(self):
-        return tf.train.AdamOptimizer()
-
-    def gradients(self, optimizer):
-        return optimizer.compute_gradients(self._loss)
-
-    def loss_inputs(self):
-        return self._loss_inputs
-
-    def _get_is_training_placeholder(self):
-        """Get the placeholder for _is_training, i.e., for batch norm layers.
-
-        This can be called safely before __init__ has run.
-        """
-        if not hasattr(self, "_is_training"):
-            self._is_training = tf.placeholder_with_default(False, ())
-        return self._is_training
-
 
 class LearningRateSchedule(object):
     """Mixin for TFPolicyGraph that adds a learning rate schedule."""
@@ -320,11 +328,13 @@ class LearningRateSchedule(object):
             self.lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1])
 
+    @override(PolicyGraph)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
         self.cur_lr.load(
             self.lr_schedule.value(global_vars["timestep"]),
             session=self._sess)
 
+    @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(self.cur_lr)

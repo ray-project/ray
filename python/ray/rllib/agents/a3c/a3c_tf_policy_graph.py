@@ -14,6 +14,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.annotations import override
 
 
 class A3CLoss(object):
@@ -118,30 +119,11 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-    def extra_compute_action_fetches(self):
-        return {"vf_preds": self.vf}
-
-    def value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
-            feed_dict[k] = v
-        vf = self.sess.run(self.vf, feed_dict)
-        return vf[0]
-
-    def gradients(self, optimizer):
-        grads = tf.gradients(self.loss.total_loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-        clipped_grads = list(zip(self.grads, self.var_list))
-        return clipped_grads
-
-    def extra_compute_grad_fetches(self):
-        return self.stats_fetches
-
+    @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
 
+    @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -156,3 +138,27 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
+
+    @override(TFPolicyGraph)
+    def gradients(self, optimizer):
+        grads = tf.gradients(self.loss.total_loss, self.var_list)
+        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+        clipped_grads = list(zip(self.grads, self.var_list))
+        return clipped_grads
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return self.stats_fetches
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return {"vf_preds": self.vf}
+
+    def value(self, ob, *args):
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
+            feed_dict[k] = v
+        vf = self.sess.run(self.vf, feed_dict)
+        return vf[0]
