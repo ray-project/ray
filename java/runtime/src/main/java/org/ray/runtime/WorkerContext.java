@@ -79,7 +79,6 @@ public class WorkerContext {
         UniqueId.NIL,
         0,
         UniqueId.NIL,
-        UniqueId.NIL,
         0,
         UniqueId.NIL,
         UniqueId.NIL,

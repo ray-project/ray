@@ -28,10 +28,6 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
    * It's used to make sure ids of actor handles are unique.
    */
   private int numForks;
-  /**
-   * Dummy object ID of the actor creation task.
-   */
-  private UniqueId creationDummyObjectId;
 
   public RayActorImpl() {
     this(UniqueId.NIL, UniqueId.NIL);
@@ -47,7 +43,6 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.taskCounter = 0;
     this.taskCursor = null;
     numForks = 0;
-    creationDummyObjectId = UniqueId.NIL;
   }
 
   @Override
@@ -72,14 +67,6 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return taskCounter++;
   }
 
-  public UniqueId getCreationDummyObjectId() {
-    return creationDummyObjectId;
-  }
-
-  public void setCreationDummyObjectId(UniqueId creationDummyObjectId) {
-    this.creationDummyObjectId = creationDummyObjectId;
-  }
-
   private UniqueId computeNextActorHandleId() {
     byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
     return new UniqueId(bytes);
@@ -90,7 +77,6 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     out.writeObject(this.id);
     out.writeObject(this.computeNextActorHandleId());
     out.writeObject(this.taskCursor);
-    out.writeObject(this.creationDummyObjectId);
   }
 
   @Override
@@ -98,6 +84,5 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.id = (UniqueId) in.readObject();
     this.handleId = (UniqueId) in.readObject();
     this.taskCursor = (UniqueId) in.readObject();
-    this.creationDummyObjectId = (UniqueId) in.readObject();
   }
 }

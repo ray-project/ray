@@ -127,8 +127,6 @@ public class RayletClientImpl implements RayletClient {
     UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
-    UniqueId actorCreationDummyObjectId = UniqueId
-        .fromByteBuffer(info.actorCreationDummyObjectIdAsByteBuffer());
     int maxActorReconstructions = info.maxActorReconstructions();
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
@@ -166,8 +164,8 @@ public class RayletClientImpl implements RayletClient {
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
-        actorCreationDummyObjectId, maxActorReconstructions, actorId,
-        actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
+        maxActorReconstructions, actorId, actorHandleId, actorCounter, args, returnIds, resources,
+        functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -180,8 +178,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb
-        .createString(task.actorCreationDummyObjectId.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int maxActorReconstructions = task.maxActorReconstructions;
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());

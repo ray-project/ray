@@ -220,7 +220,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL,
         args, true, options);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
-    actor.setCreationDummyObjectId(spec.actorCreationId);
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
     rayletClient.submitTask(spec);
@@ -259,11 +258,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       actorCreationId = returnIds[0];
     }
 
-    UniqueId actorCreationDummyObjectId = actor.getCreationDummyObjectId();
-    if (isActorCreationTask) {
-      actorCreationDummyObjectId = actorCreationId;
-    }
-
     Map<String, Double> resources;
     if (null == taskOptions) {
       resources = new HashMap<>();
@@ -287,7 +281,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         current.taskId,
         -1,
         actorCreationId,
-        actorCreationDummyObjectId,
         maxActorReconstruction,
         actor.getId(),
         actor.getHandleId(),
