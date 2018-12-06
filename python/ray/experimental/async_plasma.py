@@ -21,7 +21,7 @@ class PlasmaProtocol(asyncio.Protocol):
         self.plasma_client = plasma_client
         self.plasma_event_handler = plasma_event_handler
         self.transport = None
-        self._buffer = b''
+        self._buffer = b""
 
     def connection_made(self, transport):
         self.transport = transport

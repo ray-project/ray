@@ -23,7 +23,7 @@ async def init():
             lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
 
 
-def sync_init():
+def _initialize_if_needed():
     loop = asyncio.get_event_loop()
     if loop.is_running():
         raise Exception("You cannot initialize async_api when the eventloop"
