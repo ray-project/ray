@@ -253,6 +253,10 @@ class QLoss(object):
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
             self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
         else:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
@@ -264,6 +268,12 @@ class QLoss(object):
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
                 importance_weights * _huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
 
 
 class DQNPolicyGraph(TFPolicyGraph):
@@ -430,6 +440,7 @@ class DQNPolicyGraph(TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
+            "stats": self.loss.stats,
         }
 
     def postprocess_trajectory(self,

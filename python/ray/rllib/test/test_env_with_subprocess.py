@@ -38,10 +38,10 @@ class EnvWithSubprocess(gym.Env):
         atexit.register(lambda: self.subproc.kill())
 
     def reset(self):
-        return [0]
+        return 0
 
     def step(self, action):
-        return [0], 0, True, {}
+        return 0, 0, True, {}
 
 
 def leaked_processes():
