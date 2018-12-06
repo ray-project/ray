@@ -22,7 +22,6 @@ class A3CLoss(nn.Module):
         self.vf_loss_coeff = vf_loss_coeff
         self.entropy_coeff = entropy_coeff
 
-    @override(nn.Module)
     def forward(self, observations, actions, advantages, value_targets):
         logits, values = self.policy_model(observations)
         log_probs = F.log_softmax(logits, dim=1)
