@@ -292,7 +292,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     with self.timers["get_samples"]:
                         samples = ray.get(replay)
                     # Defensive copy against plasma crashes, see #2610 #3452
-                    self.learner.inqueue.put((ra, samples))
+                    self.learner.inqueue.put((ra, samples and samples.copy()))
 
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
