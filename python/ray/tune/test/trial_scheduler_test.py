@@ -804,6 +804,47 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 },
             })
 
+        custom_explore_fn = unittest.mock.MagicMock(side_effect=lambda x: x)
+
+        # Nested mutation and spec
+        assertNestedProduces(
+            lambda: explore(
+                {
+                    "a": {
+                        "b": 4
+                    },
+                    "1": {
+                        "2": {
+                            "3": 100
+                        }
+                    },
+                },
+                {
+                    "a": {
+                        "b": [3, 4, 8, 10]
+                    },
+                    "1": {
+                        "2": {
+                            "3": lambda: random.choice([10, 100])
+                        }
+                    },
+                },
+                0.0,
+                custom_explore_fn),
+            {
+                "a": {
+                    "b": {3, 8}
+                },
+                "1": {
+                    "2": {
+                        "3": {80, 120}
+                    }
+                },
+            })
+
+        # Expect call count to be 100 because we call explore 100 times
+        self.assertEqual(custom_explore_fn.call_count, 100)
+
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()

@@ -49,9 +49,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     for key, distribution in mutations.items():
         if isinstance(distribution, dict):
             new_config.update({
-                key: explore(
-                    config[key], mutations[key],
-                    resample_probability, custom_explore_fn)
+                key: explore(config[key], mutations[key], resample_probability,
+                             None)
             })
         elif isinstance(distribution, list):
             if random.random() < resample_probability or \
