@@ -297,7 +297,7 @@ class TFMultiGPULearner(LearnerThread):
                             LocalSyncParallelOptimizer(
                                 adam,
                                 self.devices,
-                                [v for _, v in self.policy.loss_inputs()],
+                                [v for _, v in self.policy._loss_inputs],
                                 rnn_inputs,
                                 999999,  # it will get rounded down
                                 self.policy.copy,
@@ -355,7 +355,7 @@ class _LoaderThread(threading.Thread):
 
         with self.load_timer:
             tuples = s.policy._get_loss_inputs_dict(batch)
-            data_keys = [ph for _, ph in s.policy.loss_inputs()]
+            data_keys = [ph for _, ph in s.policy._loss_inputs]
             if s.policy._state_inputs:
                 state_keys = s.policy._state_inputs + [s.policy._seq_lens]
             else:

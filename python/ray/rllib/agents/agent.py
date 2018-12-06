@@ -262,8 +262,8 @@ class Agent(Trainable):
         with tf.Graph().as_default():
             self._init()
 
-    @override(Trainable)
     @classmethod
+    @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         Agent._validate_config(cf)
@@ -301,24 +301,7 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    @property
-    def iteration(self):
-        """Current training iter, auto-incremented with each train() call."""
-
-        return self._iteration
-
-    @property
-    def _agent_name(self):
-        """Subclasses should override this to declare their name."""
-
-        raise NotImplementedError
-
-    @property
-    def _default_config(self):
-        """Subclasses should override this to declare their default config."""
-
-        raise NotImplementedError
-
+    @abstractmethod
     def compute_action(self, observation, state=None, policy_id="default"):
         """Computes an action for the specified policy.
 
@@ -343,6 +326,24 @@ class Agent(Trainable):
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(filtered_obs, state)[0],
             policy_id=policy_id)
+
+    @property
+    def iteration(self):
+        """Current training iter, auto-incremented with each train() call."""
+
+        return self._iteration
+
+    @property
+    def _agent_name(self):
+        """Subclasses should override this to declare their name."""
+
+        raise NotImplementedError
+
+    @property
+    def _default_config(self):
+        """Subclasses should override this to declare their default config."""
+
+        raise NotImplementedError
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.

@@ -187,40 +187,51 @@ class TFPolicyGraph(PolicyGraph):
         return self._variables.set_flat(weights)
 
     @abstractmethod
+    def copy(self, existing_inputs):
+        """Creates a copy of self using existing input placeholders.
+
+        Optional, only required to work with the multi-GPU optimizer."""
+        raise NotImplementedError
+
+    @abstractmethod
     def extra_compute_action_feed_dict(self):
+        """Extra dict to pass to the compute actions session run."""
         return {}
 
     @abstractmethod
     def extra_compute_action_fetches(self):
+        """Extra values to fetch and return from compute_actions()."""
         return {}  # e.g, value function
 
     @abstractmethod
     def extra_compute_grad_feed_dict(self):
+        """Extra dict to pass to the compute gradients session run."""
         return {}  # e.g, kl_coeff
 
     @abstractmethod
     def extra_compute_grad_fetches(self):
+        """Extra values to fetch and return from compute_gradients()."""
         return {}  # e.g, td error
 
     @abstractmethod
     def extra_apply_grad_feed_dict(self):
+        """Extra dict to pass to the apply gradients session run."""
         return {}
 
     @abstractmethod
     def extra_apply_grad_fetches(self):
+        """Extra values to fetch and return from apply_gradients()."""
         return {}  # e.g., batch norm updates
 
     @abstractmethod
     def optimizer(self):
+        """TF optimizer to use for policy optimization."""
         return tf.train.AdamOptimizer()
 
     @abstractmethod
     def gradients(self, optimizer):
+        """Override for custom gradient computation."""
         return optimizer.compute_gradients(self._loss)
-
-    @abstractmethod
-    def loss_inputs(self):
-        return self._loss_inputs
 
     def build_compute_actions(self,
                               builder,

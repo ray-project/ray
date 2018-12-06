@@ -87,7 +87,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
                         self.policy.optimizer(), self.devices,
-                        [v for _, v in self.policy.loss_inputs()], rnn_inputs,
+                        [v for _, v in self.policy._loss_inputs], rnn_inputs,
                         self.per_device_batch_size, self.policy.copy)
 
                 self.sess = self.local_evaluator.tf_sess
@@ -122,7 +122,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.load_timer:
             tuples = self.policy._get_loss_inputs_dict(samples)
-            data_keys = [ph for _, ph in self.policy.loss_inputs()]
+            data_keys = [ph for _, ph in self.policy._loss_inputs]
             if self.policy._state_inputs:
                 state_keys = (
                     self.policy._state_inputs + [self.policy._seq_lens])
