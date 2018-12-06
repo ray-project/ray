@@ -1251,17 +1251,17 @@ def test_multithreading(shutdown_only):
 
 
 def test_free_objects_multi_node(shutdown_only):
-    # This test will do following steps:
-    # 1. create 3 raylets and each hold an actor
-    # 2. each actor creates an object which is the deletion target
-    # 3. call each actor 64 times to flush plasma client
-    # 4. after flushing, the plasma client releases the targets
-    # 5. guarantee that the deletion targets are deleted
-    # Caution: if function task is used instead of actor task,
-    # one raylet may create more than one workers to execute the
-    # tasks. So the flushing operations may be executed in different
-    # workers and the plasma client helding the deletion targert
-    # may not be flushed by enough times.
+    # This test will do following:
+    # 1. Create 3 raylets that each hold an actor.
+    # 2. Each actor creates an object which is the deletion target.
+    # 3. Invoke 64 methods on each actor to flush plasma client.
+    # 4. After flushing, the plasma client releases the targets.
+    # 5. Check that the deletion targets have been deleted.
+    # Caution: if remote functions are used instead of actor methods,
+    # one raylet may create more than one worker to execute the
+    # tasks, so the flushing operations may be executed in different
+    # workers and the plasma client holding the deletion target
+    # may not be flushed.
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     ray.worker._init(
         start_ray_local=True,
