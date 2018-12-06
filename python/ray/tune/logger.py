@@ -106,9 +106,7 @@ class _JsonLogger(Logger):
                 cls=_SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, "params.pkl")
         with open(config_pkl, "wb") as f:
-            cloudpickle.dump(
-                self.config,
-                f)
+            cloudpickle.dump(self.config, f)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
 
