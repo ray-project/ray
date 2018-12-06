@@ -1,13 +1,9 @@
 Async API (Experimental)
 ========================
 
-Many web applications & prediction serving service today heavily rely on asynchronous execution to gain performance.
-Since version 3.5, a set of basic async interfaces has been introduced to Python,
-making it more feasible to program asynchronously,
-and popular async frameworks (aiohttp, aioredis, etc.) are emerging,
-indicating the power of asynchronous APIs.
+Since Python 3.5, it is possible to write concurrent code using the ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
 
-This document describes asynchronous APIs in Ray.
+This document describes Ray's support for asyncio, enabling integration with popular async frameworks (e.g., aiohttp, aioredis, etc.) for high performance web and prediction serving.
 
 Starting Ray
 ------------
@@ -19,10 +15,10 @@ Please refer to `Starting Ray`_ for instructions.
 .. _`Starting Ray`: http://ray.readthedocs.io/en/latest/tutorial.html#starting-ray
 
 
-Convert an ObjectID into a asyncio Future
------------------------------------------
+Converting Ray objects into asyncio futures
+-------------------------------------------
 
-Object IDs can be converted into asyncio Futures.
+Ray object IDs can be converted into asyncio futures with ``ray.experimental.async_api``.
 
 .. code-block:: python
 
@@ -44,8 +40,8 @@ Object IDs can be converted into asyncio Futures.
 .. autofunction:: ray.experimental.async_api.as_future
 
 
-Example Use
------------
+Example Usage
+-------------
 
 +----------------------------------------+-----------------------------------------------------+
 | **Basic Python**                       | **Distributed with Ray**                            |
@@ -67,9 +63,9 @@ Example Use
 +----------------------------------------+-----------------------------------------------------+
 | .. code-block:: python                 | .. code-block:: python                              |
 |                                        |                                                     |
-|   # Execute f asynchronously.          |   # Execute f asynchronously with asyncio.          |
+|   # Execute f asynchronously.          |   # Execute f asynchronously with Ray/asyncio.      |
 |                                        |                                                     |
-|                                        |   from ray.exprimental import async_api             |
+|                                        |   from ray.experimental import async_api            |
 |                                        |                                                     |
 |                                        |   @ray.remote                                       |
 |   async def f():                       |   def f():                                          |
@@ -85,11 +81,7 @@ Example Use
 +----------------------------------------+-----------------------------------------------------+
 
 
-Known issues
+Known Issues
 ------------
 
-Currently, Plasma Object Store will try to send all notification about all ObjectIDs to all workers.
-It is possible that the Plasma Object Store becomes slower or even runs out of memory.
-
-A workaround is manually shutdown the APIs by calling `ray.experimental.async_api.shutdown`.
-Shutdown the API will cancel all related pending tasks.
+Async API support is experimental, and we are working to improve its performance. Please `let us know <https://github.com/ray-project/ray/issues>`__ any issues you encounter.
