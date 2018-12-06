@@ -3,13 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import dill
 import json
 import logging
 import numpy as np
 import os
 import yaml
 
+from ray.cloudpickle import cloudpickle
 from ray.tune.log_sync import get_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
@@ -106,7 +106,7 @@ class _JsonLogger(Logger):
                 cls=_SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, "params.pkl")
         with open(config_pkl, "wb") as f:
-            dill.dump(
+            cloudpickle.dump(
                 self.config,
                 f)
         local_file = os.path.join(self.logdir, "result.json")
