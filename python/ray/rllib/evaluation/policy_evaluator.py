@@ -20,6 +20,7 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -246,11 +247,10 @@ class PolicyEvaluator(EvaluatorInterface):
                         config=tf.ConfigProto(
                             gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
-                    self.policy_map = self._build_policy_map(
+                    self.policy_map = _build_policy_map(
                         policy_dict, policy_config)
         else:
-            self.policy_map = self._build_policy_map(policy_dict,
-                                                     policy_config)
+            self.policy_map = _build_policy_map(policy_dict, policy_config)
 
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
@@ -312,27 +312,7 @@ class PolicyEvaluator(EvaluatorInterface):
         logger.debug("Created evaluator with env {} ({}), policies {}".format(
             self.async_env, self.env, self.policy_map))
 
-    def _build_policy_map(self, policy_dict, policy_config):
-        policy_map = {}
-        for name, (cls, obs_space, act_space,
-                   conf) in sorted(policy_dict.items()):
-            merged_conf = merge_dicts(policy_config, conf)
-            with tf.variable_scope(name):
-                if isinstance(obs_space, gym.spaces.Dict):
-                    raise ValueError(
-                        "Found raw Dict space as input to policy graph. "
-                        "Please preprocess your environment observations "
-                        "with DictFlatteningPreprocessor and set the "
-                        "obs space to `preprocessor.observation_space`.")
-                elif isinstance(obs_space, gym.spaces.Tuple):
-                    raise ValueError(
-                        "Found raw Tuple space as input to policy graph. "
-                        "Please preprocess your environment observations "
-                        "with TupleFlatteningPreprocessor and set the "
-                        "obs space to `preprocessor.observation_space`.")
-                policy_map[name] = cls(obs_space, act_space, merged_conf)
-        return policy_map
-
+    @override(EvaluatorInterface)
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.
 
@@ -381,6 +361,90 @@ class PolicyEvaluator(EvaluatorInterface):
         batch = self.sample()
         return batch, batch.count
 
+    @override(EvaluatorInterface)
+    def get_weights(self, policies=None):
+        if policies is None:
+            policies = self.policy_map.keys()
+        return {
+            pid: policy.get_weights()
+            for pid, policy in self.policy_map.items() if pid in policies
+        }
+
+    @override(EvaluatorInterface)
+    def set_weights(self, weights):
+        for pid, w in weights.items():
+            self.policy_map[pid].set_weights(w)
+
+    @override(EvaluatorInterface)
+    def compute_gradients(self, samples):
+        if isinstance(samples, MultiAgentBatch):
+            grad_out, info_out = {}, {}
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess, "compute_gradients")
+                for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    grad_out[pid], info_out[pid] = (
+                        self.policy_map[pid].build_compute_gradients(
+                            builder, batch))
+                grad_out = {k: builder.get(v) for k, v in grad_out.items()}
+                info_out = {k: builder.get(v) for k, v in info_out.items()}
+            else:
+                for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    grad_out[pid], info_out[pid] = (
+                        self.policy_map[pid].compute_gradients(batch))
+        else:
+            grad_out, info_out = (
+                self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
+        info_out["batch_count"] = samples.count
+        return grad_out, info_out
+
+    @override(EvaluatorInterface)
+    def apply_gradients(self, grads):
+        if isinstance(grads, dict):
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess, "apply_gradients")
+                outputs = {
+                    pid: self.policy_map[pid].build_apply_gradients(
+                        builder, grad)
+                    for pid, grad in grads.items()
+                }
+                return {k: builder.get(v) for k, v in outputs.items()}
+            else:
+                return {
+                    pid: self.policy_map[pid].apply_gradients(g)
+                    for pid, g in grads.items()
+                }
+        else:
+            return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
+
+    @override(EvaluatorInterface)
+    def compute_apply(self, samples):
+        if isinstance(samples, MultiAgentBatch):
+            info_out = {}
+            if self.tf_sess is not None:
+                builder = TFRunBuilder(self.tf_sess, "compute_apply")
+                for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    info_out[pid], _ = (
+                        self.policy_map[pid].build_compute_apply(
+                            builder, batch))
+                info_out = {k: builder.get(v) for k, v in info_out.items()}
+            else:
+                for pid, batch in samples.policy_batches.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    info_out[pid], _ = (
+                        self.policy_map[pid].compute_apply(batch))
+            return info_out
+        else:
+            grad_fetch, apply_fetch = (
+                self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
+            return grad_fetch
+
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
         """Apply the given function to the specified policy graph."""
 
@@ -427,85 +491,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 f.clear_buffer()
         return return_filters
 
-    def get_weights(self, policies=None):
-        if policies is None:
-            policies = self.policy_map.keys()
-        return {
-            pid: policy.get_weights()
-            for pid, policy in self.policy_map.items() if pid in policies
-        }
-
-    def set_weights(self, weights):
-        for pid, w in weights.items():
-            self.policy_map[pid].set_weights(w)
-
-    def compute_gradients(self, samples):
-        if isinstance(samples, MultiAgentBatch):
-            grad_out, info_out = {}, {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "compute_gradients")
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    grad_out[pid], info_out[pid] = (
-                        self.policy_map[pid].build_compute_gradients(
-                            builder, batch))
-                grad_out = {k: builder.get(v) for k, v in grad_out.items()}
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
-            else:
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    grad_out[pid], info_out[pid] = (
-                        self.policy_map[pid].compute_gradients(batch))
-        else:
-            grad_out, info_out = (
-                self.policy_map[DEFAULT_POLICY_ID].compute_gradients(samples))
-        info_out["batch_count"] = samples.count
-        return grad_out, info_out
-
-    def apply_gradients(self, grads):
-        if isinstance(grads, dict):
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "apply_gradients")
-                outputs = {
-                    pid: self.policy_map[pid].build_apply_gradients(
-                        builder, grad)
-                    for pid, grad in grads.items()
-                }
-                return {k: builder.get(v) for k, v in outputs.items()}
-            else:
-                return {
-                    pid: self.policy_map[pid].apply_gradients(g)
-                    for pid, g in grads.items()
-                }
-        else:
-            return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
-
-    def compute_apply(self, samples):
-        if isinstance(samples, MultiAgentBatch):
-            info_out = {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "compute_apply")
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid].build_compute_apply(
-                            builder, batch))
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
-            else:
-                for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
-                        continue
-                    info_out[pid], _ = (
-                        self.policy_map[pid].compute_apply(batch))
-            return info_out
-        else:
-            grad_fetch, apply_fetch = (
-                self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
-            return grad_fetch
-
     def save(self):
         filters = self.get_filters(flush_after=True)
         state = {
@@ -522,6 +507,27 @@ class PolicyEvaluator(EvaluatorInterface):
 
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+
+
+def _build_policy_map(policy_dict, policy_config):
+    policy_map = {}
+    for name, (cls, obs_space, act_space, conf) in sorted(policy_dict.items()):
+        merged_conf = merge_dicts(policy_config, conf)
+        with tf.variable_scope(name):
+            if isinstance(obs_space, gym.spaces.Dict):
+                raise ValueError(
+                    "Found raw Dict space as input to policy graph. "
+                    "Please preprocess your environment observations "
+                    "with DictFlatteningPreprocessor and set the "
+                    "obs space to `preprocessor.observation_space`.")
+            elif isinstance(obs_space, gym.spaces.Tuple):
+                raise ValueError(
+                    "Found raw Tuple space as input to policy graph. "
+                    "Please preprocess your environment observations "
+                    "with TupleFlatteningPreprocessor and set the "
+                    "obs space to `preprocessor.observation_space`.")
+            policy_map[name] = cls(obs_space, act_space, merged_conf)
+    return policy_map
 
 
 def _validate_and_canonicalize(policy_graph, env):

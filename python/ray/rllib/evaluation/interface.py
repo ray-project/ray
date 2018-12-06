@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import os
 
+from ray.rllib.utils.annotations import abstractmethod
+
 
 class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
@@ -11,6 +13,7 @@ class EvaluatorInterface(object):
     See also: PolicyEvaluator
     """
 
+    @abstractmethod
     def sample(self):
         """Returns a batch of experience sampled from this evaluator.
 
@@ -27,6 +30,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @abstractmethod
     def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
 
@@ -45,6 +49,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @abstractmethod
     def apply_gradients(self, grads):
         """Applies the given gradients to this evaluator's weights.
 
@@ -58,6 +63,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @abstractmethod
     def get_weights(self):
         """Returns the model weights of this Evaluator.
 
@@ -73,6 +79,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @abstractmethod
     def set_weights(self, weights):
         """Sets the model weights of this Evaluator.
 
@@ -85,6 +92,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @abstractmethod
     def compute_apply(self, samples):
         """Fused compute gradients and apply gradients call.
 

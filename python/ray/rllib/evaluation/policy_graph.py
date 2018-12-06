@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.util.annotations import abstractmethod
+from ray.rllib.utils.annotations import abstractmethod
 
 
 class PolicyGraph(object):

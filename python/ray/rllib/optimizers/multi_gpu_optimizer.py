@@ -12,6 +12,7 @@ import ray
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     may result in unexpected behavior.
     """
 
+    @override(PolicyOptimizer)
     def _init(self,
               sgd_batch_size=128,
               num_sgd_iter=10,
@@ -91,6 +93,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
+    @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
             if self.remote_evaluators:
@@ -148,6 +151,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.num_steps_trained += samples.count
         return _averaged(iter_extra_fetches)
 
+    @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{

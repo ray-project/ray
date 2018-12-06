@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-def abstractmethod(cls):
+def abstractmethod():
     """Annotation for documenting that a method is meant to be overriden."""
 
     def wrapper(method):
