@@ -5,7 +5,7 @@ from __future__ import print_function
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 
 
 class AsyncVectorEnv(object):
@@ -85,7 +85,6 @@ class AsyncVectorEnv(object):
         assert isinstance(env, AsyncVectorEnv)
         return env
 
-    @abstractmethod
     def poll(self):
         """Returns observations from ready agents.
 
@@ -108,7 +107,6 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def send_actions(self, action_dict):
         """Called to send actions back to running agents in this env.
 
@@ -120,7 +118,6 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def try_reset(self, env_id):
         """Attempt to reset the env with the given id.
 
@@ -132,7 +129,6 @@ class AsyncVectorEnv(object):
         """
         return None
 
-    @abstractmethod
     def get_unwrapped(self):
         """Return a reference to the underlying gym envs, if any.
 

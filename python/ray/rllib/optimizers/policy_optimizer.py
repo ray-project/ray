@@ -8,7 +8,6 @@ import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import abstractmethod
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +60,11 @@ class PolicyOptimizer(object):
         logger.debug("Created policy optimizer with {}: {}".format(
             config, self))
 
-    @abstractmethod
     def _init(self):
         """Subclasses should prefer overriding this instead of __init__."""
 
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def step(self):
         """Takes a logical optimization step.
 
@@ -81,7 +78,6 @@ class PolicyOptimizer(object):
 
         raise NotImplementedError
 
-    @abstractmethod
     def stats(self):
         """Returns a dictionary of internal performance statistics."""
 
@@ -90,20 +86,17 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    @abstractmethod
     def save(self):
         """Returns a serializable object representing the optimizer state."""
 
         return [self.num_steps_trained, self.num_steps_sampled]
 
-    @abstractmethod
     def restore(self, data):
         """Restores optimizer state from the given data object."""
 
         self.num_steps_trained = data[0]
         self.num_steps_sampled = data[1]
 
-    @abstractmethod
     def stop(self):
         """Release any resources used by this optimizer."""
         pass

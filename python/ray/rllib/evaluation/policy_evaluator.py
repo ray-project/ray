@@ -385,7 +385,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     if pid not in self.policies_to_train:
                         continue
                     grad_out[pid], info_out[pid] = (
-                        self.policy_map[pid].build_compute_gradients(
+                        self.policy_map[pid]._build_compute_gradients(
                             builder, batch))
                 grad_out = {k: builder.get(v) for k, v in grad_out.items()}
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
@@ -430,7 +430,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     if pid not in self.policies_to_train:
                         continue
                     info_out[pid], _ = (
-                        self.policy_map[pid].build_compute_apply(
+                        self.policy_map[pid]._build_compute_apply(
                             builder, batch))
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:

@@ -3,12 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 
-def abstractmethod(method):
-    """Annotation for documenting that a method is meant to be overriden."""
-
-    return method
-
-
 def override(cls):
     """Annotation for documenting method overrides."""
 

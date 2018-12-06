@@ -7,7 +7,7 @@ import distutils.version
 import tensorflow as tf
 import numpy as np
 
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
@@ -23,22 +23,18 @@ class ActionDistribution(object):
     def __init__(self, inputs):
         self.inputs = inputs
 
-    @abstractmethod
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         raise NotImplementedError
 
-    @abstractmethod
     def kl(self, other):
         """The KL-divergence between two action distributions."""
         raise NotImplementedError
 
-    @abstractmethod
     def entropy(self):
         """The entroy of the action distribution."""
         raise NotImplementedError
 
-    @abstractmethod
     def sample(self):
         """Draw a sample from the action distribution."""
         raise NotImplementedError

@@ -18,7 +18,7 @@ import ray
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.actors import TaskPool
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -239,7 +239,6 @@ class LearnerThread(threading.Thread):
         while not self.stopped:
             self.step()
 
-    @abstractmethod
     def step(self):
         with self.queue_timer:
             batch = self.inqueue.get()

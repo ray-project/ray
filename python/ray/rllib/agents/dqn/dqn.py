@@ -8,7 +8,7 @@ from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -210,7 +210,6 @@ class DQNAgent(Agent):
             }, **self.optimizer.stats()))
         return result
 
-    @abstractmethod
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:

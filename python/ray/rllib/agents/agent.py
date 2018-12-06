@@ -15,7 +15,7 @@ import ray
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -295,13 +295,11 @@ class Agent(Trainable):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
-    @abstractmethod
     def _init(self):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
 
-    @abstractmethod
     def compute_action(self, observation, state=None, policy_id="default"):
         """Computes an action for the specified policy.
 

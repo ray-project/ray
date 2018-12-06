@@ -8,7 +8,7 @@ import logging
 import numpy as np
 import gym
 
-from ray.rllib.utils.annotations import abstractmethod, override
+from ray.rllib.utils.annotations import override
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -29,12 +29,10 @@ class Preprocessor(object):
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
 
-    @abstractmethod
     def _init_shape(self, obs_space, options):
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
-    @abstractmethod
     def transform(self, observation):
         """Returns the preprocessed observation."""
         raise NotImplementedError
