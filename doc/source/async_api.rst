@@ -1,4 +1,4 @@
-Async API (experimental)
+Async API (Experimental)
 ========================
 
 Many web applications & prediction serving service today heavily rely on asynchronous execution to gain performance.
