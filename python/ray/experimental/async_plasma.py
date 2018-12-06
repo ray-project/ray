@@ -1,10 +1,13 @@
 import asyncio
+import ctypes
 import sys
 
 import pyarrow.plasma as plasma
 
 import ray
 from ray.services import logger
+
+INT64_SIZE = ctypes.sizeof(ctypes.c_int64)
 
 
 def _release_waiter(waiter, *_):
@@ -28,12 +31,12 @@ class PlasmaProtocol(asyncio.Protocol):
         self._buffer += data
         messages = []
         i = 0
-        # 8 is the size of int64_t
-        while i + 8 <= len(self._buffer):
-            msg_len = int.from_bytes(self._buffer[i:i + 8], sys.byteorder)
-            if i + 8 + msg_len > len(self._buffer):
+        while i + INT64_SIZE <= len(self._buffer):
+            msg_len = int.from_bytes(self._buffer[i:i + INT64_SIZE],
+                                     sys.byteorder)
+            if i + INT64_SIZE + msg_len > len(self._buffer):
                 break
-            i += 8
+            i += INT64_SIZE
             segment = self._buffer[i:i + msg_len]
             i += msg_len
             messages.append(self.plasma_client.decode_notification(segment))
