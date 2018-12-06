@@ -8,6 +8,8 @@ import logging
 import numpy as np
 import gym
 
+from ray.rllib.utils.annotations import abstractmethod, override
+
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
 
@@ -27,10 +29,12 @@ class Preprocessor(object):
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
 
+    @abstractmethod
     def _init_shape(self, obs_space, options):
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
+    @abstractmethod
     def transform(self, observation):
         """Returns the preprocessed observation."""
         raise NotImplementedError
@@ -57,6 +61,7 @@ class GenericPixelPreprocessor(Preprocessor):
     instead for deepmind-style Atari preprocessing.
     """
 
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         self._grayscale = options.get("grayscale")
         self._zero_mean = options.get("zero_mean")
@@ -72,6 +77,7 @@ class GenericPixelPreprocessor(Preprocessor):
             shape = shape[-1:] + shape[:-1]
         return shape
 
+    @override(Preprocessor)
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
         scaled = observation[25:-25, :, :]
@@ -96,17 +102,21 @@ class GenericPixelPreprocessor(Preprocessor):
 
 
 class AtariRamPreprocessor(Preprocessor):
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         return (128, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         return (observation - 128) / 128
 
 
 class OneHotPreprocessor(Preprocessor):
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         return (self._obs_space.n, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
         arr[observation] = 1
@@ -114,9 +124,11 @@ class OneHotPreprocessor(Preprocessor):
 
 
 class NoPreprocessor(Preprocessor):
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         return self._obs_space.shape
 
+    @override(Preprocessor)
     def transform(self, observation):
         return observation
 
@@ -127,6 +139,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, gym.spaces.Tuple)
         size = 0
@@ -139,6 +152,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
             size += preprocessor.size
         return (size, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), observation
         return np.concatenate([
@@ -153,6 +167,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
+    @override(Preprocessor)
     def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, gym.spaces.Dict)
         size = 0
@@ -164,6 +179,7 @@ class DictFlatteningPreprocessor(Preprocessor):
             size += preprocessor.size
         return (size, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         if not isinstance(observation, OrderedDict):
             observation = OrderedDict(sorted(list(observation.items())))

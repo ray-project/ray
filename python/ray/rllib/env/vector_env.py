@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import abstractmethod, override
+
 
 class VectorEnv(object):
     """An environment that supports batch evaluation.
@@ -18,6 +20,7 @@ class VectorEnv(object):
     def wrap(make_env=None, existing_envs=None, num_envs=1):
         return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
 
+    @abstractmethod
     def vector_reset(self):
         """Resets all environments.
 
@@ -26,6 +29,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def reset_at(self, index):
         """Resets a single environment.
 
@@ -34,6 +38,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def vector_step(self, actions):
         """Vectorized step.
 
@@ -48,6 +53,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def get_unwrapped(self):
         """Returns the underlying env instances."""
         raise NotImplementedError
@@ -72,12 +78,15 @@ class _VectorizedGymEnv(VectorEnv):
         self.action_space = self.envs[0].action_space
         self.observation_space = self.envs[0].observation_space
 
+    @override(VectorEnv)
     def vector_reset(self):
         return [e.reset() for e in self.envs]
 
+    @override(VectorEnv)
     def reset_at(self, index):
         return self.envs[index].reset()
 
+    @override(VectorEnv)
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
@@ -88,5 +97,6 @@ class _VectorizedGymEnv(VectorEnv):
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
 
+    @override(VectorEnv)
     def get_unwrapped(self):
         return self.envs

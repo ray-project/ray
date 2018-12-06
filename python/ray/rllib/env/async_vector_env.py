@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.annotations import abstractmethod, override
 
 
 class AsyncVectorEnv(object):
@@ -84,6 +85,7 @@ class AsyncVectorEnv(object):
         assert isinstance(env, AsyncVectorEnv)
         return env
 
+    @abstractmethod
     def poll(self):
         """Returns observations from ready agents.
 
@@ -106,6 +108,7 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def send_actions(self, action_dict):
         """Called to send actions back to running agents in this env.
 
@@ -117,6 +120,7 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     def try_reset(self, env_id):
         """Attempt to reset the env with the given id.
 
@@ -128,6 +132,7 @@ class AsyncVectorEnv(object):
         """
         return None
 
+    @abstractmethod
     def get_unwrapped(self):
         """Return a reference to the underlying gym envs, if any.
 
@@ -158,6 +163,7 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
             self.observation_space = external_env.observation_space
         external_env.start()
 
+    @override(AsyncVectorEnv)
     def poll(self):
         with self.external_env._results_avail_condition:
             results = self._poll()
@@ -171,6 +177,12 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
             ("Too many concurrent episodes, were some leaked? This "
              "ExternalEnv was created with max_concurrent={}".format(limit))
         return results
+
+    @override(AsyncVectorEnv)
+    def send_actions(self, action_dict):
+        for eid, action in action_dict.items():
+            self.external_env._episodes[eid].action_queue.put(
+                action[_DUMMY_AGENT_ID])
 
     def _poll(self):
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
@@ -195,11 +207,6 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(all_infos), \
             _with_dummy_agent_id(off_policy_actions)
 
-    def send_actions(self, action_dict):
-        for eid, action in action_dict.items():
-            self.external_env._episodes[eid].action_queue.put(
-                action[_DUMMY_AGENT_ID])
-
 
 class _VectorEnvToAsync(AsyncVectorEnv):
     """Internal adapter of VectorEnv to AsyncVectorEnv.
@@ -219,6 +226,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
 
+    @override(AsyncVectorEnv)
     def poll(self):
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
@@ -235,6 +243,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(dones, "__all__"), \
             _with_dummy_agent_id(infos), {}
 
+    @override(AsyncVectorEnv)
     def send_actions(self, action_dict):
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
@@ -242,9 +251,11 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
             self.vector_env.vector_step(action_vector)
 
+    @override(AsyncVectorEnv)
     def try_reset(self, env_id):
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
+    @override(AsyncVectorEnv)
     def get_unwrapped(self):
         return self.vector_env.get_unwrapped()
 
@@ -275,12 +286,14 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
 
+    @override(AsyncVectorEnv)
     def poll(self):
         obs, rewards, dones, infos = {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
             obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
         return obs, rewards, dones, infos, {}
 
+    @override(AsyncVectorEnv)
     def send_actions(self, action_dict):
         for env_id, agent_dict in action_dict.items():
             if env_id in self.dones:
@@ -295,6 +308,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
+    @override(AsyncVectorEnv)
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
