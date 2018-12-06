@@ -50,7 +50,7 @@ def as_future(object_id):
 
 def shutdown():
     """Manually shutdown the async API.
-    
+
     Cancels all related tasks and all the socket transportation.
     """
     global handler, transport, protocol
