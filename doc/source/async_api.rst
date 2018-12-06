@@ -3,7 +3,7 @@ Async API (Experimental)
 
 Since Python 3.5, it is possible to write concurrent code using the ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
 
-This document describes Ray's support for asyncio, enabling integration with popular async frameworks (e.g., aiohttp, aioredis, etc.) for high performance web and prediction serving.
+This document describes Ray's support for asyncio, which enables integration with popular async frameworks (e.g., aiohttp, aioredis, etc.) for high performance web and prediction serving.
 
 Starting Ray
 ------------
