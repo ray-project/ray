@@ -129,6 +129,7 @@ def build_plasma_tensorflow_op():
     with filelock.FileLock(lock_path):
         plasma.build_plasma_tensorflow_op()
 
+
 if __name__ == "__main__":
     a = Timeline(1)
     b = Timeline(2)

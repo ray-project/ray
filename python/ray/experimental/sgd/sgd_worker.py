@@ -10,10 +10,10 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import (
-    fetch, run_timeline, build_plasma_tensorflow_op, warmup)
-from ray.experimental.sgd.modified_allreduce import (
-    sum_gradients_all_reduce, unpack_small_tensors)
+from ray.experimental.sgd.util import (fetch, run_timeline,
+                                       build_plasma_tensorflow_op, warmup)
+from ray.experimental.sgd.modified_allreduce import (sum_gradients_all_reduce,
+                                                     unpack_small_tensors)
 
 logger = logging.getLogger(__name__)
 
