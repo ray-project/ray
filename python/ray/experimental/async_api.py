@@ -27,9 +27,9 @@ def init():
     """
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        raise Exception("You cannot initialize async_api when the eventloop"
-                        " is running. Try to initialize it before you run the "
-                        "eventloop or use the async `init()` instead.")
+        raise Exception("You must initialize the Ray async API by calling "
+                        "async_api.init() or async_api.as_future(obj) before "
+                        "the event loop starts.")
     else:
         asyncio.get_event_loop().run_until_complete(_async_init())
 
