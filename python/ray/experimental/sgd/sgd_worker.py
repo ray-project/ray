@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import filelock
 import logging
-import os
 import time
 
 import pyarrow.plasma as plasma
