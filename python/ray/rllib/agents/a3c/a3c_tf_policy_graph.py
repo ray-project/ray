@@ -10,6 +10,7 @@ import gym
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
@@ -135,7 +136,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
         return compute_advantages(sample_batch, last_r, self.config["gamma"],
                                   self.config["lambda"])
 
@@ -154,7 +155,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def extra_compute_action_fetches(self):
         return {"vf_preds": self.vf}
 
-    def value(self, ob, *args):
+    def _value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)

@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import abstractmethod, override
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -166,7 +166,6 @@ class TFPolicyGraph(PolicyGraph):
         fetches = self.build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
-
     @override(PolicyGraph)
     def apply_gradients(self, gradients):
         builder = TFRunBuilder(self._sess, "apply_gradients")
@@ -186,6 +185,42 @@ class TFPolicyGraph(PolicyGraph):
     @override(PolicyGraph)
     def set_weights(self, weights):
         return self._variables.set_flat(weights)
+
+    @abstractmethod
+    def extra_compute_action_feed_dict(self):
+        return {}
+
+    @abstractmethod
+    def extra_compute_action_fetches(self):
+        return {}  # e.g, value function
+
+    @abstractmethod
+    def extra_compute_grad_feed_dict(self):
+        return {}  # e.g, kl_coeff
+
+    @abstractmethod
+    def extra_compute_grad_fetches(self):
+        return {}  # e.g, td error
+
+    @abstractmethod
+    def extra_apply_grad_feed_dict(self):
+        return {}
+
+    @abstractmethod
+    def extra_apply_grad_fetches(self):
+        return {}  # e.g., batch norm updates
+
+    @abstractmethod
+    def optimizer(self):
+        return tf.train.AdamOptimizer()
+
+    @abstractmethod
+    def gradients(self, optimizer):
+        return optimizer.compute_gradients(self._loss)
+
+    @abstractmethod
+    def loss_inputs(self):
+        return self._loss_inputs
 
     def build_compute_actions(self,
                               builder,
@@ -239,33 +274,6 @@ class TFPolicyGraph(PolicyGraph):
             self.extra_apply_grad_fetches()
         ])
         return fetches[1], fetches[2]
-
-    def extra_compute_action_feed_dict(self):
-        return {}
-
-    def extra_compute_action_fetches(self):
-        return {}  # e.g, value function
-
-    def extra_compute_grad_feed_dict(self):
-        return {}  # e.g, kl_coeff
-
-    def extra_compute_grad_fetches(self):
-        return {}  # e.g, td error
-
-    def extra_apply_grad_feed_dict(self):
-        return {}
-
-    def extra_apply_grad_fetches(self):
-        return {}  # e.g., batch norm updates
-
-    def optimizer(self):
-        return tf.train.AdamOptimizer()
-
-    def gradients(self, optimizer):
-        return optimizer.compute_gradients(self._loss)
-
-    def loss_inputs(self):
-        return self._loss_inputs
 
     def _get_is_training_placeholder(self):
         """Get the placeholder for _is_training, i.e., for batch norm layers.

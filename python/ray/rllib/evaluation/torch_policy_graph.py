@@ -13,7 +13,7 @@ except ImportError:
     pass  # soft dep
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import abstractmethod, override
 
 
 class TorchPolicyGraph(PolicyGraph):
@@ -106,6 +106,7 @@ class TorchPolicyGraph(PolicyGraph):
         with self.lock:
             self._model.load_state_dict(weights)
 
+    @abstractmethod
     def extra_action_out(self, model_out):
         """Returns dict of extra info to include in experience batch.
 
@@ -113,6 +114,7 @@ class TorchPolicyGraph(PolicyGraph):
             model_out (list): Outputs of the policy model module."""
         return {}
 
+    @abstractmethod
     def optimizer(self):
         """Custom PyTorch optimizer to use."""
         return torch.optim.Adam(self._model.parameters())
