@@ -1,12 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# Note: asyncio is only compatible with Python 3
 
 import asyncio
 import ray
 from ray.experimental.async_plasma import PlasmaProtocol, PlasmaEventHandler
 
-handler: PlasmaEventHandler = None
+handler = None
 transport = None
 protocol = None
 
@@ -52,7 +50,9 @@ def as_future(object_id):
 
 def shutdown():
     """Manually shutdown the async API.
-    Cancel all related tasks and all the socket transportation."""
+    
+    Cancels all related tasks and all the socket transportation.
+    """
     global handler, transport, protocol
     if handler is not None:
         handler.close()
