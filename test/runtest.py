@@ -24,6 +24,7 @@ import ray.test.test_utils
 
 logger = logging.getLogger(__name__)
 
+
 def assert_equal(obj1, obj2):
     module_numpy = (type(obj1).__module__ == np.__name__
                     or type(obj2).__module__ == np.__name__)
@@ -1250,6 +1251,17 @@ def test_multithreading(shutdown_only):
 
 
 def test_free_objects_multi_node(shutdown_only):
+    # This test will do following steps:
+    # 1. create 3 raylets and each hold an actor
+    # 2. each actor creates an object which is the deletion target
+    # 3. call each actor 64 times to flush plasma client
+    # 4. after flushing, the plasma client releases the targets
+    # 5. guarantee that the deletion targets are deleted
+    # Caution: if function task is used instead of actor task,
+    # one raylet may create more than one workers to execute the
+    # tasks. So the flushing operations may be executed in different
+    # workers and the plasma client helding the deletion targert
+    # may not be flushed by enough times.
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     ray.worker._init(
         start_ray_local=True,
@@ -1305,7 +1317,12 @@ def test_free_objects_multi_node(shutdown_only):
         ray.internal.free([a, b, c], local_only=local_only)
         flush(actors)
         return (a, b, c)
-    actors = [ActorOnNode0.remote(), ActorOnNode1.remote(), ActorOnNode2.remote()]
+
+    actors = [
+        ActorOnNode0.remote(),
+        ActorOnNode1.remote(),
+        ActorOnNode2.remote()
+    ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
     (a, b, c) = run_one_test(actors, False)
     (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=1)
