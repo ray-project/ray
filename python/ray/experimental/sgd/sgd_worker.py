@@ -115,7 +115,8 @@ class SGDWorker(object):
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
             if not plasma.tf_plasma_op:
-                lock_path = os.path.join(pyarrow.__path__[0], "tensorflow", "compile_op.lock")
+                lock_path = os.path.join(pyarrow.__path__[0], "tensorflow",
+                                         "compile_op.lock")
                 lock = SoftFileLock(lock_path)
                 lock.acquire()
                 plasma.build_plasma_tensorflow_op()

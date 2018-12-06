@@ -132,7 +132,7 @@ class SoftFileLock(object):
         while True:
             try:
                 self._lock_file = os.open(self._lock_path, open_mode)
-            except OSError as e:
+            except OSError:
                 logger.info("Waiting for file lock " + self._lock_path)
                 time.sleep(2.0)
             else:
