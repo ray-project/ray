@@ -9,7 +9,7 @@ import numpy as np
 import os
 import yaml
 
-from ray.cloudpickle import cloudpickle
+import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
