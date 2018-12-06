@@ -19,6 +19,7 @@ from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
+_large_batch_warned = False
 
 RolloutMetrics = namedtuple(
     "RolloutMetrics",
@@ -42,6 +43,7 @@ class SyncSampler(object):
                  env,
                  policies,
                  policy_mapping_fn,
+                 preprocessors,
                  obs_filters,
                  clip_rewards,
                  unroll_length,
@@ -55,13 +57,14 @@ class SyncSampler(object):
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
-        self._obs_filters = obs_filters
+        self.preprocessors = preprocessors
+        self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self._obs_filters, clip_rewards, clip_actions, pack, callbacks,
-            tf_sess)
+            self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
+            pack, callbacks, tf_sess)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -101,6 +104,7 @@ class AsyncSampler(threading.Thread):
                  env,
                  policies,
                  policy_mapping_fn,
+                 preprocessors,
                  obs_filters,
                  clip_rewards,
                  unroll_length,
@@ -121,7 +125,8 @@ class AsyncSampler(threading.Thread):
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
-        self._obs_filters = obs_filters
+        self.preprocessors = preprocessors
+        self.obs_filters = obs_filters
         self.clip_rewards = clip_rewards
         self.daemon = True
         self.pack = pack
@@ -140,8 +145,8 @@ class AsyncSampler(threading.Thread):
         rollout_provider = _env_runner(
             self.async_vector_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
-            self._obs_filters, self.clip_rewards, self.clip_actions, self.pack,
-            self.callbacks, self.tf_sess)
+            self.preprocessors, self.obs_filters, self.clip_rewards,
+            self.clip_actions, self.pack, self.callbacks, self.tf_sess)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -200,6 +205,7 @@ def _env_runner(async_vector_env,
                 policy_mapping_fn,
                 unroll_length,
                 horizon,
+                preprocessors,
                 obs_filters,
                 clip_rewards,
                 clip_actions,
@@ -218,6 +224,8 @@ def _env_runner(async_vector_env,
         unroll_length (int): Number of episode steps before `SampleBatch` is
             yielded. Set to infinity to yield complete episodes.
         horizon (int): Horizon of the episode.
+        preprocessors (dict): Map of policy id to preprocessor for the
+            observations prior to filtering.
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
@@ -273,7 +281,7 @@ def _env_runner(async_vector_env,
         active_envs, to_eval, outputs = _process_observations(
             async_vector_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
-            obs_filters, unroll_length, pack, callbacks)
+            preprocessors, obs_filters, unroll_length, pack, callbacks)
         for o in outputs:
             yield o
 
@@ -293,8 +301,8 @@ def _env_runner(async_vector_env,
 
 def _process_observations(async_vector_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
-                          infos, off_policy_actions, horizon, obs_filters,
-                          unroll_length, pack, callbacks):
+                          infos, off_policy_actions, horizon, preprocessors,
+                          obs_filters, unroll_length, pack, callbacks):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -316,6 +324,21 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
+        global _large_batch_warned
+        if (not _large_batch_warned and
+                episode.batch_builder.total() > max(1000, unroll_length * 10)):
+            _large_batch_warned = True
+            logger.warn(
+                "More than {} observations for {} env steps ".format(
+                    episode.batch_builder.total(),
+                    episode.batch_builder.count) + "are buffered in "
+                "the sampler. If this is not intentional, check that the "
+                "the `horizon` config is set correctly, or consider setting "
+                "`batch_mode` to 'truncate_episodes'. Note that in "
+                "multi-agent environments, `sample_batch_size` sets the "
+                "batch size based on environment steps, not the steps of "
+                "individual agents.")
+
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
             all_done = True
@@ -336,7 +359,9 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
         # For each agent in the environment
         for agent_id, raw_obs in agent_obs.items():
             policy_id = episode.policy_for(agent_id)
-            filtered_obs = _get_or_raise(obs_filters, policy_id)(raw_obs)
+            prep_obs = _get_or_raise(preprocessors,
+                                     policy_id).transform(raw_obs)
+            filtered_obs = _get_or_raise(obs_filters, policy_id)(prep_obs)
             agent_done = bool(all_done or dones[env_id].get(agent_id))
             if not agent_done:
                 to_eval[policy_id].append(
@@ -347,6 +372,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
+            episode._set_last_info(agent_id, infos[env_id][agent_id])
 
             # Record transition info if applicable
             if last_observation is not None and \
@@ -406,8 +432,10 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id = episode.policy_for(agent_id)
                     policy = _get_or_raise(policies, policy_id)
+                    prep_obs = _get_or_raise(preprocessors,
+                                             policy_id).transform(raw_obs)
                     filtered_obs = _get_or_raise(obs_filters,
-                                                 policy_id)(raw_obs)
+                                                 policy_id)(prep_obs)
                     episode._set_last_observation(agent_id, filtered_obs)
                     to_eval[policy_id].append(
                         PolicyEvalData(

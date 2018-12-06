@@ -25,10 +25,10 @@ def on_episode_step(info):
 
 def on_episode_end(info):
     episode = info["episode"]
-    mean_pole_angle = np.mean(episode.user_data["pole_angles"])
+    pole_angle = np.mean(episode.user_data["pole_angles"])
     print("episode {} ended with length {} and pole angles {}".format(
-        episode.episode_id, episode.length, mean_pole_angle))
-    episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
+        episode.episode_id, episode.length, pole_angle))
+    episode.custom_metrics["pole_angle"] = pole_angle
 
 
 def on_sample_end(info):
@@ -70,6 +70,8 @@ if __name__ == "__main__":
     # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]
     print(custom_metrics)
-    assert "mean_pole_angle" in custom_metrics
-    assert type(custom_metrics["mean_pole_angle"]) is float
+    assert "pole_angle_mean" in custom_metrics
+    assert "pole_angle_min" in custom_metrics
+    assert "pole_angle_max" in custom_metrics
+    assert type(custom_metrics["pole_angle_mean"]) is float
     assert "callback_ok" in trials[0].last_result

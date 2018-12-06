@@ -135,6 +135,7 @@ class LearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
+        self.stats = {}
 
     def run(self):
         while not self.stopped:
@@ -151,6 +152,8 @@ class LearnerThread(threading.Thread):
                     prio_dict[pid] = (
                         replay.policy_batches[pid]["batch_indexes"],
                         info["td_error"])
+                    if "stats" in info:
+                        self.stats[pid] = info["stats"]
             # send `replay` back also so that it gets released by the original
             # thread: https://github.com/ray-project/ray/issues/2610
             self.outqueue.put((ra, replay, prio_dict, replay.count))
@@ -331,4 +334,6 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         }
         if self.debug:
             stats.update(debug_stats)
+        if self.learner.stats:
+            stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)
