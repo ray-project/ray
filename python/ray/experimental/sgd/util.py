@@ -123,11 +123,14 @@ class Timeline(object):
         logger.info("Wrote chrome timeline to", filename)
 
 
-def build_plasma_tensorflow_op():
-    lock_path = os.path.join(pyarrow.__path__[0], "tensorflow",
-                             "compile_op.lock")
+def ensure_plasma_tensorflow_op():
+    base_path = os.path.join(pyarrow.__path__[0], "tensorflow")
+    lock_path = os.path.join(base_path, "compile_op.lock")
     with filelock.FileLock(lock_path):
-        plasma.build_plasma_tensorflow_op()
+        if not os.path.exists(os.path.join(base_path, "plasma_op.so")):
+            plasma.build_plasma_tensorflow_op()
+        else:
+            plasma.load_plasma_tensorflow_op()
 
 
 if __name__ == "__main__":
