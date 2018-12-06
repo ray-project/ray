@@ -7,10 +7,12 @@ making it more feasible to program asynchronously,
 and popular async frameworks (aiohttp, aioredis, etc.) are emerging,
 indicating the power of asynchronous APIs.
 
-This document talks about asynchronous APIs in Ray.
+This document describes asynchronous APIs in Ray.
 
 Starting Ray
 ------------
+
+You must initialize Ray first.
 
 Please refer to `Starting Ray`_ for instructions.
 
@@ -83,13 +85,11 @@ Example Use
 +----------------------------------------+-----------------------------------------------------+
 
 
-Initialize & shutdown Async Ray APIs
-------------------------------------
+Known issues
+------------
 
-Async Ray APIs can be initialized automatically by calling any related functions.
-But users could call `ray.experimental.async_api.init` ahead of time.
+Currently, Plasma Object Store will try to send all notification about all ObjectIDs to all workers.
+It is possible that the Plasma Object Store becomes slower or even runs out of memory.
 
-Users can manually shutdown the APIs by calling `ray.experimental.async_api.shutdown`.
+A workaround is manually shutdown the APIs by calling `ray.experimental.async_api.shutdown`.
 Shutdown the API will cancel all related pending tasks.
-
-
