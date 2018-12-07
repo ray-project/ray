@@ -29,6 +29,7 @@ if __name__ == "__main__":
             "env": "multi_pend",
             "stop": {
                 "timesteps_total": 500000,
+                "episode_reward_mean": -200,
             },
             "config": {
                 "train_batch_size": 2048,
