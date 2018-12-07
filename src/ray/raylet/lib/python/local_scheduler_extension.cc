@@ -100,7 +100,7 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
     Py_RETURN_NONE;
   } else {
     std::ostringstream stream;
-    stream << "local_scheduler_reconstruct_objects failed: "
+    stream << "local_scheduler_fetch_or_reconstruct failed: "
            << "local scheduler connection may be closed, "
            << "check raylet status. return value: " << ret;
     PyErr_SetString(CommonError, stream.str().c_str());
