@@ -44,8 +44,10 @@ class Experiment(object):
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
             to (e.g. ``s3://bucket``).
-        custom_loggers (list):
-        sync_cmd_tmpl (str):
+        custom_loggers (list): List of custom logger creators to be used with
+            each Trial. See `ray/tune/logger.py`.
+        sync_cmd_tmpl (str): Template for syncer to run. If not provided,
+            the sync command defaults to standard S3 or gsutil sync comamnds.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the

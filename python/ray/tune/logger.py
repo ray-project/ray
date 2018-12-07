@@ -75,7 +75,12 @@ class UnifiedLogger(Logger):
             See ray/python/ray/tune/log_sync.py
     """
 
-    def __init__(self, config, logdir, upload_uri=None, custom_loggers=None, sync_cmd_tmpl=None):
+    def __init__(self,
+                 config,
+                 logdir,
+                 upload_uri=None,
+                 custom_loggers=None,
+                 sync_cmd_tmpl=None):
         self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
         self._sync_cmd_tmpl = sync_cmd_tmpl
         if custom_loggers:
@@ -91,7 +96,8 @@ class UnifiedLogger(Logger):
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
                 logger.exception("Could not instantiate {} - skipping.")
-        self._log_syncer = get_syncer(self.logdir, self.uri, sync_cmd_tmpl=self._sync_cmd_tmpl)
+        self._log_syncer = get_syncer(
+            self.logdir, self.uri, sync_cmd_tmpl=self._sync_cmd_tmpl)
 
     def on_result(self, result):
         for logger in self._loggers:

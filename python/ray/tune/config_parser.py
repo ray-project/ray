@@ -110,8 +110,8 @@ def make_parser(parser_creator=None, **kwargs):
         "--sync-cmd-tmpl",
         default="",
         type=str,
-        help="Optional template for syncer to run. Needs to"
-             "include replacement fields '{local_dir}' and '{remote_dir}'.")
+        help="Optional template for syncer to run. Needs to "
+        "include replacement fields '{local_dir}' and '{remote_dir}'.")
     parser.add_argument(
         "--custom-loggers",
         default=None,

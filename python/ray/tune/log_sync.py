@@ -78,8 +78,10 @@ class _LogSyncer(object):
 
     def __init__(self, local_dir, remote_dir=None, sync_cmd_tmpl=None):
         if sync_cmd_tmpl:
-            assert "{remote_dir}" in sync_cmd_tmpl, "Sync command template needs to include '{remote_dir}'."
-            assert "{local_dir}" in sync_cmd_tmpl, "Sync command template needs to include '{local_dir}'."
+            assert "{remote_dir}" in sync_cmd_tmpl, (
+                "Sync template missing '{remote_dir}'.")
+            assert "{local_dir}" in sync_cmd_tmpl, (
+                "Sync template missing '{local_dir}'.")
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.sync_cmd_tmpl = sync_cmd_tmpl
@@ -158,13 +160,18 @@ class _LogSyncer(object):
     def get_remote_sync_cmd(self):
         if self.sync_cmd_tmpl:
             local_to_remote_sync_cmd = (self.sync_cmd_tmpl.format(
-                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+                local_dir=quote(self.local_dir),
+                remote_dir=quote(self.remote_dir)))
         elif self.remote_dir.startswith(S3_PREFIX):
-            local_to_remote_sync_cmd = ("aws s3 sync {local_dir} {remote_dir}".format(
-                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+            local_to_remote_sync_cmd = (
+                "aws s3 sync {local_dir} {remote_dir}".format(
+                    local_dir=quote(self.local_dir),
+                    remote_dir=quote(self.remote_dir)))
         elif self.remote_dir.startswith(GCS_PREFIX):
-            local_to_remote_sync_cmd = ("gsutil rsync -r {local_dir} {remote_dir}".format(
-                local_dir=quote(self.local_dir), remote_dir=quote(self.remote_dir)))
+            local_to_remote_sync_cmd = (
+                "gsutil rsync -r {local_dir} {remote_dir}".format(
+                    local_dir=quote(self.local_dir),
+                    remote_dir=quote(self.remote_dir)))
         else:
             logger.warning("Remote sync unsupported, skipping.")
             local_to_remote_sync_cmd = None

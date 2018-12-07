@@ -185,10 +185,12 @@ class Trial(object):
                 prefix="{}_{}".format(
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
-            self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               upload_uri=self.upload_dir,
-                                               custom_loggers=self.custom_loggers,
-                                               sync_cmd_tmpl=self.sync_cmd_tmpl)
+            self.result_logger = UnifiedLogger(
+                self.config,
+                self.logdir,
+                upload_uri=self.upload_dir,
+                custom_loggers=self.custom_loggers,
+                sync_cmd_tmpl=self.sync_cmd_tmpl)
 
     def close_logger(self):
         """Close logger."""
