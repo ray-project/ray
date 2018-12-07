@@ -125,7 +125,7 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
-                 prefix_creator=None,
+                 trial_string_creator=None,
                  custom_loggers=None,
                  sync_cmd_tmpl=None,
                  max_failures=0):
@@ -150,7 +150,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.prefix_creator = prefix_creator
+        self.trial_string_creator = trial_string_creator
         self.custom_loggers = custom_loggers
         self.sync_cmd_tmpl = sync_cmd_tmpl
         self.verbose = True
@@ -178,17 +178,11 @@ class Trial(object):
     def init_logger(self):
         """Init logger."""
 
-        if self.prefix_creator:
-            prefix = self.prefix_creator(
-                self.trainable_name, self.config, self.trial_id)
-        else:
-            prefix = "{}_{}".format(str(self)[:MAX_LEN_IDENTIFIER], date_str())
-
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix=prefix,
+                prefix="{}_{}".format(str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config,
@@ -325,7 +319,14 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Can be overriden with a custom string creator.
+        """
+        if self.trial_string_creator:
+            return self.trial_string_creator(
+                self.trainable_name, self.trial_id, self.config)
+
         if "env" in self.config:
             identifier = "{}_{}".format(self.trainable_name,
                                         self.config["env"])
