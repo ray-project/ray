@@ -734,9 +734,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
       actor_registration.GetRemainingReconstructions() > 0 && !intentional_disconnect
           ? ActorState::RECONSTRUCTING
           : ActorState::DEAD;
-  if (new_state == ActorState::RECONSTRUCTING && was_local) {
-    // If the actor was local and needs to be reconstructed, remove its previous dummy
-    // objects. So these tasks can be resubmitted.
+  if (was_local) {
+    // Clean up the dummy objects from this actor.
     RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
     for (auto &id : actor_entry->second.GetDummyObjects()) {
       HandleObjectMissing(id);
@@ -1640,7 +1639,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 }
 
 void NodeManager::ResubmitTask(const Task &task) {
-  RAY_LOG(DEBUG) << "Resubmitting task " << task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "Attempting to resubmit task "
+                 << task.GetTaskSpecification().TaskId();
 
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
@@ -1683,6 +1683,8 @@ void NodeManager::ResubmitTask(const Task &task) {
     return;
   }
 
+  RAY_LOG(INFO) << "Resubmitting task " << task.GetTaskSpecification().TaskId()
+                << " on client " << gcs_client_->client_table().GetLocalClientId();
   // The task may be reconstructed. Submit it with an empty lineage, since any
   // uncommitted lineage must already be in the lineage cache. At this point,
   // the task should not yet exist in the local scheduling queue. If it does,

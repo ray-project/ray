@@ -1318,106 +1318,6 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_local_scheduler_dying(head_node_cluster):
-    remote_node = head_node_cluster.add_node()
-
-    @ray.remote(max_reconstructions=1)
-    class Counter(object):
-        def __init__(self):
-            self.x = 0
-
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
-
-        def inc(self):
-            self.x += 1
-            return self.x
-
-    # Create an actor that is not on the local scheduler.
-    actor = Counter.remote()
-    while (ray.get(actor.local_plasma.remote()) !=
-           remote_node.get_plasma_store_name()):
-        actor = Counter.remote()
-
-    ids = [actor.inc.remote() for _ in range(100)]
-
-    # Wait for the last task to finish running.
-    ray.get(ids[-1])
-
-    # Kill the second node.
-    head_node_cluster.remove_node(remote_node)
-
-    # Get all of the results
-    results = ray.get(ids)
-
-    assert results == list(range(1, 1 + len(results)))
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_many_local_schedulers_dying(head_node_cluster):
-    # This test can be made more stressful by increasing the numbers below.
-    # The total number of actors created will be
-    # num_actors_at_a_time * num_local_schedulers.
-    num_local_schedulers = 5
-    num_actors_at_a_time = 3
-    num_function_calls_at_a_time = 10
-
-    worker_nodes = [
-        head_node_cluster.add_node(resources={"CPU": 3})
-        for _ in range(num_local_schedulers)
-    ]
-
-    @ray.remote(max_reconstructions=1)
-    class SlowCounter(object):
-        def __init__(self):
-            self.x = 0
-
-        def inc(self, duration):
-            time.sleep(duration)
-            self.x += 1
-            return self.x
-
-    # Create some initial actors.
-    actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
-
-    # Wait for the actors to start up.
-    time.sleep(1)
-
-    # This is a mapping from actor handles to object IDs returned by
-    # methods on that actor.
-    result_ids = collections.defaultdict(lambda: [])
-
-    # In a loop we are going to create some actors, run some methods, kill
-    # a local scheduler, and run some more methods.
-    for node in worker_nodes:
-        # Create some actors.
-        actors.extend(
-            [SlowCounter.remote() for _ in range(num_actors_at_a_time)])
-        # Run some methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-        # Kill a node.
-        head_node_cluster.remove_node(node)
-
-        # Run some more methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-
-    # Get the results and check that they have the correct values.
-    for _, result_id_list in result_ids.items():
-        results = list(range(1, len(result_id_list) + 1))
-        assert ray.get(result_id_list) == results
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(head_node_cluster):
     remote_node = head_node_cluster.add_node()
 
@@ -2194,9 +2094,6 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
@@ -2242,3 +2139,116 @@ def test_actor_reconstruction(ray_start_regular):
     # Check that the actor won't be reconstructed.
     with pytest.raises(ray.worker.RayGetError):
         ray.get(actor.increase.remote())
+
+
+def test_actor_reconstruction_on_node_failure(head_node_cluster):
+    """Test actor reconstruction when node dies unexpectedly."""
+    cluster = head_node_cluster
+    max_reconstructions = 3
+    # Add a few nodes to the cluster.
+    # Use custom resource to make sure the actor is only created on worker
+    # nodes, not on the head node.
+    for _ in range(max_reconstructions + 2):
+        cluster.add_node(resources={"a": 1})
+
+    def kill_node(object_store_socket):
+        node_to_remove = None
+        for node in cluster.worker_nodes:
+            if object_store_socket == node.get_plasma_store_name():
+                node_to_remove = node
+        cluster.remove_node(node_to_remove)
+
+    @ray.remote(max_reconstructions=max_reconstructions, resources={"a": 1})
+    class MyActor(object):
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get_object_store_socket(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+    actor = MyActor.remote()
+    # Call increase 3 times.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    for i in range(max_reconstructions):
+        object_store_socket = ray.get(actor.get_object_store_socket.remote())
+        # Kill actor's node and the actor should be reconstructed
+        # on a different node.
+        kill_node(object_store_socket)
+        # Call increase again.
+        # Check that the actor is reconstructed and value is correct.
+        assert ray.get(actor.increase.remote()) == 4 + i
+        # Check that the actor is now on a different node.
+        assert object_store_socket != ray.get(
+            actor.get_object_store_socket.remote())
+
+    # kill the node again.
+    object_store_socket = ray.get(actor.get_object_store_socket.remote())
+    kill_node(object_store_socket)
+    # The actor has exceeded max reconstructions, and this task should fail.
+    with pytest.raises(ray.worker.RayGetError):
+        ray.get(actor.increase.remote())
+
+
+def test_multiple_actor_reconstruction(head_node_cluster):
+    # This test can be made more stressful by increasing the numbers below.
+    # The total number of actors created will be
+    # num_actors_at_a_time * num_local_schedulers.
+    num_local_schedulers = 5
+    num_actors_at_a_time = 3
+    num_function_calls_at_a_time = 10
+
+    worker_nodes = [
+        head_node_cluster.add_node(resources={"CPU": 3})
+        for _ in range(num_local_schedulers)
+    ]
+
+    @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
+    class SlowCounter(object):
+        def __init__(self):
+            self.x = 0
+
+        def inc(self, duration):
+            time.sleep(duration)
+            self.x += 1
+            return self.x
+
+    # Create some initial actors.
+    actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
+
+    # Wait for the actors to start up.
+    time.sleep(1)
+
+    # This is a mapping from actor handles to object IDs returned by
+    # methods on that actor.
+    result_ids = collections.defaultdict(lambda: [])
+
+    # In a loop we are going to create some actors, run some methods, kill
+    # a local scheduler, and run some more methods.
+    for node in worker_nodes:
+        # Create some actors.
+        actors.extend(
+            [SlowCounter.remote() for _ in range(num_actors_at_a_time)])
+        # Run some methods.
+        for j in range(len(actors)):
+            actor = actors[j]
+            for _ in range(num_function_calls_at_a_time):
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+        # Kill a node.
+        head_node_cluster.remove_node(node)
+
+        # Run some more methods.
+        for j in range(len(actors)):
+            actor = actors[j]
+            for _ in range(num_function_calls_at_a_time):
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+
+    # Get the results and check that they have the correct values.
+    for _, result_id_list in result_ids.items():
+        results = list(range(1, len(result_id_list) + 1))
+        assert ray.get(result_id_list) == results
