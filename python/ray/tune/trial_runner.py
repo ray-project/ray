@@ -140,13 +140,12 @@ class TrialRunner(object):
         with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
             runner_state = pickle.load(f)
 
-        runner = runner_state["runner"]
-
         logger.warning(
             "Tune recovery is still experimental."
             "There is limited search algorithm recovery support."
             "Restoring with a BasicVariantGenerator and FIFOScheduler.")
 
+        runner = runner_state["runner"]
         from ray.tune.suggest import BasicVariantGenerator
         runner._search_alg = BasicVariantGenerator()
         runner._scheduler_alg = FIFOScheduler()
