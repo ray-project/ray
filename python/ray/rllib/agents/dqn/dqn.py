@@ -220,14 +220,12 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            result = collect_metrics(
-                self.local_evaluator,
-                self.remote_evaluators[-len(self.remote_evaluators) // 3:],
-                timeout_seconds=self.config["collect_metrics_timeout"])
+            result = self.optimizer.collect_metrics(
+                timeout_seconds=self.config["collect_metrics_timeout"],
+                selected_evaluators=self.remote_evaluators[
+                    -len(self.remote_evaluators) // 3:])
         else:
-            result = collect_metrics(
-                self.local_evaluator,
-                self.remote_evaluators,
+            result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"])
 
         result.update(
