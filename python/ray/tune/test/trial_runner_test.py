@@ -1576,7 +1576,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
         self.assertRaises(TuneError, runner.step)
 
-    def testSaveRestore(self):
+    def testTrialSaveRestore(self):
         """Creates trials of different status to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
@@ -1640,7 +1640,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
-    def testNoSave(self):
+    def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
