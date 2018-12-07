@@ -45,6 +45,8 @@ class Experiment(object):
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
             to (e.g. ``s3://bucket``).
+        prefix_creator (func): Optional function for generating a prefix for
+            the trial directory.
         custom_loggers (list): List of custom logger creators to be used with
             each Trial. See `ray/tune/logger.py`.
         sync_cmd_tmpl (str): Template for syncer to run. If not provided,
@@ -91,6 +93,7 @@ class Experiment(object):
                  num_samples=1,
                  local_dir=None,
                  upload_dir=None,
+                 prefix_creator=None,
                  custom_loggers=None,
                  sync_cmd_tmpl=None,
                  checkpoint_freq=0,
@@ -106,6 +109,7 @@ class Experiment(object):
             "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
+            "prefix_creator": prefix_creator,
             "custom_loggers": custom_loggers,
             "sync_cmd_tmpl": sync_cmd_tmpl or "",  # See `upload_dir`.
             "checkpoint_freq": checkpoint_freq,

@@ -107,6 +107,10 @@ def make_parser(parser_creator=None, **kwargs):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
+        "--prefix-creator",
+        default=None,
+        help="Optional creator function for the trial directory prefix.")
+    parser.add_argument(
         "--sync-cmd-tmpl",
         default="",
         type=str,
@@ -208,6 +212,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
+        prefix_creator=spec.get("prefix_creator"),
         custom_loggers=spec.get("custom_loggers"),
         # str(None) doesn't create None
         sync_cmd_tmpl=spec.get("sync_cmd_tmpl"),

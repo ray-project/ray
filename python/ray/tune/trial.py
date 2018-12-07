@@ -71,6 +71,7 @@ def has_trainable(trainable_name):
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
+
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
 
@@ -124,6 +125,7 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
+                 prefix_creator=None,
                  custom_loggers=None,
                  sync_cmd_tmpl=None,
                  max_failures=0):
@@ -148,6 +150,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.prefix_creator = prefix_creator
         self.custom_loggers = custom_loggers
         self.sync_cmd_tmpl = sync_cmd_tmpl
         self.verbose = True
@@ -164,10 +167,7 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
-        if trial_id is not None:
-            self.trial_id = trial_id
-        else:
-            self.trial_id = Trial.generate_id()
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
 
@@ -178,12 +178,17 @@ class Trial(object):
     def init_logger(self):
         """Init logger."""
 
+        if self.prefix_creator:
+            prefix = self.prefix_creator(
+                self.trainable_name, self.config, self.trial_id)
+        else:
+            prefix = "{}_{}".format(str(self)[:MAX_LEN_IDENTIFIER], date_str())
+
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                prefix=prefix,
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config,
