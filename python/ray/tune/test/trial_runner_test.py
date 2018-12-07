@@ -1577,7 +1577,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner.step)
 
     def testSaveRestore(self):
-        """Creates trials of different status to test runner.save/restore."""
+        """Creates trials of different status to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
         default_resources = Resources(cpu=1, gpu=0)
@@ -1625,8 +1625,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner(BasicVariantGenerator())
-        runner2.restore(tmpdir)
+        runner2 = TrialRunner.restore(tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -1660,8 +1659,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()  # start
         runner.step()
 
-        runner2 = TrialRunner(BasicVariantGenerator())
-        runner2.restore(tmpdir)
+        runner2 = TrialRunner.restore(tmpdir)
         self.assertEquals(len(runner2.get_trials()), 0)
         runner2.step()
         self.assertRaises(TuneError, runner2.step)

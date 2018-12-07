@@ -297,8 +297,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     ray.shutdown()
 
     cluster = _start_new_cluster()
-    runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(dirpath)
+    runner = TrialRunner.restore(dirpath)
     runner.step()  # start
     runner.step()  # start2
 
@@ -341,8 +340,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster = _start_new_cluster()
 
     # Check that last_result.iteration = 1
-    runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(dirpath)
+    runner = TrialRunner.restore(dirpath)
     trials = runner.get_trials()
     trials = tune.run_experiments(restore_from_path=dirpath)
     assert len(trials) == 2
@@ -393,8 +391,7 @@ tune.run_experiments(
     for i in range(30):
         if os.path.exists(os.path.join(dirpath, "experiment.state")):
             # Inspect the internal trialrunner
-            runner = TrialRunner(BasicVariantGenerator())
-            runner.restore(dirpath)
+            runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res is not None and last_res["training_iteration"] == 3:
@@ -407,8 +404,7 @@ tune.run_experiments(
     register_fail_trainable()
 
     # Inspect the internal trialrunner just in case
-    runner = TrialRunner(BasicVariantGenerator())
-    runner.restore(dirpath)
+    runner = TrialRunner.restore(dirpath)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING

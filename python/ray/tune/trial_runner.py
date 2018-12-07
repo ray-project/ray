@@ -499,15 +499,15 @@ class TrialRunner(object):
         state = self.__dict__.copy()
 
         state["trial_executor"] = None
-
+        state["_search_alg"] = None
         if not isinstance(state["_scheduler_alg"], FIFOScheduler):
             # TODO(rliaw): Remove this once component FT is implemented
             state["_scheduler_alg"] = None
 
-        state["_search_alg"] = None
-
         if state["_server"]:
             state["_launch_web_server"] = True
+            state["_server"] = None
+
         state["_stop_queue"] = []
         state["_trials"] = []
         state["_trial_checkpoints"] = {}
