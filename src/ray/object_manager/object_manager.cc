@@ -156,7 +156,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
-      [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
+      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
+             bool created) {
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -166,7 +167,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
         // NOTE(swang): Since we are overwriting the previous list of clients,
         // we may end up sending a duplicate request to the same client as
         // before.
-        it->second.client_locations = client_ids;
+        it->second.client_locations =
+            std::vector<ClientID>(client_ids.begin(), client_ids.end());
         if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
           // notification about a new object location.  Cancel the timer until
@@ -591,8 +593,9 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
-                                     const ObjectID &lookup_object_id) {
+          object_id,
+          [this, wait_id](const ObjectID &lookup_object_id,
+                          const std::unordered_set<ClientID> &client_ids, bool created) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
               wait_state.remaining.erase(lookup_object_id);
@@ -624,8 +627,9 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-          wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
-                                              const ObjectID &subscribe_object_id) {
+          wait_id, object_id,
+          [this, wait_id](const ObjectID &subscribe_object_id,
+                          const std::unordered_set<ClientID> &client_ids, bool created) {
             if (!client_ids.empty()) {
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
               if (object_id_wait_state == active_wait_requests_.end()) {

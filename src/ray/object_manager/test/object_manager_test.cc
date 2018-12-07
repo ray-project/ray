@@ -285,8 +285,9 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
-                                           const ray::ObjectID &object_id) {
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool created) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }

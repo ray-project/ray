@@ -27,12 +27,18 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   void FlushCallbacks() {
     for (const auto &callback : callbacks_) {
       const ObjectID object_id = callback.first;
-      callback.second(locations_[object_id], object_id);
+      auto it = locations_.find(object_id);
+      if (it == locations_.end()) {
+        callback.second(object_id, {}, /*created=*/false);
+      } else {
+        callback.second(object_id, it->second, /*created=*/true);
+      }
     }
     callbacks_.clear();
   }
 
-  void SetObjectLocations(const ObjectID &object_id, std::vector<ClientID> locations) {
+  void SetObjectLocations(const ObjectID &object_id,
+                          const std::unordered_set<ClientID> &locations) {
     locations_[object_id] = locations;
   }
 
@@ -54,7 +60,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
-  std::unordered_map<ObjectID, std::vector<ClientID>> locations_;
+  std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
 class MockGcs : public gcs::PubsubInterface<TaskID>,
@@ -138,8 +144,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
-            io_service_,
-            [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
+            io_service_, [this](const TaskID &task_id,
+                                bool created) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
