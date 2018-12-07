@@ -10,11 +10,11 @@ be trained, checkpointed, or an action computed.
 
 .. image:: rllib-api.svg
 
-You can train a simple DQN agent with the following command
+You can train a simple DQN agent with the following command:
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/train.py --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v0
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -26,10 +26,12 @@ training process with TensorBoard by running
 
      tensorboard --logdir=~/ray_results
 
-The ``train.py`` script has a number of options you can show by running
+The ``rllib train`` command (same as the ``train.py`` script in the repo) has a number of options you can show by running:
 
 .. code-block:: bash
 
+    rllib train --help
+    -or-
     python ray/python/ray/rllib/train.py --help
 
 The most important options are for choosing the environment
@@ -42,16 +44,16 @@ Evaluating Trained Agents
 
 In order to save checkpoints from which to evaluate agents,
 set ``--checkpoint-freq`` (number of training iterations between checkpoints)
-when running ``train.py``.
+when running ``rllib train``.
 
 
 An example of evaluating a previously trained DQN agent is as follows:
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/rollout.py \
-          ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
-          --run DQN --env CartPole-v0 --steps 10000
+    rllib rollout \
+        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
+        --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
@@ -70,8 +72,7 @@ In an example below, we train A2C by specifying 8 workers through the config fla
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 8}'
+    rllib train --env=PongDeterministic-v4 --run=A2C --config '{"num_workers": 8}'
 
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
@@ -98,11 +99,11 @@ Some good hyperparameters and settings are available in
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
-You can run these with the ``train.py`` script as follows:
+You can run these with the ``rllib train`` command as follows:
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/train.py -f /path/to/tuned/example.yaml
+    rllib train -f /path/to/tuned/example.yaml
 
 Python API
 ----------
@@ -227,7 +228,7 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be averaged and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
 
 .. code-block:: python
 
@@ -244,10 +245,10 @@ You can provide callback functions to be called at points during policy evaluati
 
     def on_episode_end(info):
         episode = info["episode"]
-        mean_pole_angle = np.mean(episode.user_data["pole_angles"])
+        pole_angle = np.mean(episode.user_data["pole_angles"])
         print("episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, mean_pole_angle))
-        episode.custom_metrics["mean_pole_angle"] = mean_pole_angle
+            episode.episode_id, episode.length, pole_angle))
+        episode.custom_metrics["pole_angle"] = pole_angle
 
     def on_train_result(info):
         print("agent.train() result: {} -> {} episodes".format(
@@ -356,7 +357,7 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
+    rllib train --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "monitor": true}'
 
     # videos will be saved in the ~/ray_results/<experiment> dir, for example
@@ -372,7 +373,7 @@ You can control the agent log level via the ``"log_level"`` flag. Valid values a
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 \
+    rllib train --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
 
 Stack Traces

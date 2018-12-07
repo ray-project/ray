@@ -135,6 +135,7 @@ class LearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
+        self.stats = {}
 
     def run(self):
         while not self.stopped:
@@ -151,9 +152,9 @@ class LearnerThread(threading.Thread):
                     prio_dict[pid] = (
                         replay.policy_batches[pid]["batch_indexes"],
                         info["td_error"])
-            # send `replay` back also so that it gets released by the original
-            # thread: https://github.com/ray-project/ray/issues/2610
-            self.outqueue.put((ra, replay, prio_dict, replay.count))
+                    if "stats" in info:
+                        self.stats[pid] = info["stats"]
+            self.outqueue.put((ra, prio_dict, replay.count))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True
 
@@ -290,11 +291,12 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 else:
                     with self.timers["get_samples"]:
                         samples = ray.get(replay)
-                    self.learner.inqueue.put((ra, samples))
+                    # Defensive copy against plasma crashes, see #2610 #3452
+                    self.learner.inqueue.put((ra, samples and samples.copy()))
 
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
-                ra, _, prio_dict, count = self.learner.outqueue.get()
+                ra, prio_dict, count = self.learner.outqueue.get()
                 ra.update_priorities.remote(prio_dict)
                 train_timesteps += count
 
@@ -331,4 +333,6 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         }
         if self.debug:
             stats.update(debug_stats)
+        if self.learner.stats:
+            stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)

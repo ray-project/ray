@@ -21,7 +21,7 @@ Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Pong-ram-v4 --run=PPO
+  rllib train --env=Pong-ram-v4 --run=PPO
 
 This will train an agent on the ``Pong-ram-v4`` Atari environment. You can also
 try passing in the ``Pong-v0`` environment or the ``CartPole-v0`` environment.
