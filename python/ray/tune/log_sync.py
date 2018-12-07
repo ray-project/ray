@@ -30,7 +30,7 @@ ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
 def get_syncer(local_dir, remote_dir=None, sync_cmd_tmpl=None):
     if remote_dir:
-        if not any(
+        if not sync_cmd_tmpl and not any(
                 remote_dir.startswith(prefix)
                 for prefix in ALLOWED_REMOTE_PREFIXES):
             raise TuneError("Upload uri must start with one of: {}"
@@ -63,6 +63,14 @@ def wait_for_log_sync():
         syncer.wait()
 
 
+def validate_sync_cmd(sync_cmd_tmpl):
+    if sync_cmd_tmpl:
+        assert "{remote_dir}" in sync_cmd_tmpl, (
+            "Sync template missing '{remote_dir}'.")
+        assert "{local_dir}" in sync_cmd_tmpl, (
+            "Sync template missing '{local_dir}'.")
+
+
 class _LogSyncer(object):
     """Log syncer for tune.
 
@@ -77,11 +85,6 @@ class _LogSyncer(object):
     """
 
     def __init__(self, local_dir, remote_dir=None, sync_cmd_tmpl=None):
-        if sync_cmd_tmpl:
-            assert "{remote_dir}" in sync_cmd_tmpl, (
-                "Sync template missing '{remote_dir}'.")
-            assert "{local_dir}" in sync_cmd_tmpl, (
-                "Sync template missing '{local_dir}'.")
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.sync_cmd_tmpl = sync_cmd_tmpl

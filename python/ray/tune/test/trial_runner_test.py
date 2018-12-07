@@ -677,7 +677,7 @@ class RunExperimentTest(unittest.TestCase):
     def testCustomLogger(self):
         class CustomLogger(Logger):
             def on_result(self, result):
-                with open(os.path.join(self.logdir, "test.log"), "wb") as f:
+                with open(os.path.join(self.logdir, "test.log"), "w") as f:
                     f.write("hi")
 
         [trial] = run_experiments({
@@ -687,7 +687,7 @@ class RunExperimentTest(unittest.TestCase):
                 "custom_loggers": [CustomLogger]
             }
         })
-        self.assertTrue(os.exists(os.path.join(trial.logdir, "test.log")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
     def testSyncCommand(self):
         def fail_sync_local():
@@ -695,7 +695,7 @@ class RunExperimentTest(unittest.TestCase):
                 "foo": {
                     "run": "__fake",
                     "stop": {"training_iteration": 1},
-                    "remote_dir": "test",
+                    "upload_dir": "test",
                     "sync_cmd_tmpl": "ls {remote_dir}"
                 }
             })
@@ -706,7 +706,7 @@ class RunExperimentTest(unittest.TestCase):
                 "foo": {
                     "run": "__fake",
                     "stop": {"training_iteration": 1},
-                    "remote_dir": "test",
+                    "upload_dir": "test",
                     "sync_cmd_tmpl": "ls {local_dir}"
                 }
             })

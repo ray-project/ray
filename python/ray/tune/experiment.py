@@ -7,9 +7,10 @@ import logging
 import six
 import types
 
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
+from ray.tune.log_sync import validate_sync_cmd
 from ray.tune.registry import register_trainable
+from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ class Experiment(object):
                  checkpoint_at_end=False,
                  max_failures=3,
                  restore=None):
+        validate_sync_cmd(sync_cmd_tmpl)
         spec = {
             "run": self._register_if_needed(run),
             "stop": stop or {},
