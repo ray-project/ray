@@ -9,6 +9,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 
+from ray import tune
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -688,6 +689,17 @@ class RunExperimentTest(unittest.TestCase):
             }
         })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+
+    def testCustomTrialString(self):
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {"training_iteration": 1},
+                "trial_string_creator": tune.function(
+                    lambda name, tid, cfg: "{}_{}_321".format(name, tid))
+            }
+        })
+        self.assertEquals(str(trial), "{}_{}_321".format(trial.trainable_name, trial.trial_id))
 
     def testSyncCommand(self):
         def fail_sync_local():
