@@ -129,6 +129,8 @@ class TrialRunner(object):
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
 
+        TODO: Consider checkpointing registry too.
+
         Args:
             checkpoint_dir (str): Path to checkpoint (previously specified).
 
