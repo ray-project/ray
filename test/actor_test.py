@@ -2149,7 +2149,13 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
     # Use custom resource to make sure the actor is only created on worker
     # nodes, not on the head node.
     for _ in range(max_reconstructions + 2):
-        cluster.add_node(resources={"a": 1})
+        cluster.add_node(
+            resources={"a": 1},
+            _internal_config=json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200,
+                "num_heartbeats_timeout": 10,
+            }),
+        )
 
     def kill_node(object_store_socket):
         node_to_remove = None
@@ -2204,8 +2210,12 @@ def test_multiple_actor_reconstruction(head_node_cluster):
     num_function_calls_at_a_time = 10
 
     worker_nodes = [
-        head_node_cluster.add_node(resources={"CPU": 3})
-        for _ in range(num_local_schedulers)
+        head_node_cluster.add_node(
+            resources={"CPU": 3},
+            _internal_config=json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200,
+                "num_heartbeats_timeout": 10,
+            })) for _ in range(num_local_schedulers)
     ]
 
     @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
