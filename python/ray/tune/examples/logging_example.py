@@ -14,15 +14,16 @@ import numpy as np
 import ray
 from ray import tune
 from ray.tune import Trainable, run_experiments, Experiment
-from ray.tune.schedulers import HyperBandScheduler
 
 
 class TestLogger(tune.logger.Logger):
     def on_result(self, result):
         print("TestLogger", result)
 
+
 def trial_str_creator(trainable_name, trial_id, config):
     return "{}_{}_123".format(trainable_name, trial_id)
+
 
 class MyTrainableClass(Trainable):
     """Example agent whose learning curve is a random sigmoid.

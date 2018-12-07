@@ -71,7 +71,6 @@ def has_trainable(trainable_name):
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
-
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
 
@@ -182,7 +181,8 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                prefix="{}_{}".format(
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config,
@@ -324,8 +324,8 @@ class Trial(object):
         Can be overriden with a custom string creator.
         """
         if self.trial_string_creator:
-            return self.trial_string_creator(
-                self.trainable_name, self.trial_id, self.config)
+            return self.trial_string_creator(self.trainable_name,
+                                             self.trial_id, self.config)
 
         if "env" in self.config:
             identifier = "{}_{}".format(self.trainable_name,

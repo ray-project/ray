@@ -45,8 +45,8 @@ class Experiment(object):
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
             to (e.g. ``s3://bucket``).
-        trial_string_creator (func): Optional function for generating a prefix for
-            the trial directory.
+        trial_string_creator (func): Optional function for generating
+            the trial string representation.
         custom_loggers (list): List of custom logger creators to be used with
             each Trial. See `ray/tune/logger.py`.
         sync_cmd_tmpl (str): Template for syncer to run. If not provided,

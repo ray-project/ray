@@ -684,7 +684,9 @@ class RunExperimentTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "__fake",
-                "stop": {"training_iteration": 1},
+                "stop": {
+                    "training_iteration": 1
+                },
                 "custom_loggers": [CustomLogger]
             }
         })
@@ -694,34 +696,44 @@ class RunExperimentTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "__fake",
-                "stop": {"training_iteration": 1},
+                "stop": {
+                    "training_iteration": 1
+                },
                 "trial_string_creator": tune.function(
                     lambda name, tid, cfg: "{}_{}_321".format(name, tid))
             }
         })
-        self.assertEquals(str(trial), "{}_{}_321".format(trial.trainable_name, trial.trial_id))
+        self.assertEquals(
+            str(trial), "{}_{}_321".format(trial.trainable_name,
+                                           trial.trial_id))
 
     def testSyncCommand(self):
         def fail_sync_local():
             [trial] = run_experiments({
                 "foo": {
                     "run": "__fake",
-                    "stop": {"training_iteration": 1},
+                    "stop": {
+                        "training_iteration": 1
+                    },
                     "upload_dir": "test",
                     "sync_cmd_tmpl": "ls {remote_dir}"
                 }
             })
+
         self.assertRaises(AssertionError, fail_sync_local)
 
         def fail_sync_remote():
             [trial] = run_experiments({
                 "foo": {
                     "run": "__fake",
-                    "stop": {"training_iteration": 1},
+                    "stop": {
+                        "training_iteration": 1
+                    },
                     "upload_dir": "test",
                     "sync_cmd_tmpl": "ls {local_dir}"
                 }
             })
+
         self.assertRaises(AssertionError, fail_sync_remote)
 
 
