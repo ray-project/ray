@@ -141,8 +141,8 @@ class TrialRunner(object):
             runner_state = pickle.load(f)
 
         logger.warning(
-            "Tune recovery is still experimental."
-            "There is limited search algorithm recovery support."
+            "Tune recovery is still experimental. "
+            "There is limited search algorithm recovery support. "
             "Restoring with a BasicVariantGenerator and FIFOScheduler.")
 
         runner = runner_state["runner"]
