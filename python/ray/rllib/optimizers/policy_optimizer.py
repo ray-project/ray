@@ -7,7 +7,6 @@ import logging
 import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
