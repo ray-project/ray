@@ -16,6 +16,7 @@ from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              EPISODES_TOTAL)
+from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -672,6 +673,20 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
+
+    def testCustomLogger(self):
+        class CustomLogger(Logger):
+            def on_result(self, result):
+                with open(os.path.join(self.logdir, "test.log"), "wb") as f:
+                    f.write("hi")
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {"training_iteration": 1}
+            }
+        })
+        self.assertTrue(os.exists(os.path.join(trial.logdir, "test.log")))
 
 
 class VariantGeneratorTest(unittest.TestCase):
