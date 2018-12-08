@@ -273,6 +273,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
     cluster.add_node(resources=dict(CPU=1))
+    assert cluster.wait_for_nodes()
+
     dirpath = str(tmpdir)
     runner = TrialRunner(
         BasicVariantGenerator(), checkpoint_freq=2, checkpoint_dir=dirpath)
