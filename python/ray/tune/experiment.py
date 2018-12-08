@@ -49,8 +49,10 @@ class Experiment(object):
             the trial string representation.
         custom_loggers (list): List of custom logger creators to be used with
             each Trial. See `ray/tune/logger.py`.
-        sync_cmd_tmpl (str): Template for syncer to run. If not provided,
-            the sync command defaults to standard S3 or gsutil sync comamnds.
+        sync_function (func|str): Function for syncing the local_dir to
+            upload_dir. If string, then it must be a string template for
+            syncer to run. If not provided, the sync command defaults
+            to standard S3 or gsutil sync comamnds.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
@@ -95,12 +97,14 @@ class Experiment(object):
                  upload_dir=None,
                  trial_name_creator=None,
                  custom_loggers=None,
-                 sync_cmd_tmpl=None,
+                 sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  max_failures=3,
                  restore=None):
-        validate_sync_cmd(sync_cmd_tmpl)
+        validate_sync_cmd(sync_function)
+        if sync_function:
+            assert upload_dir, "Need `upload_dir` if sync_function given."
         spec = {
             "run": self._register_if_needed(run),
             "stop": stop or {},
@@ -111,7 +115,7 @@ class Experiment(object):
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "custom_loggers": custom_loggers,
-            "sync_cmd_tmpl": sync_cmd_tmpl or "",  # See `upload_dir`.
+            "sync_function": sync_function or "",  # See `upload_dir`.
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,

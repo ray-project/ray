@@ -70,7 +70,7 @@ class UnifiedLogger(Logger):
         logdir: Directory for all logger creators to log to.
         upload_uri (str): Optional URI where the logdir is sync'ed to.
         custom_loggers (list): List of custom logger creators.
-        sync_cmd_tmpl (str): Optional template for syncer to run. Needs to
+        sync_function (str): Optional template for syncer to run. Needs to
             include replacement fields "{local_dir}" and "{remote_dir}".
             See ray/python/ray/tune/log_sync.py
     """
@@ -80,9 +80,9 @@ class UnifiedLogger(Logger):
                  logdir,
                  upload_uri=None,
                  custom_loggers=None,
-                 sync_cmd_tmpl=None):
+                 sync_function=None):
         self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
-        self._sync_cmd_tmpl = sync_cmd_tmpl
+        self._sync_function = sync_function
         if custom_loggers:
             assert isinstance(custom_loggers, list), "Improper custom loggers."
             self._logger_list += custom_loggers
@@ -97,7 +97,7 @@ class UnifiedLogger(Logger):
             except Exception:
                 logger.exception("Could not instantiate {} - skipping.")
         self._log_syncer = get_syncer(
-            self.logdir, self.uri, sync_cmd_tmpl=self._sync_cmd_tmpl)
+            self.logdir, self.uri, sync_function=self._sync_function)
 
     def on_result(self, result):
         for logger in self._loggers:

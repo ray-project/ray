@@ -707,7 +707,7 @@ class RunExperimentTest(unittest.TestCase):
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 
-    def testSyncCommand(self):
+    def testSyncFunction(self):
         def fail_sync_local():
             [trial] = run_experiments({
                 "foo": {
@@ -716,7 +716,7 @@ class RunExperimentTest(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_cmd_tmpl": "ls {remote_dir}"
+                    "sync_function": "ls {remote_dir}"
                 }
             })
 
@@ -730,11 +730,27 @@ class RunExperimentTest(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_cmd_tmpl": "ls {local_dir}"
+                    "sync_function": "ls {local_dir}"
                 }
             })
 
         self.assertRaises(AssertionError, fail_sync_remote)
+
+        def sync_func(local, remote):
+            with open(os.path.join(local, "test.log"), "w") as f:
+                f.write(remote)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "upload_dir": "test",
+                "sync_function": tune.function(sync_func)
+            }
+        })
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
 
 class VariantGeneratorTest(unittest.TestCase):

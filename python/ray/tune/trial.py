@@ -126,7 +126,7 @@ class Trial(object):
                  upload_dir=None,
                  trial_name_creator=None,
                  custom_loggers=None,
-                 sync_cmd_tmpl=None,
+                 sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -151,7 +151,7 @@ class Trial(object):
         self.upload_dir = upload_dir
         self.trial_name_creator = trial_name_creator
         self.custom_loggers = custom_loggers
-        self.sync_cmd_tmpl = sync_cmd_tmpl
+        self.sync_function = sync_function
         self.verbose = True
         self.max_failures = max_failures
 
@@ -189,7 +189,7 @@ class Trial(object):
                 self.logdir,
                 upload_uri=self.upload_dir,
                 custom_loggers=self.custom_loggers,
-                sync_cmd_tmpl=self.sync_cmd_tmpl)
+                sync_function=self.sync_function)
 
     def close_logger(self):
         """Close logger."""
