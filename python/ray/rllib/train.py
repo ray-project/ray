@@ -57,10 +57,10 @@ def create_parser(parser_creator=None):
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
     parser.add_argument(
-        "--ray-max-redis-memory",
+        "--ray-redis-max-memory",
         default=None,
         type=int,
-        help="--max-redis-memory to pass to Ray."
+        help="--redis-max-memory to pass to Ray."
         " This only has an affect in local mode.")
     parser.add_argument(
         "--ray-object-store-memory",
