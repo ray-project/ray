@@ -1397,9 +1397,8 @@ def start_ray_processes(address_info=None,
         resources = num_local_schedulers * [resources]
 
     if redis_max_memory and collect_profiling_data:
-        logger.warn(
-            "Profiling data cannot be LRU evicted, so it is disabled "
-            "when redis_max_memory is set.")
+        logger.warn("Profiling data cannot be LRU evicted, so it is disabled "
+                    "when redis_max_memory is set.")
         collect_profiling_data = False
 
     if num_workers is not None:

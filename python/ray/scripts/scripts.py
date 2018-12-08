@@ -120,11 +120,10 @@ def cli(logging_level, logging_format):
     "--redis-max-memory",
     required=False,
     type=int,
-    help=(
-        "The max amount of memory (in bytes) to allow redis to use, or None "
-        "for no limit. Once the limit is exceeded, redis will start LRU "
-        "eviction of entries. This only applies to the sharded "
-        "redis tables (task and object tables)."))
+    help=("The max amount of memory (in bytes) to allow redis to use, or None "
+          "for no limit. Once the limit is exceeded, redis will start LRU "
+          "eviction of entries. This only applies to the sharded "
+          "redis tables (task and object tables)."))
 @click.option(
     "--collect-profiling-data",
     default=True,
@@ -220,11 +219,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
           redis_max_memory, collect_profiling_data, num_workers, num_cpus,
-          num_gpus, resources, head, no_ui, block,
-          plasma_directory, huge_pages, autoscaling_config,
-          no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          internal_config):
+          num_gpus, resources, head, no_ui, block, plasma_directory,
+          huge_pages, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
