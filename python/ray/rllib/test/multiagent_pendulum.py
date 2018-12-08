@@ -4,20 +4,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
-import random
-
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
 import ray
-from ray import tune
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.test.test_multi_agent_env import make_multiagent
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
-
 
 if __name__ == "__main__":
     ray.init()
