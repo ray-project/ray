@@ -561,7 +561,7 @@ def _clip_actions(actions, space):
     """Called to clip actions to the specified range of this policy.
 
     Arguments:
-        actions: Batch of actions or TupleActions.
+        actions: Single action.
         space: Action space the actions should be present in.
 
     Returns:
@@ -571,13 +571,13 @@ def _clip_actions(actions, space):
     if isinstance(space, gym.spaces.Box):
         return np.clip(actions, space.low, space.high)
     elif isinstance(space, gym.spaces.Tuple):
-        if not isinstance(actions, TupleActions):
+        if type(actions) not in (tuple, list):
             raise ValueError("Expected tuple space for actions {}: {}".format(
                 actions, space))
         out = []
-        for a, s in zip(actions.batches, space.spaces):
+        for a, s in zip(actions, space.spaces):
             out.append(_clip_actions(a, s))
-        return TupleActions(out)
+        return out
     else:
         return actions
 
