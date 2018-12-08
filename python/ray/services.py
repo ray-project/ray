@@ -950,7 +950,8 @@ def start_raylet(redis_address,
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
-                                collect_profiling_data, get_temp_root()))
+                                "1" if collect_profiling_data else "0",
+                                get_temp_root()))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
@@ -1395,11 +1396,6 @@ def start_ray_processes(address_info=None,
         resources = {}
     if not isinstance(resources, list):
         resources = num_local_schedulers * [resources]
-
-    if redis_max_memory and collect_profiling_data:
-        logger.warn("Profiling data cannot be LRU evicted, so it is disabled "
-                    "when redis_max_memory is set.")
-        collect_profiling_data = False
 
     if num_workers is not None:
         raise Exception("The 'num_workers' argument is deprecated. Please use "

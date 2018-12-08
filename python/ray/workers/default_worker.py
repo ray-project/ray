@@ -57,8 +57,8 @@ parser.add_argument(
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
     "--collect-profiling-data",
-    type=bool,
-    default=True,
+    type=int,  # but argparse can't handle bool values
+    default=1,
     help="Whether to collect profiling data from workers.")
 parser.add_argument(
     "--temp-dir",
@@ -76,8 +76,10 @@ if __name__ == "__main__":
         "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
         "manager_socket_name": args.object_store_manager_name,
-        "raylet_socket_name": args.raylet_name
+        "raylet_socket_name": args.raylet_name,
+        "collect_profiling_data": args.collect_profiling_data,
     }
+    print(info)
 
     logging.basicConfig(
         level=logging.getLevelName(args.logging_level.upper()),

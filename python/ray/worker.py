@@ -217,7 +217,7 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = profiling.Profiler(self)
+        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         self.state_lock = threading.Lock()
         # A dictionary that maps from driver id to SerializationContext
@@ -1447,6 +1447,11 @@ def _init(address_info=None,
     else:
         driver_mode = SCRIPT_MODE
 
+    if redis_max_memory and collect_profiling_data:
+        logger.warn("Profiling data cannot be LRU evicted, so it is disabled "
+                    "when redis_max_memory is set.")
+        collect_profiling_data = False
+
     # Get addresses of existing services.
     if address_info is None:
         address_info = {}
@@ -1568,7 +1573,8 @@ def _init(address_info=None,
             "node_ip_address": node_ip_address,
             "redis_address": address_info["redis_address"],
             "store_socket_name": address_info["object_store_addresses"][0],
-            "webui_url": address_info["webui_url"]
+            "webui_url": address_info["webui_url"],
+            "collect_profiling_data": collect_profiling_data,
         }
         driver_address_info["raylet_socket_name"] = (
             address_info["raylet_socket_names"][0])
@@ -1955,6 +1961,11 @@ def connect(info,
 
     # Enable nice stack traces on SIGSEGV etc.
     faulthandler.enable(all_threads=False)
+
+    if info["collect_profiling_data"]:
+        worker.profiler = profiling.Profiler(worker)
+    else:
+        worker.profiler = profiling.NoopProfiler()
 
     # Initialize some fields.
     if mode is WORKER_MODE:
