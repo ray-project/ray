@@ -73,8 +73,8 @@ def validate_sync_function(sync_function):
         assert "{local_dir}" in sync_function, (
             "Sync template missing '{local_dir}'.")
     elif not isinstance(sync_function, types.FunctionTypes):
-        raise ValueError("Sync function {} must be string or function".format(sync_function))
-
+        raise ValueError("Sync function {} must be string or function".format(
+            sync_function))
 
 
 class _LogSyncer(object):
