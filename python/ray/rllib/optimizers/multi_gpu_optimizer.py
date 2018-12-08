@@ -81,7 +81,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     else:
                         rnn_inputs = []
                     self.par_opt = LocalSyncParallelOptimizer(
-                        self.policy.optimizer(), self.devices,
+                        self.policy._optimizer, self.devices,
                         [v for _, v in self.policy.loss_inputs()], rnn_inputs,
                         self.per_device_batch_size, self.policy.copy)
 
