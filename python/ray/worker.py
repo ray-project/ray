@@ -1342,6 +1342,8 @@ def _init(address_info=None,
           num_workers=None,
           num_local_schedulers=None,
           object_store_memory=None,
+          redis_max_memory=None,
+          collect_profiling_data=True,
           local_mode=False,
           driver_mode=None,
           redirect_worker_output=False,
@@ -1386,6 +1388,14 @@ def _init(address_info=None,
             This is only provided if start_ray_local is True.
         object_store_memory: The maximum amount of memory (in bytes) to
             allow the object store to use.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data. Note that
+            profiling data cannot be LRU evicted, so if you set
+            redis_max_memory then profiling should also be disabled to prevent
+            it from consuming all available redis memory.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
@@ -1479,6 +1489,8 @@ def _init(address_info=None,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
             object_store_memory=object_store_memory,
+            redis_max_memory=redis_max_memory,
+            collect_profiling_data=collect_profiling_data,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
@@ -1519,6 +1531,9 @@ def _init(address_info=None,
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
+        if redis_max_memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "redis_max_memory must not be provided.")
         if plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
@@ -1578,6 +1593,8 @@ def init(redis_address=None,
          num_gpus=None,
          resources=None,
          object_store_memory=None,
+         redis_max_memory=None,
+         collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
@@ -1634,6 +1651,14 @@ def init(redis_address=None,
             of that resource available.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data. Note that
+            profiling data cannot be LRU evicted, so if you set
+            redis_max_memory then profiling should also be disabled to prevent
+            it from consuming all available redis memory.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -1734,6 +1759,8 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
+        redis_max_memory=redis_max_memory,
+        collect_profiling_data=collect_profiling_data,
         driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
