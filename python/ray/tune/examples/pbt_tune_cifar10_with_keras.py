@@ -23,7 +23,7 @@ from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
-from ray.tune import grid_search, run_experiments
+from ray.tune import grid_search, run_experiments, sample_from
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
             "epochs": 1,
             "batch_size": 64,
             "lr": grid_search([10**-4, 10**-5]),
-            "decay": lambda spec: spec.config.lr / 100.0,
+            "decay": sample_from(lambda spec: spec.config.lr / 100.0),
             "dropout": grid_search([0.25, 0.5]),
         },
         "num_samples": 4,
