@@ -97,7 +97,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
         if self.remote_evaluators:
-            self.set_evaluators(self.remote_evaluators)
+            self._set_evaluators(self.remote_evaluators)
 
     @override(PolicyOptimizer)
     def step(self):
@@ -153,7 +153,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return dict(PolicyOptimizer.stats(self), **stats)
 
     # For https://github.com/ray-project/ray/issues/2541 only
-    def set_evaluators(self, remote_evaluators):
+    def _set_evaluators(self, remote_evaluators):
         self.remote_evaluators = remote_evaluators
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
