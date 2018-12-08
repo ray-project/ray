@@ -21,8 +21,8 @@ class TestLogger(tune.logger.Logger):
         print("TestLogger", result)
 
 
-def trial_str_creator(trainable_name, trial_id, config):
-    return "{}_{}_123".format(trainable_name, trial_id)
+def trial_str_creator(trial):
+    return "{}_{}_123".format(trial.trainable_name, trial.trial_id)
 
 
 class MyTrainableClass(Trainable):
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         name="hyperband_test",
         run=MyTrainableClass,
         num_samples=1,
-        trial_string_creator=tune.function(trial_str_creator),
+        trial_name_creator=tune.function(trial_str_creator),
         custom_loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={

@@ -699,8 +699,8 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "trial_string_creator": tune.function(
-                    lambda name, tid, cfg: "{}_{}_321".format(name, tid))
+                "trial_name_creator": tune.function(
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
             }
         })
         self.assertEquals(

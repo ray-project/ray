@@ -124,7 +124,7 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
-                 trial_string_creator=None,
+                 trial_name_creator=None,
                  custom_loggers=None,
                  sync_cmd_tmpl=None,
                  max_failures=0):
@@ -149,7 +149,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.trial_string_creator = trial_string_creator
+        self.trial_name_creator = trial_name_creator
         self.custom_loggers = custom_loggers
         self.sync_cmd_tmpl = sync_cmd_tmpl
         self.verbose = True
@@ -323,9 +323,8 @@ class Trial(object):
 
         Can be overriden with a custom string creator.
         """
-        if self.trial_string_creator:
-            return self.trial_string_creator(self.trainable_name,
-                                             self.trial_id, self.config)
+        if self.trial_name_creator:
+            return self.trial_name_creator(self)
 
         if "env" in self.config:
             identifier = "{}_{}".format(self.trainable_name,
