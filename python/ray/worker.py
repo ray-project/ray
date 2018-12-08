@@ -1962,7 +1962,7 @@ def connect(info,
     # Enable nice stack traces on SIGSEGV etc.
     faulthandler.enable(all_threads=False)
 
-    if info["collect_profiling_data"]:
+    if info.get("collect_profiling_data"):
         worker.profiler = profiling.Profiler(worker)
     else:
         worker.profiler = profiling.NoopProfiler()
