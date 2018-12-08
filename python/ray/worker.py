@@ -1574,7 +1574,6 @@ def _init(address_info=None,
             "redis_address": address_info["redis_address"],
             "store_socket_name": address_info["object_store_addresses"][0],
             "webui_url": address_info["webui_url"],
-            "collect_profiling_data": collect_profiling_data,
         }
         driver_address_info["raylet_socket_name"] = (
             address_info["raylet_socket_names"][0])
@@ -1587,7 +1586,8 @@ def _init(address_info=None,
         mode=driver_mode,
         worker=global_worker,
         driver_id=driver_id,
-        redis_password=redis_password)
+        redis_password=redis_password,
+        collect_profiling_data=collect_profiling_data)
     return address_info
 
 
@@ -1940,7 +1940,8 @@ def connect(info,
             mode=WORKER_MODE,
             worker=global_worker,
             driver_id=None,
-            redis_password=None):
+            redis_password=None,
+            collect_profiling_data=True):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1953,6 +1954,7 @@ def connect(info,
         driver_id: The ID of driver. If it's None, then we will generate one.
         redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
+        collect_profiling_data: Whether to collect profiling data from workers.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1962,7 +1964,7 @@ def connect(info,
     # Enable nice stack traces on SIGSEGV etc.
     faulthandler.enable(all_threads=False)
 
-    if info.get("collect_profiling_data"):
+    if collect_profiling_data:
         worker.profiler = profiling.Profiler(worker)
     else:
         worker.profiler = profiling.NoopProfiler()

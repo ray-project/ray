@@ -77,7 +77,6 @@ if __name__ == "__main__":
         "store_socket_name": args.object_store_name,
         "manager_socket_name": args.object_store_manager_name,
         "raylet_socket_name": args.raylet_name,
-        "collect_profiling_data": args.collect_profiling_data,
     }
 
     logging.basicConfig(
@@ -88,7 +87,10 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info, mode=ray.WORKER_MODE, redis_password=args.redis_password)
+        info,
+        mode=ray.WORKER_MODE,
+        redis_password=args.redis_password,
+        collect_profiling_data=args.collect_profiling_data)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
