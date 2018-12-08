@@ -24,10 +24,11 @@ except ImportError:
 
 
 class Logger(object):
-    """Logging interface for ray.tune; specialized implementations follow.
+    """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in
-    multiple formats (TensorBoard, rllab/viskit, plain json) at once.
+    multiple formats (TensorBoard, rllab/viskit, plain json, custom loggers)
+    at once.
 
     Arguments:
         config: Configuration passed to all logger creators.
@@ -70,8 +71,7 @@ class UnifiedLogger(Logger):
         logdir: Directory for all logger creators to log to.
         upload_uri (str): Optional URI where the logdir is sync'ed to.
         custom_loggers (list): List of custom logger creators.
-        sync_function (str): Optional template for syncer to run. Needs to
-            include replacement fields "{local_dir}" and "{remote_dir}".
+        sync_function (func|str): Optional function for syncer to run.
             See ray/python/ray/tune/log_sync.py
     """
 

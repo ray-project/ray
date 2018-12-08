@@ -36,3 +36,10 @@ ray.tune.suggest
     :members:
     :private-members:
     :show-inheritance:
+
+
+ray.tune.logger
+---------------
+
+.. autoclass:: ray.tune.logger.Logger
+    :members:

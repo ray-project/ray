@@ -8,7 +8,7 @@ import six
 import types
 
 from ray.tune.error import TuneError
-from ray.tune.log_sync import validate_sync_cmd
+from ray.tune.log_sync import validate_sync_function
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -102,7 +102,7 @@ class Experiment(object):
                  checkpoint_at_end=False,
                  max_failures=3,
                  restore=None):
-        validate_sync_cmd(sync_function)
+        validate_sync_function(sync_function)
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
         spec = {
