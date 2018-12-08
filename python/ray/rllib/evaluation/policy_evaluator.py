@@ -407,7 +407,7 @@ class PolicyEvaluator(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "apply_gradients")
                 outputs = {
-                    pid: self.policy_map[pid].build_apply_gradients(
+                    pid: self.policy_map[pid]._build_apply_gradients(
                         builder, grad)
                     for pid, grad in grads.items()
                 }
