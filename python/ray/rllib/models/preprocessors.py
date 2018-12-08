@@ -109,6 +109,9 @@ class OneHotPreprocessor(Preprocessor):
 
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
+        if not self._obs_space.contains(observation):
+            raise ValueError("Observation outside expected value range",
+                             self._obs_space, observation)
         arr[observation] = 1
         return arr
 

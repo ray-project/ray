@@ -53,6 +53,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         self.replay_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
+        self.learner_stats = {}
 
         # Set up replay buffer
         if prioritized_replay:
@@ -111,6 +112,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
         with self.grad_timer:
             info_dict = self.local_evaluator.compute_apply(samples)
             for policy_id, info in info_dict.items():
+                if "stats" in info:
+                    self.learner_stats[policy_id] = info["stats"]
                 replay_buffer = self.replay_buffers[policy_id]
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
                     td_error = info["td_error"]
@@ -160,4 +163,5 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 "opt_peak_throughput": round(self.grad_timer.mean_throughput,
                                              3),
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+                "learner": self.learner_stats,
             })

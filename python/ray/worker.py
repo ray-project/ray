@@ -77,10 +77,6 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
-    logger.warning(
-        "WARNING: Not updating worker name since `setproctitle` is not "
-        "installed. Install this with `pip install setproctitle` "
-        "(or ray[debug]) to enable monitoring of worker processes.")
 
 
 class RayTaskError(Exception):
@@ -371,6 +367,17 @@ class Worker(object):
             logger.info(
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
+        except TypeError:
+            # This error can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need these extra
+            # fallbacks here to start from the beginning. Hopefully the object
+            # could have a `__reduce__` method.
+            register_custom_serializer(type(value), use_pickle=True)
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
+            logger.warning(warning_message)
+            self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -1612,6 +1619,10 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if configure_logging:
+        logging.basicConfig(level=logging_level, format=logging_format)
+
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
         if use_raylet:
@@ -1621,8 +1632,11 @@ def init(redis_address=None,
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
 
-    if configure_logging:
-        logging.basicConfig(level=logging_level, format=logging_format)
+    if setproctitle is None:
+        logger.warning(
+            "WARNING: Not updating worker name since `setproctitle` is not "
+            "installed. Install this with `pip install setproctitle` "
+            "(or ray[debug]) to enable monitoring of worker processes.")
 
     if global_worker.connected:
         if ignore_reinit_error:

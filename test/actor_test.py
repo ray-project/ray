@@ -913,8 +913,8 @@ def test_actor_different_numbers_of_gpus(shutdown_only):
 
 
 def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
-    num_local_schedulers = 10
-    num_gpus_per_scheduler = 10
+    num_local_schedulers = 5
+    num_gpus_per_scheduler = 5
     ray.worker._init(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,

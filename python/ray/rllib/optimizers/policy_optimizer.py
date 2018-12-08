@@ -86,11 +86,18 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self, timeout_seconds, min_history=100):
+    def collect_metrics(self,
+                        timeout_seconds,
+                        min_history=100,
+                        selected_evaluators=None):
         """Returns evaluator and optimizer stats.
 
         Arguments:
+            timeout_seconds (int): Max wait time for a evaluator before
+                dropping its results. This usually indicates a hung evaluator.
             min_history (int): Min history length to smooth results over.
+            selected_evaluators (list): Override the list of remote evaluators
+                to collect metrics from.
 
         Returns:
             res (dict): A training result dict from evaluator metrics with
@@ -98,7 +105,7 @@ class PolicyOptimizer(object):
         """
         episodes, num_dropped = collect_episodes(
             self.local_evaluator,
-            self.remote_evaluators,
+            selected_evaluators or self.remote_evaluators,
             timeout_seconds=timeout_seconds)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
