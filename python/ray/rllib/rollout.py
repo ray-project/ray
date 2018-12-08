@@ -12,7 +12,6 @@ import pickle
 import gym
 import ray
 from ray.rllib.agents.agent import get_agent_class
-from ray.rllib.models import ModelCatalog
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -96,7 +95,7 @@ def run(args, parser):
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
     else:
-        env = ModelCatalog.get_preprocessor_as_wrapper(gym.make(args.env))
+        env = gym.make(args.env)
     if args.out is not None:
         rollouts = []
     steps = 0
