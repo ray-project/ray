@@ -137,6 +137,7 @@ be sure to wrap it with `tune.function`:
         Returns:
             trial_name (str): String representation of Trial.
         """
+        return str(trial)
 
     exp = Experiment(
         name="hyperband_test",
@@ -418,7 +419,11 @@ be wrapped with ``tune.function``):
 .. code-block:: python
 
     def custom_sync_func(local_dir, remote_dir):
-        # run sync
+        sync_cmd = "aws s3 sync {local_dir} {remote_dir}".format(
+            local_dir=local_dir,
+            remote_dir=remote_dir)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
 
     exp = Experiment(
         name="experiment_name",
