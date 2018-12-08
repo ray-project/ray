@@ -79,7 +79,6 @@ if __name__ == "__main__":
         "raylet_socket_name": args.raylet_name,
         "collect_profiling_data": args.collect_profiling_data,
     }
-    print(info)
 
     logging.basicConfig(
         level=logging.getLevelName(args.logging_level.upper()),
