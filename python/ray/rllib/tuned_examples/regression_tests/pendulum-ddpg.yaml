@@ -2,8 +2,8 @@ pendulum-ddpg:
     env: Pendulum-v0
     run: DDPG
     stop:
-        episode_reward_mean: -160
-        time_total_s: 900
+        episode_reward_mean: -200
+        timesteps_total: 100000
     config:
         use_huber: True
         clip_rewards: False
