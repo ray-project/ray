@@ -1392,10 +1392,7 @@ def _init(address_info=None,
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data. Note that
-            profiling data cannot be LRU evicted, so if you set
-            redis_max_memory then profiling should also be disabled to prevent
-            it from consuming all available redis memory.
+        collect_profiling_data: Whether to collect profiling data from workers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
@@ -1655,10 +1652,7 @@ def init(redis_address=None,
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data. Note that
-            profiling data cannot be LRU evicted, so if you set
-            redis_max_memory then profiling should also be disabled to prevent
-            it from consuming all available redis memory.
+        collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the

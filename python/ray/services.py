@@ -882,7 +882,8 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  cleanup=True,
                  config=None,
-                 redis_password=None):
+                 redis_password=None,
+                 collect_profiling_data=True):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -915,6 +916,7 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         redis_password (str): The password of the redis server.
+        collect_profiling_data: Whether to collect profiling data from workers.
 
     Returns:
         The raylet socket name.
@@ -944,10 +946,11 @@ def start_raylet(redis_address,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
+                            "--collect-profiling-data={} "
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
-                                get_temp_root()))
+                                collect_profiling_data, get_temp_root()))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
@@ -1335,7 +1338,7 @@ def start_ray_processes(address_info=None,
             sharded redis tables (task and object tables).
         collect_profiling_data: Whether to collect profiling data. Note that
             profiling data cannot be LRU evicted, so if you set
-            redis_max_memory then profiling should also be disabled to prevent
+            redis_max_memory then profiling will also be disabled to prevent
             it from consuming all available redis memory.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
@@ -1392,6 +1395,12 @@ def start_ray_processes(address_info=None,
         resources = {}
     if not isinstance(resources, list):
         resources = num_local_schedulers * [resources]
+
+    if redis_max_memory and collect_profiling_data:
+        logger.warn(
+            "Profiling data cannot be LRU evicted, so it is disabled "
+            "when redis_max_memory is set.")
+        collect_profiling_data = False
 
     if num_workers is not None:
         raise Exception("The 'num_workers' argument is deprecated. Please use "
@@ -1529,6 +1538,7 @@ def start_ray_processes(address_info=None,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
                 redis_password=redis_password,
+                collect_profiling_data=collect_profiling_data,
                 config=config))
 
     # Try to start the web UI.
@@ -1700,10 +1710,7 @@ def start_ray_head(address_info=None,
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data. Note that
-            profiling data cannot be LRU evicted, so if you set
-            redis_max_memory then profiling should also be disabled to prevent
-            it from consuming all available redis memory.
+        collect_profiling_data: Whether to collect profiling data from workers.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here

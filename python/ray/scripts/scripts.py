@@ -127,11 +127,11 @@ def cli(logging_level, logging_format):
         "redis tables (task and object tables)."))
 @click.option(
     "--collect-profiling-data",
-    is_flag=True,
     default=True,
+    type=bool,
     help=("Whether to collect profiling data. Note that "
           "profiling data cannot be LRU evicted, so if you set "
-          "redis_max_memory then profiling should also be disabled to prevent "
+          "redis_max_memory then profiling will also be disabled to prevent "
           "it from consuming all available redis memory."))
 @click.option(
     "--num-workers",
