@@ -208,11 +208,12 @@ class SGDWorker(object):
         feed_dict = self._grad_feed_dict()
         # We only need to fetch the first per_device_grad, since they are
         # averaged across all devices by allreduce.
-        fetches = self.sess.run([
-            self.models[0].get_loss(), self.per_device_grads[0],
-            self.nccl_control_out
-        ],
-                                feed_dict=feed_dict)
+        fetches = self.sess.run(
+            [
+                self.models[0].get_loss(), self.per_device_grads[0],
+                self.nccl_control_out
+            ],
+            feed_dict=feed_dict)
         logger.debug(
             "Compute grad interior time {}".format(time.time() - start))
         return fetches
