@@ -90,8 +90,8 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
       UniqueId currentTaskId) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
+    if (RayLog.core.isDebugEnabled()) {
+      RayLog.core.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
     nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),

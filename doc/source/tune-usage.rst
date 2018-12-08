@@ -169,8 +169,8 @@ The following shows grid search over two nested parameters combined with random 
         "my_experiment_name": {
             "run": my_trainable,
             "config": {
-                "alpha": lambda spec: np.random.uniform(100),
-                "beta": lambda spec: spec.config.alpha * np.random.normal(),
+                "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
+                "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
                 "nn_layers": [
                     tune.grid_search([16, 64, 256]),
                     tune.grid_search([16, 64, 256]),
@@ -181,7 +181,7 @@ The following shows grid search over two nested parameters combined with random 
 
 
 .. note::
-    Lambda functions will be evaluated during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
@@ -197,8 +197,8 @@ By default, each random variable and grid search point is sampled once. To take 
         "my_experiment_name": {
             "run": my_trainable,
             "config": {
-                "alpha": lambda spec: np.random.uniform(100),
-                "beta": lambda spec: spec.config.alpha * np.random.normal(),
+                "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
+                "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
                 "nn_layers": [
                     tune.grid_search([16, 64, 256]),
                     tune.grid_search([16, 64, 256]),

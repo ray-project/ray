@@ -56,7 +56,7 @@ class MultiAgentEnv(object):
             rewards (dict): Reward values for each ready agent. If the
                 episode is just started, the value will be None.
             dones (dict): Done values for each ready agent. The special key
-                "__all__" is used to indicate env termination.
+                "__all__" (required) is used to indicate env termination.
             infos (dict): Info values for each ready agent.
         """
         raise NotImplementedError

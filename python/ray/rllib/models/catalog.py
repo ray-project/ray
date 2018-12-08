@@ -15,8 +15,7 @@ from ray.rllib.env.async_vector_env import _ExternalEnvToAsync
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution,
-    squash_to_range)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -38,7 +37,7 @@ MODEL_DEFAULTS = {
     "fcnet_hiddens": [256, 256],
     # For control envs, documented in ray.rllib.models.Model
     "free_log_std": False,
-    # Whether to squash the action output to space range
+    # (deprecated) Whether to use sigmoid to squash actions to space range
     "squash_to_range": False,
 
     # == LSTM ==
@@ -114,8 +113,9 @@ class ModelCatalog(object):
             if dist_type is None:
                 dist = DiagGaussian
                 if config.get("squash_to_range"):
-                    dist = squash_to_range(dist, action_space.low,
-                                           action_space.high)
+                    raise ValueError(
+                        "The squash_to_range option is deprecated. See the "
+                        "clip_actions agent option instead.")
                 return dist, action_space.shape[0] * 2
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
@@ -271,15 +271,26 @@ class ModelCatalog(object):
 
     @staticmethod
     def get_preprocessor(env, options=None):
-        """Returns a suitable processor for the given environment.
+        """Returns a suitable preprocessor for the given env.
+
+        This is a wrapper for get_preprocessor_for_space().
+        """
+
+        return ModelCatalog.get_preprocessor_for_space(env.observation_space,
+                                                       options)
+
+    @staticmethod
+    def get_preprocessor_for_space(observation_space, options=None):
+        """Returns a suitable preprocessor for the given observation space.
 
         Args:
-            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
+            observation_space (Space): The input observation space.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
-            preprocessor (Preprocessor): Preprocessor for the env observations.
+            preprocessor (Preprocessor): Preprocessor for the observations.
         """
+
         options = options or MODEL_DEFAULTS
         for k in options.keys():
             if k not in MODEL_DEFAULTS:
@@ -290,13 +301,13 @@ class ModelCatalog(object):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
             prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                env.observation_space, options)
+                observation_space, options)
         else:
-            cls = get_preprocessor(env.observation_space)
-            prep = cls(env.observation_space, options)
+            cls = get_preprocessor(observation_space)
+            prep = cls(observation_space, options)
 
         logger.debug("Created preprocessor {}: {} -> {}".format(
-            prep, env.observation_space, prep.shape))
+            prep, observation_space, prep.shape))
         return prep
 
     @staticmethod

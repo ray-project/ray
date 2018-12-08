@@ -13,6 +13,8 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
@@ -88,6 +90,34 @@ class NestedTupleEnv(gym.Env):
         return TUPLE_SAMPLES[self.steps], 1, self.steps >= 5, {}
 
 
+class NestedMultiAgentEnv(MultiAgentEnv):
+    def __init__(self):
+        self.steps = 0
+
+    def reset(self):
+        return {
+            "dict_agent": DICT_SAMPLES[0],
+            "tuple_agent": TUPLE_SAMPLES[0],
+        }
+
+    def step(self, actions):
+        self.steps += 1
+        obs = {
+            "dict_agent": DICT_SAMPLES[self.steps],
+            "tuple_agent": TUPLE_SAMPLES[self.steps],
+        }
+        rew = {
+            "dict_agent": 0,
+            "tuple_agent": 0,
+        }
+        dones = {"__all__": self.steps >= 5}
+        infos = {
+            "dict_agent": {},
+            "tuple_agent": {},
+        }
+        return obs, rew, dones, infos
+
+
 class InvalidModel(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         return "not", "valid"
@@ -107,7 +137,8 @@ class DictSpyModel(Model):
             # redis to communicate back to our suite
             ray.experimental.internal_kv._internal_kv_put(
                 "d_spy_in_{}".format(DictSpyModel.capture_index),
-                pickle.dumps((pos, front_cam, task)))
+                pickle.dumps((pos, front_cam, task)),
+                overwrite=True)
             DictSpyModel.capture_index += 1
             return 0
 
@@ -135,7 +166,8 @@ class TupleSpyModel(Model):
             # redis to communicate back to our suite
             ray.experimental.internal_kv._internal_kv_put(
                 "t_spy_in_{}".format(TupleSpyModel.capture_index),
-                pickle.dumps((pos, cam, task)))
+                pickle.dumps((pos, cam, task)),
+                overwrite=True)
             TupleSpyModel.capture_index += 1
             return 0
 
@@ -242,10 +274,8 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedDict(lambda _: SimpleServing(NestedDictEnv()))
 
     def testNestedDictAsync(self):
-        self.assertRaisesRegexp(
-            ValueError, "Found raw Dict space.*",
-            lambda: self.doTestNestedDict(
-                lambda _: AsyncVectorEnv.wrap_async(NestedDictEnv())))
+        self.doTestNestedDict(
+            lambda _: AsyncVectorEnv.wrap_async(NestedDictEnv()))
 
     def testNestedTupleGym(self):
         self.doTestNestedTuple(lambda _: NestedTupleEnv())
@@ -258,10 +288,57 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedTuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def testNestedTupleAsync(self):
-        self.assertRaisesRegexp(
-            ValueError, "Found raw Tuple space.*",
-            lambda: self.doTestNestedTuple(
-                lambda _: AsyncVectorEnv.wrap_async(NestedTupleEnv())))
+        self.doTestNestedTuple(
+            lambda _: AsyncVectorEnv.wrap_async(NestedTupleEnv()))
+
+    def testMultiAgentComplexSpaces(self):
+        ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
+        ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
+        register_env("nested_ma", lambda _: NestedMultiAgentEnv())
+        act_space = spaces.Discrete(2)
+        pg = PGAgent(
+            env="nested_ma",
+            config={
+                "num_workers": 0,
+                "sample_batch_size": 5,
+                "multiagent": {
+                    "policy_graphs": {
+                        "tuple_policy": (
+                            PGPolicyGraph, TUPLE_SPACE, act_space,
+                            {"model": {"custom_model": "tuple_spy"}}),
+                        "dict_policy": (
+                            PGPolicyGraph, DICT_SPACE, act_space,
+                            {"model": {"custom_model": "dict_spy"}}),
+                    },
+                    "policy_mapping_fn": lambda a: {
+                        "tuple_agent": "tuple_policy",
+                        "dict_agent": "dict_policy"}[a],
+                },
+            })
+        pg.train()
+
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    "d_spy_in_{}".format(i)))
+            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
+            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
+            task_i = one_hot(
+                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            self.assertEqual(seen[0][0].tolist(), pos_i)
+            self.assertEqual(seen[1][0].tolist(), cam_i)
+            self.assertEqual(seen[2][0].tolist(), task_i)
+
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    "t_spy_in_{}".format(i)))
+            pos_i = TUPLE_SAMPLES[i][0].tolist()
+            cam_i = TUPLE_SAMPLES[i][1][0].tolist()
+            task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            self.assertEqual(seen[0][0].tolist(), pos_i)
+            self.assertEqual(seen[1][0].tolist(), cam_i)
+            self.assertEqual(seen[2][0].tolist(), task_i)
 
 
 if __name__ == "__main__":

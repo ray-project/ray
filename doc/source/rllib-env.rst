@@ -24,26 +24,38 @@ ARS             **Yes**                 **Yes**             No           No
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
-In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
     import ray
-    from ray.tune.registry import register_env
     from ray.rllib.agents import ppo
 
-    def env_creator(env_config):
-        import gym
-        return gym.make("CartPole-v0")  # or return your own custom env
+    class MyEnv(gym.Env):
+        def __init__(self, env_config):
+            self.action_space = ...
+            self.observation_space = ...
+        ...
 
-    register_env("my_env", env_creator)
     ray.init()
-    trainer = ppo.PPOAgent(env="my_env", config={
-        "env_config": {},  # config to pass to env creator
+    trainer = ppo.PPOAgent(env=MyEnv, config={
+        "env_config": {},  # config to pass to env class
     })
 
     while True:
         print(trainer.train())
+
+You can also register a custom env creator function with a string name. This function must take a single ``env_config`` parameter and return an env instance:
+
+.. code-block:: python
+
+    from ray.tune.registry import register_env
+
+    def env_creator(env_config):
+        return MyEnv(...)  # return an env instance
+
+    register_env("my_env", env_creator)
+    trainer = ppo.PPOAgent(env="my_env")
 
 Configuring Environments
 ------------------------
@@ -94,6 +106,10 @@ RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_wo
 
 Multi-Agent
 -----------
+
+.. note::
+
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
