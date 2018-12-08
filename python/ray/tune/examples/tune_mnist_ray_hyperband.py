@@ -31,7 +31,7 @@ import time
 
 import ray
 from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable
+    Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -221,7 +221,8 @@ if __name__ == '__main__':
             'time_total_s': 600,
         },
         'config': {
-            'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
+            'learning_rate': sample_from(
+                lambda spec: 10**np.random.uniform(-5, -3)),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
         "num_samples": 10,
