@@ -290,7 +290,7 @@ class Agent(Trainable):
                     os.makedirs(DEFAULT_RESULTS_DIR)
                 logdir = tempfile.mkdtemp(
                     prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir)
+                return UnifiedLogger(config, logdir, None)
 
             logger_creator = default_logger_creator
 
