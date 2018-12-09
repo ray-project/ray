@@ -9,9 +9,10 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import fetch, run_timeline, warmup
-from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
-    unpack_small_tensors
+from ray.experimental.sgd.util import (ensure_plasma_tensorflow_op, fetch,
+                                       run_timeline, warmup)
+from ray.experimental.sgd.modified_allreduce import (sum_gradients_all_reduce,
+                                                     unpack_small_tensors)
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +113,7 @@ class SGDWorker(object):
                 ray.worker.global_worker.plasma_client.store_socket_name)
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
-            if not plasma.tf_plasma_op:
-                plasma.build_plasma_tensorflow_op()
+            ensure_plasma_tensorflow_op()
 
             # For fetching grads -> plasma
             self.plasma_in_grads = []
