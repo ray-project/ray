@@ -1,4 +1,5 @@
 #include <Python.h>
+#include <sstream>
 
 #include "common_extension.h"
 #include "config_extension.h"
@@ -92,10 +93,19 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  local_scheduler_fetch_or_reconstruct(
+  int ret = local_scheduler_fetch_or_reconstruct(
       reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
       object_ids, fetch_only, current_task_id);
-  Py_RETURN_NONE;
+  if (ret == 0) {
+    Py_RETURN_NONE;
+  } else {
+    std::ostringstream stream;
+    stream << "local_scheduler_fetch_or_reconstruct failed: "
+           << "local scheduler connection may be closed, "
+           << "check raylet status. return value: " << ret;
+    PyErr_SetString(CommonError, stream.str().c_str());
+    Py_RETURN_NONE;
+  }
 }
 
 static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self, PyObject *args) {

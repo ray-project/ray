@@ -11,7 +11,9 @@ import ray
 from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
     _minimize_and_clip, _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 A_SCOPE = "a_func"
@@ -366,6 +368,75 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # Hard initial update
         self.update_target(tau=1.0)
 
+    @override(TFPolicyGraph)
+    def optimizer(self):
+        return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
+
+    @override(TFPolicyGraph)
+    def gradients(self, optimizer):
+        if self.config["grad_norm_clipping"] is not None:
+            actor_grads_and_vars = _minimize_and_clip(
+                optimizer,
+                self.loss.actor_loss,
+                var_list=self.p_func_vars,
+                clip_val=self.config["grad_norm_clipping"])
+            critic_grads_and_vars = _minimize_and_clip(
+                optimizer,
+                self.loss.critic_loss,
+                var_list=self.q_func_vars + self.twin_q_func_vars
+                if self.config["twin_q"] else self.q_func_vars,
+                clip_val=self.config["grad_norm_clipping"])
+        else:
+            actor_grads_and_vars = optimizer.compute_gradients(
+                self.loss.actor_loss, var_list=self.p_func_vars)
+            critic_grads_and_vars = optimizer.compute_gradients(
+                self.loss.critic_loss,
+                var_list=self.q_func_vars + self.twin_q_func_vars
+                if self.config["twin_q"] else self.q_func_vars)
+        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                if g is not None]
+        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                 if g is not None]
+        grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
+        return grads_and_vars
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_feed_dict(self):
+        return {
+            self.stochastic: True,
+            self.eps: self.cur_epsilon,
+        }
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return {
+            "td_error": self.loss.td_error,
+        }
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return _postprocess_dqn(self, sample_batch)
+
+    @override(TFPolicyGraph)
+    def get_weights(self):
+        return self.variables.get_weights()
+
+    @override(TFPolicyGraph)
+    def set_weights(self, weights):
+        self.variables.set_weights(weights)
+
+    @override(PolicyGraph)
+    def get_state(self):
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        TFPolicyGraph.set_state(self, state[0])
+        self.set_epsilon(state[1])
+
     def _build_q_network(self, obs, obs_space, actions):
         q_net = QNetwork(
             ModelCatalog.get_model({
@@ -408,53 +479,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.config["use_huber"], self.config["huber_threshold"],
             self.config["twin_q"])
 
-    def optimizer(self):
-        return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
-
-    def gradients(self, optimizer):
-        if self.config["grad_norm_clipping"] is not None:
-            actor_grads_and_vars = _minimize_and_clip(
-                optimizer,
-                self.loss.actor_loss,
-                var_list=self.p_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
-            critic_grads_and_vars = _minimize_and_clip(
-                optimizer,
-                self.loss.critic_loss,
-                var_list=self.q_func_vars + self.twin_q_func_vars
-                if self.config["twin_q"] else self.q_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
-        else:
-            actor_grads_and_vars = optimizer.compute_gradients(
-                self.loss.actor_loss, var_list=self.p_func_vars)
-            critic_grads_and_vars = optimizer.compute_gradients(
-                self.loss.critic_loss,
-                var_list=self.q_func_vars + self.twin_q_func_vars
-                if self.config["twin_q"] else self.q_func_vars)
-        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                if g is not None]
-        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                 if g is not None]
-        grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
-        return grads_and_vars
-
-    def extra_compute_action_feed_dict(self):
-        return {
-            self.stochastic: True,
-            self.eps: self.cur_epsilon,
-        }
-
-    def extra_compute_grad_fetches(self):
-        return {
-            "td_error": self.loss.td_error,
-        }
-
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        return _postprocess_dqn(self, sample_batch)
-
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
         td_err = self.sess.run(
@@ -480,16 +504,3 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
-
-    def get_weights(self):
-        return self.variables.get_weights()
-
-    def set_weights(self, weights):
-        self.variables.set_weights(weights)
-
-    def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
-
-    def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
-        self.set_epsilon(state[1])

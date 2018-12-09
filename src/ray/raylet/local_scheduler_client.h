@@ -97,11 +97,11 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn);
  * @param object_ids The IDs of the objects to reconstruct.
  * @param fetch_only Only fetch objects, do not reconstruct them.
  * @param current_task_id The task that needs the objects.
- * @return Void.
+ * @return int 0 means correct, other numbers mean error.
  */
-void local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
-                                          const std::vector<ObjectID> &object_ids,
-                                          bool fetch_only, const TaskID &current_task_id);
+int local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
+                                         const std::vector<ObjectID> &object_ids,
+                                         bool fetch_only, const TaskID &current_task_id);
 
 /**
  * Notify the local scheduler that this client (worker) is no longer blocked.
