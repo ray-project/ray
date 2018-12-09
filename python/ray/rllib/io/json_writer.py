@@ -16,6 +16,7 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.io.output_writer import OutputWriter
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class JsonWriter(OutputWriter):
         self.bytes_written = 0
         self.cur_file = None
 
+    @override(OutputWriter)
     def write(self, sample_batch):
         start = time.time()
         data = _to_json(sample_batch, self.compress_columns)

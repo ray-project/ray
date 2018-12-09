@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.rllib.io.input_reader import InputReader
 from ray.rllib.io.json_reader import JsonReader
+from ray.rllib.utils.annotations import override
 
 
 class MixedInput(InputReader):
@@ -31,6 +32,7 @@ class MixedInput(InputReader):
                 self.choices.append(JsonReader(ioctx, k))
             self.p.append(v)
 
+    @override(InputReader)
     def next(self):
         source = np.random.choice(self.choices, p=self.p)
         return source.next()

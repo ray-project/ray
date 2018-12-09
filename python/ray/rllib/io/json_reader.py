@@ -16,6 +16,7 @@ except ImportError:
 
 from ray.rllib.io.input_reader import InputReader
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import unpack_if_needed
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class JsonReader(InputReader):
             raise ValueError("No files found matching {}".format(inputs))
         self.cur_file = None
 
+    @override(InputReader)
     def next(self):
         batch = self._try_parse(self._next_line())
         tries = 0

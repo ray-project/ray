@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import override
+
 
 class InputReader(object):
     """Input object for loading experiences in policy evaluation."""
@@ -19,6 +21,7 @@ class SamplerInput(InputReader):
         self.sampler = sampler
         self.pending = []
 
+    @override(InputReader)
     def next(self):
         if self.pending:
             batch = self.pending.pop(0)
