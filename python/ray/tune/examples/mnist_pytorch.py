@@ -138,7 +138,7 @@ def train_mnist(args, config, reporter):
             output = model(data)
             test_loss += F.nll_loss(
                 output, target,
-                size_average=False).data[0]  # sum up batch loss
+                size_average=False).item()  # sum up batch loss
             pred = output.data.max(
                 1, keepdim=True)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
