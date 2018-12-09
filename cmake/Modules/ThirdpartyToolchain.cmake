@@ -125,18 +125,9 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
     if (APPLE)
       # Since 10.14, the XCode toolchain only accepts libc++ as the
-      # standard library. We set it only on 10.14, because on some
-      # configurations of older macOS, we get the following error
-      # with libc++:
-      # [...]/usr/bin/c++ '-stdlib=libc++'  -isysroot [...] -mmacosx-version-min=10.6 [...]
-      # clang: error: invalid deployment target for -stdlib=libc++ (requires OS X 10.7 or later)
-
-      exec_program(uname ARGS -v  OUTPUT_VARIABLE DARWIN_VERSION)
-      string(REGEX MATCH "[0-9]+" DARWIN_VERSION ${DARWIN_VERSION})
-      message(STATUS "-- Darwin version = ${DARWIN_VERSION}")
-      if (DARWIN_VERSION GREATER 17)
-        set(pyarrow_ENV ${pyarrow_ENV} "CXXFLAGS='-stdlib=libc++'")
-      endif()
+      # standard library. This should also work on macOS starting from 10.9.
+      set(pyarrow_ENV ${pyarrow_ENV} "CXXFLAGS='-stdlib=libc++'")
+      set(pyarrow_ENV ${pyarrow_ENV} "MACOSX_DEPLOYMENT_TARGET=10.7")
     endif()
 
     ExternalProject_Add(pyarrow_ext
