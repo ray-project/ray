@@ -143,7 +143,7 @@ def train_mnist(args, config, reporter):
                 1, keepdim=True)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
-        test_loss = test_loss.item() / len(test_loader.dataset)
+        test_loss = test_loss / len(test_loader.dataset)
         accuracy = correct.item() / len(test_loader.dataset)
         reporter(mean_loss=test_loss, mean_accuracy=accuracy)
 
