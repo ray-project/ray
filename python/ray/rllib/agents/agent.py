@@ -20,6 +20,7 @@ from ray.rllib.io.output_writer import NoopOutput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -205,7 +206,47 @@ class Agent(Trainable):
         "tf_session_args", "env_config", "model", "optimizer", "multiagent"
     ]
 
+    def __init__(self, config=None, env=None, logger_creator=None):
+        """Initialize an RLLib agent.
+
+        Args:
+            config (dict): Algorithm-specific configuration data.
+            env (str): Name of the environment to use. Note that this can also
+                be specified as the `env` key in config.
+            logger_creator (func): Function that creates a ray.tune.Logger
+                object. If unspecified, a default logger is created.
+        """
+
+        config = config or {}
+
+        # Vars to synchronize to evaluators on each train call
+        self.global_vars = {"timestep": 0}
+
+        # Agents allow env ids to be passed directly to the constructor.
+        self._env_id = _register_if_needed(env or config.get("env"))
+
+        # Create a default logger creator if no logger_creator is specified
+        if logger_creator is None:
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
+                                              timestr)
+
+            def default_logger_creator(config):
+                """Creates a Unified logger with a default logdir prefix
+                containing the agent name and the env id
+                """
+                if not os.path.exists(DEFAULT_RESULTS_DIR):
+                    os.makedirs(DEFAULT_RESULTS_DIR)
+                logdir = tempfile.mkdtemp(
+                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+                return UnifiedLogger(config, logdir, None)
+
+            logger_creator = default_logger_creator
+
+        Trainable.__init__(self, config, logger_creator)
+
     @classmethod
+    @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         Agent._validate_config(cf)
@@ -215,6 +256,148 @@ class Agent(Trainable):
             gpu=cf["num_gpus"],
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+
+    @override(Trainable)
+    def train(self):
+        """Overrides super.train to synchronize global vars."""
+
+        if hasattr(self, "optimizer") and isinstance(self.optimizer,
+                                                     PolicyOptimizer):
+            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
+            self.optimizer.local_evaluator.set_global_vars(self.global_vars)
+            for ev in self.optimizer.remote_evaluators:
+                ev.set_global_vars.remote(self.global_vars)
+            logger.debug("updated global vars: {}".format(self.global_vars))
+
+        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
+                and hasattr(self, "local_evaluator")):
+            FilterManager.synchronize(
+                self.local_evaluator.filters,
+                self.remote_evaluators,
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                self.local_evaluator.filters))
+
+        result = Trainable.train(self)
+        if self.config["callbacks"].get("on_train_result"):
+            self.config["callbacks"]["on_train_result"]({
+                "agent": self,
+                "result": result,
+            })
+        return result
+
+    @override(Trainable)
+    def _setup(self, config):
+        env = self._env_id
+        if env:
+            config["env"] = env
+            if _global_registry.contains(ENV_CREATOR, env):
+                self.env_creator = _global_registry.get(ENV_CREATOR, env)
+            else:
+                import gym  # soft dependency
+                self.env_creator = lambda env_config: gym.make(env)
+        else:
+            self.env_creator = lambda env_config: None
+
+        # Merge the supplied config with the class default
+        merged_config = copy.deepcopy(self._default_config)
+        merged_config = deep_update(merged_config, config,
+                                    self._allow_unknown_configs,
+                                    self._allow_unknown_subkeys)
+        self.config = merged_config
+        Agent._validate_config(self.config)
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+
+        # TODO(ekl) setting the graph is unnecessary for PyTorch agents
+        with tf.Graph().as_default():
+            self._init()
+
+    @override(Trainable)
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        if hasattr(self, "remote_evaluators"):
+            for ev in self.remote_evaluators:
+                ev.__ray_terminate__.remote()
+        if hasattr(self, "optimizer"):
+            self.optimizer.stop()
+
+    @override(Trainable)
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+        return checkpoint_path
+
+    @override(Trainable)
+    def _restore(self, checkpoint_path):
+        extra_data = pickle.load(open(checkpoint_path, "rb"))
+        self.__setstate__(extra_data)
+
+    def _init(self):
+        """Subclasses should override this for custom initialization."""
+
+        raise NotImplementedError
+
+    def compute_action(self, observation, state=None, policy_id="default"):
+        """Computes an action for the specified policy.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
+            policy_id (str): policy to query (only applies to multi-agent).
+        """
+
+        if state is None:
+            state = []
+        filtered_obs = self.local_evaluator.filters[policy_id](
+            observation, update=False)
+        if state:
+            return self.local_evaluator.for_policy(
+                lambda p: p.compute_single_action(filtered_obs, state),
+                policy_id=policy_id)
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(filtered_obs, state)[0],
+            policy_id=policy_id)
+
+    @property
+    def iteration(self):
+        """Current training iter, auto-incremented with each train() call."""
+
+        return self._iteration
+
+    @property
+    def _agent_name(self):
+        """Subclasses should override this to declare their name."""
+
+        raise NotImplementedError
+
+    @property
+    def _default_config(self):
+        """Subclasses should override this to declare their default config."""
+
+        raise NotImplementedError
+
+    def get_weights(self, policies=None):
+        """Return a dictionary of policy ids to weights.
+
+        Arguments:
+            policies (list): Optional list of policies to return weights for,
+                or None for all policies.
+        """
+        return self.local_evaluator.get_weights(policies)
+
+    def set_weights(self, weights):
+        """Set policy weights by policy id.
+
+        Arguments:
+            weights (dict): Map of policy ids to weights to set.
+        """
+        self.local_evaluator.set_weights(weights)
 
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
@@ -244,6 +427,32 @@ class Agent(Trainable):
             self._make_evaluator(cls, env_creator, policy_graph, i + 1,
                                  self.config) for i in range(count)
         ]
+
+    @classmethod
+    def resource_help(cls, config):
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers` and other configs. See the "
+                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: {}".format(config))
+
+    @staticmethod
+    def _validate_config(config):
+        if "gpu" in config:
+            raise ValueError(
+                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
+                "instead.")
+        if "gpu_fraction" in config:
+            raise ValueError(
+                "The `gpu_fraction` config is deprecated, please use "
+                "`num_gpus=<fraction>` instead.")
+        if "use_gpu_for_workers" in config:
+            raise ValueError(
+                "The `use_gpu_for_workers` config is deprecated, please use "
+                "`num_gpus_per_worker=1` instead.")
+        if (config["input"] == "sampler"
+                and config["input_evaluation"] is not None):
+            raise ValueError(
+                "`input_evaluation` should not be set when input=sampler")
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
@@ -308,198 +517,6 @@ class Agent(Trainable):
             input_evaluation_method=config["input_evaluation"],
             output_creator=output_creator)
 
-    @classmethod
-    def resource_help(cls, config):
-        return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers` and other configs. See the "
-                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: {}".format(config))
-
-    @staticmethod
-    def _validate_config(config):
-        if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
-        if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
-        if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
-        if (config["input"] == "sampler"
-                and config["input_evaluation"] is not None):
-            raise ValueError(
-                "`input_evaluation` should not be set when input=sampler")
-
-    def __init__(self, config=None, env=None, logger_creator=None):
-        """Initialize an RLLib agent.
-
-        Args:
-            config (dict): Algorithm-specific configuration data.
-            env (str): Name of the environment to use. Note that this can also
-                be specified as the `env` key in config.
-            logger_creator (func): Function that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-        """
-
-        config = config or {}
-
-        # Vars to synchronize to evaluators on each train call
-        self.global_vars = {"timestep": 0}
-
-        # Agents allow env ids to be passed directly to the constructor.
-        self._env_id = _register_if_needed(env or config.get("env"))
-
-        # Create a default logger creator if no logger_creator is specified
-        if logger_creator is None:
-            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(self._agent_name, self._env_id,
-                                              timestr)
-
-            def default_logger_creator(config):
-                """Creates a Unified logger with a default logdir prefix
-                containing the agent name and the env id
-                """
-                if not os.path.exists(DEFAULT_RESULTS_DIR):
-                    os.makedirs(DEFAULT_RESULTS_DIR)
-                logdir = tempfile.mkdtemp(
-                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, None)
-
-            logger_creator = default_logger_creator
-
-        Trainable.__init__(self, config, logger_creator)
-
-    def train(self):
-        """Overrides super.train to synchronize global vars."""
-
-        if hasattr(self, "optimizer") and isinstance(self.optimizer,
-                                                     PolicyOptimizer):
-            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
-            self.optimizer.local_evaluator.set_global_vars(self.global_vars)
-            for ev in self.optimizer.remote_evaluators:
-                ev.set_global_vars.remote(self.global_vars)
-            logger.debug("updated global vars: {}".format(self.global_vars))
-
-        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "local_evaluator")):
-            FilterManager.synchronize(
-                self.local_evaluator.filters,
-                self.remote_evaluators,
-                update_remote=self.config["synchronize_filters"])
-            logger.debug("synchronized filters: {}".format(
-                self.local_evaluator.filters))
-
-        result = Trainable.train(self)
-        if self.config["callbacks"].get("on_train_result"):
-            self.config["callbacks"]["on_train_result"]({
-                "agent": self,
-                "result": result,
-            })
-        return result
-
-    def _setup(self, config):
-        env = self._env_id
-        if env:
-            config["env"] = env
-            if _global_registry.contains(ENV_CREATOR, env):
-                self.env_creator = _global_registry.get(ENV_CREATOR, env)
-            else:
-                import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env)
-        else:
-            self.env_creator = lambda env_config: None
-
-        # Merge the supplied config with the class default
-        merged_config = copy.deepcopy(self._default_config)
-        merged_config = deep_update(merged_config, config,
-                                    self._allow_unknown_configs,
-                                    self._allow_unknown_subkeys)
-        self.config = merged_config
-        Agent._validate_config(self.config)
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
-
-        # TODO(ekl) setting the graph is unnecessary for PyTorch agents
-        with tf.Graph().as_default():
-            self._init()
-
-    def _init(self):
-        """Subclasses should override this for custom initialization."""
-
-        raise NotImplementedError
-
-    @property
-    def iteration(self):
-        """Current training iter, auto-incremented with each train() call."""
-
-        return self._iteration
-
-    @property
-    def _agent_name(self):
-        """Subclasses should override this to declare their name."""
-
-        raise NotImplementedError
-
-    @property
-    def _default_config(self):
-        """Subclasses should override this to declare their default config."""
-
-        raise NotImplementedError
-
-    def compute_action(self, observation, state=None, policy_id="default"):
-        """Computes an action for the specified policy.
-
-        Arguments:
-            observation (obj): observation from the environment.
-            state (list): RNN hidden state, if any. If state is not None,
-                          then all of compute_single_action(...) is returned
-                          (computed action, rnn state, logits dictionary).
-                          Otherwise compute_single_action(...)[0] is
-                          returned (computed action).
-            policy_id (str): policy to query (only applies to multi-agent).
-        """
-
-        if state is None:
-            state = []
-        filtered_obs = self.local_evaluator.filters[policy_id](
-            observation, update=False)
-        if state:
-            return self.local_evaluator.for_policy(
-                lambda p: p.compute_single_action(filtered_obs, state),
-                policy_id=policy_id)
-        return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(filtered_obs, state)[0],
-            policy_id=policy_id)
-
-    def get_weights(self, policies=None):
-        """Return a dictionary of policy ids to weights.
-
-        Arguments:
-            policies (list): Optional list of policies to return weights for,
-                or None for all policies.
-        """
-        return self.local_evaluator.get_weights(policies)
-
-    def set_weights(self, weights):
-        """Set policy weights by policy id.
-
-        Arguments:
-            weights (dict): Map of policy ids to weights to set.
-        """
-        self.local_evaluator.set_weights(weights)
-
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        if hasattr(self, "remote_evaluators"):
-            for ev in self.remote_evaluators:
-                ev.__ray_terminate__.remote()
-        if hasattr(self, "optimizer"):
-            self.optimizer.stop()
-
     def __getstate__(self):
         state = {}
         if hasattr(self, "local_evaluator"):
@@ -516,16 +533,6 @@ class Agent(Trainable):
                 r.restore.remote(remote_state)
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
 
 
 def _register_if_needed(env_object):

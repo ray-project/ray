@@ -63,7 +63,7 @@ class PolicyOptimizer(object):
     def _init(self):
         """Subclasses should prefer overriding this instead of __init__."""
 
-        pass
+        raise NotImplementedError
 
     def step(self):
         """Takes a logical optimization step.
@@ -85,6 +85,21 @@ class PolicyOptimizer(object):
             "num_steps_trained": self.num_steps_trained,
             "num_steps_sampled": self.num_steps_sampled,
         }
+
+    def save(self):
+        """Returns a serializable object representing the optimizer state."""
+
+        return [self.num_steps_trained, self.num_steps_sampled]
+
+    def restore(self, data):
+        """Restores optimizer state from the given data object."""
+
+        self.num_steps_trained = data[0]
+        self.num_steps_sampled = data[1]
+
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
 
     def collect_metrics(self,
                         timeout_seconds,
@@ -118,17 +133,6 @@ class PolicyOptimizer(object):
         res.update(info=self.stats())
         return res
 
-    def save(self):
-        """Returns a serializable object representing the optimizer state."""
-
-        return [self.num_steps_trained, self.num_steps_sampled]
-
-    def restore(self, data):
-        """Restores optimizer state from the given data object."""
-
-        self.num_steps_trained = data[0]
-        self.num_steps_sampled = data[1]
-
     def foreach_evaluator(self, func):
         """Apply the given function to each evaluator instance."""
 
@@ -149,10 +153,6 @@ class PolicyOptimizer(object):
             for i, ev in enumerate(self.remote_evaluators)
         ])
         return local_result + remote_results
-
-    def stop(self):
-        """Release any resources used by this optimizer."""
-        pass
 
     @staticmethod
     def _check_not_multiagent(sample_batch):

@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer
+from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -29,6 +30,7 @@ class PGAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PGPolicyGraph
 
+    @override(Agent)
     def _init(self):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
@@ -40,6 +42,7 @@ class PGAgent(Agent):
         self.optimizer = SyncSamplesOptimizer(
             self.local_evaluator, self.remote_evaluators, optimizer_config)
 
+    @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         self.optimizer.step()

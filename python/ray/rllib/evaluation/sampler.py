@@ -477,7 +477,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes, clip_actions):
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicyGraph.compute_actions.__code__):
-            pending_fetches[policy_id] = policy.build_compute_actions(
+            pending_fetches[policy_id] = policy._build_compute_actions(
                 builder, [t.obs for t in eval_data],
                 rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
