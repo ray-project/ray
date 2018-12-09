@@ -6,9 +6,11 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 
 
@@ -254,6 +256,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "entropy": self.loss_obj.mean_entropy
         }
 
+    @override(TFPolicyGraph)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
         return PPOPolicyGraph(
@@ -262,29 +265,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config,
             existing_inputs=existing_inputs)
 
-    def extra_compute_action_fetches(self):
-        return {"vf_preds": self.value_function, "logits": self.logits}
-
-    def extra_compute_grad_fetches(self):
-        return self.stats_fetches
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
-        return self.kl_coeff_val
-
-    def value(self, ob, *args):
-        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
-            feed_dict[k] = v
-        vf = self.sess.run(self.value_function, feed_dict)
-        return vf[0]
-
+    @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -296,7 +277,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             next_state = []
             for i in range(len(self.model.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+            last_r = self._value(sample_batch["new_obs"][-1], *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -305,9 +286,36 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             use_gae=self.config["use_gae"])
         return batch
 
+    @override(TFPolicyGraph)
     def gradients(self, optimizer):
         return optimizer.compute_gradients(
             self._loss, colocate_gradients_with_ops=True)
 
+    @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return {"vf_preds": self.value_function, "logits": self.logits}
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return self.stats_fetches
+
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
+        return self.kl_coeff_val
+
+    def _value(self, ob, *args):
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
+            feed_dict[k] = v
+        vf = self.sess.run(self.value_function, feed_dict)
+        return vf[0]
