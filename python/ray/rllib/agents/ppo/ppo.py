@@ -130,8 +130,10 @@ class PPOAgent(Agent):
                 "Episode truncation is not supported without a value function")
         if (self.config["multiagent"]["policy_graphs"]
                 and not self.config["simple_optimizer"]):
-            logger.warn("forcing simple_optimizer=True in multi-agent mode")
-            self.config["simple_optimizer"] = True
+            logger.info(
+                "In multi-agent mode, policies will be optimized sequentially "
+                "by the multi-GPU optimizer. Consider setting "
+                "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
             # TODO(ekl): consider setting the default to be NoFilter
             logger.warn(
