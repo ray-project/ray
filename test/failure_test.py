@@ -594,7 +594,7 @@ def test_warning_for_dead_node(ray_start_two_nodes):
     ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
 
     # Check that we get warning messages for both raylets.
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=20)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=40)
 
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.
