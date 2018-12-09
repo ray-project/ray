@@ -7,16 +7,18 @@ import tensorflow.contrib.slim as slim
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.misc import get_activation_fn, flatten
+from ray.rllib.utils.annotations import override
 
 
 class VisionNetwork(Model):
     """Generic vision network."""
 
+    @override(Model)
     def _build_layers_v2(self, input_dict, num_outputs, options):
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
-            filters = get_filter_config(inputs)
+            filters = _get_filter_config(inputs)
 
         activation = get_activation_fn(options.get("conv_activation"))
 
@@ -47,7 +49,7 @@ class VisionNetwork(Model):
             return flatten(fc2), flatten(fc1)
 
 
-def get_filter_config(inputs):
+def _get_filter_config(inputs):
     filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],

@@ -7,11 +7,13 @@ import tensorflow.contrib.slim as slim
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.misc import normc_initializer, get_activation_fn
+from ray.rllib.utils.annotations import override
 
 
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
+    @override(Model)
     def _build_layers(self, inputs, num_outputs, options):
         """Process the flattened inputs.
 

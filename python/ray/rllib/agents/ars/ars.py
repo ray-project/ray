@@ -17,6 +17,7 @@ from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import utils
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -161,6 +162,7 @@ class ARSAgent(Agent):
     _agent_name = "ARS"
     _default_config = DEFAULT_CONFIG
 
+    @override(Agent)
     def _init(self):
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
@@ -193,28 +195,7 @@ class ARSAgent(Agent):
         self.reward_list = []
         self.tstart = time.time()
 
-    def _collect_results(self, theta_id, min_episodes):
-        num_episodes, num_timesteps = 0, 0
-        results = []
-        while num_episodes < min_episodes:
-            logger.debug(
-                "Collected {} episodes {} timesteps so far this iter".format(
-                    num_episodes, num_timesteps))
-            rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
-            ]
-            # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
-                results.append(result)
-                # Update the number of episodes and the number of timesteps
-                # keeping in mind that result.noisy_lengths is a list of lists,
-                # where the inner lists have length 2.
-                num_episodes += sum(len(pair) for pair in result.noisy_lengths)
-                num_timesteps += sum(
-                    sum(pair) for pair in result.noisy_lengths)
-
-        return results, num_episodes, num_timesteps
-
+    @override(Agent)
     def _train(self):
         config = self.config
 
@@ -310,10 +291,37 @@ class ARSAgent(Agent):
 
         return result
 
+    @override(Agent)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
+
+    @override(Agent)
+    def compute_action(self, observation):
+        return self.policy.compute(observation, update=True)[0]
+
+    def _collect_results(self, theta_id, min_episodes):
+        num_episodes, num_timesteps = 0, 0
+        results = []
+        while num_episodes < min_episodes:
+            logger.debug(
+                "Collected {} episodes {} timesteps so far this iter".format(
+                    num_episodes, num_timesteps))
+            rollout_ids = [
+                worker.do_rollouts.remote(theta_id) for worker in self.workers
+            ]
+            # Get the results of the rollouts.
+            for result in ray.get(rollout_ids):
+                results.append(result)
+                # Update the number of episodes and the number of timesteps
+                # keeping in mind that result.noisy_lengths is a list of lists,
+                # where the inner lists have length 2.
+                num_episodes += sum(len(pair) for pair in result.noisy_lengths)
+                num_timesteps += sum(
+                    sum(pair) for pair in result.noisy_lengths)
+
+        return results, num_episodes, num_timesteps
 
     def __getstate__(self):
         return {
@@ -329,6 +337,3 @@ class ARSAgent(Agent):
         FilterManager.synchronize({
             "default": self.policy.get_filter()
         }, self.workers)
-
-    def compute_action(self, observation):
-        return self.policy.compute(observation, update=True)[0]
