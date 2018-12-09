@@ -24,7 +24,7 @@ ARS             **Yes**                 **Yes**             No           No
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed this way must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
