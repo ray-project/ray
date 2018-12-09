@@ -247,6 +247,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.explained_variance = explained_variance(value_targets_ph,
                                                      self.value_function)
         self.stats_fetches = {
+            "cur_kl_coeff": self.kl_coeff,
             "cur_lr": tf.cast(self.cur_lr, tf.float64),
             "total_loss": self.loss_obj.loss,
             "policy_loss": self.loss_obj.mean_policy_loss,
