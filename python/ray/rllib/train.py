@@ -38,19 +38,18 @@ def create_parser(parser_creator=None):
         "--redis-address",
         default=None,
         type=str,
-        help="The Redis address of the cluster.")
+        help="Connect to an existing Ray cluster at this address instead "
+        "of starting a new one.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
-        help="--num-cpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-cpus to use if starting a new cluster.")
     parser.add_argument(
         "--ray-num-gpus",
         default=None,
         type=int,
-        help="--num-gpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-gpus to use if starting a new cluster.")
     parser.add_argument(
         "--ray-num-local-schedulers",
         default=None,
@@ -60,14 +59,12 @@ def create_parser(parser_creator=None):
         "--ray-redis-max-memory",
         default=None,
         type=int,
-        help="--redis-max-memory to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--redis-max-memory to use if starting a new cluster.")
     parser.add_argument(
         "--ray-object-store-memory",
         default=None,
         type=int,
-        help="--object-store-memory to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--object-store-memory to use if starting a new cluster.")
     parser.add_argument(
         "--experiment-name",
         default="default",

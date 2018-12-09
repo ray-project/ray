@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import json
 import os
 import ray
 import sys
@@ -570,7 +571,13 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=0)
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_cpus=0,
+        _internal_config=json.dumps({
+            "num_heartbeats_timeout": 40
+        }))
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
