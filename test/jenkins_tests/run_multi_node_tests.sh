@@ -302,6 +302,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 echo "ROOT DIR"
 find $ROOT_DIR/../../python
 
+echo "FIND IN DOCKER"
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA find /ray
+
 # Run all single-agent regression tests (3x retry each)
 for yaml in $ROOT_DIR/../../python/ray/rllib/tuned_examples/regression_tests/*.yaml; do
     docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
