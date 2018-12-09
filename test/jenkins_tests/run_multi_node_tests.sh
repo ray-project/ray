@@ -299,6 +299,12 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/test/test_rollout.sh
 
+echo "ROOT DIR"
+find $ROOT_DIR/../../python
+
+echo "PY DIR"
+find /ray/python
+
 # Run all single-agent regression tests (3x retry each)
 for yaml in $ROOT_DIR/../../python/ray/rllib/tuned_examples/regression_tests/*.yaml; do
     docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
