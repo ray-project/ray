@@ -1300,7 +1300,7 @@ def test_exception_raised_when_actor_node_dies(shutdown_only):
         # Submit some new actor tasks.
         x_ids = [actor.inc.remote() for _ in range(5)]
         for x_id in x_ids:
-            with pytest.raises(ray.worker.RayGetError):
+            with pytest.raises(ray.worker.RayTaskError):
                 # There is some small chance that ray.get will actually
                 # succeed (if the object is transferred before the raylet
                 # dies).
