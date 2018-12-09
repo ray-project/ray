@@ -76,10 +76,6 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
-    logger.warning(
-        "WARNING: Not updating worker name since `setproctitle` is not "
-        "installed. Install this with `pip install setproctitle` "
-        "(or ray[debug]) to enable monitoring of worker processes.")
 
 
 class RayTaskError(Exception):
@@ -1685,6 +1681,10 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if configure_logging:
+        logging.basicConfig(level=logging_level, format=logging_format)
+
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
         if use_raylet:
@@ -1694,8 +1694,11 @@ def init(redis_address=None,
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
 
-    if configure_logging:
-        logging.basicConfig(level=logging_level, format=logging_format)
+    if setproctitle is None:
+        logger.warning(
+            "WARNING: Not updating worker name since `setproctitle` is not "
+            "installed. Install this with `pip install setproctitle` "
+            "(or ray[debug]) to enable monitoring of worker processes.")
 
     if global_worker.connected:
         if ignore_reinit_error:

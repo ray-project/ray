@@ -7,7 +7,7 @@ import time
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -118,6 +118,7 @@ class DQNAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
 
+    @override(Agent)
     def _init(self):
         # Update effective batch size to include n-step
         adjusted_batch_size = max(self.config["sample_batch_size"],
@@ -160,43 +161,12 @@ class DQNAgent(Agent):
         # Create the remote evaluators *after* the replay actors
         if self.remote_evaluators is None:
             self.remote_evaluators = create_remote_evaluators()
-            self.optimizer.set_evaluators(self.remote_evaluators)
+            self.optimizer._set_evaluators(self.remote_evaluators)
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    def _make_exploration_schedule(self, worker_index):
-        # Use either a different `eps` per worker, or a linear schedule.
-        if self.config["per_worker_exploration"]:
-            assert self.config["num_workers"] > 1, \
-                "This requires multiple workers"
-            if worker_index >= 0:
-                exponent = (
-                    1 +
-                    worker_index / float(self.config["num_workers"] - 1) * 7)
-                return ConstantSchedule(0.4**exponent)
-            else:
-                # local ev should have zero exploration so that eval rollouts
-                # run properly
-                return ConstantSchedule(0.0)
-        return LinearSchedule(
-            schedule_timesteps=int(self.config["exploration_fraction"] *
-                                   self.config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=self.config["exploration_final_eps"])
-
-    @property
-    def global_timestep(self):
-        return self.optimizer.num_steps_sampled
-
-    def update_target_if_needed(self):
-        if self.global_timestep - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
-            self.local_evaluator.foreach_trainable_policy(
-                lambda p, _: p.update_target())
-            self.last_target_update_ts = self.global_timestep
-            self.num_target_updates += 1
-
+    @override(Agent)
     def _train(self):
         start_timestep = self.global_timestep
 
@@ -220,14 +190,12 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Only collect metrics from the third of workers with lowest eps
-            result = collect_metrics(
-                self.local_evaluator,
-                self.remote_evaluators[-len(self.remote_evaluators) // 3:],
-                timeout_seconds=self.config["collect_metrics_timeout"])
+            result = self.optimizer.collect_metrics(
+                timeout_seconds=self.config["collect_metrics_timeout"],
+                selected_evaluators=self.remote_evaluators[
+                    -len(self.remote_evaluators) // 3:])
         else:
-            result = collect_metrics(
-                self.local_evaluator,
-                self.remote_evaluators,
+            result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"])
 
         result.update(
@@ -238,6 +206,38 @@ class DQNAgent(Agent):
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
         return result
+
+    def update_target_if_needed(self):
+        if self.global_timestep - self.last_target_update_ts > \
+                self.config["target_network_update_freq"]:
+            self.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.update_target())
+            self.last_target_update_ts = self.global_timestep
+            self.num_target_updates += 1
+
+    @property
+    def global_timestep(self):
+        return self.optimizer.num_steps_sampled
+
+    def _make_exploration_schedule(self, worker_index):
+        # Use either a different `eps` per worker, or a linear schedule.
+        if self.config["per_worker_exploration"]:
+            assert self.config["num_workers"] > 1, \
+                "This requires multiple workers"
+            if worker_index >= 0:
+                exponent = (
+                    1 +
+                    worker_index / float(self.config["num_workers"] - 1) * 7)
+                return ConstantSchedule(0.4**exponent)
+            else:
+                # local ev should have zero exploration so that eval rollouts
+                # run properly
+                return ConstantSchedule(0.0)
+        return LinearSchedule(
+            schedule_timesteps=int(self.config["exploration_fraction"] *
+                                   self.config["schedule_max_timesteps"]),
+            initial_p=1.0,
+            final_p=self.config["exploration_final_eps"])
 
     def __getstate__(self):
         state = Agent.__getstate__(self)

@@ -12,6 +12,7 @@ import ray
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -35,6 +36,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     may result in unexpected behavior.
     """
 
+    @override(PolicyOptimizer)
     def _init(self,
               sgd_batch_size=128,
               num_sgd_iter=10,
@@ -86,14 +88,15 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                             rnn_inputs = []
                         self.optimizers[policy_id] = (
                             LocalSyncParallelOptimizer(
-                                policy.optimizer(), self.devices,
+                                policy._optimizer, self.devices,
                                 [v
-                                 for _, v in policy.loss_inputs()], rnn_inputs,
+                                 for _, v in policy._loss_inputs], rnn_inputs,
                                 self.per_device_batch_size, policy.copy))
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
+    @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
             if self.remote_evaluators:
@@ -132,7 +135,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             for policy_id, batch in samples.policy_batches.items():
                 policy = self.policies[policy_id]
                 tuples = policy._get_loss_inputs_dict(batch)
-                data_keys = [ph for _, ph in policy.loss_inputs()]
+                data_keys = [ph for _, ph in policy._loss_inputs]
                 if policy._state_inputs:
                     state_keys = policy._state_inputs + [policy._seq_lens]
                 else:
@@ -166,6 +169,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.num_steps_trained += samples.count
         return fetches
 
+    @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{
