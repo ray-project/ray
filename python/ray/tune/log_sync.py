@@ -15,10 +15,10 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray import tune
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.suggest.variant_generator import function as tune_function
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def validate_sync_function(sync_function):
         assert "{local_dir}" in sync_function, (
             "Sync template missing '{local_dir}'.")
     elif not (isinstance(sync_function, types.FunctionType)
-              or isinstance(sync_function, tune.function)):
+              or isinstance(sync_function, tune_function)):
         raise ValueError("Sync function {} must be string or function".format(
             sync_function))
 
@@ -100,7 +100,7 @@ class _LogSyncer(object):
         self.sync_function = None
         self.sync_cmd_tmpl = None
         if isinstance(sync_function, types.FunctionType) or isinstance(
-                sync_function, tune.function):
+                sync_function, tune_function):
             self.sync_function = sync_function
         elif isinstance(sync_function, str):
             self.sync_cmd_tmpl = sync_function
