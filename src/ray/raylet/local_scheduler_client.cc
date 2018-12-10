@@ -25,8 +25,9 @@ using MessageType = ray::protocol::MessageType;
 
 LocalSchedulerConnection::LocalSchedulerConnection(
     const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
-    const JobID &driver_id, const Language &language) {
-  connect(local_scheduler_socket, -1, -1);
+    const JobID &driver_id, const Language &language): client_id(client_id),
+      is_worker(is_worker), driver_id(driver_id), language(language) {
+  connect_manager(local_scheduler_socket, -1, -1);
   register_client();
 }
 
@@ -104,7 +105,7 @@ int LocalSchedulerConnection::write_bytes(uint8_t *cursor, size_t length) {
   return 0;
 }
 
-void LocalSchedulerConnection::connect(const char *local_scheduler_socket,
+void LocalSchedulerConnection::connect_manager(const char *local_scheduler_socket,
                                        int num_retries, int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
@@ -149,12 +150,11 @@ void LocalSchedulerConnection::register_client() {
       language);
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
-  int success = result->write_message(MessageType::RegisterClientRequest, fbb);
+  int success = write_message(MessageType::RegisterClientRequest, &fbb);
   RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 }
 
-template<typename PROTOCOL>
-void LocalSchedulerConnection::read_message(MessageType type, PROTOCOL** message) {
+void LocalSchedulerConnection::read_message(MessageType type, uint8_t** message) {
   int64_t version;
   uint8_t *bytes;
   int64_t type_field;
@@ -172,7 +172,7 @@ void LocalSchedulerConnection::read_message(MessageType type, PROTOCOL** message
     free(bytes);
     goto disconnected;
   }
-  goto decode;
+  goto final_check;
 
 disconnected:
   /* Handle the case in which the socket is closed. */
@@ -180,7 +180,7 @@ disconnected:
   length = 0;
   bytes = nullptr;
 
-parse:
+final_check:
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
@@ -190,12 +190,11 @@ parse:
                       "dmesg for previous errors.";
     // TODO: Why don't fail-fast/exit here?
   }
-  // Parse the flatbuffer object.
-  *message = flatbuffers::GetRoot<PROTOCOL>(bytes);
+  *message = bytes;
 }
 
 int LocalSchedulerConnection::write_message(MessageType type,
-    flatbuffers::FlatBufferBuilder *fbb = nullptr) {
+    flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex);
   int64_t version = RayConfig::instance().ray_protocol_version();
   int64_t length = fbb ? fbb->GetSize() : 0;
@@ -226,17 +225,16 @@ void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
 
 ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
     LocalSchedulerConnection *conn) {
-  int64_t type;
-  int64_t reply_size;
   uint8_t *reply;
-  ray::protocol::GetTaskReply *reply_message;
   {
     std::unique_lock<std::mutex> guard(conn->mutex);
     conn->write_message(MessageType::GetTask);
     // Receive a task from the local scheduler. This will block until the local
     // scheduler gives this client a task.
-    conn->read_message(MessageType::ExecuteTask, &reply_message);
+    conn->read_message(MessageType::ExecuteTask, &reply);
   }
+  // Parse the flatbuffer object.
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
   // Set the resource IDs for this task.
   conn->resource_ids_.clear();
   for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
@@ -282,7 +280,7 @@ int local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
   auto message = ray::protocol::CreateFetchOrReconstruct(
       fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  conn->write_message(MessageType::FetchOrReconstruct, &fbb);
+  return conn->write_message(MessageType::FetchOrReconstruct, &fbb);
 }
 
 void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
@@ -304,13 +302,15 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  ray::protocol::WaitReply *reply_message;
+  uint8_t *reply;
   {
     std::unique_lock<std::mutex> guard(conn->mutex);
     conn->write_message(MessageType::WaitRequest, &fbb);
     // Read result.
-    conn->read_message(MessageType::WaitReply, &reply_message);
+    conn->read_message(MessageType::WaitReply, &reply);
   }
+  // Parse the flatbuffer object.
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;
   auto found = reply_message->found();

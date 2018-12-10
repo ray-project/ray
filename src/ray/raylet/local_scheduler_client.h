@@ -40,10 +40,12 @@ public:
    * @return Void.
    */
   void disconnect();
-  template<typename PROTOCOL>
-  void read_message(MessageType type, PROTOCOL** object);
+  void read_message(MessageType type, uint8_t** message);
   int write_message(MessageType type,
                     flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  UniqueID client_id;
+  bool is_worker;
+  JobID driver_id;
   /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
    *  by legacy Ray and will be deprecated. */
   std::vector<int> gpu_ids;
@@ -59,7 +61,7 @@ private:
   int connect_ipc_sock(const char *socket_pathname);
   int read_bytes(uint8_t *cursor, size_t length);
   int write_bytes(uint8_t *cursor, size_t length);
-  void connect(const char *local_scheduler_socket, int num_retries, int64_t timeout);
+  void connect_manager(const char *local_scheduler_socket, int num_retries, int64_t timeout);
   void register_client();
 
   /** File descriptor of the Unix domain socket that connects to local
@@ -67,6 +69,7 @@ private:
   int conn;
   /// A mutext to protect write operations of the local scheduler client.
   std::mutex write_mutex;
+  Language language;
 };
 
 /// Submit a task using the raylet code path.
