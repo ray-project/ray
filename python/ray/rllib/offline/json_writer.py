@@ -15,7 +15,7 @@ try:
 except ImportError:
     smart_open = None
 
-from ray.rllib.io.output_writer import OutputWriter
+from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
 

@@ -13,7 +13,7 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.io import NoopOutput, JsonReader, MixedInput, JsonWriter
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -137,7 +137,7 @@ COMMON_CONFIG = {
     #    "s3://bucket/2.json"])
     #  - a dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - a function that returns a rllib.io.InputReader
+    #  - a function that returns a rllib.offline.InputReader
     "input": "sampler",
     # Specify how to evaluate the current policy. This only makes sense to set
     # when the input is not already generating simulation data:
@@ -152,7 +152,7 @@ COMMON_CONFIG = {
     #  - None: don't save any experiences
     #  - "logdir" to save to the agent log dir
     #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
-    #  - a function that returns a rllib.io.OutputWriter
+    #  - a function that returns a rllib.offline.OutputWriter
     "output": None,
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],

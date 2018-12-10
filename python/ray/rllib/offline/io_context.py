@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.io.input_reader import SamplerInput
+from ray.rllib.offline.input_reader import SamplerInput
 
 
 class IOContext(object):

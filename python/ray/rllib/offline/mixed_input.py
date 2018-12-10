@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.io.input_reader import InputReader
-from ray.rllib.io.json_reader import JsonReader
+from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.annotations import override
 
 

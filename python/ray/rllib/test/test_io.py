@@ -13,8 +13,8 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.evaluation import SampleBatch
-from ray.rllib.io import IOContext, JsonWriter, JsonReader
-from ray.rllib.io.json_writer import _to_json
+from ray.rllib.offline import IOContext, JsonWriter, JsonReader
+from ray.rllib.offline.json_writer import _to_json
 
 SAMPLES = SampleBatch({
     "actions": np.array([1, 2, 3]),
