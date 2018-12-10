@@ -23,12 +23,8 @@ using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
 
-LocalSchedulerConnection::LocalSchedulerConnection(
-    const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
-    const JobID &driver_id, const Language &language): client_id(client_id),
-      is_worker(is_worker), driver_id(driver_id), language(language) {
+LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_socket) {
   connect_manager(local_scheduler_socket, -1, -1);
-  register_client();
 }
 
 LocalSchedulerConnection::~LocalSchedulerConnection() { close(conn); }
@@ -140,20 +136,6 @@ void LocalSchedulerConnection::disconnect() {
   write_message(MessageType::IntentionalDisconnectClient, &fbb);
 }
 
-void LocalSchedulerConnection::register_client() {
-  /* Register with the local scheduler.
-   * NOTE(swang): If the local scheduler exits and we are registered as a
-   * worker, we will get killed. */
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
-      language);
-  fbb.Finish(message);
-  /* Register the process ID with the local scheduler. */
-  int success = write_message(MessageType::RegisterClientRequest, &fbb);
-  RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
-}
-
 void LocalSchedulerConnection::read_message(MessageType type, uint8_t** message) {
   int64_t version;
   uint8_t *bytes;
@@ -212,9 +194,36 @@ int LocalSchedulerConnection::write_message(MessageType type,
   return 0;
 }
 
-void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
-                                   const std::vector<ObjectID> &execution_dependencies,
-                                   const ray::raylet::TaskSpecification &task_spec) {
+LocalSchedulerClient::LocalSchedulerClient(
+  const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
+  const JobID &driver_id, const Language &language): client_id(client_id),
+    is_worker(is_worker), driver_id(driver_id), language(language) {
+  conn = new LocalSchedulerConnection(local_scheduler_socket);
+  register_client();
+}
+
+LocalSchedulerClient::~LocalSchedulerClient() {
+  if (conn) delete conn;
+}
+
+void LocalSchedulerClient::disconnect() {
+  conn->disconnect();
+}
+
+void LocalSchedulerClient::register_client() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateRegisterClientRequest(
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
+      language);
+  fbb.Finish(message);
+  /* Register the process ID with the local scheduler. */
+  int success = conn->write_message(MessageType::RegisterClientRequest, &fbb);
+  RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
+}
+
+void LocalSchedulerClient::submit_task(
+    const std::vector<ObjectID> &execution_dependencies,
+    const ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
@@ -223,8 +232,7 @@ void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
   conn->write_message(MessageType::SubmitTask, &fbb);
 }
 
-ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
-    LocalSchedulerConnection *conn) {
+ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
   uint8_t *reply;
   {
     std::unique_lock<std::mutex> guard(conn->mutex);
@@ -268,13 +276,13 @@ ray::raylet::TaskSpecification *local_scheduler_get_task_raylet(
   return task_spec;
 }
 
-void local_scheduler_task_done(LocalSchedulerConnection *conn) {
+void LocalSchedulerClient::task_done() {
   conn->write_message(MessageType::TaskDone);
 }
 
-int local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID> &object_ids,
-                                         bool fetch_only, const TaskID &current_task_id) {
+int LocalSchedulerClient::fetch_or_reconstruct(
+    const std::vector<ObjectID> &object_ids, bool fetch_only,
+    const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
@@ -283,8 +291,7 @@ int local_scheduler_fetch_or_reconstruct(LocalSchedulerConnection *conn,
   return conn->write_message(MessageType::FetchOrReconstruct, &fbb);
 }
 
-void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
-                                      const TaskID &current_task_id) {
+void LocalSchedulerClient::notify_unblocked(const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
@@ -292,10 +299,9 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn,
   conn->write_message(MessageType::NotifyUnblocked, &fbb);
 }
 
-std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
-    LocalSchedulerConnection *conn, const std::vector<ObjectID> &object_ids,
-    int num_returns, int64_t timeout_milliseconds, bool wait_local,
-    const TaskID &current_task_id) {
+std::pair<std::vector<ObjectID>, std::vector<ObjectID>> LocalSchedulerClient::wait(
+    const std::vector<ObjectID> &object_ids, int num_returns,
+    int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
@@ -328,9 +334,9 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
   return result;
 }
 
-void local_scheduler_push_error(LocalSchedulerConnection *conn, const JobID &job_id,
-                                const std::string &type, const std::string &error_message,
-                                double timestamp) {
+void LocalSchedulerClient::push_error(const JobID &job_id, const std::string &type,
+                                      const std::string &error_message,
+                                      double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
       fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
@@ -340,8 +346,7 @@ void local_scheduler_push_error(LocalSchedulerConnection *conn, const JobID &job
   conn->write_message(MessageType::PushErrorRequest, &fbb);
 }
 
-void local_scheduler_push_profile_events(LocalSchedulerConnection *conn,
-                                         const ProfileTableDataT &profile_events) {
+void LocalSchedulerClient::push_profile_events(const ProfileTableDataT &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
@@ -349,9 +354,8 @@ void local_scheduler_push_profile_events(LocalSchedulerConnection *conn,
   conn->write_message(MessageType::PushProfileEventsRequest, &fbb);
 }
 
-void local_scheduler_free_objects_in_object_store(
-    LocalSchedulerConnection *conn, const std::vector<ray::ObjectID> &object_ids,
-    bool local_only) {
+void LocalSchedulerClient::free_objects_in_object_store(
+    const std::vector<ray::ObjectID> &object_ids, bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,
                                                          to_flatbuf(fbb, object_ids));

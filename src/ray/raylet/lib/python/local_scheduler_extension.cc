@@ -10,7 +10,7 @@ PyObject *LocalSchedulerError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  LocalSchedulerConnection *local_scheduler_connection;
+  LocalSchedulerClient *local_scheduler_client;
 } PyLocalSchedulerClient;
 // clang-format on
 
@@ -22,25 +22,25 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self, PyObject *a
   JobID driver_id;
   if (!PyArg_ParseTuple(args, "sO&OO&", &socket_name, PyStringToUniqueID, &client_id,
                         &is_worker, &PyObjectToUniqueID, &driver_id)) {
-    self->local_scheduler_connection = NULL;
+    self->local_scheduler_client = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->local_scheduler_connection = new LocalSchedulerConnection(
+  self->local_scheduler_client = new LocalSchedulerClient(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)), driver_id,
       Language::PYTHON);
   return 0;
 }
 
 static void PyLocalSchedulerClient_dealloc(PyLocalSchedulerClient *self) {
-  if (self->local_scheduler_connection != NULL) {
-    delete self->local_scheduler_connection;
+  if (self->local_scheduler_client != NULL) {
+    delete self->local_scheduler_client;
   }
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *PyLocalSchedulerClient_disconnect(PyObject *self) {
-  ((PyLocalSchedulerClient *)self)->local_scheduler_connection->disconnect();
+  ((PyLocalSchedulerClient *)self)->local_scheduler_client->disconnect();
   Py_RETURN_NONE;
 }
 
@@ -49,12 +49,11 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  LocalSchedulerConnection *connection =
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection;
+  LocalSchedulerClient *client =
+      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
-  local_scheduler_submit_raylet(connection, *task->execution_dependencies,
-                                *task->task_spec);
+  client->submit_task(*task->execution_dependencies, *task->task_spec);
 
   Py_RETURN_NONE;
 }
@@ -65,8 +64,7 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = local_scheduler_get_task_raylet(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection);
+  task_spec = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->get_task();
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec);
 }
@@ -92,15 +90,14 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  int ret = local_scheduler_fetch_or_reconstruct(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+  int ret = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client.fetch_or_reconstruct(
       object_ids, fetch_only, current_task_id);
   if (ret == 0) {
     Py_RETURN_NONE;
   } else {
     std::ostringstream stream;
     stream << "local_scheduler_fetch_or_reconstruct failed: "
-           << "local scheduler connection may be closed, "
+           << "local scheduler client may be closed, "
            << "check raylet status. return value: " << ret;
     PyErr_SetString(CommonError, stream.str().c_str());
     Py_RETURN_NONE;
@@ -112,8 +109,7 @@ static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self, PyObjec
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
-  local_scheduler_notify_unblocked(
-      ((PyLocalSchedulerClient *)self)->local_scheduler_connection, current_task_id);
+  ((PyLocalSchedulerClient *)self)->local_scheduler_client->notify_unblocked(current_task_id);
   Py_RETURN_NONE;
 }
 
@@ -130,7 +126,7 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self, PyObject 
 static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
   std::vector<int> gpu_ids =
-      ((PyLocalSchedulerClient *)self)->local_scheduler_connection->gpu_ids;
+      ((PyLocalSchedulerClient *)self)->local_scheduler_client->gpu_ids;
   int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
@@ -145,7 +141,7 @@ static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
   PyObject *resource_ids = PyDict_New();
 
   for (auto const &resource_info : reinterpret_cast<PyLocalSchedulerClient *>(self)
-                                       ->local_scheduler_connection->resource_ids_) {
+                                       ->local_scheduler_client->resource_ids_) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
 
@@ -204,8 +200,8 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   }
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = local_scheduler_wait(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = \
+      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->wait(
       object_ids, num_returns, timeout_ms, wait_local, current_task_id);
 
   // Convert result to py object.
@@ -233,8 +229,7 @@ static PyObject *PyLocalSchedulerClient_push_error(PyObject *self, PyObject *arg
     return NULL;
   }
 
-  local_scheduler_push_error(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->push_error(
       job_id, std::string(type, type_length),
       std::string(error_message, error_message_length), timestamp);
 
@@ -330,9 +325,7 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
-  local_scheduler_push_profile_events(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
-      profile_info);
+  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->push_profile_events(profile_info);
 
   Py_RETURN_NONE;
 }
@@ -367,8 +360,7 @@ static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
   }
 
   // Invoke local_scheduler_free_objects_in_object_store.
-  local_scheduler_free_objects_in_object_store(
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
+  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->free_objects_in_object_store(
       object_ids, local_only);
   Py_RETURN_NONE;
 }
