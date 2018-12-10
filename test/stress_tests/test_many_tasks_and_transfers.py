@@ -21,7 +21,7 @@ num_remote_cpus = num_remote_nodes * head_node_cpus
 
 # Wait until the expected number of nodes have joined the cluster.
 while True:
-    if len(ray.global_state.client_table()) >= num_remote_nodes + 1:
+    if len(ray.global_state.client_table()[0]) >= num_remote_nodes + 1:
         break
 logger.info("Nodes have all joined. There are {} resources."
             .format(ray.global_state.cluster_resources()))

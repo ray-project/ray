@@ -330,9 +330,11 @@ class GlobalState(object):
         if message is None:
             return []
 
-        node_info = {}
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
+
+        live_clients = {}
+        dead_clients = {}
 
         # Since GCS entries are append-only, we override so that
         # only the latest entries are kept.
@@ -352,8 +354,8 @@ class GlobalState(object):
             # previously been inserted, and it cannot have previously been
             # removed.
             if client.IsInsertion():
-                assert client_id not in node_info
-                node_info[client_id] = {
+                assert client_id not in live_clients
+                live_clients[client_id] = {
                     "ClientID": client_id,
                     "IsInsertion": client.IsInsertion(),
                     "NodeManagerAddress": decode(client.NodeManagerAddress()),
@@ -365,12 +367,14 @@ class GlobalState(object):
                     "Resources": resources
                 }
             else:
-                assert client_id in node_info, "Client removed not found!"
-                assert node_info[client_id]["IsInsertion"], (
+                assert client_id in live_clients, "Client removed not found!"
+                assert live_clients[client_id]["IsInsertion"], (
                     "Unexpected duplicate removal of client.")
-                node_info[client_id]["IsInsertion"] = client.IsInsertion()
+                dead_clients[client_id] = live_clients[client_id]
+                del live_clients[client_id]
+                dead_clients[client_id]["IsInsertion"] = client.IsInsertion()
 
-        return list(node_info.values())
+        return list(live_clients.values()), list(dead_clients.values())
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.
@@ -611,7 +615,7 @@ class GlobalState(object):
                 events. Each profile event is a dictionary.
         """
         client_id_to_address = {}
-        for client_info in ray.global_state.client_table():
+        for client_info in ray.global_state.client_table()[0]:
             client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
                 client_info["NodeManagerAddress"],
                 client_info["ObjectManagerPort"])
@@ -755,21 +759,12 @@ class GlobalState(object):
                 resource in the cluster.
         """
         resources = defaultdict(int)
-        clients = self.client_table()
-        for client in clients:
-            # Only count resources from live clients.
-            if client["IsInsertion"]:
-                for key, value in client["Resources"].items():
-                    resources[key] += value
+        live_clients, _ = self.client_table()
+        for client in live_clients:
+            for key, value in client["Resources"].items():
+                resources[key] += value
 
         return dict(resources)
-
-    def _live_client_ids(self):
-        """Returns a set of client IDs corresponding to clients still alive."""
-        return {
-            client["ClientID"]
-            for client in self.client_table() if client["IsInsertion"]
-        }
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -792,7 +787,7 @@ class GlobalState(object):
         for subscribe_client in subscribe_clients:
             subscribe_client.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_CHANNEL)
 
-        client_ids = self._live_client_ids()
+        client_ids = {client["ClientID"] for client in self.client_table()[0]}
 
         while set(available_resources_by_id.keys()) != client_ids:
             for subscribe_client in subscribe_clients:
@@ -821,7 +816,10 @@ class GlobalState(object):
                 available_resources_by_id[client_id] = dynamic_resources
 
             # Update clients in cluster
-            client_ids = self._live_client_ids()
+            client_ids = {
+                client["ClientID"]
+                for client in self.client_table()[0]
+            }
 
             # Remove disconnected clients
             for client_id in available_resources_by_id.keys():

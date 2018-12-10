@@ -246,11 +246,12 @@ class Monitor(object):
                 message_handler(channel, data)
 
     def update_local_scheduler_map(self):
-        local_schedulers = self.state.client_table()
+        live_clients, dead_clients = self.state.client_table()
+        local_schedulers = live_clients + dead_clients
         self.local_scheduler_id_to_ip_map = {}
         for local_scheduler_info in local_schedulers:
-            client_id = local_scheduler_info.get("DBClientID") or \
-                local_scheduler_info["ClientID"]
+            client_id = (local_scheduler_info.get("DBClientID")
+                         or local_scheduler_info["ClientID"])
             ip_address = (
                 local_scheduler_info.get("AuxAddress")
                 or local_scheduler_info["NodeManagerAddress"]).split(":")[0]

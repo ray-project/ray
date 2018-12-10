@@ -2249,11 +2249,12 @@ def test_global_state_api(shutdown_only):
     assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
     assert task_spec["ReturnObjectIDs"] == []
 
-    client_table = ray.global_state.client_table()
+    live_clients, dead_clients = ray.global_state.client_table()
     node_ip_address = ray.worker.global_worker.node_ip_address
 
-    assert len(client_table) == 1
-    assert client_table[0]["NodeManagerAddress"] == node_ip_address
+    assert len(live_clients) == 1
+    assert live_clients[0]["NodeManagerAddress"] == node_ip_address
+    assert len(dead_clients) == 0
 
     @ray.remote
     def f(*xs):

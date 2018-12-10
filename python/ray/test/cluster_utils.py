@@ -138,10 +138,7 @@ class Cluster(object):
         return False
 
     def _check_registered_nodes(self):
-        registered = len([
-            client for client in ray.global_state.client_table()
-            if client["IsInsertion"]
-        ])
+        registered = len(ray.global_state.client_table()[0])
         expected = len(self.list_all_nodes())
         if registered == expected:
             logger.info("All nodes registered as expected.")

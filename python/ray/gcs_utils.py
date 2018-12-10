@@ -28,6 +28,9 @@ __all__ = [
 
 FUNCTION_PREFIX = "RemoteFunction:"
 
+# Client table updates.
+CLIENT_CHANNEL = str(TablePubsub.CLIENT).encode("ascii")
+
 # xray heartbeats
 XRAY_HEARTBEAT_CHANNEL = str(TablePubsub.HEARTBEAT).encode("ascii")
 XRAY_HEARTBEAT_BATCH_CHANNEL = str(TablePubsub.HEARTBEAT_BATCH).encode("ascii")

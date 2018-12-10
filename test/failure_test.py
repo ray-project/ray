@@ -587,10 +587,11 @@ def ray_start_two_nodes():
 # the monitor to detect enough missed heartbeats.
 def test_warning_for_dead_node(ray_start_two_nodes):
     # Wait for the raylet to appear in the client table.
-    while len(ray.global_state.client_table()) < 2:
+    while len(ray.global_state.client_table()[0]) < 2:
         time.sleep(0.1)
 
-    client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
+    live_clients, dead_clients = ray.global_state.client_table()
+    client_ids = {item["ClientID"] for item in live_clients + dead_clients}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.

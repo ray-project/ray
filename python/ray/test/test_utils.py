@@ -32,8 +32,8 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
-        client_table = ray.global_state.client_table()
-        num_ready_nodes = len(client_table)
+        live_clients, dead_clients = ray.global_state.client_table()
+        num_ready_nodes = len(live_clients) + len(dead_clients)
         if num_ready_nodes == num_nodes:
             # Check that for each node, a local scheduler and a plasma manager
             # are present.
