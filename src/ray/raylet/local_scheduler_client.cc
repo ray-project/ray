@@ -23,8 +23,32 @@ using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
 
-LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_socket) {
-  connect_manager(local_scheduler_socket, -1, -1);
+LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_socket,
+                                                   int num_retries, int64_t timeout) {
+  /* Pick the default values if the user did not specify. */
+  if (num_retries < 0) {
+      num_retries = RayConfig::instance().num_connect_attempts();
+  }
+  if (timeout < 0) {
+      timeout = RayConfig::instance().connect_timeout_milliseconds();
+  }
+  RAY_CHECK(local_scheduler_socket);
+  conn = -1;
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+      conn = connect_ipc_sock(local_scheduler_socket);
+      if (conn >= 0) break;
+      if (num_attempts > 0) {
+        RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << local_scheduler_socket
+                        << " (num_attempts = " << num_attempts
+                        << ", num_retries = " << num_retries << ")";
+      }
+      /* Sleep for timeout milliseconds. */
+      usleep(timeout * 1000);
+  }
+  /* If we could not connect to the socket, exit. */
+  if (conn == -1) {
+      RAY_LOG(FATAL) << "Could not connect to socket " << local_scheduler_socket;
+  }
 }
 
 LocalSchedulerConnection::~LocalSchedulerConnection() { close(conn); }
@@ -101,34 +125,6 @@ int LocalSchedulerConnection::write_bytes(uint8_t *cursor, size_t length) {
   return 0;
 }
 
-void LocalSchedulerConnection::connect_manager(const char *local_scheduler_socket,
-                                       int num_retries, int64_t timeout) {
-  /* Pick the default values if the user did not specify. */
-  if (num_retries < 0) {
-      num_retries = RayConfig::instance().num_connect_attempts();
-  }
-  if (timeout < 0) {
-      timeout = RayConfig::instance().connect_timeout_milliseconds();
-  }
-  RAY_CHECK(local_scheduler_socket);
-  conn = -1;
-  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-      conn = connect_ipc_sock(local_scheduler_socket);
-      if (conn >= 0) break;
-      if (num_attempts > 0) {
-        RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << local_scheduler_socket
-                        << " (num_attempts = " << num_attempts
-                        << ", num_retries = " << num_retries << ")";
-      }
-      /* Sleep for timeout milliseconds. */
-      usleep(timeout * 1000);
-  }
-  /* If we could not connect to the socket, exit. */
-  if (conn == -1) {
-      RAY_LOG(FATAL) << "Could not connect to socket " << local_scheduler_socket;
-  }
-}
-
 void LocalSchedulerConnection::disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateDisconnectClient(fbb);
@@ -198,7 +194,7 @@ LocalSchedulerClient::LocalSchedulerClient(
   const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
   const JobID &driver_id, const Language &language): client_id(client_id),
     is_worker(is_worker), driver_id(driver_id), language(language) {
-  conn = new LocalSchedulerConnection(local_scheduler_socket);
+  conn = new LocalSchedulerConnection(local_scheduler_socket, -1, -1);
   register_client();
 }
 
@@ -244,11 +240,11 @@ ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
   // Set the resource IDs for this task.
-  conn->resource_ids_.clear();
+  resource_ids_.clear();
   for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
     auto const &fractional_resource_ids =
         reply_message->fractional_resource_ids()->Get(i);
-    auto &acquired_resources = conn->resource_ids_[string_from_flatbuf(
+    auto &acquired_resources = resource_ids_[string_from_flatbuf(
         *fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();

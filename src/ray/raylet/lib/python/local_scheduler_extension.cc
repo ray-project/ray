@@ -90,7 +90,7 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  int ret = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client.fetch_or_reconstruct(
+  int ret = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->fetch_or_reconstruct(
       object_ids, fetch_only, current_task_id);
   if (ret == 0) {
     Py_RETURN_NONE;

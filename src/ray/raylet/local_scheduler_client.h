@@ -28,7 +28,8 @@ public:
    *        driver.
    * @return The connection information.
    */
-  LocalSchedulerConnection(const char *local_scheduler_socket);
+  LocalSchedulerConnection(const char *local_scheduler_socket, int num_retries,
+                           int64_t timeout);
   ~LocalSchedulerConnection();
   /**
    * Notify the local scheduler that this client is disconnecting gracefully. This
@@ -49,15 +50,12 @@ private:
   int connect_ipc_sock(const char *socket_pathname);
   int read_bytes(uint8_t *cursor, size_t length);
   int write_bytes(uint8_t *cursor, size_t length);
-  void connect_manager(const char *local_scheduler_socket, int num_retries, int64_t timeout);
-  void register_client();
 
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
   /// A mutext to protect write operations of the local scheduler client.
   std::mutex write_mutex;
-  Language language;
 };
 
 class LocalSchedulerClient {
@@ -76,12 +74,7 @@ public:
    */
   LocalSchedulerClient(
     const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
-    const JobID &driver_id, const Language &language): client_id(client_id),
-      is_worker(is_worker), driver_id(driver_id), language(language) {
-    conn = new LocalSchedulerConnection(local_scheduler_socket);
-    connect_manager(local_scheduler_socket, -1, -1);
-    register_client();
-  }
+    const JobID &driver_id, const Language &language);
 
   ~LocalSchedulerClient();
 
@@ -137,7 +130,7 @@ public:
   /// \param current_task_id The task that called wait.
   /// \return A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> wait(
       const std::vector<ObjectID> &object_ids,
       int num_returns, int64_t timeout_milliseconds, bool wait_local,
       const TaskID &current_task_id);
@@ -168,6 +161,7 @@ public:
   UniqueID client_id;
   bool is_worker;
   JobID driver_id;
+  Language language;
   /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
    *  by legacy Ray and will be deprecated. */
   std::vector<int> gpu_ids;
