@@ -13,10 +13,7 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.io.json_reader import JsonReader
-from ray.rllib.io.json_writer import JsonWriter
-from ray.rllib.io.mixed_input import MixedInput
-from ray.rllib.io.output_writer import NoopOutput
+from ray.rllib.io import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
