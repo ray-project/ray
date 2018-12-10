@@ -83,8 +83,8 @@ class JsonReader(InputReader):
         try:
             return _from_json(line)
         except Exception as e:
-            logger.warn("Ignoring corrupt json record in {}: {}: {}".format(
-                self.cur_file, line, e))
+            logger.exception("Ignoring corrupt json record in {}: {}".format(
+                self.cur_file, line))
             return None
 
     def _next_line(self):
