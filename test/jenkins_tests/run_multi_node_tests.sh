@@ -305,6 +305,14 @@ for yaml in $(ls $ROOT_DIR/../../python/ray/rllib/tuned_examples/regression_test
         python /ray/python/ray/rllib/test/run_regression_tests.py /ray/python/ray/rllib/tuned_examples/regression_tests/$yaml
 done
 
+# Try a couple times since it's stochastic
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py || \
+    docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py || \
+    docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
     --smoke-test
