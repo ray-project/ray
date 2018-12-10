@@ -38,30 +38,33 @@ def create_parser(parser_creator=None):
         "--redis-address",
         default=None,
         type=str,
-        help="The Redis address of the cluster.")
+        help="Connect to an existing Ray cluster at this address instead "
+        "of starting a new one.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
-        help="--num-cpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-cpus to use if starting a new cluster.")
     parser.add_argument(
         "--ray-num-gpus",
         default=None,
         type=int,
-        help="--num-gpus to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--num-gpus to use if starting a new cluster.")
     parser.add_argument(
         "--ray-num-local-schedulers",
         default=None,
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
     parser.add_argument(
+        "--ray-redis-max-memory",
+        default=None,
+        type=int,
+        help="--redis-max-memory to use if starting a new cluster.")
+    parser.add_argument(
         "--ray-object-store-memory",
         default=None,
         type=int,
-        help="--object-store-memory to pass to Ray."
-        " This only has an affect in local mode.")
+        help="--object-store-memory to use if starting a new cluster.")
     parser.add_argument(
         "--experiment-name",
         default="default",
@@ -122,12 +125,14 @@ def run(args, parser):
                     "num_cpus": args.ray_num_cpus or 1,
                     "num_gpus": args.ray_num_gpus or 0,
                 },
-                object_store_memory=args.ray_object_store_memory)
+                object_store_memory=args.ray_object_store_memory,
+                redis_max_memory=args.ray_redis_max_memory)
         ray.init(redis_address=cluster.redis_address)
     else:
         ray.init(
             redis_address=args.redis_address,
             object_store_memory=args.ray_object_store_memory,
+            redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     run_experiments(

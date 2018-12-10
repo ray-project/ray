@@ -7,6 +7,7 @@ import logging
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
+from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
+    @override(Agent)
     def _init(self):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
@@ -85,6 +87,25 @@ class PPOAgent(Agent):
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
                 })
+
+    @override(Agent)
+    def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
+        fetches = self.optimizer.step()
+        if "kl" in fetches:
+            # single-agent
+            self.local_evaluator.for_policy(
+                lambda pi: pi.update_kl(fetches["kl"]))
+        else:
+            # multi-agent
+            self.local_evaluator.foreach_trainable_policy(
+                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
+        res = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
+        res.update(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
+            info=dict(fetches, **res.get("info", {})))
+        return res
 
     def _validate_config(self):
         waste_ratio = (
@@ -109,28 +130,12 @@ class PPOAgent(Agent):
                 "Episode truncation is not supported without a value function")
         if (self.config["multiagent"]["policy_graphs"]
                 and not self.config["simple_optimizer"]):
-            logger.warn("forcing simple_optimizer=True in multi-agent mode")
-            self.config["simple_optimizer"] = True
+            logger.info(
+                "In multi-agent mode, policies will be optimized sequentially "
+                "by the multi-GPU optimizer. Consider setting "
+                "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
             # TODO(ekl): consider setting the default to be NoFilter
             logger.warn(
                 "By default, observations will be normalized with {}".format(
                     self.config["observation_filter"]))
-
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        fetches = self.optimizer.step()
-        if "kl" in fetches:
-            # single-agent
-            self.local_evaluator.for_policy(
-                lambda pi: pi.update_kl(fetches["kl"]))
-        else:
-            # multi-agent
-            self.local_evaluator.foreach_trainable_policy(
-                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        res = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
-        res.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.get("info", {})))
-        return res
