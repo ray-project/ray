@@ -79,6 +79,22 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     objectStoreProxy.put(objectId, obj, null);
   }
 
+
+  /**
+   * Store a serialized object in the object store.
+   *
+   * @param obj The serialized Java object to be stored.
+   * @return A RayObject instance that represents the in-store object.
+   */
+  public RayObject<Object> putSerialized(byte[] obj) {
+    UniqueId objectId = UniqueIdUtil.computePutId(
+            workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
+    UniqueId taskId = workerContext.getCurrentTask().taskId;
+    LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
+    objectStoreProxy.putSerialized(objectId, obj, null);
+    return new RayObjectImpl<>(objectId);
+  }
+
   @Override
   public <T> T get(UniqueId objectId) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId));
