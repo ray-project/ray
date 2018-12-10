@@ -82,7 +82,7 @@ class JsonReader(InputReader):
             return None
         try:
             return _from_json(line)
-        except Exception as e:
+        except Exception:
             logger.exception("Ignoring corrupt json record in {}: {}".format(
                 self.cur_file, line))
             return None
