@@ -6,25 +6,25 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
       env:
         - JDK='Oracle JDK 8'
-        - PYTHON=3.5
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -58,7 +58,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -75,7 +75,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -86,7 +86,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -100,6 +100,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
+        - PYTHONWARNINGS=ignore
 
 
 install:
