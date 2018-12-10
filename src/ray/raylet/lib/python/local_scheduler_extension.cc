@@ -26,7 +26,7 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self, PyObject *a
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->local_scheduler_connection = LocalSchedulerConnection_init(
+  self->local_scheduler_connection = new LocalSchedulerConnection(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)), driver_id,
       Language::PYTHON);
   return 0;
@@ -34,14 +34,13 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self, PyObject *a
 
 static void PyLocalSchedulerClient_dealloc(PyLocalSchedulerClient *self) {
   if (self->local_scheduler_connection != NULL) {
-    LocalSchedulerConnection_free(self->local_scheduler_connection);
+    delete self->local_scheduler_connection;
   }
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *PyLocalSchedulerClient_disconnect(PyObject *self) {
-  local_scheduler_disconnect_client(
-      ((PyLocalSchedulerClient *)self)->local_scheduler_connection);
+  ((PyLocalSchedulerClient *)self)->local_scheduler_connection->disconnect();
   Py_RETURN_NONE;
 }
 

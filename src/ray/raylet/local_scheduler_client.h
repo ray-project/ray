@@ -11,10 +11,39 @@ using ray::TaskID;
 using ray::ActorID;
 using ray::UniqueID;
 
-struct LocalSchedulerConnection {
-  /** File descriptor of the Unix domain socket that connects to local
-   *  scheduler. */
-  int conn;
+using MessageType = ray::protocol::MessageType;
+
+class LocalSchedulerConnection {
+
+public:
+  /**
+   * Connect to the local scheduler.
+   *
+   * @param local_scheduler_socket The name of the socket to use to connect to the
+   *        local scheduler.
+   * @param worker_id A unique ID to represent the worker.
+   * @param is_worker Whether this client is a worker. If it is a worker, an
+   *        additional message will be sent to register as one.
+   * @param driver_id The ID of the driver. This is non-nil if the client is a
+   *        driver.
+   * @return The connection information.
+   */
+  LocalSchedulerConnection(
+    const char *local_scheduler_socket, const UniqueID &worker_id, bool is_worker,
+    const JobID &driver_id, const Language &language);
+  ~LocalSchedulerConnection();
+  /**
+   * Notify the local scheduler that this client is disconnecting gracefully. This
+   * is used by actors to exit gracefully so that the local scheduler doesn't
+   * propagate an error message to the driver.
+   *
+   * @return Void.
+   */
+  void disconnect();
+  template<typename PROTOCOL>
+  void read_message(MessageType type, PROTOCOL** object);
+  int write_message(MessageType type,
+                    flatbuffers::FlatBufferBuilder *fbb = nullptr);
   /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
    *  by legacy Ray and will be deprecated. */
   std::vector<int> gpu_ids;
@@ -24,34 +53,21 @@ struct LocalSchedulerConnection {
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
   /// A mutex to protect stateful operations of the local scheduler client.
   std::mutex mutex;
+
+private:
+  // TODO(rkn): The io methods below should be removed.
+  int connect_ipc_sock(const char *socket_pathname);
+  int read_bytes(uint8_t *cursor, size_t length);
+  int write_bytes(uint8_t *cursor, size_t length);
+  void connect(const char *local_scheduler_socket, int num_retries, int64_t timeout);
+  void register_client();
+
+  /** File descriptor of the Unix domain socket that connects to local
+   *  scheduler. */
+  int conn;
   /// A mutext to protect write operations of the local scheduler client.
   std::mutex write_mutex;
 };
-
-/**
- * Connect to the local scheduler.
- *
- * @param local_scheduler_socket The name of the socket to use to connect to the
- *        local scheduler.
- * @param worker_id A unique ID to represent the worker.
- * @param is_worker Whether this client is a worker. If it is a worker, an
- *        additional message will be sent to register as one.
- * @param driver_id The ID of the driver. This is non-nil if the client is a
- *        driver.
- * @return The connection information.
- */
-LocalSchedulerConnection *LocalSchedulerConnection_init(
-    const char *local_scheduler_socket, const UniqueID &worker_id, bool is_worker,
-    const JobID &driver_id, const Language &language);
-
-/**
- * Disconnect from the local scheduler.
- *
- * @param conn Local scheduler connection information returned by
- *        LocalSchedulerConnection_init.
- * @return Void.
- */
-void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
 
 /// Submit a task using the raylet code path.
 ///
@@ -62,16 +78,6 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
 void local_scheduler_submit_raylet(LocalSchedulerConnection *conn,
                                    const std::vector<ObjectID> &execution_dependencies,
                                    const ray::raylet::TaskSpecification &task_spec);
-
-/**
- * Notify the local scheduler that this client is disconnecting gracefully. This
- * is used by actors to exit gracefully so that the local scheduler doesn't
- * propagate an error message to the driver.
- *
- * @param conn The connection information.
- * @return Void.
- */
-void local_scheduler_disconnect_client(LocalSchedulerConnection *conn);
 
 /// Get next task for this client. This will block until the scheduler assigns
 /// a task to this worker. The caller takes ownership of the returned task

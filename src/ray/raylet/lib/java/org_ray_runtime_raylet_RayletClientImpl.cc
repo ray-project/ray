@@ -42,8 +42,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker,
-                                              *driver_id.PID, Language::JAVA);
+  auto client = new LocalSchedulerConnection(nativeString, *worker_id.PID, isWorker,
+                                             *driver_id.PID, Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
 }
@@ -112,8 +112,8 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *, jclass, jlong client) {
   auto conn = reinterpret_cast<LocalSchedulerConnection *>(client);
-  local_scheduler_disconnect_client(conn);
-  LocalSchedulerConnection_free(conn);
+  conn->disconnect();
+  delete conn;
 }
 
 /*
