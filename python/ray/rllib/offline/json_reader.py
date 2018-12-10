@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import random
+import six
 from six.moves.urllib.parse import urlparse
 
 try:
