@@ -7,7 +7,6 @@ import logging
 import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
@@ -153,12 +152,6 @@ class PolicyOptimizer(object):
             for i, ev in enumerate(self.remote_evaluators)
         ])
         return local_result + remote_results
-
-    @staticmethod
-    def _check_not_multiagent(sample_batch):
-        if isinstance(sample_batch, MultiAgentBatch):
-            raise NotImplementedError(
-                "This optimizer does not support multi-agent yet.")
 
     @classmethod
     def make(cls,
