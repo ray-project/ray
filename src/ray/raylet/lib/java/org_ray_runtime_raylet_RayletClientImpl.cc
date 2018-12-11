@@ -137,7 +137,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<RayletClient *>(client);
   auto status = conn->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
-  return std::static_cast<int>(status.code());
+  return static_cast<jint>(status.code());
 }
 
 /*
