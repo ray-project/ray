@@ -66,7 +66,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         logger.info("LocalMultiGPUOptimizer devices {}".format(self.devices))
 
         self.policies = dict(
-            self.local_evaluator.foreach_trainable_policy(lambda i, p: (i, p)))
+            self.local_evaluator.foreach_trainable_policy(lambda p, i: (i, p)))
         logger.debug("Policies to train: {}".format(self.policies))
         for policy_id, policy in self.policies.items():
             if not isinstance(policy, TFPolicyGraph):
