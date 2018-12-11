@@ -28,7 +28,7 @@ public:
    *        driver.
    * @return The connection information.
    */
-  LocalSchedulerConnection(const char *local_scheduler_socket, int num_retries,
+  LocalSchedulerConnection(const std::string &local_scheduler_socket, int num_retries,
                            int64_t timeout);
   ~LocalSchedulerConnection();
   /**
@@ -47,13 +47,13 @@ public:
 
 private:
   // TODO(rkn): The io methods below should be removed.
-  int connect_ipc_sock(const char *socket_pathname);
+  int connect_ipc_sock(const std::string &socket_pathname);
   int read_bytes(uint8_t *cursor, size_t length);
   int write_bytes(uint8_t *cursor, size_t length);
 
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
-  int conn;
+  int conn_;
   /// A mutext to protect write operations of the local scheduler client.
   std::mutex write_mutex;
 };
@@ -73,7 +73,7 @@ public:
    * @return The connection information.
    */
   LocalSchedulerClient(
-    const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
+    const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
     const JobID &driver_id, const Language &language);
 
   ~LocalSchedulerClient();
@@ -170,28 +170,7 @@ public:
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
 private:
-  LocalSchedulerConnection *conn;
+  std::unique_ptr<LocalSchedulerConnection> conn_;
 };
-
-// /**
-//  * Get an actor's current task frontier.
-//  *
-//  * @param conn The connection information.
-//  * @param actor_id The ID of the actor whose frontier is returned.
-//  * @return A byte vector that can be traversed as an ActorFrontier flatbuffer.
-//  */
-// const std::vector<uint8_t> local_scheduler_get_actor_frontier(
-//     LocalSchedulerConnection *conn,
-//     ActorID actor_id);
-
-// /**
-//  * Set an actor's current task frontier.
-//  *
-//  * @param conn The connection information.
-//  * @param frontier An ActorFrontier flatbuffer to set the frontier to.
-//  * @return Void.
-//  */
-// void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
-//                                         const std::vector<uint8_t> &frontier);
 
 #endif

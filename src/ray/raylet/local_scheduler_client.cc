@@ -23,7 +23,7 @@ using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
 
-LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_socket,
+LocalSchedulerConnection::LocalSchedulerConnection(const std::string &local_scheduler_socket,
                                                    int num_retries, int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
@@ -32,11 +32,11 @@ LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_s
   if (timeout < 0) {
       timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
-  RAY_CHECK(local_scheduler_socket);
-  conn = -1;
+  RAY_CHECK(!local_scheduler_socket.empty());
+  conn_ = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-      conn = connect_ipc_sock(local_scheduler_socket);
-      if (conn >= 0) break;
+      conn_ = connect_ipc_sock(local_scheduler_socket);
+      if (conn_ >= 0) break;
       if (num_attempts > 0) {
         RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << local_scheduler_socket
                         << " (num_attempts = " << num_attempts
@@ -46,34 +46,34 @@ LocalSchedulerConnection::LocalSchedulerConnection(const char *local_scheduler_s
       usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
-  if (conn == -1) {
+  if (conn_ == -1) {
       RAY_LOG(FATAL) << "Could not connect to socket " << local_scheduler_socket;
   }
 }
 
-LocalSchedulerConnection::~LocalSchedulerConnection() { close(conn); }
+LocalSchedulerConnection::~LocalSchedulerConnection() { close(conn_); }
 
-int LocalSchedulerConnection::connect_ipc_sock(const char *socket_pathname) {
+int LocalSchedulerConnection::connect_ipc_sock(const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
   socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-      RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
-      return -1;
+    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
+    return -1;
   }
 
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
-  if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
-      RAY_LOG(ERROR) << "Socket pathname is too long.";
-      return -1;
+  if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
+    RAY_LOG(ERROR) << "Socket pathname is too long.";
+    return -1;
   }
-  strncpy(socket_address.sun_path, socket_pathname, strlen(socket_pathname) + 1);
+  strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
 
   if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) != 0) {
-      close(socket_fd);
-      return -1;
+    close(socket_fd);
+    return -1;
   }
   return socket_fd;
 }
@@ -84,7 +84,7 @@ int LocalSchedulerConnection::read_bytes(uint8_t *cursor, size_t length) {
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
-    nbytes = read(conn, cursor + offset, bytesleft);
+    nbytes = read(conn_, cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -108,7 +108,7 @@ int LocalSchedulerConnection::write_bytes(uint8_t *cursor, size_t length) {
   while (bytesleft > 0) {
     /* While we haven't written the whole message, write to the file
     * descriptor, advance the cursor, and decrease the amount left to write. */
-    nbytes = write(conn, cursor + offset, bytesleft);
+    nbytes = write(conn_, cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -191,19 +191,16 @@ int LocalSchedulerConnection::write_message(MessageType type,
 }
 
 LocalSchedulerClient::LocalSchedulerClient(
-  const char *local_scheduler_socket, const UniqueID &client_id, bool is_worker,
+  const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
   const JobID &driver_id, const Language &language): client_id(client_id),
     is_worker(is_worker), driver_id(driver_id), language(language) {
-  conn = new LocalSchedulerConnection(local_scheduler_socket, -1, -1);
+  // For C++14, we could use std::make_unique
+  conn_ = std::unique_ptr<LocalSchedulerConnection>(new LocalSchedulerConnection(local_scheduler_socket, -1, -1));
   register_client();
 }
 
-LocalSchedulerClient::~LocalSchedulerClient() {
-  if (conn) delete conn;
-}
-
 void LocalSchedulerClient::disconnect() {
-  conn->disconnect();
+  conn_->disconnect();
 }
 
 void LocalSchedulerClient::register_client() {
@@ -213,7 +210,7 @@ void LocalSchedulerClient::register_client() {
       language);
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
-  int success = conn->write_message(MessageType::RegisterClientRequest, &fbb);
+  int success = conn_->write_message(MessageType::RegisterClientRequest, &fbb);
   RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 }
 
@@ -225,17 +222,17 @@ void LocalSchedulerClient::submit_task(
   auto message = ray::protocol::CreateSubmitTaskRequest(
       fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
-  conn->write_message(MessageType::SubmitTask, &fbb);
+  conn_->write_message(MessageType::SubmitTask, &fbb);
 }
 
 ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
   uint8_t *reply;
   {
-    std::unique_lock<std::mutex> guard(conn->mutex);
-    conn->write_message(MessageType::GetTask);
+    std::unique_lock<std::mutex> guard(conn_->mutex);
+    conn_->write_message(MessageType::GetTask);
     // Receive a task from the local scheduler. This will block until the local
     // scheduler gives this client a task.
-    conn->read_message(MessageType::ExecuteTask, &reply);
+    conn_->read_message(MessageType::ExecuteTask, &reply);
   }
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
@@ -273,7 +270,7 @@ ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
 }
 
 void LocalSchedulerClient::task_done() {
-  conn->write_message(MessageType::TaskDone);
+  conn_->write_message(MessageType::TaskDone);
 }
 
 int LocalSchedulerClient::fetch_or_reconstruct(
@@ -284,7 +281,7 @@ int LocalSchedulerClient::fetch_or_reconstruct(
   auto message = ray::protocol::CreateFetchOrReconstruct(
       fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  return conn->write_message(MessageType::FetchOrReconstruct, &fbb);
+  return conn_->write_message(MessageType::FetchOrReconstruct, &fbb);
 }
 
 void LocalSchedulerClient::notify_unblocked(const TaskID &current_task_id) {
@@ -292,7 +289,7 @@ void LocalSchedulerClient::notify_unblocked(const TaskID &current_task_id) {
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  conn->write_message(MessageType::NotifyUnblocked, &fbb);
+  conn_->write_message(MessageType::NotifyUnblocked, &fbb);
 }
 
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> LocalSchedulerClient::wait(
@@ -306,10 +303,10 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> LocalSchedulerClient::wa
   fbb.Finish(message);
   uint8_t *reply;
   {
-    std::unique_lock<std::mutex> guard(conn->mutex);
-    conn->write_message(MessageType::WaitRequest, &fbb);
+    std::unique_lock<std::mutex> guard(conn_->mutex);
+    conn_->write_message(MessageType::WaitRequest, &fbb);
     // Read result.
-    conn->read_message(MessageType::WaitReply, &reply);
+    conn_->read_message(MessageType::WaitReply, &reply);
   }
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
@@ -339,7 +336,7 @@ void LocalSchedulerClient::push_error(const JobID &job_id, const std::string &ty
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 
-  conn->write_message(MessageType::PushErrorRequest, &fbb);
+  conn_->write_message(MessageType::PushErrorRequest, &fbb);
 }
 
 void LocalSchedulerClient::push_profile_events(const ProfileTableDataT &profile_events) {
@@ -347,7 +344,7 @@ void LocalSchedulerClient::push_profile_events(const ProfileTableDataT &profile_
   auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
 
-  conn->write_message(MessageType::PushProfileEventsRequest, &fbb);
+  conn_->write_message(MessageType::PushProfileEventsRequest, &fbb);
 }
 
 void LocalSchedulerClient::free_objects_in_object_store(
@@ -357,6 +354,6 @@ void LocalSchedulerClient::free_objects_in_object_store(
                                                          to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
 
-  int success = conn->write_message(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
+  int success = conn_->write_message(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
   RAY_CHECK(success == 0) << "Failed to write message to raylet.";
 }
