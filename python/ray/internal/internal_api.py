@@ -42,4 +42,4 @@ def free(object_ids, local_only=False, worker=None):
         if len(object_ids) == 0:
             return
 
-        worker.raylet_client.free(object_ids, local_only)
+        worker.raylet_client.FreeObjects(object_ids, local_only)
