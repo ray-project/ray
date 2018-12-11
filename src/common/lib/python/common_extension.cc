@@ -560,7 +560,7 @@ static void PyTask_dealloc(PyTask *self) {
   Py_TYPE(self)->tp_free(reinterpret_cast<PyObject *>(self));
 }
 
-// Helper function to change a function descriptr to Python list.
+// Helper function to change a function descriptor to Python list.
 static PyObject *VectorStringToPyBytesList(
     const std::vector<std::string> &function_descriptor) {
   size_t size = function_descriptor.size();

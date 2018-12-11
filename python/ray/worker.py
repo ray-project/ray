@@ -642,9 +642,9 @@ class Worker(object):
                 task_index = self.task_index
                 self.task_index += 1
             # Submit the task to local scheduler.
-            func_desc_list = function_descriptor.get_function_descriptor_list()
+            function_descriptor_list = function_descriptor.get_function_descriptor_list()
             task = ray.local_scheduler.Task(
-                driver_id, func_desc_list, args_for_local_scheduler,
+                driver_id, function_descriptor_list, args_for_local_scheduler,
                 num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
@@ -2131,9 +2131,9 @@ def connect(info,
         # rerun the driver.
         nil_actor_counter = 0
 
-        func_desc = FunctionDescriptor.create_driver_task()
+        function_descriptor = FunctionDescriptor.create_driver_task()
         driver_task = ray.local_scheduler.Task(
-            worker.task_driver_id, func_desc.get_function_descriptor_list(),
+            worker.task_driver_id, function_descriptor.get_function_descriptor_list(),
             [], 0, worker.current_task_id, worker.task_index,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),

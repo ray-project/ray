@@ -386,11 +386,11 @@ class ActorClass(object):
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args, kwargs)
-            func_desc = FunctionDescriptor(self._modified_class.__module__,
+            function_descriptor = FunctionDescriptor(self._modified_class.__module__,
                                            function_name,
                                            self._modified_class.__name__)
             [actor_cursor] = worker.submit_task(
-                func_desc,
+                function_descriptor,
                 creation_args,
                 actor_creation_id=actor_id,
                 num_return_vals=1,
@@ -560,10 +560,10 @@ class ActorHandle(object):
         else:
             actor_handle_id = self._ray_actor_handle_id
 
-        func_desc = FunctionDescriptor(self._ray_module_name, method_name,
+        function_descriptor = FunctionDescriptor(self._ray_module_name, method_name,
                                        self._ray_class_name)
         object_ids = worker.submit_task(
-            func_desc,
+            function_descriptor,
             args,
             actor_id=self._ray_actor_id,
             actor_handle_id=actor_handle_id,

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
-import importlib
 import inspect
 import json
 import logging
@@ -34,7 +33,6 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 # Avoid circle import of worker.py.
-NIL_FUNCTION_ID = ray_constants.NIL_JOB_ID
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +40,13 @@ class FunctionDescriptor(object):
     """A class used to describe a python function.
 
     Attributes:
+        module_name: the module name that the function belongs to.
+        class_name: the class name that the function belongs to if exists.
+            It could be empty is the function is not a class method.
+        function_name: the function name of the function.
+        function_hash: the hash code of the function source code if the
+            function code is available.
+        function_id: the function id calculated from this descriptor.
     """
 
     def __init__(self,
@@ -116,7 +121,7 @@ class FunctionDescriptor(object):
 
     @classmethod
     def from_class(cls, target_class):
-        """Create a FunctionDescriptorm for a class."""
+        """Create a FunctionDescriptor for a class."""
         module_name = target_class.__module__
         class_name = target_class.__name__
         return cls(module_name, "", class_name)
@@ -149,6 +154,7 @@ class FunctionDescriptor(object):
 
     @property
     def function_id(self):
+        """ray.ObjectID: the function id calculated from this descriptor."""
         return ray.ObjectID(self._function_id)
 
     def get_actor_descriptor(self):
@@ -163,7 +169,7 @@ class FunctionDescriptor(object):
         descriptor.
         """
         if self._is_driver_task:
-            return NIL_FUNCTION_ID.id()
+            return ray_constants.NIL_FUNCTION_ID.id()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.module_name.encode("ascii"))
