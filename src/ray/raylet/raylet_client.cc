@@ -1,4 +1,4 @@
-#include "local_scheduler_client.h"
+#include "raylet_client.h"
 
 #include <inttypes.h>
 #include <netdb.h>
@@ -23,8 +23,8 @@ using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
 
-RayletConnection::RayletConnection(const std::string &local_scheduler_socket,
-                                                   int num_retries, int64_t timeout) {
+RayletConnection::RayletConnection(const std::string &raylet_socket,
+                                   int num_retries, int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
       num_retries = RayConfig::instance().num_connect_attempts();
@@ -32,13 +32,13 @@ RayletConnection::RayletConnection(const std::string &local_scheduler_socket,
   if (timeout < 0) {
       timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
-  RAY_CHECK(!local_scheduler_socket.empty());
+  RAY_CHECK(!raylet_socket.empty());
   conn_ = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-      conn_ = connect_ipc_sock(local_scheduler_socket);
+      conn_ = connect_ipc_sock(raylet_socket);
       if (conn_ >= 0) break;
       if (num_attempts > 0) {
-        RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << local_scheduler_socket
+        RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
                         << " (num_attempts = " << num_attempts
                         << ", num_retries = " << num_retries << ")";
       }
@@ -47,7 +47,7 @@ RayletConnection::RayletConnection(const std::string &local_scheduler_socket,
   }
   /* If we could not connect to the socket, exit. */
   if (conn_ == -1) {
-      RAY_LOG(FATAL) << "Could not connect to socket " << local_scheduler_socket;
+      RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
 
@@ -191,11 +191,11 @@ int RayletConnection::WriteMessage(MessageType type,
 }
 
 RayletClient::RayletClient(
-  const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
+  const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
   const JobID &driver_id, const Language &language): client_id(client_id),
     is_worker(is_worker), driver_id(driver_id), language(language) {
   // For C++14, we could use std::make_unique
-  conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(local_scheduler_socket, -1, -1));
+  conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
   RegisterClient();
 }
 

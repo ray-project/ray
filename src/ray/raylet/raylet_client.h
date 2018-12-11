@@ -1,5 +1,5 @@
-#ifndef LOCAL_SCHEDULER_CLIENT_H
-#define LOCAL_SCHEDULER_CLIENT_H
+#ifndef RAYLET_CLIENT_H
+#define RAYLET_CLIENT_H
 
 #include <mutex>
 
@@ -19,7 +19,7 @@ public:
   /**
    * Connect to the local scheduler.
    *
-   * @param local_scheduler_socket The name of the socket to use to connect to the
+   * @param raylet_socket The name of the socket to use to connect to the
    *        local scheduler.
    * @param worker_id A unique ID to represent the worker.
    * @param is_worker Whether this client is a worker. If it is a worker, an
@@ -28,7 +28,7 @@ public:
    *        driver.
    * @return The connection information.
    */
-  RayletConnection(const std::string &local_scheduler_socket, int num_retries,
+  RayletConnection(const std::string &raylet_socket, int num_retries,
                            int64_t timeout);
   ~RayletConnection();
   /**
@@ -63,7 +63,7 @@ public:
   /**
    * Connect to the local scheduler.
    *
-   * @param local_scheduler_socket The name of the socket to use to connect to the
+   * @param raylet_socket The name of the socket to use to connect to the
    *        local scheduler.
    * @param worker_id A unique ID to represent the worker.
    * @param is_worker Whether this client is a worker. If it is a worker, an
@@ -73,10 +73,8 @@ public:
    * @return The connection information.
    */
   RayletClient(
-    const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
+    const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
     const JobID &driver_id, const Language &language);
-
-  ~RayletClient();
 
   void Disconnect();
   /// Register with raylet.

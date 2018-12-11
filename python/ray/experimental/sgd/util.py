@@ -36,7 +36,7 @@ def warmup():
 
 
 def fetch(oids):
-    local_sched_client = ray.worker.global_worker.local_scheduler_client
+    local_sched_client = ray.worker.global_worker.raylet_client
     for o in oids:
         ray_obj_id = ray.ObjectID(o)
         local_sched_client.fetch_or_reconstruct([ray_obj_id], True)

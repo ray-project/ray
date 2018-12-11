@@ -502,7 +502,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.local_scheduler_client.fetch_or_reconstruct(
+            self.raylet_client.fetch_or_reconstruct(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -537,7 +537,7 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.local_scheduler_client.fetch_or_reconstruct(
+                        self.raylet_client.fetch_or_reconstruct(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
                             current_task_id)
@@ -558,7 +558,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked(current_task_id)
+                self.raylet_client.notify_unblocked(current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -675,7 +675,7 @@ class Worker(object):
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, execution_dependencies,
                 resources, placement_resources)
-            self.local_scheduler_client.submit(task)
+            self.raylet_client.submit(task)
 
             return task.returns()
 
@@ -986,7 +986,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
-            self.local_scheduler_client.disconnect()
+            self.raylet_client.disconnect()
             sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
@@ -996,7 +996,7 @@ class Worker(object):
             A task from the local scheduler.
         """
         with profiling.profile("worker_idle", worker=self):
-            task = self.local_scheduler_client.get_task()
+            task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -1032,7 +1032,7 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
-    all_resource_ids = global_worker.local_scheduler_client.resource_ids()
+    all_resource_ids = global_worker.raylet_client.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
     ]
@@ -1060,7 +1060,7 @@ def get_resource_ids():
             "ray.get_resource_ids() currently does not work in PYTHON "
             "MODE.")
 
-    return global_worker.local_scheduler_client.resource_ids()
+    return global_worker.raylet_client.resource_ids()
 
 
 def _webui_url_helper(client):
@@ -1795,8 +1795,8 @@ def shutdown(worker=global_worker):
     will need to reload the module.
     """
     disconnect(worker)
-    if hasattr(worker, "local_scheduler_client"):
-        del worker.local_scheduler_client
+    if hasattr(worker, "raylet_client"):
+        del worker.raylet_client
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
@@ -2151,7 +2151,7 @@ def connect(info,
     # multithreading per worker.
     worker.multithreading_warned = False
 
-    worker.local_scheduler_client = ray.raylet.LocalSchedulerClient(
+    worker.raylet_client = ray.raylet.RayletClient(
         raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
 
     # Start the import thread
@@ -2429,7 +2429,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = worker.local_scheduler_client.compute_put_id(
+        object_id = worker.raylet_client.compute_put_id(
             worker.current_task_id, worker.put_index)
         worker.put_object(object_id, value)
         worker.put_index += 1
@@ -2509,7 +2509,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             current_task_id = worker.get_current_thread_task_id()
 
         timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.local_scheduler_client.wait(
+        ready_ids, remaining_ids = worker.raylet_client.wait(
             object_ids, num_returns, timeout, False, current_task_id)
         return ready_ids, remaining_ids
 

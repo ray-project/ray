@@ -3,7 +3,7 @@
 
 #include "common_extension.h"
 #include "config_extension.h"
-#include "ray/raylet/local_scheduler_client.h"
+#include "ray/raylet/raylet_client.h"
 
 PyObject *LocalSchedulerError;
 
@@ -62,7 +62,7 @@ static PyObject *PyRayletClient_SubmitTask(PyObject *self, PyObject *args) {
 static PyObject *PyRayletClient_GetTask(PyObject *self) {
   ray::raylet::TaskSpecification *task_spec;
   /* Drop the global interpreter lock while we get a task because
-   * local_scheduler_GetTask may block for a long time. */
+   * raylet_GetTask may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
   task_spec = reinterpret_cast<PyRayletClient *>(self)->raylet_client->GetTask();
   Py_END_ALLOW_THREADS
@@ -359,7 +359,7 @@ static PyObject *PyRayletClient_FreeObjects(PyObject *self, PyObject *args) {
     object_ids.push_back(object_id);
   }
 
-  // Invoke local_scheduler_FreeObjects.
+  // Invoke raylet_FreeObjects.
   reinterpret_cast<PyRayletClient *>(self)->raylet_client->FreeObjects(
       object_ids, local_only);
   Py_RETURN_NONE;
@@ -395,7 +395,7 @@ static PyMethodDef PyRayletClient_methods[] = {
 
 static PyTypeObject PyRayletClientType = {
     PyVarObject_HEAD_INIT(NULL, 0)              /* ob_size */
-    "local_scheduler.RayletClient",     /* tp_name */
+    "raylet.RayletClient",     /* tp_name */
     sizeof(PyRayletClient),             /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)PyRayletClient_dealloc, /* tp_dealloc */
@@ -434,7 +434,7 @@ static PyTypeObject PyRayletClientType = {
     PyType_GenericNew,                          /* tp_new */
 };
 
-static PyMethodDef local_scheduler_methods[] = {
+static PyMethodDef raylet_methods[] = {
     {"check_simple_value", check_simple_value, METH_VARARGS,
      "Should the object be passed by value?"},
     {"compute_task_id", compute_task_id, METH_VARARGS,
@@ -450,10 +450,10 @@ static PyMethodDef local_scheduler_methods[] = {
 #if PY_MAJOR_VERSION >= 3
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
-    "liblocal_scheduler",                /* m_name */
-    "A module for the local scheduler.", /* m_doc */
+    "libraylet",                /* m_name */
+    "A module for the raylet.", /* m_doc */
     0,                                   /* m_size */
-    local_scheduler_methods,             /* m_methods */
+    raylet_methods,             /* m_methods */
     NULL,                                /* m_reload */
     NULL,                                /* m_traverse */
     NULL,                                /* m_clear */
@@ -477,7 +477,7 @@ static struct PyModuleDef moduledef = {
 #define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
 #endif
 
-MOD_INIT(liblocal_scheduler_library_python) {
+MOD_INIT(libraylet_library_python) {
   if (PyType_Ready(&PyTaskType) < 0) {
     INITERROR;
   }
@@ -498,8 +498,8 @@ MOD_INIT(liblocal_scheduler_library_python) {
   PyObject *m = PyModule_Create(&moduledef);
 #else
   PyObject *m =
-      Py_InitModule3("liblocal_scheduler_library_python", local_scheduler_methods,
-                     "A module for the local scheduler.");
+      Py_InitModule3("libraylet_library_python", raylet_methods,
+                     "A module for the raylet.");
 #endif
 
   init_numpy_module();
