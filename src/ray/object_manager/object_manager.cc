@@ -10,35 +10,7 @@ namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    // TODO(hme): Eliminate knowledge of GCS.
-    : client_id_(gcs_client->client_table().GetLocalClientId()),
-      config_(config),
-      object_directory_(new ObjectDirectory(main_service, gcs_client)),
-      store_notification_(main_service, config_.store_socket_name),
-      // release_delay of 2 * config_.max_sends is to ensure the pool does not release
-      // an object prematurely whenever we reach the maximum number of sends.
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
-      send_work_(send_service_),
-      receive_work_(receive_service_),
-      connection_pool_(),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
-  RAY_CHECK(config_.max_sends > 0);
-  RAY_CHECK(config_.max_receives > 0);
-  main_service_ = &main_service;
-  store_notification_.SubscribeObjAdded(
-      [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        HandleObjectAdded(object_info);
-      });
-  store_notification_.SubscribeObjDeleted(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
-  StartIOService();
-}
-
-ObjectManager::ObjectManager(asio::io_service &main_service,
-                             const ObjectManagerConfig &config,
-                             std::unique_ptr<ObjectDirectoryInterface> od)
+                             std::shared_ptr<ObjectDirectoryInterface> od)
     : config_(config),
       object_directory_(std::move(od)),
       store_notification_(main_service, config_.store_socket_name),
