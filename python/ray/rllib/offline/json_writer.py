@@ -35,6 +35,8 @@ class JsonWriter(OutputWriter):
         Arguments:
             ioctx (IOContext): current IO context object.
             path (str): a path/URI of the output directory to save files in.
+            max_file_size (int): max size of single files before rolling over.
+            compress_columns (list): list of sample batch columns to compress.
         """
 
         self.ioctx = ioctx
