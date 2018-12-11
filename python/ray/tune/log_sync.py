@@ -97,11 +97,13 @@ class _LogSyncer(object):
     def __init__(self, local_dir, remote_dir=None, sync_function=None):
         self.local_dir = local_dir
         self.remote_dir = remote_dir
-        self.sync_function = None
+
+        # Resolve sync_function into template or function
+        self.sync_func = None
         self.sync_cmd_tmpl = None
         if isinstance(sync_function, types.FunctionType) or isinstance(
                 sync_function, tune_function):
-            self.sync_function = sync_function
+            self.sync_func = sync_function
         elif isinstance(sync_function, str):
             self.sync_cmd_tmpl = sync_function
         self.last_sync_time = 0
@@ -148,10 +150,10 @@ class _LogSyncer(object):
                     quote(ssh_key), quote(source), quote(target)))
 
         if self.remote_dir:
-            if self.sync_function:
+            if self.sync_func:
                 local_to_remote_sync_cmd = None
                 try:
-                    self.sync_function(self.local_dir, self.remote_dir)
+                    self.sync_func(self.local_dir, self.remote_dir)
                 except Exception:
                     logger.exception("Sync function failed.")
             else:
