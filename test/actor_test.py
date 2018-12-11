@@ -2154,8 +2154,7 @@ def test_actor_eviction(shutdown_only):
             return np.random.rand(size)
 
     object_store_memory = 10**8
-    ray.worker._init(
-        start_ray_local=True,
+    ray.init(
         object_store_memory=object_store_memory,
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200

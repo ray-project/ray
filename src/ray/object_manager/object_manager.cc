@@ -10,9 +10,9 @@ namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> od)
+                             std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : config_(config),
-      object_directory_(std::move(od)),
+      object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.

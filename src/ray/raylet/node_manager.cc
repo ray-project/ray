@@ -1101,7 +1101,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
   task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
 }
 
-void NodeManager::TreatLostTaskAsFailed(const Task &task) {
+void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
   // Loop over the return IDs (except the dummy ID) and check whether a
@@ -1115,16 +1115,16 @@ void NodeManager::TreatLostTaskAsFailed(const Task &task) {
   // Use a shared flag to make sure that we only treat the task as failed at
   // most once. This flag will get deallocated once all of the object table
   // lookup callbacks are fired.
-  auto mark_task_failed = std::make_shared<bool>(false);
+  auto task_marked_as_failed = std::make_shared<bool>(false);
   for (int64_t i = 0; i < num_returns; i++) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
     object_directory_->LookupLocations(
         object_id,
-        [this, mark_task_failed, task](const ray::ObjectID &object_id,
-                                       const std::unordered_set<ray::ClientID> &clients,
-                                       bool has_been_created) {
-          if (!*mark_task_failed) {
+        [this, task_marked_as_failed, task](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+          if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
             if (clients.empty() && has_been_created) {
@@ -1132,7 +1132,7 @@ void NodeManager::TreatLostTaskAsFailed(const Task &task) {
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
               TreatTaskAsFailed(task);
-              *mark_task_failed = true;
+              *task_marked_as_failed = true;
             }
           }
         });
@@ -1369,7 +1369,7 @@ bool NodeManager::AssignTask(const Task &task) {
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      TreatLostTaskAsFailed(task);
+      TreatTaskAsFailedIfLost(task);
       // This actor has been already assigned, so ignore it.
       return true;
     }

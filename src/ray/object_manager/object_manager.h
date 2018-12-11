@@ -76,10 +76,10 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
-  /// \param od An object implementing the object directory interface.
+  /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> od);
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
 

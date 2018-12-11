@@ -164,7 +164,7 @@ class NodeManager {
   ///
   /// \param task The task to potentially fail.
   /// \return Void.
-  void TreatLostTaskAsFailed(const Task &task);
+  void TreatTaskAsFailedIfLost(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
