@@ -120,17 +120,19 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     DEFAULT_POLICY_ID: samples
                 }, samples.count)
 
-        for _, batch in samples.policy_batches.items():
+        for policy_id, policy in self.policies.items():
+            if policy_id not in samples.policy_batches:
+                continue
+
+            batch = samples.policy_batches[policy_id]
             for field in self.standardize_fields:
                 value = batch[field]
                 standardized = (value - value.mean()) / max(1e-4, value.std())
                 batch[field] = standardized
 
-        for policy_id, policy in self.policies.items():
             # Important: don't shuffle RNN sequence elements
-            if (policy_id in samples.policy_batches
-                    and not policy._state_inputs):
-                samples.policy_batches[policy_id].shuffle()
+            if not policy._state_inputs:
+                batch.shuffle()
 
         num_loaded_tuples = {}
         with self.load_timer:
