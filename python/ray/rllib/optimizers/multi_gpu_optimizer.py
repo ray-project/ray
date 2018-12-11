@@ -137,6 +137,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         num_loaded_tuples = {}
         with self.load_timer:
             for policy_id, batch in samples.policy_batches.items():
+                if policy_id not in self.policies:
+                    continue
+
                 policy = self.policies[policy_id]
                 tuples = policy._get_loss_inputs_dict(batch)
                 data_keys = [ph for _, ph in policy._loss_inputs]
