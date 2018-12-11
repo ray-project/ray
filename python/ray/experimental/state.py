@@ -316,7 +316,9 @@ class GlobalState(object):
         """Fetch and parse the Redis DB client table.
 
         Returns:
-            Information about the Ray clients in the cluster.
+            A tuple of two lists. The first list contains information about the
+                live clients in the cluster, and the second list contains
+                information about the clients that have been removed.
         """
         self._check_connected()
 
