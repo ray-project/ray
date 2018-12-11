@@ -11,7 +11,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <unistd.h>
 
 #include "ray/common/common_protocol.h"
 #include "ray/ray_config.h"
@@ -48,8 +47,6 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
     RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
-
-RayletConnection::~RayletConnection() { close(conn_); }
 
 // TODO(rkn): The io methods below should be removed.
 

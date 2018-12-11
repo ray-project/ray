@@ -1,6 +1,7 @@
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
+#include <unistd.h>
 #include <mutex>
 
 #include "ray/raylet/task_spec.h"
@@ -27,7 +28,8 @@ class RayletConnection {
   ///        driver.
   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
-  ~RayletConnection();
+
+  ~RayletConnection() { close(conn_); }
   /// Notify the local scheduler that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the local scheduler doesn't
   /// propagate an error message to the driver.
