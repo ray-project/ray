@@ -345,7 +345,12 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
   auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
 
-  return conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
+  auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
+  // Don't be too strict for profile errors. Just create logs and prevent it from crash.
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << status.ToString() << " Failed to push profile events.";
+  }
+  return ray::Status::OK();
 }
 
 ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
