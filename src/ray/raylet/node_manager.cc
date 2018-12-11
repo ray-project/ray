@@ -1067,7 +1067,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
     // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
     // information about the TaskSpecification implementation.
     num_returns -= 1;
@@ -1099,6 +1099,44 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
   // or READY queue before, in which case we would not have been subscribed to
   // its dependencies.
   task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+}
+
+void NodeManager::TreatLostTaskAsFailed(const Task &task) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  // Loop over the return IDs (except the dummy ID) and check whether a
+  // location for the return ID exists.
+  int64_t num_returns = spec.NumReturns();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
+    // information about the TaskSpecification implementation.
+    num_returns -= 1;
+  }
+  // Use a shared flag to make sure that we only treat the task as failed at
+  // most once. This flag will get deallocated once all of the object table
+  // lookup callbacks are fired.
+  auto mark_task_failed = std::make_shared<bool>(false);
+  for (int64_t i = 0; i < num_returns; i++) {
+    const ObjectID object_id = spec.ReturnId(i);
+    // Lookup the return value's locations.
+    object_directory_->LookupLocations(
+        object_id,
+        [this, mark_task_failed, task](const ray::ObjectID &object_id,
+                                       const std::unordered_set<ray::ClientID> &clients,
+                                       bool has_been_created) {
+          if (!*mark_task_failed) {
+            // Only process the object locations if we haven't already marked the
+            // task as failed.
+            if (clients.empty() && has_been_created) {
+              // The object does not exist on any nodes but has been created
+              // before, so the object has been lost. Mark the task as failed to
+              // prevent any tasks that depend on this object from hanging.
+              TreatTaskAsFailed(task);
+              *mark_task_failed = true;
+            }
+          }
+        });
+  }
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
@@ -1331,6 +1369,7 @@ bool NodeManager::AssignTask(const Task &task) {
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
+      TreatLostTaskAsFailed(task);
       // This actor has been already assigned, so ignore it.
       return true;
     }
@@ -1556,19 +1595,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
 
 void NodeManager::ResubmitTask(const Task &task) {
   if (task.GetTaskSpecification().IsActorTask()) {
-    // Actor reconstruction is turned off by default right now.
-    const ActorID actor_id = task.GetTaskSpecification().ActorId();
-    auto it = actor_registry_.find(actor_id);
-    RAY_CHECK(it != actor_registry_.end());
-    if (it->second.IsAlive()) {
-      // If the actor is still alive, then do not resubmit.
-      RAY_LOG(ERROR) << "The output of an actor task is required, but the actor may "
-                        "still be alive. If the output has been evicted, the job may "
-                        "hang.";
-      return;
-    }
-    // The actor is dead. The actor task will get resubmitted, at which point
-    // it will be treated as failed.
+    // Actor reconstruction is turned off by default right now, so we print
+    // nothing. If the actor is alive, the task will be treated as failed if
+    // the task has already been executed but at least one of the task's return
+    // values have been evicted, to prevent the application from hanging. If
+    // the actor is dead, the task will automatically be treated as failed.
   } else {
     RAY_LOG(INFO) << "Reconstructing task " << task.GetTaskSpecification().TaskId()
                   << " on client " << gcs_client_->client_table().GetLocalClientId();
