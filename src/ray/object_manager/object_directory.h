@@ -48,9 +48,9 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound =
-      std::function<void(const ray::ObjectID &object_id,
-                         const std::unordered_set<ray::ClientID> &, bool created)>;
+  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
+                                              const std::unordered_set<ray::ClientID> &,
+                                              bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -170,7 +170,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// the current_object_locations is empty, then this means that the object
     /// does not exist on any nodes due to eviction (rather than due to the
     /// object never getting created, for instance).
-    bool created;
+    bool has_been_created;
   };
 
   /// Reference to the event loop.

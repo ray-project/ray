@@ -8,9 +8,15 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
+/// Process a suffix of the object table log and store the result in
+/// client_ids. This assumes that client_ids already contains the result of the
+/// object table log up to but not including this suffix. This also stores a
+/// bool in has_been_created indicating whether the object has ever been
+/// created before.
 void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
                            const ray::gcs::ClientTable &client_table,
-                           std::unordered_set<ClientID> *client_ids, bool *created) {
+                           std::unordered_set<ClientID> *client_ids,
+                           bool *has_been_created) {
   // location_history contains the history of locations of the object (it is a log),
   // which might look like the following:
   //   client1.is_eviction = false
@@ -21,7 +27,7 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
   if (!location_history.empty()) {
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
-    *created = true;
+    *has_been_created = true;
   }
   for (const auto &object_table_data : location_history) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
@@ -55,7 +61,8 @@ void ObjectDirectory::RegisterBackend() {
     }
     // Update entries for this object.
     UpdateObjectLocations(location_history, gcs_client_->client_table(),
-                          &it->second.current_object_locations, &it->second.created);
+                          &it->second.current_object_locations,
+                          &it->second.has_been_created);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -67,7 +74,7 @@ void ObjectDirectory::RegisterBackend() {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
       callback_pair.second(object_id, it->second.current_object_locations,
-                           it->second.created);
+                           it->second.has_been_created);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
@@ -154,10 +161,10 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   listener_state.callbacks.emplace(callback_id, callback);
   // If we previously received some notifications about the object's locations,
   // immediately notify the caller of the current known locations.
-  if (listener_state.created) {
+  if (listener_state.has_been_created) {
     auto &locations = listener_state.current_object_locations;
     io_service_.post([callback, locations, object_id]() {
-      callback(object_id, locations, /*created=*/true);
+      callback(object_id, locations, /*has_been_created=*/true);
     });
   }
   return status;
@@ -191,20 +198,20 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_history) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          bool created = false;
+          bool has_been_created = false;
           UpdateObjectLocations(location_history, gcs_client_->client_table(),
-                                &client_ids, &created);
+                                &client_ids, &has_been_created);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
-          callback(object_id, client_ids, created);
+          callback(object_id, client_ids, has_been_created);
         });
   } else {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
     // call, call the callback immediately with the cached locations.
     auto &locations = it->second.current_object_locations;
-    bool created = it->second.created;
-    io_service_.post([callback, object_id, locations, created]() {
-      callback(object_id, locations, created);
+    bool has_been_created = it->second.has_been_created;
+    io_service_.post([callback, object_id, locations, has_been_created]() {
+      callback(object_id, locations, has_been_created);
     });
   }
   return status;
