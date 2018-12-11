@@ -952,8 +952,14 @@ class Worker(object):
                 "task_id": task.task_id().hex()
             }
             if task.actor_id().id() == NIL_ACTOR_ID:
-                title = "ray_worker:{}()".format(function_name)
-                next_title = "ray_worker"
+                if (task.actor_creation_id() == ray.ObjectID(NIL_ACTOR_ID)):
+                    title = "ray_worker:{}()".format(function_name)
+                    next_title = "ray_worker"
+                else:
+                    actor = self.actors[task.actor_creation_id().id()]
+                    title = "ray_{}:{}()".format(actor.__class__.__name__,
+                                             function_name)
+                    next_title = "ray_{}".format(actor.__class__.__name__)
             else:
                 actor = self.actors[task.actor_id().id()]
                 title = "ray_{}:{}()".format(actor.__class__.__name__,

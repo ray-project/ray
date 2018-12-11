@@ -390,8 +390,6 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   UniqueID actor_handle_id = ActorHandleID::nil();
   // How many tasks have been launched on the actor so far?
   int actor_counter = 0;
-  // True if this is an actor checkpoint task and false otherwise.
-  PyObject *is_actor_checkpoint_method_object = nullptr;
   // Arguments of the task (can be PyObjectIDs or Python values).
   PyObject *arguments;
   // Number of return values of this task.
@@ -416,13 +414,14 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   // Function descriptor.
   std::vector<std::string> function_descriptor;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOO", &PyObjectToUniqueID, &driver_id,
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOOi", &PyObjectToUniqueID, &driver_id,
                         &PyListStringToFunctionDescriptor, &function_descriptor, &arguments, 
                         &num_returns, &PyObjectToUniqueID, &parent_task_id, &parent_counter,
                         &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
                         &actor_creation_dummy_object_id, &PyObjectToUniqueID, &actor_id,
                         &PyObjectToUniqueID, &actor_handle_id, &actor_counter,
-                        &execution_arguments, &resource_map, &placement_resource_map)) {
+                        &execution_arguments, &resource_map, &placement_resource_map,
+                        &language)) {
     return -1;
   }
 
@@ -473,7 +472,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
       actor_creation_dummy_object_id, actor_id, actor_handle_id, actor_counter,
-      function_id, task_args, num_returns, required_resources,
+      task_args, num_returns, required_resources,
       required_placement_resources, Language::PYTHON, function_descriptor);
 
   /* Set the task's execution dependencies. */
@@ -514,13 +513,8 @@ static PyObject *VectorStringToPyBytesList(
 
 static PyObject *PyTask_function_descriptor_vector(PyTask *self) {
   std::vector<std::string> function_descriptor;
-  if (!use_raylet(self)) {
-    function_descriptor = TaskSpec_function_descriptor(self->spec);
-  } else {
-    function_descriptor = self->task_spec->FunctionDescriptor();
-  }
+  function_descriptor = self->task_spec->FunctionDescriptor();
   return VectorStringToPyBytesList(function_descriptor);
-
 }
 
 static PyObject *PyTask_actor_id(PyTask *self) {
@@ -645,7 +639,6 @@ static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
-<<<<<<< HEAD:src/common/lib/python/common_extension.cc
     {"function_descriptor_list",
      (PyCFunction) PyTask_function_descriptor_vector, METH_NOARGS,
      "Return the function descriptor for this task."},
