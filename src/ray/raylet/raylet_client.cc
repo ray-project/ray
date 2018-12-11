@@ -199,10 +199,10 @@ ray::Status RayletConnection::AtomicRequestReply(MessageType request_type,
 RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
                            bool is_worker, const JobID &driver_id,
                            const Language &language)
-    : client_id(client_id),
-      is_worker(is_worker),
-      driver_id(driver_id),
-      language(language) {
+    : client_id_(client_id),
+      is_worker_(is_worker),
+      driver_id_(driver_id),
+      language_(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 

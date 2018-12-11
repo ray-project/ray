@@ -3,6 +3,8 @@
 
 #include <unistd.h>
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
@@ -14,6 +16,8 @@ using ray::TaskID;
 using ray::UniqueID;
 
 using MessageType = ray::protocol::MessageType;
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 class RayletConnection {
  public:
@@ -144,19 +148,31 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  UniqueID client_id;
-  bool is_worker;
-  JobID driver_id;
-  Language language;
+  Language GetLanguage() const { return language_; }
+
+  JobID GetClientID() const { return client_id_; }
+
+  JobID GetDriverID() const { return driver_id_; }
+
+  bool IsWorker() const { return is_worker_; }
+
+  /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
+  std::vector<int> GetGPUIDs() { return gpu_ids_; }
+
+  ResourceMappingType GetResourceIDs() { return resource_ids_; }
+
+ private:
+  UniqueID client_id_;
+  bool is_worker_;
+  JobID driver_id_;
+  Language language_;
   /// The IDs of the GPUs that this client can use.
   /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
-  std::vector<int> gpu_ids;
+  std::vector<int> gpu_ids_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
-  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
-
- private:
+  ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 };

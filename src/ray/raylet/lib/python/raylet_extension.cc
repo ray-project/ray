@@ -124,7 +124,7 @@ static PyObject *PyRayletClient_compute_put_id(PyObject *self, PyObject *args) {
 
 static PyObject *PyRayletClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
-  std::vector<int> gpu_ids = ((PyRayletClient *)self)->raylet_client->gpu_ids;
+  std::vector<int> gpu_ids = ((PyRayletClient *)self)->raylet_client->GetGPUIDs();
   int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
@@ -137,9 +137,8 @@ static PyObject *PyRayletClient_gpu_ids(PyObject *self) {
 static PyObject *PyRayletClient_resource_ids(PyObject *self) {
   // Construct a Python dictionary of resource IDs and resource fractions.
   PyObject *resource_ids = PyDict_New();
-
-  for (auto const &resource_info :
-       reinterpret_cast<PyRayletClient *>(self)->raylet_client->resource_ids_) {
+  auto client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
+  for (auto const &resource_info : client->GetResourceIDs()) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
 
