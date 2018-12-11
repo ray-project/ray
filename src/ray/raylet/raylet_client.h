@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "ray/raylet/task_spec.h"
+#include "ray/status.h"
 
 using ray::ObjectID;
 using ray::JobID;
@@ -36,12 +37,12 @@ public:
    * is used by actors to exit gracefully so that the local scheduler doesn't
    * propagate an error message to the driver.
    *
-   * @return Void.
+   * @return ray::Status.
    */
-  void Disconnect();
-  void ReadMessage(MessageType type, uint8_t** message);
-  int WriteMessage(MessageType type,
-                    flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  ray::Status Disconnect();
+  ray::Status ReadMessage(MessageType type, uint8_t** message);
+  ray::Status WriteMessage(MessageType type,
+                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
   /// A mutex to protect stateful operations of the local scheduler client.
   std::mutex mutex;
 
@@ -76,18 +77,18 @@ public:
     const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
     const JobID &driver_id, const Language &language);
 
-  void Disconnect();
+  ray::Status Disconnect() { return conn_->Disconnect(); };
   /// Register with raylet.
   /// NOTE(swang): If raylet exits and we are registered as a
   /// worker, we will get killed. */
-  void RegisterClient();
+  ray::Status RegisterClient();
   /// Submit a task using the raylet code path.
   ///
   /// \param The execution dependencies.
   /// \param The task specification.
-  /// \return Void.
-  void SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::raylet::TaskSpecification &task_spec);
+  /// \return SubmitTask.
+  ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
+                         const ray::raylet::TaskSpecification &task_spec);
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
   /// specification and must free it.
@@ -97,9 +98,9 @@ public:
   /**
    * Tell the local scheduler that the client has finished executing a task.
    *
-   * @return Void.
+   * @return ray::Status.
    */
-  void TaskDone();
+  ray::Status TaskDone();
   /**
    * Tell the local scheduler to reconstruct or fetch objects.
    *
@@ -108,15 +109,15 @@ public:
    * @param current_task_id The task that needs the objects.
    * @return int 0 means correct, other numbers mean error.
    */
-  int FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                            bool fetch_only, const TaskID &current_task_id);
   /**
    * Notify the local scheduler that this client (worker) is no longer blocked.
    *
    * @param current_task_id The task that is no longer blocked.
-   * @return Void.
+   * @return ray::Status.
    */
-  void NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status NotifyUnblocked(const TaskID &current_task_id);
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
   ///
@@ -138,21 +139,21 @@ public:
   /// \param The type of the error.
   /// \param The error message.
   /// \param The timestamp of the error.
-  /// \return Void.
-  void PushError(const JobID &job_id, const std::string &type,
+  /// \return ray::Status.
+  ray::Status PushError(const JobID &job_id, const std::string &type,
                   const std::string &error_message, double timestamp);
   /// Store some profile events in the GCS.
   ///
   /// \param profile_events A batch of profiling event information.
-  /// \return Void.
-  void PushProfileEvents(const ProfileTableDataT &profile_events);
+  /// \return ray::Status.
+  ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
   /// Free a list of objects from object stores.
   ///
   /// \param object_ids A list of ObjectsIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
-  /// \return Void.
-  void FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+  /// \return ray::Status.
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
   UniqueID client_id;
   bool is_worker;

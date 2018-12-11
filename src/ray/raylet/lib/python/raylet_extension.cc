@@ -40,7 +40,8 @@ static void PyRayletClient_dealloc(PyRayletClient *self) {
 }
 
 static PyObject *PyRayletClient_Disconnect(PyObject *self) {
-  ((PyRayletClient *)self)->raylet_client->Disconnect();
+  auto client = ((PyRayletClient *)self)->raylet_client;
+  RAY_CHECK_OK(client->Disconnect());
   Py_RETURN_NONE;
 }
 
@@ -53,7 +54,7 @@ static PyObject *PyRayletClient_SubmitTask(PyObject *self, PyObject *args) {
       reinterpret_cast<PyRayletClient *>(self)->raylet_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
-  client->SubmitTask(*task->execution_dependencies, *task->task_spec);
+  RAY_CHECK_OK(client->SubmitTask(*task->execution_dependencies, *task->task_spec));
 
   Py_RETURN_NONE;
 }
@@ -90,15 +91,15 @@ static PyObject *PyRayletClient_FetchOrReconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  int ret = reinterpret_cast<PyRayletClient *>(self)->raylet_client->FetchOrReconstruct(
+  auto ret = reinterpret_cast<PyRayletClient *>(self)->raylet_client->FetchOrReconstruct(
       object_ids, fetch_only, current_task_id);
-  if (ret == 0) {
+  if (ret.ok()) {
     Py_RETURN_NONE;
   } else {
     std::ostringstream stream;
     stream << "raylet_FetchOrReconstruct failed: "
            << "local scheduler client may be closed, "
-           << "check raylet status. return value: " << ret;
+           << "check raylet status. return value: " << ret.ToString();
     PyErr_SetString(CommonError, stream.str().c_str());
     Py_RETURN_NONE;
   }
@@ -109,7 +110,8 @@ static PyObject *PyRayletClient_NotifyUnblocked(PyObject *self, PyObject *args) 
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
-  ((PyRayletClient *)self)->raylet_client->NotifyUnblocked(current_task_id);
+  auto client = ((PyRayletClient *)self)->raylet_client;
+  RAY_CHECK_OK(client->NotifyUnblocked(current_task_id));
   Py_RETURN_NONE;
 }
 
@@ -229,9 +231,10 @@ static PyObject *PyRayletClient_PushError(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  reinterpret_cast<PyRayletClient *>(self)->raylet_client->PushError(
-      job_id, std::string(type, type_length),
-      std::string(error_message, error_message_length), timestamp);
+  auto client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
+  RAY_CHECK_OK(client->PushError(
+    job_id, std::string(type, type_length),
+    std::string(error_message, error_message_length), timestamp));
 
   Py_RETURN_NONE;
 }
@@ -325,7 +328,8 @@ static PyObject *PyRayletClient_PushProfileEvents(PyObject *self,
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
-  reinterpret_cast<PyRayletClient *>(self)->raylet_client->PushProfileEvents(profile_info);
+  auto client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
+  RAY_CHECK_OK(client->PushProfileEvents(profile_info));
 
   Py_RETURN_NONE;
 }
@@ -359,9 +363,9 @@ static PyObject *PyRayletClient_FreeObjects(PyObject *self, PyObject *args) {
     object_ids.push_back(object_id);
   }
 
+  auto client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
   // Invoke raylet_FreeObjects.
-  reinterpret_cast<PyRayletClient *>(self)->raylet_client->FreeObjects(
-      object_ids, local_only);
+  RAY_CHECK_OK(client->FreeObjects(object_ids, local_only));
   Py_RETURN_NONE;
 }
 
