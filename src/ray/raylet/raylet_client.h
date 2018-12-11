@@ -64,7 +64,7 @@ class RayletClient {
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
+  /// additional message will be sent to register as one.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
@@ -72,6 +72,7 @@ class RayletClient {
                bool is_worker, const JobID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
+
   /// Register with raylet.
   ///
   /// \return ray::Status.
