@@ -96,16 +96,19 @@ def run(args, parser):
     agent = cls(env=args.env, config=config)
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
+    rollout(agent, args.env, num_steps, args.out, args.no_render)
 
+
+def rollout(agent, env_name, num_steps, out=None, no_render=True):
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
     else:
-        env = gym.make(args.env)
-    if args.out is not None:
+        env = gym.make(env_name)
+    if out is not None:
         rollouts = []
     steps = 0
     while steps < (num_steps or steps + 1):
-        if args.out is not None:
+        if out is not None:
             rollout = []
         state = env.reset()
         done = False
@@ -114,17 +117,17 @@ def run(args, parser):
             action = agent.compute_action(state)
             next_state, reward, done, _ = env.step(action)
             reward_total += reward
-            if not args.no_render:
+            if not no_render:
                 env.render()
-            if args.out is not None:
+            if out is not None:
                 rollout.append([state, action, next_state, reward, done])
             steps += 1
             state = next_state
-        if args.out is not None:
+        if out is not None:
             rollouts.append(rollout)
         print("Episode reward", reward_total)
-    if args.out is not None:
-        pickle.dump(rollouts, open(args.out, "wb"))
+    if out is not None:
+        pickle.dump(rollouts, open(out, "wb"))
 
 
 if __name__ == "__main__":
