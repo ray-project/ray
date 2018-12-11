@@ -66,7 +66,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 
   auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
   ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
-  conn->SubmitTask(conn, execution_dependencies, task_spec);
+  RAY_CHECK_OK(conn->SubmitTask(execution_dependencies, task_spec));
 }
 
 /*
@@ -112,7 +112,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *, jclass, jlong client) {
   auto conn = reinterpret_cast<RayletClient *>(client);
-  conn->Disconnect();
+  RAY_CHECK_OK(conn->Disconnect());
   delete conn;
 }
 
@@ -149,7 +149,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
     JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<RayletClient *>(client);
-  conn->NotifyUnblocked(*current_task_id.PID);
+  RAY_CHECK_OK(conn->NotifyUnblocked(*current_task_id.PID));
 }
 
 /*
@@ -247,7 +247,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     env->DeleteLocalRef(object_id_bytes);
   }
   auto conn = reinterpret_cast<RayletClient *>(client);
-  conn->FreeObjects(object_ids, localOnly);
+  RAY_CHECK_OK(conn->FreeObjects(object_ids, localOnly));
 }
 
 #ifdef __cplusplus
