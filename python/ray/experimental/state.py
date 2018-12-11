@@ -328,7 +328,7 @@ class GlobalState(object):
         # Handle the case where no clients are returned. This should only
         # occur potentially immediately after the cluster is started.
         if message is None:
-            return []
+            return [], []
 
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
