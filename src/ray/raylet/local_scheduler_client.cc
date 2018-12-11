@@ -23,7 +23,7 @@ using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
 
-LocalSchedulerConnection::LocalSchedulerConnection(const std::string &local_scheduler_socket,
+RayletConnection::RayletConnection(const std::string &local_scheduler_socket,
                                                    int num_retries, int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
@@ -51,9 +51,9 @@ LocalSchedulerConnection::LocalSchedulerConnection(const std::string &local_sche
   }
 }
 
-LocalSchedulerConnection::~LocalSchedulerConnection() { close(conn_); }
+RayletConnection::~RayletConnection() { close(conn_); }
 
-int LocalSchedulerConnection::connect_ipc_sock(const std::string &socket_pathname) {
+int RayletConnection::connect_ipc_sock(const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
@@ -78,7 +78,7 @@ int LocalSchedulerConnection::connect_ipc_sock(const std::string &socket_pathnam
   return socket_fd;
 }
 
-int LocalSchedulerConnection::read_bytes(uint8_t *cursor, size_t length) {
+int RayletConnection::read_bytes(uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   /* Termination condition: EOF or read 'length' bytes total. */
   size_t bytesleft = length;
@@ -101,7 +101,7 @@ int LocalSchedulerConnection::read_bytes(uint8_t *cursor, size_t length) {
   return 0;
 }
 
-int LocalSchedulerConnection::write_bytes(uint8_t *cursor, size_t length) {
+int RayletConnection::write_bytes(uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   size_t bytesleft = length;
   size_t offset = 0;
@@ -125,14 +125,14 @@ int LocalSchedulerConnection::write_bytes(uint8_t *cursor, size_t length) {
   return 0;
 }
 
-void LocalSchedulerConnection::disconnect() {
+void RayletConnection::disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
   write_message(MessageType::IntentionalDisconnectClient, &fbb);
 }
 
-void LocalSchedulerConnection::read_message(MessageType type, uint8_t** message) {
+void RayletConnection::read_message(MessageType type, uint8_t** message) {
   int64_t version;
   uint8_t *bytes;
   int64_t type_field;
@@ -171,7 +171,7 @@ final_check:
   *message = bytes;
 }
 
-int LocalSchedulerConnection::write_message(MessageType type,
+int RayletConnection::write_message(MessageType type,
     flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex);
   int64_t version = RayConfig::instance().ray_protocol_version();
@@ -190,20 +190,20 @@ int LocalSchedulerConnection::write_message(MessageType type,
   return 0;
 }
 
-LocalSchedulerClient::LocalSchedulerClient(
+RayletClient::RayletClient(
   const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
   const JobID &driver_id, const Language &language): client_id(client_id),
     is_worker(is_worker), driver_id(driver_id), language(language) {
   // For C++14, we could use std::make_unique
-  conn_ = std::unique_ptr<LocalSchedulerConnection>(new LocalSchedulerConnection(local_scheduler_socket, -1, -1));
+  conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(local_scheduler_socket, -1, -1));
   register_client();
 }
 
-void LocalSchedulerClient::disconnect() {
+void RayletClient::disconnect() {
   conn_->disconnect();
 }
 
-void LocalSchedulerClient::register_client() {
+void RayletClient::register_client() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
@@ -214,7 +214,7 @@ void LocalSchedulerClient::register_client() {
   RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 }
 
-void LocalSchedulerClient::submit_task(
+void RayletClient::submit_task(
     const std::vector<ObjectID> &execution_dependencies,
     const ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -225,7 +225,7 @@ void LocalSchedulerClient::submit_task(
   conn_->write_message(MessageType::SubmitTask, &fbb);
 }
 
-ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
+ray::raylet::TaskSpecification *RayletClient::get_task() {
   uint8_t *reply;
   {
     std::unique_lock<std::mutex> guard(conn_->mutex);
@@ -269,11 +269,11 @@ ray::raylet::TaskSpecification *LocalSchedulerClient::get_task() {
   return task_spec;
 }
 
-void LocalSchedulerClient::task_done() {
+void RayletClient::task_done() {
   conn_->write_message(MessageType::TaskDone);
 }
 
-int LocalSchedulerClient::fetch_or_reconstruct(
+int RayletClient::fetch_or_reconstruct(
     const std::vector<ObjectID> &object_ids, bool fetch_only,
     const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -284,7 +284,7 @@ int LocalSchedulerClient::fetch_or_reconstruct(
   return conn_->write_message(MessageType::FetchOrReconstruct, &fbb);
 }
 
-void LocalSchedulerClient::notify_unblocked(const TaskID &current_task_id) {
+void RayletClient::notify_unblocked(const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
@@ -292,7 +292,7 @@ void LocalSchedulerClient::notify_unblocked(const TaskID &current_task_id) {
   conn_->write_message(MessageType::NotifyUnblocked, &fbb);
 }
 
-std::pair<std::vector<ObjectID>, std::vector<ObjectID>> LocalSchedulerClient::wait(
+std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::wait(
     const std::vector<ObjectID> &object_ids, int num_returns,
     int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id) {
   // Write request.
@@ -327,7 +327,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> LocalSchedulerClient::wa
   return result;
 }
 
-void LocalSchedulerClient::push_error(const JobID &job_id, const std::string &type,
+void RayletClient::push_error(const JobID &job_id, const std::string &type,
                                       const std::string &error_message,
                                       double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -339,7 +339,7 @@ void LocalSchedulerClient::push_error(const JobID &job_id, const std::string &ty
   conn_->write_message(MessageType::PushErrorRequest, &fbb);
 }
 
-void LocalSchedulerClient::push_profile_events(const ProfileTableDataT &profile_events) {
+void RayletClient::push_profile_events(const ProfileTableDataT &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
@@ -347,7 +347,7 @@ void LocalSchedulerClient::push_profile_events(const ProfileTableDataT &profile_
   conn_->write_message(MessageType::PushProfileEventsRequest, &fbb);
 }
 
-void LocalSchedulerClient::free_objects_in_object_store(
+void RayletClient::free_objects_in_object_store(
     const std::vector<ray::ObjectID> &object_ids, bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,

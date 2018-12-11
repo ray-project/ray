@@ -10,11 +10,11 @@ PyObject *LocalSchedulerError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  LocalSchedulerClient *local_scheduler_client;
-} PyLocalSchedulerClient;
+  RayletClient *local_scheduler_client;
+} PyRayletClient;
 // clang-format on
 
-static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self, PyObject *args,
+static int PyRayletClient_init(PyRayletClient *self, PyObject *args,
                                        PyObject *kwds) {
   char *socket_name;
   UniqueID client_id;
@@ -26,31 +26,31 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self, PyObject *a
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->local_scheduler_client = new LocalSchedulerClient(
+  self->local_scheduler_client = new RayletClient(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)), driver_id,
       Language::PYTHON);
   return 0;
 }
 
-static void PyLocalSchedulerClient_dealloc(PyLocalSchedulerClient *self) {
+static void PyRayletClient_dealloc(PyRayletClient *self) {
   if (self->local_scheduler_client != NULL) {
     delete self->local_scheduler_client;
   }
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-static PyObject *PyLocalSchedulerClient_disconnect(PyObject *self) {
-  ((PyLocalSchedulerClient *)self)->local_scheduler_client->disconnect();
+static PyObject *PyRayletClient_disconnect(PyObject *self) {
+  ((PyRayletClient *)self)->local_scheduler_client->disconnect();
   Py_RETURN_NONE;
 }
 
-static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_submit(PyObject *self, PyObject *args) {
   PyObject *py_task;
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  LocalSchedulerClient *client =
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client;
+  RayletClient *client =
+      reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
   client->submit_task(*task->execution_dependencies, *task->task_spec);
@@ -59,18 +59,18 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 }
 
 // clang-format off
-static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
+static PyObject *PyRayletClient_get_task(PyObject *self) {
   ray::raylet::TaskSpecification *task_spec;
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->get_task();
+  task_spec = reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->get_task();
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec);
 }
 // clang-format on
 
-static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
+static PyObject *PyRayletClient_fetch_or_reconstruct(PyObject *self,
                                                              PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
@@ -90,7 +90,7 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  int ret = reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->fetch_or_reconstruct(
+  int ret = reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->fetch_or_reconstruct(
       object_ids, fetch_only, current_task_id);
   if (ret == 0) {
     Py_RETURN_NONE;
@@ -104,16 +104,16 @@ static PyObject *PyLocalSchedulerClient_fetch_or_reconstruct(PyObject *self,
   }
 }
 
-static PyObject *PyLocalSchedulerClient_notify_unblocked(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_notify_unblocked(PyObject *self, PyObject *args) {
   TaskID current_task_id;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
-  ((PyLocalSchedulerClient *)self)->local_scheduler_client->notify_unblocked(current_task_id);
+  ((PyRayletClient *)self)->local_scheduler_client->notify_unblocked(current_task_id);
   Py_RETURN_NONE;
 }
 
-static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_compute_put_id(PyObject *self, PyObject *args) {
   int put_index;
   TaskID task_id;
   if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id, &put_index)) {
@@ -123,10 +123,10 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self, PyObject 
   return PyObjectID_make(put_id);
 }
 
-static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
+static PyObject *PyRayletClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
   std::vector<int> gpu_ids =
-      ((PyLocalSchedulerClient *)self)->local_scheduler_client->gpu_ids;
+      ((PyRayletClient *)self)->local_scheduler_client->gpu_ids;
   int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
@@ -136,11 +136,11 @@ static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
 }
 
 // NOTE(rkn): This function only makes sense for the raylet code path.
-static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
+static PyObject *PyRayletClient_resource_ids(PyObject *self) {
   // Construct a Python dictionary of resource IDs and resource fractions.
   PyObject *resource_ids = PyDict_New();
 
-  for (auto const &resource_info : reinterpret_cast<PyLocalSchedulerClient *>(self)
+  for (auto const &resource_info : reinterpret_cast<PyRayletClient *>(self)
                                        ->local_scheduler_client->resource_ids_) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
@@ -166,7 +166,7 @@ static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
   return resource_ids;
 }
 
-static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_wait(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   int num_returns;
   int64_t timeout_ms;
@@ -201,7 +201,7 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
 
   // Invoke wait.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = \
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->wait(
+      reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->wait(
       object_ids, num_returns, timeout_ms, wait_local, current_task_id);
 
   // Convert result to py object.
@@ -216,7 +216,7 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   return Py_BuildValue("(OO)", py_found, py_remaining);
 }
 
-static PyObject *PyLocalSchedulerClient_push_error(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_push_error(PyObject *self, PyObject *args) {
   JobID job_id;
   const char *type;
   int type_length;
@@ -229,7 +229,7 @@ static PyObject *PyLocalSchedulerClient_push_error(PyObject *self, PyObject *arg
     return NULL;
   }
 
-  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->push_error(
+  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->push_error(
       job_id, std::string(type, type_length),
       std::string(error_message, error_message_length), timestamp);
 
@@ -252,7 +252,7 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
   return 0;
 }
 
-static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
+static PyObject *PyRayletClient_push_profile_events(PyObject *self,
                                                             PyObject *args) {
   const char *component_type;
   int component_type_length;
@@ -325,12 +325,12 @@ static PyObject *PyLocalSchedulerClient_push_profile_events(PyObject *self,
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
-  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->push_profile_events(profile_info);
+  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->push_profile_events(profile_info);
 
   Py_RETURN_NONE;
 }
 
-static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_free(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_local_only;
 
@@ -360,45 +360,45 @@ static PyObject *PyLocalSchedulerClient_free(PyObject *self, PyObject *args) {
   }
 
   // Invoke local_scheduler_free_objects_in_object_store.
-  reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_client->free_objects_in_object_store(
+  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->free_objects_in_object_store(
       object_ids, local_only);
   Py_RETURN_NONE;
 }
 
-static PyMethodDef PyLocalSchedulerClient_methods[] = {
-    {"disconnect", (PyCFunction)PyLocalSchedulerClient_disconnect, METH_NOARGS,
+static PyMethodDef PyRayletClient_methods[] = {
+    {"disconnect", (PyCFunction)PyRayletClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
-    {"submit", (PyCFunction)PyLocalSchedulerClient_submit, METH_VARARGS,
+    {"submit", (PyCFunction)PyRayletClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
-    {"get_task", (PyCFunction)PyLocalSchedulerClient_get_task, METH_NOARGS,
+    {"get_task", (PyCFunction)PyRayletClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"fetch_or_reconstruct", (PyCFunction)PyLocalSchedulerClient_fetch_or_reconstruct,
+    {"fetch_or_reconstruct", (PyCFunction)PyRayletClient_fetch_or_reconstruct,
      METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
-    {"notify_unblocked", (PyCFunction)PyLocalSchedulerClient_notify_unblocked,
+    {"notify_unblocked", (PyCFunction)PyRayletClient_notify_unblocked,
      METH_VARARGS, "Notify the local scheduler that we are unblocked."},
-    {"compute_put_id", (PyCFunction)PyLocalSchedulerClient_compute_put_id, METH_VARARGS,
+    {"compute_put_id", (PyCFunction)PyRayletClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
-    {"gpu_ids", (PyCFunction)PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
+    {"gpu_ids", (PyCFunction)PyRayletClient_gpu_ids, METH_NOARGS,
      "Get the IDs of the GPUs that are reserved for this client."},
-    {"resource_ids", (PyCFunction)PyLocalSchedulerClient_resource_ids, METH_NOARGS,
+    {"resource_ids", (PyCFunction)PyRayletClient_resource_ids, METH_NOARGS,
      "Get the IDs of the resources that are reserved for this client."},
-    {"wait", (PyCFunction)PyLocalSchedulerClient_wait, METH_VARARGS,
+    {"wait", (PyCFunction)PyRayletClient_wait, METH_VARARGS,
      "Wait for a list of objects to be created."},
-    {"push_error", (PyCFunction)PyLocalSchedulerClient_push_error, METH_VARARGS,
+    {"push_error", (PyCFunction)PyRayletClient_push_error, METH_VARARGS,
      "Push an error message to the relevant driver."},
-    {"push_profile_events", (PyCFunction)PyLocalSchedulerClient_push_profile_events,
+    {"push_profile_events", (PyCFunction)PyRayletClient_push_profile_events,
      METH_VARARGS, "Store some profiling events in the GCS."},
-    {"free", (PyCFunction)PyLocalSchedulerClient_free, METH_VARARGS,
+    {"free", (PyCFunction)PyRayletClient_free, METH_VARARGS,
      "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
 
-static PyTypeObject PyLocalSchedulerClientType = {
+static PyTypeObject PyRayletClientType = {
     PyVarObject_HEAD_INIT(NULL, 0)              /* ob_size */
-    "local_scheduler.LocalSchedulerClient",     /* tp_name */
-    sizeof(PyLocalSchedulerClient),             /* tp_basicsize */
+    "local_scheduler.RayletClient",     /* tp_name */
+    sizeof(PyRayletClient),             /* tp_basicsize */
     0,                                          /* tp_itemsize */
-    (destructor)PyLocalSchedulerClient_dealloc, /* tp_dealloc */
+    (destructor)PyRayletClient_dealloc, /* tp_dealloc */
     0,                                          /* tp_print */
     0,                                          /* tp_getattr */
     0,                                          /* tp_setattr */
@@ -414,14 +414,14 @@ static PyTypeObject PyLocalSchedulerClientType = {
     0,                                          /* tp_setattro */
     0,                                          /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                         /* tp_flags */
-    "LocalSchedulerClient object",              /* tp_doc */
+    "RayletClient object",              /* tp_doc */
     0,                                          /* tp_traverse */
     0,                                          /* tp_clear */
     0,                                          /* tp_richcompare */
     0,                                          /* tp_weaklistoffset */
     0,                                          /* tp_iter */
     0,                                          /* tp_iternext */
-    PyLocalSchedulerClient_methods,             /* tp_methods */
+    PyRayletClient_methods,             /* tp_methods */
     0,                                          /* tp_members */
     0,                                          /* tp_getset */
     0,                                          /* tp_base */
@@ -429,7 +429,7 @@ static PyTypeObject PyLocalSchedulerClientType = {
     0,                                          /* tp_descr_get */
     0,                                          /* tp_descr_set */
     0,                                          /* tp_dictoffset */
-    (initproc)PyLocalSchedulerClient_init,      /* tp_init */
+    (initproc)PyRayletClient_init,      /* tp_init */
     0,                                          /* tp_alloc */
     PyType_GenericNew,                          /* tp_new */
 };
@@ -486,7 +486,7 @@ MOD_INIT(liblocal_scheduler_library_python) {
     INITERROR;
   }
 
-  if (PyType_Ready(&PyLocalSchedulerClientType) < 0) {
+  if (PyType_Ready(&PyRayletClientType) < 0) {
     INITERROR;
   }
 
@@ -511,8 +511,8 @@ MOD_INIT(liblocal_scheduler_library_python) {
   Py_INCREF(&PyObjectIDType);
   PyModule_AddObject(m, "ObjectID", (PyObject *)&PyObjectIDType);
 
-  Py_INCREF(&PyLocalSchedulerClientType);
-  PyModule_AddObject(m, "LocalSchedulerClient", (PyObject *)&PyLocalSchedulerClientType);
+  Py_INCREF(&PyRayletClientType);
+  PyModule_AddObject(m, "RayletClient", (PyObject *)&PyRayletClientType);
 
   char common_error[] = "common.error";
   CommonError = PyErr_NewException(common_error, NULL, NULL);

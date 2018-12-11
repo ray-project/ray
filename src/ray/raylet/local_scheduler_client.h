@@ -13,7 +13,7 @@ using ray::UniqueID;
 
 using MessageType = ray::protocol::MessageType;
 
-class LocalSchedulerConnection {
+class RayletConnection {
 
 public:
   /**
@@ -28,9 +28,9 @@ public:
    *        driver.
    * @return The connection information.
    */
-  LocalSchedulerConnection(const std::string &local_scheduler_socket, int num_retries,
+  RayletConnection(const std::string &local_scheduler_socket, int num_retries,
                            int64_t timeout);
-  ~LocalSchedulerConnection();
+  ~RayletConnection();
   /**
    * Notify the local scheduler that this client is disconnecting gracefully. This
    * is used by actors to exit gracefully so that the local scheduler doesn't
@@ -58,7 +58,7 @@ private:
   std::mutex write_mutex;
 };
 
-class LocalSchedulerClient {
+class RayletClient {
 public:
   /**
    * Connect to the local scheduler.
@@ -72,11 +72,11 @@ public:
    *        driver.
    * @return The connection information.
    */
-  LocalSchedulerClient(
+  RayletClient(
     const std::string &local_scheduler_socket, const UniqueID &client_id, bool is_worker,
     const JobID &driver_id, const Language &language);
 
-  ~LocalSchedulerClient();
+  ~RayletClient();
 
   void disconnect();
   /// Register with the local scheduler.
@@ -170,7 +170,7 @@ public:
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
 private:
-  std::unique_ptr<LocalSchedulerConnection> conn_;
+  std::unique_ptr<RayletConnection> conn_;
 };
 
 #endif
