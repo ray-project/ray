@@ -252,10 +252,8 @@ class GlobalState(object):
             "Args": task_spec.arguments(),
             "ReturnObjectIDs": task_spec.returns(),
             "RequiredResources": task_spec.required_resources(),
-            "FunctionID": binary_to_hex(
-                function_descriptor.function_id.id()),
-            "FunctionHash": binary_to_hex(
-                function_descriptor.function_hash),
+            "FunctionID": binary_to_hex(function_descriptor.function_id.id()),
+            "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,
             "ClassName": function_descriptor.class_name,
             "FunctionName": function_descriptor.function_name,

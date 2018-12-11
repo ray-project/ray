@@ -669,7 +669,8 @@ class Worker(object):
                 # The parent task must be set for the submitted task.
                 assert not self.current_task_id.is_nil()
             # Submit the task to local scheduler.
-            function_descriptor_list = function_descriptor.get_function_descriptor_list()
+            function_descriptor_list = (
+                function_descriptor.get_function_descriptor_list())
             task = ray.raylet.Task(
                 driver_id, function_descriptor_list, args_for_local_scheduler,
                 num_return_vals, self.current_task_id, task_index,
@@ -831,8 +832,8 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if (task.actor_id().id() != NIL_ACTOR_ID or
-                task.actor_creation_id().id() != NIL_ACTOR_ID):
+        if (task.actor_id().id() != NIL_ACTOR_ID
+                or task.actor_creation_id().id() != NIL_ACTOR_ID):
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -858,17 +859,16 @@ class Worker(object):
         # Execute the task.
         try:
             with profiling.profile("task:execute", worker=self):
-                if (task.actor_id().id() == NIL_ACTOR_ID and
-                        task.actor_creation_id().id() == NIL_ACTOR_ID):
+                if (task.actor_id().id() == NIL_ACTOR_ID
+                        and task.actor_creation_id().id() == NIL_ACTOR_ID):
                     outputs = function_executor(*arguments)
                 else:
                     if task.actor_id().id() != NIL_ACTOR_ID:
                         key = task.actor_id().id()
                     else:
                         key = task.actor_creation_id().id()
-                    outputs = function_executor(
-                        dummy_return_id, self.actors[key],
-                        *arguments)
+                    outputs = function_executor(dummy_return_id,
+                                                self.actors[key], *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -958,7 +958,7 @@ class Worker(object):
                 else:
                     actor = self.actors[task.actor_creation_id().id()]
                     title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                             function_name)
+                                                 function_name)
                     next_title = "ray_{}".format(actor.__class__.__name__)
             else:
                 actor = self.actors[task.actor_id().id()]
@@ -2121,16 +2121,13 @@ def connect(info,
         nil_actor_counter = 0
 
         function_descriptor = FunctionDescriptor.create_driver_task()
-        driver_task = ray.raylet.Task(worker.task_driver_id,
-                                      function_descriptor.get_function_descriptor_list(),
-                                      [], 0,
-                                      worker.current_task_id,
-                                      worker.task_index,
-                                      ray.ObjectID(NIL_ACTOR_ID),
-                                      ray.ObjectID(NIL_ACTOR_ID),
-                                      ray.ObjectID(NIL_ACTOR_ID),
-                                      ray.ObjectID(NIL_ACTOR_ID),
-                                      nil_actor_counter, [], {"CPU": 0}, {})
+        driver_task = ray.raylet.Task(
+            worker.task_driver_id,
+            function_descriptor.get_function_descriptor_list(), [], 0,
+            worker.current_task_id, worker.task_index,
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            nil_actor_counter, [], {"CPU": 0}, {})
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",

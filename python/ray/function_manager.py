@@ -78,8 +78,8 @@ class FunctionDescriptor(object):
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
             return cls("", "", "", b"", True)
-        elif (len(function_descriptor_list) == 3 or
-            len(function_descriptor_list) == 4):
+        elif (len(function_descriptor_list) == 3
+              or len(function_descriptor_list) == 4):
             module_name = function_descriptor_list[0].decode()
             class_name = function_descriptor_list[1].decode()
             function_name = function_descriptor_list[2].decode()
@@ -504,8 +504,7 @@ class FunctionActorManager(object):
             worker: The worker to use.
         """
         actor_id_str = self._worker.actor_id
-        (driver_id, class_name, module, pickled_class,
-         checkpoint_interval,
+        (driver_id, class_name, module, pickled_class, checkpoint_interval,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [
                  "driver_id", "class_name", "module", "class",

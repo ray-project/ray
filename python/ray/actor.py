@@ -274,6 +274,7 @@ class ActorClass(object):
         # Assign an __init__ function will avoid many checks later on.
         def __init__(self):
             pass
+
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
         self._actor_method_names = [
@@ -387,8 +388,8 @@ class ActorClass(object):
             # Export the actor.
             if not self._exported:
                 worker.function_actor_manager.export_actor_class(
-                    self._modified_class,
-                    self._actor_method_names, self._checkpoint_interval)
+                    self._modified_class, self._actor_method_names,
+                    self._checkpoint_interval)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -410,10 +411,11 @@ class ActorClass(object):
                 kwargs = {}
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args, kwargs)
-            function_descriptor = FunctionDescriptor(self._modified_class.__module__,
-                                           function_name,
-                                           self._modified_class.__name__)
+            creation_args = signature.extend_args(function_signature, args,
+                                                  kwargs)
+            function_descriptor = FunctionDescriptor(
+                self._modified_class.__module__, function_name,
+                self._modified_class.__name__)
             [actor_cursor] = worker.submit_task(
                 function_descriptor,
                 creation_args,
@@ -598,8 +600,8 @@ class ActorHandle(object):
         else:
             actor_handle_id = self._ray_actor_handle_id
 
-        function_descriptor = FunctionDescriptor(self._ray_module_name, method_name,
-                                       self._ray_class_name)
+        function_descriptor = FunctionDescriptor(
+            self._ray_module_name, method_name, self._ray_class_name)
         object_ids = worker.submit_task(
             function_descriptor,
             args,
