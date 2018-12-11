@@ -40,7 +40,7 @@ class TaskPool(object):
         for worker, obj_id in self.completed():
             plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
             (ray.worker.global_worker.raylet_client.
-             fetch_or_reconstruct([obj_id], True))
+             FetchOrReconstruct([obj_id], True))
             self._fetching.append((worker, obj_id))
 
         remaining = []

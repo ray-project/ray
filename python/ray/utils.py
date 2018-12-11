@@ -69,7 +69,7 @@ def push_error_to_driver(worker,
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
-    worker.raylet_client.push_error(
+    worker.raylet_client.PushError(
         ray.ObjectID(driver_id), error_type, message, time.time())
 
 

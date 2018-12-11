@@ -119,7 +119,7 @@ class Profiler(object):
         else:
             component_type = "driver"
 
-        self.worker.raylet_client.push_profile_events(
+        self.worker.raylet_client.PushProfileEvents(
             component_type, ray.ObjectID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 

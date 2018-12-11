@@ -502,7 +502,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.raylet_client.fetch_or_reconstruct(
+            self.raylet_client.FetchOrReconstruct(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -537,7 +537,7 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.raylet_client.fetch_or_reconstruct(
+                        self.raylet_client.FetchOrReconstruct(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
                             current_task_id)
@@ -558,7 +558,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.raylet_client.notify_unblocked(current_task_id)
+                self.raylet_client.NotifyUnblocked(current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -675,7 +675,7 @@ class Worker(object):
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, execution_dependencies,
                 resources, placement_resources)
-            self.raylet_client.submit(task)
+            self.raylet_client.SubmitTask(task)
 
             return task.returns()
 
@@ -986,7 +986,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
-            self.raylet_client.disconnect()
+            self.raylet_client.Disconnect()
             sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
@@ -996,7 +996,7 @@ class Worker(object):
             A task from the local scheduler.
         """
         with profiling.profile("worker_idle", worker=self):
-            task = self.raylet_client.get_task()
+            task = self.raylet_client.GetTask()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -2509,7 +2509,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             current_task_id = worker.get_current_thread_task_id()
 
         timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.raylet_client.wait(
+        ready_ids, remaining_ids = worker.raylet_client.Wait(
             object_ids, num_returns, timeout, False, current_task_id)
         return ready_ids, remaining_ids
 
