@@ -15,30 +15,25 @@ using ray::UniqueID;
 using MessageType = ray::protocol::MessageType;
 
 class RayletConnection {
-
 public:
-  /**
-   * Connect to the local scheduler.
-   *
-   * @param raylet_socket The name of the socket to use to connect to the
-   *        local scheduler.
-   * @param worker_id A unique ID to represent the worker.
-   * @param is_worker Whether this client is a worker. If it is a worker, an
-   *        additional message will be sent to register as one.
-   * @param driver_id The ID of the driver. This is non-nil if the client is a
-   *        driver.
-   * @return The connection information.
-   */
+   /// Connect to the local scheduler.
+   ///
+   /// \param raylet_socket The name of the socket to use to connect to the
+   ///        local scheduler.
+   /// \param worker_id A unique ID to represent the worker.
+   /// \param is_worker Whether this client is a worker. If it is a worker, an
+   ///        additional message will be sent to register as one.
+   /// \param driver_id The ID of the driver. This is non-nil if the client is a
+   ///        driver.
+   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries,
                            int64_t timeout);
-  ~RayletConnection();
-  /**
-   * Notify the local scheduler that this client is disconnecting gracefully. This
-   * is used by actors to exit gracefully so that the local scheduler doesn't
-   * propagate an error message to the driver.
-   *
-   * @return ray::Status.
-   */
+  ~RayletConnection(); 
+  /// Notify the local scheduler that this client is disconnecting gracefully. This
+  /// is used by actors to exit gracefully so that the local scheduler doesn't
+  /// propagate an error message to the driver.
+  ///
+  /// \return ray::Status. 
   ray::Status Disconnect();
   ray::Status ReadMessage(MessageType type, uint8_t *&message);
   ray::Status WriteMessage(MessageType type,
@@ -52,8 +47,7 @@ private:
   int read_bytes(uint8_t *cursor, size_t length);
   int write_bytes(uint8_t *cursor, size_t length);
 
-  /** File descriptor of the Unix domain socket that connects to local
-   *  scheduler. */
+  /// File descriptor of the Unix domain socket that connects to raylet.
   int conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
@@ -63,32 +57,32 @@ private:
 
 class RayletClient {
 public:
-  /**
-   * Connect to the local scheduler.
-   *
-   * @param raylet_socket The name of the socket to use to connect to the
-   *        local scheduler.
-   * @param worker_id A unique ID to represent the worker.
-   * @param is_worker Whether this client is a worker. If it is a worker, an
-   *        additional message will be sent to register as one.
-   * @param driver_id The ID of the driver. This is non-nil if the client is a
-   *        driver.
-   * @return The connection information.
-   */
+  /// Connect to the local scheduler.
+  ///
+  /// \param raylet_socket The name of the socket to use to connect to the raylet.
+  /// \param worker_id A unique ID to represent the worker.
+  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  ///        additional message will be sent to register as one.
+  /// \param driver_id The ID of the driver. This is non-nil if the client is a
+  ///        driver.
+  /// \return The connection information.
   RayletClient(
     const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
     const JobID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
   /// Register with raylet.
+  ///
+  /// \return ray::Status.
+  ///
   /// NOTE(swang): If raylet exits and we are registered as a
-  /// worker, we will get killed. */
+  /// worker, we will get killed.
   ray::Status RegisterClient();
   /// Submit a task using the raylet code path.
   ///
   /// \param The execution dependencies.
   /// \param The task specification.
-  /// \return SubmitTask.
+  /// \return ray::Status.
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                          const ray::raylet::TaskSpecification &task_spec);
   /// Get next task for this client. This will block until the scheduler assigns
@@ -97,28 +91,22 @@ public:
   ///
   /// \return The assigned task.
   ray::raylet::TaskSpecification *GetTask();
-  /**
-   * Tell the local scheduler that the client has finished executing a task.
-   *
-   * @return ray::Status.
-   */
+  /// Tell the local scheduler that the client has finished executing a task.
+  ///
+  /// \return ray::Status.
   ray::Status TaskDone();
-  /**
-   * Tell the local scheduler to reconstruct or fetch objects.
-   *
-   * @param object_ids The IDs of the objects to reconstruct.
-   * @param fetch_only Only fetch objects, do not reconstruct them.
-   * @param current_task_id The task that needs the objects.
-   * @return int 0 means correct, other numbers mean error.
-   */
+  /// Tell the local scheduler to reconstruct or fetch objects.
+  ///
+  /// \param object_ids The IDs of the objects to reconstruct.
+  /// \param fetch_only Only fetch objects, do not reconstruct them.
+  /// \param current_task_id The task that needs the objects.
+  /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                            bool fetch_only, const TaskID &current_task_id);
-  /**
-   * Notify the local scheduler that this client (worker) is no longer blocked.
-   *
-   * @param current_task_id The task that is no longer blocked.
-   * @return ray::Status.
-   */
+   /// Notify the local scheduler that this client (worker) is no longer blocked.
+   ///
+   /// \param current_task_id The task that is no longer blocked.
+   /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -161,8 +149,8 @@ public:
   bool is_worker;
   JobID driver_id;
   Language language;
-  /** The IDs of the GPUs that this client can use. NOTE(rkn): This is only used
-   *  by legacy Ray and will be deprecated. */
+  /// The IDs of the GPUs that this client can use.
+  /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
   std::vector<int> gpu_ids;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
