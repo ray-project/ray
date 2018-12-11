@@ -362,12 +362,14 @@ class StandardAutoscaler(object):
                 raise e
 
     def _update(self):
+        now = time.time()
+
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
-        if time.time() - self.last_update_time < self.update_interval_s:
+        if now - self.last_update_time < self.update_interval_s:
             return
 
-        self.last_update_time = time.time()
+        self.last_update_time = now
         num_pending = self.num_launches_pending.value
         nodes = self.workers()
         logger.info(self.info_string(nodes))
@@ -377,7 +379,7 @@ class StandardAutoscaler(object):
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
-        horizon = time.time() - (60 * self.config["idle_timeout_minutes"])
+        horizon = now - (60 * self.config["idle_timeout_minutes"])
         num_terminated = 0
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
@@ -441,7 +443,7 @@ class StandardAutoscaler(object):
 
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
-            self.recover_if_needed(node_id)
+            self.recover_if_needed(node_id, now)
 
     def reload_config(self, errors_fatal=False):
         try:
@@ -488,12 +490,14 @@ class StandardAutoscaler(object):
             return False
         return True
 
-    def recover_if_needed(self, node_id):
+    def recover_if_needed(self, node_id, now):
         if not self.can_update(node_id):
             return
-        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
-            self.provider.internal_ip(node_id), 0)
-        delta = time.time() - last_heartbeat_time
+        key = self.provider.internal_ip(node_id)
+        if key not in self.load_metrics.last_heartbeat_time_by_ip:
+            self.load_metrics.last_heartbeat_time_by_ip[key] = now
+        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
+        delta = now - last_heartbeat_time
         if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
         logger.warning("StandardAutoscaler: No heartbeat from node "

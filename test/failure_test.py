@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import json
 import os
 import ray
 import sys
@@ -500,10 +501,10 @@ def test_warning_monitor_died(shutdown_only):
     # addition to the monitor.
     fake_id = 20 * b"\x00"
     malformed_message = "asdf"
-    redis_client = ray.worker.global_state.redis_clients[0]
+    redis_client = ray.worker.global_worker.redis_client
     redis_client.execute_command(
-        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT,
-        ray.gcs_utils.TablePubsub.HEARTBEAT, fake_id, malformed_message)
+        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT_BATCH,
+        ray.gcs_utils.TablePubsub.HEARTBEAT_BATCH, fake_id, malformed_message)
 
     wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
@@ -570,7 +571,13 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=0)
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_cpus=0,
+        _internal_config=json.dumps({
+            "num_heartbeats_timeout": 40
+        }))
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -594,7 +601,7 @@ def test_warning_for_dead_node(ray_start_two_nodes):
     ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
 
     # Check that we get warning messages for both raylets.
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=20)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=40)
 
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.

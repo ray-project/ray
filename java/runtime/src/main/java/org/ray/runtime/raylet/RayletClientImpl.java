@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.generated.Arg;
@@ -89,13 +90,16 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
-      UniqueId currentTaskId) {
-    if (RayLog.core.isInfoEnabled()) {
-      RayLog.core.info("Blocked on objects for task {}, object IDs are {}",
+      UniqueId currentTaskId) throws RayException {
+    if (RayLog.core.isDebugEnabled()) {
+      RayLog.core.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+    int ret = nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
         fetchOnly, currentTaskId.getBytes());
+    if (ret != 0) {
+      throw new RayException("Connection closed by Raylet");
+    }
   }
 
   @Override
@@ -172,7 +176,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
-    final int actorCreateDummyIdOffset = fbb.createString(UniqueId.NIL.toByteBuffer());
+    final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
@@ -274,7 +278,7 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeDestroy(long client);
 
-  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
+  private static native int nativeFetchOrReconstruct(long client, byte[][] objectIds,
       boolean fetchOnly, byte[] currentTaskId);
 
   private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId);

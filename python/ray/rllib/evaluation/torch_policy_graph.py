@@ -13,6 +13,7 @@ except ImportError:
     pass  # soft dep
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.utils.annotations import override
 
 
 class TorchPolicyGraph(PolicyGraph):
@@ -56,23 +57,12 @@ class TorchPolicyGraph(PolicyGraph):
         self._loss_inputs = loss_inputs
         self._optimizer = self.optimizer()
 
-    def extra_action_out(self, model_out):
-        """Returns dict of extra info to include in experience batch.
-
-        Arguments:
-            model_out (list): Outputs of the policy model module."""
-        return {}
-
-    def optimizer(self):
-        """Custom PyTorch optimizer to use."""
-        return torch.optim.Adam(self._model.parameters())
-
+    @override(PolicyGraph)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        is_training=False,
                         episodes=None):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
@@ -84,6 +74,7 @@ class TorchPolicyGraph(PolicyGraph):
                 actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
                 return var_to_np(actions), [], self.extra_action_out(model_out)
 
+    @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
         with self.lock:
             loss_in = []
@@ -97,6 +88,7 @@ class TorchPolicyGraph(PolicyGraph):
             grads = [var_to_np(p.grad.data) for p in self._model.parameters()]
             return grads, {}
 
+    @override(PolicyGraph)
     def apply_gradients(self, gradients):
         with self.lock:
             for g, p in zip(gradients, self._model.parameters()):
@@ -104,10 +96,23 @@ class TorchPolicyGraph(PolicyGraph):
             self._optimizer.step()
             return {}
 
+    @override(PolicyGraph)
     def get_weights(self):
         with self.lock:
             return self._model.state_dict()
 
+    @override(PolicyGraph)
     def set_weights(self, weights):
         with self.lock:
             self._model.load_state_dict(weights)
+
+    def extra_action_out(self, model_out):
+        """Returns dict of extra info to include in experience batch.
+
+        Arguments:
+            model_out (list): Outputs of the policy model module."""
+        return {}
+
+    def optimizer(self):
+        """Custom PyTorch optimizer to use."""
+        return torch.optim.Adam(self._model.parameters())

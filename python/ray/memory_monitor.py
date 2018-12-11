@@ -37,7 +37,8 @@ class RayOutOfMemoryError(Exception):
                     round(psutil.virtual_memory().shared / 1e9, 2)) +
                 "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
-                "parameter when starting Ray.")
+                "parameter when starting Ray, and the max Redis size with "
+                "`redis_max_memory`.")
 
 
 class MemoryMonitor(object):
@@ -56,8 +57,9 @@ class MemoryMonitor(object):
         if not psutil:
             logger.warning(
                 "WARNING: Not monitoring node memory since `psutil` is not "
-                "installed. Install this with `pip install psutil` to enable "
-                "debugging of memory-related crashes.")
+                "installed. Install this with `pip install psutil` "
+                "(or ray[debug]) to enable debugging of memory-related "
+                "crashes.")
 
     def raise_if_low_memory(self):
         if not psutil:

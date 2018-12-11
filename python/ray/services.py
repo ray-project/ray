@@ -416,7 +416,8 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 cleanup=True,
                 password=None,
-                use_credis=None):
+                use_credis=None,
+                redis_max_memory=None):
     """Start the Redis global state store.
 
     Args:
@@ -445,6 +446,10 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -475,7 +480,8 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
-            password=password)
+            password=password,
+            redis_max_memory=None)
     else:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
@@ -489,7 +495,8 @@ def start_redis(node_ip_address,
             # as the latter contains an extern declaration that the former
             # supplies.
             modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
-            password=password)
+            password=password,
+            redis_max_memory=None)
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -523,7 +530,8 @@ def start_redis(node_ip_address,
                 stdout_file=redis_stdout_file,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup,
-                password=password)
+                password=password,
+                redis_max_memory=redis_max_memory)
         else:
             assert num_redis_shards == 1, \
                 "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
@@ -540,7 +548,8 @@ def start_redis(node_ip_address,
                 # It is important to load the credis module BEFORE the ray
                 # module, as the latter contains an extern declaration that the
                 # former supplies.
-                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE],
+                redis_max_memory=redis_max_memory)
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
@@ -570,7 +579,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                           cleanup=True,
                           password=None,
                           executable=REDIS_EXECUTABLE,
-                          modules=None):
+                          modules=None,
+                          redis_max_memory=None):
     """Start a single Redis server.
 
     Args:
@@ -594,6 +604,9 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         modules (list of str): A list of pathnames, pointing to the redis
             module(s) that will be loaded in this redis server.  If None, load
             the default Ray redis module.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -656,6 +669,14 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
     redis_client.config_set("protected-mode", "no")
+
+    # Discard old task and object metadata.
+    if redis_max_memory is not None:
+        redis_client.config_set("maxmemory", str(redis_max_memory))
+        redis_client.config_set("maxmemory-policy", "allkeys-lru")
+        redis_client.config_set("maxmemory-samples", "10")
+        logger.info("Starting Redis shard with {} GB max memory.".format(
+            round(redis_max_memory / 1e9, 2)))
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
     # number of Redis clients.
@@ -861,7 +882,8 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  cleanup=True,
                  config=None,
-                 redis_password=None):
+                 redis_password=None,
+                 collect_profiling_data=True):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -894,6 +916,7 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         redis_password (str): The password of the redis server.
+        collect_profiling_data: Whether to collect profiling data from workers.
 
     Returns:
         The raylet socket name.
@@ -923,9 +946,11 @@ def start_raylet(redis_address,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
+                            "--collect-profiling-data={} "
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
+                                "1" if collect_profiling_data else "0",
                                 get_temp_root()))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
@@ -1028,9 +1053,6 @@ def determine_plasma_store_config(object_store_memory=None,
                 "when calling ray.init() or ray start.")
             object_store_memory = MAX_DEFAULT_MEM
 
-    if plasma_directory is not None:
-        plasma_directory = os.path.abspath(plasma_directory)
-
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
     # in which case we default to /tmp on Linux.
@@ -1055,10 +1077,15 @@ def determine_plasma_store_config(object_store_memory=None,
         else:
             plasma_directory = "/tmp"
 
-    # Do some sanity checks.
-    if object_store_memory > system_memory:
-        raise Exception("The requested object store memory size is greater "
-                        "than the total available memory.")
+        # Do some sanity checks.
+        if object_store_memory > system_memory:
+            raise Exception(
+                "The requested object store memory size is greater "
+                "than the total available memory.")
+    else:
+        plasma_directory = os.path.abspath(plasma_directory)
+        logger.warning("WARNING: object_store_memory is not verified when "
+                       "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise Exception("The file {} does not exist or is not a directory."
@@ -1258,6 +1285,8 @@ def start_ray_processes(address_info=None,
                         num_workers=None,
                         num_local_schedulers=1,
                         object_store_memory=None,
+                        redis_max_memory=None,
+                        collect_profiling_data=True,
                         num_redis_shards=1,
                         redis_max_clients=None,
                         redis_password=None,
@@ -1304,6 +1333,14 @@ def start_ray_processes(address_info=None,
             address_info.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data. Note that
+            profiling data cannot be LRU evicted, so if you set
+            redis_max_memory then profiling will also be disabled to prevent
+            it from consuming all available redis memory.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -1395,7 +1432,8 @@ def start_ray_processes(address_info=None,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup,
-            password=redis_password)
+            password=redis_password,
+            redis_max_memory=redis_max_memory)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
@@ -1495,6 +1533,7 @@ def start_ray_processes(address_info=None,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
                 redis_password=redis_password,
+                collect_profiling_data=collect_profiling_data,
                 config=config))
 
     # Try to start the web UI.
@@ -1615,6 +1654,8 @@ def start_ray_head(address_info=None,
                    num_workers=None,
                    num_local_schedulers=1,
                    object_store_memory=None,
+                   redis_max_memory=None,
+                   collect_profiling_data=True,
                    worker_path=None,
                    cleanup=True,
                    redirect_worker_output=False,
@@ -1660,6 +1701,11 @@ def start_ray_head(address_info=None,
             address_info.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data from workers.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1710,6 +1756,8 @@ def start_ray_head(address_info=None,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
         object_store_memory=object_store_memory,
+        redis_max_memory=redis_max_memory,
+        collect_profiling_data=collect_profiling_data,
         worker_path=worker_path,
         cleanup=cleanup,
         redirect_worker_output=redirect_worker_output,

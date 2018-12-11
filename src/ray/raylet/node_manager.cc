@@ -541,6 +541,13 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                          << " already removed from the lineage cache. This is most "
                             "likely due to reconstruction.";
       }
+      // Maintain the invariant that if a task is in the
+      // MethodsWaitingForActorCreation queue, then it is subscribed to its
+      // respective actor creation task and that task only. Since the actor
+      // location is now known, we can remove the task from the queue and
+      // forget its dependency on the actor creation task.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+          method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
@@ -1154,6 +1161,15 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // Keep the task queued until we discover the actor's location.
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueMethodsWaitingForActorCreation({task});
+      // The actor has not yet been created and may have failed. To make sure
+      // that the actor is eventually recreated, we maintain the invariant that
+      // if a task is in the MethodsWaitingForActorCreation queue, then it is
+      // subscribed to its respective actor creation task and that task only.
+      // Once the actor has been created and this method removed from the
+      // waiting queue, the caller must make the corresponding call to
+      // UnsubscribeDependencies.
+      task_dependency_manager_.SubscribeDependencies(spec.TaskId(),
+                                                     {spec.ActorCreationDummyObjectId()});
       // Mark the task as pending. It will be canceled once we discover the
       // actor's location and either execute the task ourselves or forward it
       // to another node.
@@ -1431,7 +1447,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
-    RAY_CHECK(actor_registry_.find(actor_id) == actor_registry_.end());
+    RAY_CHECK(actor_registry_.find(actor_id) == actor_registry_.end())
+        << "Created an actor that already exists";
     auto actor_data = std::make_shared<ActorTableDataT>();
     actor_data->actor_id = actor_id.binary();
     actor_data->actor_creation_dummy_object_id =
@@ -1447,6 +1464,10 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // index in the log should succeed.
     auto failure_callback = [](gcs::AsyncGcsClient *client, const ActorID &id,
                                const ActorTableDataT &data) {
+      // TODO(swang): Instead of making this a fatal check, we could just kill
+      // the duplicate actor process. If we do this, we must make sure to
+      // either resubmit the tasks that went to the duplicate actor, or wait
+      // for success before handling the actor state transition to ALIVE.
       RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
     };
     RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
@@ -1522,7 +1543,12 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        RAY_CHECK(lineage_cache_.ContainsTask(task_id));
+        RAY_CHECK(lineage_cache_.ContainsTask(task_id))
+            << "Task metadata not found in either GCS or lineage cache. It may have been "
+               "evicted "
+            << "by the redis LRU configuration. Consider increasing the memory "
+               "allocation via "
+            << "ray.init(redis_max_memory=<max_memory_bytes>).";
         // Use a copy of the cached task spec to re-execute the task.
         const Task task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);
@@ -1764,13 +1790,26 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
+  result << "\nActorRegistry:";
+  int live_actors = 0;
+  int dead_actors = 0;
+  int max_num_handles = 0;
+  for (auto &pair : actor_registry_) {
+    if (pair.second.IsAlive()) {
+      live_actors += 1;
+    } else {
+      dead_actors += 1;
+    }
+    if (pair.second.NumHandles() > max_num_handles) {
+      max_num_handles = pair.second.NumHandles();
+    }
+  }
+  result << "\n- num live actors: " << live_actors;
+  result << "\n- num dead actors: " << dead_actors;
+  result << "\n- max num handles: " << max_num_handles;
   result << "\nRemoteConnections:";
   for (auto &pair : remote_server_connections_) {
     result << "\n" << pair.first.hex() << ": " << pair.second->DebugString();
-  }
-  result << "\nActorRegistry:";
-  for (auto &pair : actor_registry_) {
-    result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
   }
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();

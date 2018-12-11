@@ -22,6 +22,12 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
 
 
+def one_hot(i, n):
+    out = [0.0] * n
+    out[i] = 1.0
+    return out
+
+
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
 
@@ -64,7 +70,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_info = {}
         self.i = 0
         self.num = num
-        self.observation_space = gym.spaces.Discrete(2)
+        self.observation_space = gym.spaces.Discrete(10)
         self.action_space = gym.spaces.Discrete(2)
 
     def reset(self):
@@ -290,7 +296,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(10)
         ev = PolicyEvaluator(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             policy_graph={
@@ -303,10 +309,20 @@ class TestMultiAgentEnv(unittest.TestCase):
         # since we round robin introduce agents into the env, some of the env
         # steps don't count as proper transitions
         self.assertEqual(batch.policy_batches["p0"].count, 42)
-        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10],
-                         [0, 1, 2, 3, 4] * 2)
-        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10],
-                         [1, 2, 3, 4, 5] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10], [
+            one_hot(0, 10),
+            one_hot(1, 10),
+            one_hot(2, 10),
+            one_hot(3, 10),
+            one_hot(4, 10),
+        ] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10], [
+            one_hot(1, 10),
+            one_hot(2, 10),
+            one_hot(3, 10),
+            one_hot(4, 10),
+            one_hot(5, 10),
+        ] * 2)
         self.assertEqual(batch.policy_batches["p0"]["rewards"].tolist()[:10],
                          [100, 100, 100, 100, 0] * 2)
         self.assertEqual(batch.policy_batches["p0"]["dones"].tolist()[:10],
@@ -323,7 +339,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                is_training=False,
                                 episodes=None):
                 return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
@@ -348,7 +363,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                is_training=False,
                                 episodes=None):
                 # Pretend we did a model-based rollout and want to return
                 # the extra trajectory.

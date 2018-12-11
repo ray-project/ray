@@ -11,9 +11,11 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import Categorical
@@ -133,6 +135,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "obs": observations,
                 "prev_actions": prev_actions,
                 "prev_rewards": prev_rewards,
+                "is_training": self._get_is_training_placeholder(),
             },
             observation_space,
             logit_dim,
@@ -241,6 +244,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             },
         }
 
+    @override(TFPolicyGraph)
+    def copy(self, existing_inputs):
+        return VTracePolicyGraph(
+            self.observation_space,
+            self.action_space,
+            self.config,
+            existing_inputs=existing_inputs)
+
+    @override(TFPolicyGraph)
     def optimizer(self):
         if self.config["opt_type"] == "adam":
             return tf.train.AdamOptimizer(self.cur_lr)
@@ -249,18 +261,22 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                              self.config["momentum"],
                                              self.config["epsilon"])
 
+    @override(TFPolicyGraph)
     def gradients(self, optimizer):
         grads = tf.gradients(self.loss.total_loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 
+    @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         return {"behaviour_logits": self.model.outputs}
 
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 
+    @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -268,12 +284,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth
         return sample_batch
 
+    @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
-
-    def copy(self, existing_inputs):
-        return VTracePolicyGraph(
-            self.observation_space,
-            self.action_space,
-            self.config,
-            existing_inputs=existing_inputs)

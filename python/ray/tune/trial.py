@@ -124,6 +124,9 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
+                 trial_name_creator=None,
+                 custom_loggers=None,
+                 sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -146,6 +149,9 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.trial_name_creator = trial_name_creator
+        self.custom_loggers = custom_loggers
+        self.sync_function = sync_function
         self.verbose = True
         self.max_failures = max_failures
 
@@ -160,10 +166,7 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
-        if trial_id is not None:
-            self.trial_id = trial_id
-        else:
-            self.trial_id = Trial.generate_id()
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
 
@@ -181,8 +184,12 @@ class Trial(object):
                 prefix="{}_{}".format(
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
-            self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               self.upload_dir)
+            self.result_logger = UnifiedLogger(
+                self.config,
+                self.logdir,
+                upload_uri=self.upload_dir,
+                custom_loggers=self.custom_loggers,
+                sync_function=self.sync_function)
 
     def close_logger(self):
         """Close logger."""
@@ -216,16 +223,18 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self, result):
+    def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        result = self.last_result or {}
 
         if result.get(DONE) and self.checkpoint_at_end:
             return True
 
-        if not self.checkpoint_freq:
+        if self.checkpoint_freq:
+            return result.get(TRAINING_ITERATION,
+                              0) % self.checkpoint_freq == 0
+        else:
             return False
-
-        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -281,10 +290,12 @@ class Trial(object):
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
-        This is if a checkpoint frequency is set, which includes settings
-        where there may not yet be a checkpoint.
+        This is if a checkpoint frequency is set and has not failed more than
+        max_failures. This may return true even when there may not yet
+        be a checkpoint.
         """
-        return self.checkpoint_freq > 0
+        return (self.checkpoint_freq > 0
+                and self.num_failures < self.max_failures)
 
     def update_last_result(self, result, terminate=False):
         if terminate:
@@ -312,10 +323,18 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Can be overriden with a custom string creator.
+        """
+        if self.trial_name_creator:
+            return self.trial_name_creator(self)
+
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+            env = self.config["env"]
+            if isinstance(env, type):
+                env = env.__name__
+            identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
         if self.experiment_tag:

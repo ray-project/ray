@@ -12,7 +12,6 @@ import logging
 import numpy as np
 import os
 import redis
-import setproctitle
 import signal
 import sys
 import threading
@@ -72,6 +71,11 @@ DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+try:
+    import setproctitle
+except ImportError:
+    setproctitle = None
 
 
 class RayTaskError(Exception):
@@ -213,7 +217,7 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = profiling.Profiler(self)
+        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         self.state_lock = threading.Lock()
         # A dictionary that maps from driver id to SerializationContext
@@ -410,6 +414,17 @@ class Worker(object):
             logger.info(
                 "The object with ID {} already exists in the object store."
                 .format(object_id))
+        except TypeError:
+            # This error can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need these extra
+            # fallbacks here to start from the beginning. Hopefully the object
+            # could have a `__reduce__` method.
+            register_custom_serializer(type(value), use_pickle=True)
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "so are are falling back to cloudpickle."
+                               .format(type(value)))
+            logger.warning(warning_message)
+            self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -1327,6 +1342,8 @@ def _init(address_info=None,
           num_workers=None,
           num_local_schedulers=None,
           object_store_memory=None,
+          redis_max_memory=None,
+          collect_profiling_data=True,
           local_mode=False,
           driver_mode=None,
           redirect_worker_output=False,
@@ -1371,6 +1388,11 @@ def _init(address_info=None,
             This is only provided if start_ray_local is True.
         object_store_memory: The maximum amount of memory (in bytes) to
             allow the object store to use.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data from workers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         redirect_worker_output: True if the stdout and stderr of worker
@@ -1425,6 +1447,11 @@ def _init(address_info=None,
     else:
         driver_mode = SCRIPT_MODE
 
+    if redis_max_memory and collect_profiling_data:
+        logger.warn("Profiling data cannot be LRU evicted, so it is disabled "
+                    "when redis_max_memory is set.")
+        collect_profiling_data = False
+
     # Get addresses of existing services.
     if address_info is None:
         address_info = {}
@@ -1464,6 +1491,8 @@ def _init(address_info=None,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
             object_store_memory=object_store_memory,
+            redis_max_memory=redis_max_memory,
+            collect_profiling_data=collect_profiling_data,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
@@ -1504,6 +1533,9 @@ def _init(address_info=None,
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
+        if redis_max_memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "redis_max_memory must not be provided.")
         if plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
@@ -1541,7 +1573,7 @@ def _init(address_info=None,
             "node_ip_address": node_ip_address,
             "redis_address": address_info["redis_address"],
             "store_socket_name": address_info["object_store_addresses"][0],
-            "webui_url": address_info["webui_url"]
+            "webui_url": address_info["webui_url"],
         }
         driver_address_info["raylet_socket_name"] = (
             address_info["raylet_socket_names"][0])
@@ -1554,7 +1586,8 @@ def _init(address_info=None,
         mode=driver_mode,
         worker=global_worker,
         driver_id=driver_id,
-        redis_password=redis_password)
+        redis_password=redis_password,
+        collect_profiling_data=collect_profiling_data)
     return address_info
 
 
@@ -1563,6 +1596,8 @@ def init(redis_address=None,
          num_gpus=None,
          resources=None,
          object_store_memory=None,
+         redis_max_memory=None,
+         collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
@@ -1619,6 +1654,11 @@ def init(redis_address=None,
             of that resource available.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries. This only applies to the
+            sharded redis tables (task and object tables).
+        collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -1666,6 +1706,10 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if configure_logging:
+        logging.basicConfig(level=logging_level, format=logging_format)
+
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
         if use_raylet:
@@ -1675,8 +1719,11 @@ def init(redis_address=None,
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
 
-    if configure_logging:
-        logging.basicConfig(level=logging_level, format=logging_format)
+    if setproctitle is None:
+        logger.warning(
+            "WARNING: Not updating worker name since `setproctitle` is not "
+            "installed. Install this with `pip install setproctitle` "
+            "(or ray[debug]) to enable monitoring of worker processes.")
 
     if global_worker.connected:
         if ignore_reinit_error:
@@ -1712,6 +1759,8 @@ def init(redis_address=None,
         huge_pages=huge_pages,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
+        redis_max_memory=redis_max_memory,
+        collect_profiling_data=collect_profiling_data,
         driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -1891,7 +1940,8 @@ def connect(info,
             mode=WORKER_MODE,
             worker=global_worker,
             driver_id=None,
-            redis_password=None):
+            redis_password=None,
+            collect_profiling_data=True):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1904,6 +1954,7 @@ def connect(info,
         driver_id: The ID of driver. If it's None, then we will generate one.
         redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
+        collect_profiling_data: Whether to collect profiling data from workers.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1913,10 +1964,16 @@ def connect(info,
     # Enable nice stack traces on SIGSEGV etc.
     faulthandler.enable(all_threads=False)
 
+    if collect_profiling_data:
+        worker.profiler = profiling.Profiler(worker)
+    else:
+        worker.profiler = profiling.NoopProfiler()
+
     # Initialize some fields.
     if mode is WORKER_MODE:
         worker.worker_id = random_string()
-        setproctitle.setproctitle("ray_worker")
+        if setproctitle:
+            setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
@@ -2163,9 +2220,11 @@ def disconnect(worker=global_worker):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if setproctitle:
+        setproctitle.setproctitle(title)
     yield
-    setproctitle.setproctitle(next_title)
+    if setproctitle:
+        setproctitle.setproctitle(next_title)
 
 
 def _try_to_compute_deterministic_class_id(cls, depth=5):

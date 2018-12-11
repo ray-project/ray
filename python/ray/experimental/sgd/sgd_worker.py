@@ -9,9 +9,10 @@ import pyarrow.plasma as plasma
 import tensorflow as tf
 
 import ray
-from ray.experimental.sgd.util import fetch, run_timeline, warmup
-from ray.experimental.sgd.modified_allreduce import sum_gradients_all_reduce, \
-    unpack_small_tensors
+from ray.experimental.sgd.util import (ensure_plasma_tensorflow_op, fetch,
+                                       run_timeline, warmup)
+from ray.experimental.sgd.modified_allreduce import (sum_gradients_all_reduce,
+                                                     unpack_small_tensors)
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +113,7 @@ class SGDWorker(object):
                 ray.worker.global_worker.plasma_client.store_socket_name)
             manager_socket = (
                 ray.worker.global_worker.plasma_client.manager_socket_name)
-            if not plasma.tf_plasma_op:
-                plasma.build_plasma_tensorflow_op()
+            ensure_plasma_tensorflow_op()
 
             # For fetching grads -> plasma
             self.plasma_in_grads = []
@@ -205,9 +205,6 @@ class SGDWorker(object):
     def compute_gradients(self):
         start = time.time()
         feed_dict = self._grad_feed_dict()
-        # Aggregate feed dicts for each model on this worker.
-        for model in self.models:
-            feed_dict.update(model.get_feed_dict())
         # We only need to fetch the first per_device_grad, since they are
         # averaged across all devices by allreduce.
         fetches = self.sess.run(

@@ -7,7 +7,9 @@ import tensorflow as tf
 import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils.annotations import override
 
 
 class PGLoss(object):
@@ -35,7 +37,8 @@ class PGPolicyGraph(TFPolicyGraph):
         self.model = ModelCatalog.get_model({
             "obs": obs,
             "prev_actions": prev_actions,
-            "prev_rewards": prev_rewards
+            "prev_rewards": prev_rewards,
+            "is_training": self._get_is_training_placeholder(),
         }, obs_space, self.logit_dim, self.config["model"])
         action_dist = dist_class(self.model.outputs)  # logit for each action
 
@@ -74,6 +77,7 @@ class PGPolicyGraph(TFPolicyGraph):
             max_seq_len=config["model"]["max_seq_len"])
         sess.run(tf.global_variables_initializer())
 
+    @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
@@ -82,5 +86,6 @@ class PGPolicyGraph(TFPolicyGraph):
         return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
+    @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init

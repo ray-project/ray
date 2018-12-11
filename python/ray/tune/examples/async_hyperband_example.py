@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run_experiments
+from ray.tune import Trainable, run_experiments, sample_from
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -76,8 +76,10 @@ if __name__ == "__main__":
                     "gpu": 0
                 },
                 "config": {
-                    "width": lambda spec: 10 + int(90 * random.random()),
-                    "height": lambda spec: int(100 * random.random()),
+                    "width": sample_from(
+                        lambda spec: 10 + int(90 * random.random())),
+                    "height": sample_from(
+                        lambda spec: int(100 * random.random())),
                 },
             }
         },

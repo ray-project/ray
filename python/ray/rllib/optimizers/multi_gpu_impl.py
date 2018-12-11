@@ -3,11 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
 
 import tensorflow as tf
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
+
+logger = logging.getLogger(__name__)
 
 
 class LocalSyncParallelOptimizer(object):
@@ -62,6 +65,8 @@ class LocalSyncParallelOptimizer(object):
         # First initialize the shared loss network
         with tf.name_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_graph(self.loss_inputs)
+        shared_ops = tf.get_collection(
+            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
 
         # Then setup the per-device loss graphs that use the shared weights
         self._batch_index = tf.placeholder(tf.int32, name="batch_index")
@@ -87,7 +92,27 @@ class LocalSyncParallelOptimizer(object):
                                    len(input_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
-        self._train_op = self.optimizer.apply_gradients(avg)
+        if grad_norm_clipping:
+            clipped = []
+            for grad, _ in avg:
+                clipped.append(grad)
+            clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
+            for i, (grad, var) in enumerate(avg):
+                avg[i] = (clipped[i], var)
+
+        # gather update ops for any batch norm layers. TODO(ekl) here we will
+        # use all the ops found which won't work for DQN / DDPG, but those
+        # aren't supported with multi-gpu right now anyways.
+        self._update_ops = tf.get_collection(
+            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        for op in shared_ops:
+            self._update_ops.remove(op)  # only care about tower update ops
+        if self._update_ops:
+            logger.debug("Update ops to run on apply gradient: {}".format(
+                self._update_ops))
+
+        with tf.control_dependencies(self._update_ops):
+            self._train_op = self.optimizer.apply_gradients(avg)
 
     def load_data(self, sess, inputs, state_inputs):
         """Bulk loads the specified inputs into device memory.

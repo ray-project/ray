@@ -80,8 +80,16 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
     for policy_id, rewards in policy_rewards.copy().items():
         policy_rewards[policy_id] = np.mean(rewards)
 
-    for k, v_list in custom_metrics.items():
-        custom_metrics[k] = np.mean(v_list)
+    for k, v_list in custom_metrics.copy().items():
+        custom_metrics[k + "_mean"] = np.mean(v_list)
+        filt = [v for v in v_list if not np.isnan(v)]
+        if filt:
+            custom_metrics[k + "_min"] = np.min(filt)
+            custom_metrics[k + "_max"] = np.max(filt)
+        else:
+            custom_metrics[k + "_min"] = float("nan")
+            custom_metrics[k + "_max"] = float("nan")
+        del custom_metrics[k]
 
     return dict(
         episode_reward_max=max_reward,

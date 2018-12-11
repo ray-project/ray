@@ -8,6 +8,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
+from ray.rllib.utils.annotations import override
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
@@ -94,6 +95,7 @@ class ImpalaAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
 
+    @override(Agent)
     def _init(self):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
@@ -110,6 +112,7 @@ class ImpalaAgent(Agent):
                                                self.remote_evaluators,
                                                self.config["optimizer"])
 
+    @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()

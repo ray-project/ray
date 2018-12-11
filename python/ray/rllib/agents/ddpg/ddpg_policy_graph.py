@@ -11,7 +11,9 @@ import ray
 from ray.rllib.agents.dqn.dqn_policy_graph import _huber_loss, \
     _minimize_and_clip, _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 A_SCOPE = "a_func"
@@ -199,7 +201,9 @@ class DDPGPolicyGraph(TFPolicyGraph):
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
         self.cur_observations = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
+            tf.float32,
+            shape=(None, ) + observation_space.shape,
+            name="cur_obs")
 
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
@@ -236,7 +240,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
+            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             self.p_t = self._build_p_network(self.obs_t, observation_space)
+            p_batchnorm_update_ops = list(
+                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                prev_update_ops)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
@@ -257,6 +265,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 is_target=True)
 
         # q network evaluation
+        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
         with tf.variable_scope(Q_SCOPE) as scope:
             q_t, model = self._build_q_network(self.obs_t, observation_space,
                                                self.act_t)
@@ -269,6 +278,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 twin_q_t, twin_model = self._build_q_network(
                     self.obs_t, observation_space, self.act_t)
                 self.twin_q_func_vars = _scope_vars(scope.name)
+        q_batchnorm_update_ops = list(
+            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
@@ -345,7 +356,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
             loss=model.loss() + self.loss.total_loss,
-            loss_inputs=self.loss_inputs)
+            loss_inputs=self.loss_inputs,
+            update_ops=q_batchnorm_update_ops + p_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
         # Note that this encompasses both the policy and Q-value networks and
@@ -356,49 +368,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # Hard initial update
         self.update_target(tau=1.0)
 
-    def _build_q_network(self, obs, obs_space, actions):
-        q_net = QNetwork(
-            ModelCatalog.get_model({
-                "obs": obs
-            }, obs_space, 1, self.config["model"]), actions,
-            self.config["critic_hiddens"],
-            self.config["critic_hidden_activation"])
-        return q_net.value, q_net.model
-
-    def _build_p_network(self, obs, obs_space):
-        return PNetwork(
-            ModelCatalog.get_model({
-                "obs": obs
-            }, obs_space, 1, self.config["model"]), self.dim_actions,
-            self.config["actor_hiddens"],
-            self.config["actor_hidden_activation"]).action_scores
-
-    def _build_action_network(self, p_values, stochastic, eps,
-                              is_target=False):
-        return ActionNetwork(
-            p_values, self.low_action, self.high_action, stochastic, eps,
-            self.config["exploration_theta"], self.config["exploration_sigma"],
-            self.config["smooth_target_policy"], self.config["act_noise"],
-            is_target, self.config["target_noise"],
-            self.config["noise_clip"]).actions
-
-    def _build_actor_critic_loss(self,
-                                 q_t,
-                                 q_tp1,
-                                 q_tp0,
-                                 twin_q_t=None,
-                                 twin_q_tp1=None):
-        return ActorCriticLoss(
-            q_t, q_tp1, q_tp0, self.importance_weights, self.rew_t,
-            self.done_mask, twin_q_t, twin_q_tp1,
-            self.config["actor_loss_coeff"], self.config["critic_loss_coeff"],
-            self.config["gamma"], self.config["n_step"],
-            self.config["use_huber"], self.config["huber_threshold"],
-            self.config["twin_q"])
-
+    @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
 
+    @override(TFPolicyGraph)
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
@@ -426,22 +400,84 @@ class DDPGPolicyGraph(TFPolicyGraph):
         grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
         return grads_and_vars
 
+    @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
         return {
             self.stochastic: True,
             self.eps: self.cur_epsilon,
         }
 
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
         }
 
+    @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
         return _postprocess_dqn(self, sample_batch)
+
+    @override(TFPolicyGraph)
+    def get_weights(self):
+        return self.variables.get_weights()
+
+    @override(TFPolicyGraph)
+    def set_weights(self, weights):
+        self.variables.set_weights(weights)
+
+    @override(PolicyGraph)
+    def get_state(self):
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        TFPolicyGraph.set_state(self, state[0])
+        self.set_epsilon(state[1])
+
+    def _build_q_network(self, obs, obs_space, actions):
+        q_net = QNetwork(
+            ModelCatalog.get_model({
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
+            }, obs_space, 1, self.config["model"]), actions,
+            self.config["critic_hiddens"],
+            self.config["critic_hidden_activation"])
+        return q_net.value, q_net.model
+
+    def _build_p_network(self, obs, obs_space):
+        return PNetwork(
+            ModelCatalog.get_model({
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
+            }, obs_space, 1, self.config["model"]), self.dim_actions,
+            self.config["actor_hiddens"],
+            self.config["actor_hidden_activation"]).action_scores
+
+    def _build_action_network(self, p_values, stochastic, eps,
+                              is_target=False):
+        return ActionNetwork(
+            p_values, self.low_action, self.high_action, stochastic, eps,
+            self.config["exploration_theta"], self.config["exploration_sigma"],
+            self.config["smooth_target_policy"], self.config["act_noise"],
+            is_target, self.config["target_noise"],
+            self.config["noise_clip"]).actions
+
+    def _build_actor_critic_loss(self,
+                                 q_t,
+                                 q_tp1,
+                                 q_tp0,
+                                 twin_q_t=None,
+                                 twin_q_tp1=None):
+        return ActorCriticLoss(
+            q_t, q_tp1, q_tp0, self.importance_weights, self.rew_t,
+            self.done_mask, twin_q_t, twin_q_tp1,
+            self.config["actor_loss_coeff"], self.config["critic_loss_coeff"],
+            self.config["gamma"], self.config["n_step"],
+            self.config["use_huber"], self.config["huber_threshold"],
+            self.config["twin_q"])
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -468,16 +504,3 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
-
-    def get_weights(self):
-        return self.variables.get_weights()
-
-    def set_weights(self, weights):
-        self.variables.set_weights(weights)
-
-    def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
-
-    def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
-        self.set_epsilon(state[1])

@@ -3,13 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import grid_search, register_env, run_experiments
+from ray.tune import grid_search, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
 from scenarios import TOWN2_STRAIGHT
 
-env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
     "verbose": False,
@@ -23,7 +22,6 @@ env_config.update({
     "scenarios": TOWN2_STRAIGHT,
 })
 
-register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 redis_address = ray.services.get_node_ip_address() + ":6379"
 
@@ -31,7 +29,7 @@ ray.init(redis_address=redis_address)
 run_experiments({
     "carla-a3c": {
         "run": "A3C",
-        "env": "carla_env",
+        "env": CarlaEnv,
         "config": {
             "env_config": env_config,
             "use_gpu_for_workers": True,

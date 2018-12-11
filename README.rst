@@ -1,5 +1,6 @@
-Ray
-===
+.. raw:: html
+
+    <a href=http://ray.readthedocs.io/en/latest/index.html><img align="right" width="30%" src="https://github.com/devin-petersohn/ray/raw/docs/update_readme/doc/source/images/ray_logo.png"></a>
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
@@ -7,9 +8,12 @@ Ray
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
+.. image:: https://img.shields.io/badge/pypi-0.6.0-blue.svg
+    :target: https://pypi.org/project/ray/
+
 |
 
-Ray is a flexible, high-performance distributed execution framework.
+**Ray is a flexible, high-performance distributed execution framework.**
 
 
 Ray is easy to install: ``pip install ray``
@@ -37,12 +41,12 @@ Example Use
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: Scalable Reinforcement Learning
+- `Tune`_: Hyperparameter Optimization Framework
+- `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <http://ray.readthedocs.io/en/latest/distributed_sgd.html>`__
 
-.. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
-.. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
+.. _`Tune`: http://ray.readthedocs.io/en/latest/tune.html
+.. _`RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
 
 Installation
 ------------

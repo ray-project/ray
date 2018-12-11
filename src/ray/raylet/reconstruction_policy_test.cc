@@ -39,6 +39,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::string DebugString() const { return ""; }
 
   MOCK_METHOD0(RegisterBackend, void(void));
+  MOCK_METHOD0(GetLocalClientID, ray::ClientID());
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD3(SubscribeObjectLocations,
