@@ -315,8 +315,10 @@ class Agent(Trainable):
 
         if state is None:
             state = []
+        preprocessed = self.local_evaluator.preprocessors[policy_id].transform(
+            observation)
         filtered_obs = self.local_evaluator.filters[policy_id](
-            observation, update=False)
+            preprocessed, update=False)
         if state:
             return self.local_evaluator.for_policy(
                 lambda p: p.compute_single_action(filtered_obs, state),

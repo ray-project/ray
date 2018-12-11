@@ -23,6 +23,11 @@ Example Usage via executable:
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 """
 
+# Note: if you use any custom models or envs, register them here first, e.g.:
+#
+# ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
+# register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
+
 
 def create_parser(parser_creator=None):
     parser_creator = parser_creator or argparse.ArgumentParser
