@@ -65,21 +65,13 @@ class RayletClient {
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
+  /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
                bool is_worker, const JobID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
-  /// Register with raylet.
-  ///
-  /// \return ray::Status.
-  ///
-  /// NOTE(swang): If raylet exits and we are registered as a
-  /// worker, we will get killed.
-  ray::Status RegisterClient();
   /// Submit a task using the raylet code path.
   ///
   /// \param The execution dependencies.
@@ -87,16 +79,19 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                          const ray::raylet::TaskSpecification &task_spec);
+
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
   /// specification and must free it.
   ///
   /// \return The assigned task.
   ray::raylet::TaskSpecification *GetTask();
+
   /// Tell the local scheduler that the client has finished executing a task.
   ///
   /// \return ray::Status.
   ray::Status TaskDone();
+
   /// Tell the local scheduler to reconstruct or fetch objects.
   ///
   /// \param object_ids The IDs of the objects to reconstruct.
@@ -110,13 +105,13 @@ class RayletClient {
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
+
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
   ///
   /// \param object_ids The objects to wait for.
   /// \param num_returns The number of objects to wait for.
-  /// \param timeout_milliseconds Duration, in milliseconds, to wait before
-  /// returning.
+  /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
   /// \param current_task_id The task that called wait.
   /// \return A pair with the first element containing the object ids that were
@@ -124,6 +119,7 @@ class RayletClient {
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids, int num_returns,
       int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id);
+
   /// Push an error to the relevant driver.
   ///
   /// \param The ID of the job that the error is for.
@@ -133,11 +129,13 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status PushError(const JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
+
   /// Store some profile events in the GCS.
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
   ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
+
   /// Free a list of objects from object stores.
   ///
   /// \param object_ids A list of ObjectsIDs to be deleted.

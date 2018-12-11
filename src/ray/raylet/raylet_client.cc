@@ -22,7 +22,7 @@ using MessageType = ray::protocol::MessageType;
 
 RayletConnection::RayletConnection(const std::string &raylet_socket, int num_retries,
                                    int64_t timeout) {
-  /* Pick the default values if the user did not specify. */
+  // Pick the default values if the user did not specify.
   if (num_retries < 0) {
     num_retries = RayConfig::instance().num_connect_attempts();
   }
@@ -39,10 +39,10 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
                      << " (num_attempts = " << num_attempts
                      << ", num_retries = " << num_retries << ")";
     }
-    /* Sleep for timeout milliseconds. */
+    // Sleep for timeout milliseconds.
     usleep(timeout * 1000);
   }
-  /* If we could not connect to the socket, exit. */
+  // If we could not connect to the socket, exit.
   if (conn_ == -1) {
     RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
@@ -78,7 +78,7 @@ int RayletConnection::connect_ipc_sock(const std::string &socket_pathname) {
 
 int RayletConnection::read_bytes(uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
-  /* Termination condition: EOF or read 'length' bytes total. */
+  // Termination condition: EOF or read 'length' bytes total.
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
@@ -87,9 +87,9 @@ int RayletConnection::read_bytes(uint8_t *cursor, size_t length) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      return -1; /* Errno will be set. */
+      return -1;  // Errno will be set.
     } else if (0 == nbytes) {
-      /* Encountered early EOF. */
+      // Encountered early EOF.
       return -1;
     }
     RAY_CHECK(nbytes > 0);
@@ -104,16 +104,16 @@ int RayletConnection::write_bytes(uint8_t *cursor, size_t length) {
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
-    /* While we haven't written the whole message, write to the file
-     * descriptor, advance the cursor, and decrease the amount left to write. */
+    // While we haven't written the whole message, write to the file
+    // descriptor, advance the cursor, and decrease the amount left to write.
     nbytes = write(conn_, cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      return -1; /* Errno will be set. */
+      return -1;  // Errno will be set.
     } else if (0 == nbytes) {
-      /* Encountered early EOF. */
+      // Encountered early EOF.
       return -1;
     }
     RAY_CHECK(nbytes > 0);
@@ -144,7 +144,7 @@ ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t *&message) {
   message = (uint8_t *)malloc(length * sizeof(uint8_t));
   closed = read_bytes(message, length);
   if (closed) {
-    /* Handle the case in which the socket is closed. */
+    // Handle the case in which the socket is closed.
     free(message);
   disconnected:
     message = nullptr;
@@ -205,19 +205,16 @@ RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &cli
       language(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
-  RAY_CHECK_OK(RegisterClient());
-}
 
-ray::Status RayletClient::RegisterClient() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
       language);
   fbb.Finish(message);
-  /* Register the process ID with the local scheduler. */
+  // Register the process ID with the raylet.
+  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
-  RAY_CHECK(status.ok()) << "Unable to register worker with local scheduler";
-  return status;
+  RAY_CHECK(status.ok()) << "Unable to register worker with raylet";
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
@@ -324,7 +321,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
     ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
     result.second.push_back(object_id);
   }
-  /* Free the original message from the local scheduler. */
+  // Free the original message from the local scheduler.
   free(reply);
   return result;
 }
