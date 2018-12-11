@@ -6,34 +6,33 @@
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
-using ray::ObjectID;
-using ray::JobID;
-using ray::TaskID;
 using ray::ActorID;
+using ray::JobID;
+using ray::ObjectID;
+using ray::TaskID;
 using ray::UniqueID;
 
 using MessageType = ray::protocol::MessageType;
 
 class RayletConnection {
-public:
-   /// Connect to the local scheduler.
-   ///
-   /// \param raylet_socket The name of the socket to use to connect to the
-   ///        local scheduler.
-   /// \param worker_id A unique ID to represent the worker.
-   /// \param is_worker Whether this client is a worker. If it is a worker, an
-   ///        additional message will be sent to register as one.
-   /// \param driver_id The ID of the driver. This is non-nil if the client is a
-   ///        driver.
-   /// \return The connection information.
-  RayletConnection(const std::string &raylet_socket, int num_retries,
-                           int64_t timeout);
-  ~RayletConnection(); 
+ public:
+  /// Connect to the local scheduler.
+  ///
+  /// \param raylet_socket The name of the socket to use to connect to the
+  ///        local scheduler.
+  /// \param worker_id A unique ID to represent the worker.
+  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  ///        additional message will be sent to register as one.
+  /// \param driver_id The ID of the driver. This is non-nil if the client is a
+  ///        driver.
+  /// \return The connection information.
+  RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
+  ~RayletConnection();
   /// Notify the local scheduler that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the local scheduler doesn't
   /// propagate an error message to the driver.
   ///
-  /// \return ray::Status. 
+  /// \return ray::Status.
   ray::Status Disconnect();
   ray::Status ReadMessage(MessageType type, uint8_t *&message);
   ray::Status WriteMessage(MessageType type,
@@ -41,7 +40,8 @@ public:
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
                                  uint8_t *&reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
-private:
+
+ private:
   // TODO(rkn): The io methods below should be removed.
   int connect_ipc_sock(const std::string &socket_pathname);
   int read_bytes(uint8_t *cursor, size_t length);
@@ -56,7 +56,7 @@ private:
 };
 
 class RayletClient {
-public:
+ public:
   /// Connect to the local scheduler.
   ///
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
@@ -66,9 +66,8 @@ public:
   /// \param driver_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
-  RayletClient(
-    const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
-    const JobID &driver_id, const Language &language);
+  RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
+               bool is_worker, const JobID &driver_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
   /// Register with raylet.
@@ -101,12 +100,12 @@ public:
   /// \param fetch_only Only fetch objects, do not reconstruct them.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
-  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                           bool fetch_only, const TaskID &current_task_id);
-   /// Notify the local scheduler that this client (worker) is no longer blocked.
-   ///
-   /// \param current_task_id The task that is no longer blocked.
-   /// \return ray::Status.
+  ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
+                                 const TaskID &current_task_id);
+  /// Notify the local scheduler that this client (worker) is no longer blocked.
+  ///
+  /// \param current_task_id The task that is no longer blocked.
+  /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -120,9 +119,8 @@ public:
   /// \return A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> Wait(
-      const std::vector<ObjectID> &object_ids,
-      int num_returns, int64_t timeout_milliseconds, bool wait_local,
-      const TaskID &current_task_id);
+      const std::vector<ObjectID> &object_ids, int num_returns,
+      int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id);
   /// Push an error to the relevant driver.
   ///
   /// \param The ID of the job that the error is for.
@@ -131,7 +129,7 @@ public:
   /// \param The timestamp of the error.
   /// \return ray::Status.
   ray::Status PushError(const JobID &job_id, const std::string &type,
-                  const std::string &error_message, double timestamp);
+                        const std::string &error_message, double timestamp);
   /// Store some profile events in the GCS.
   ///
   /// \param profile_events A batch of profiling event information.
@@ -156,7 +154,8 @@ public:
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
-private:
+
+ private:
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 };

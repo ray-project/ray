@@ -21,32 +21,31 @@
 
 using MessageType = ray::protocol::MessageType;
 
-
-RayletConnection::RayletConnection(const std::string &raylet_socket,
-                                   int num_retries, int64_t timeout) {
+RayletConnection::RayletConnection(const std::string &raylet_socket, int num_retries,
+                                   int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
-      num_retries = RayConfig::instance().num_connect_attempts();
+    num_retries = RayConfig::instance().num_connect_attempts();
   }
   if (timeout < 0) {
-      timeout = RayConfig::instance().connect_timeout_milliseconds();
+    timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
   conn_ = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-      conn_ = connect_ipc_sock(raylet_socket);
-      if (conn_ >= 0) break;
-      if (num_attempts > 0) {
-        RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
-                        << " (num_attempts = " << num_attempts
-                        << ", num_retries = " << num_retries << ")";
-      }
-      /* Sleep for timeout milliseconds. */
-      usleep(timeout * 1000);
+    conn_ = connect_ipc_sock(raylet_socket);
+    if (conn_ >= 0) break;
+    if (num_attempts > 0) {
+      RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
+                     << " (num_attempts = " << num_attempts
+                     << ", num_retries = " << num_retries << ")";
+    }
+    /* Sleep for timeout milliseconds. */
+    usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
   if (conn_ == -1) {
-      RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
+    RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
 
@@ -72,7 +71,8 @@ int RayletConnection::connect_ipc_sock(const std::string &socket_pathname) {
   }
   strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
 
-  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) != 0) {
+  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
+      0) {
     close(socket_fd);
     return -1;
   }
@@ -108,7 +108,7 @@ int RayletConnection::write_bytes(uint8_t *cursor, size_t length) {
   size_t offset = 0;
   while (bytesleft > 0) {
     /* While we haven't written the whole message, write to the file
-    * descriptor, advance the cursor, and decrease the amount left to write. */
+     * descriptor, advance the cursor, and decrease the amount left to write. */
     nbytes = write(conn_, cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
@@ -149,7 +149,7 @@ ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t *&message) {
   if (closed) {
     /* Handle the case in which the socket is closed. */
     free(message);
-disconnected:
+  disconnected:
     message = nullptr;
     type_field = static_cast<int64_t>(MessageType::DisconnectClient);
     length = 0;
@@ -159,8 +159,9 @@ disconnected:
     exit(1);
   }
   if (type_field != static_cast<int64_t>(type)) {
-    std::string err_msg = "Problem communicating with raylet from worker: "
-                          "check logs or dmesg for previous errors.";
+    std::string err_msg =
+        "Problem communicating with raylet from worker: "
+        "check logs or dmesg for previous errors.";
     RAY_LOG(FATAL) << err_msg;
     return ray::Status::UnknownError(err_msg);
     // TODO: Why don't fail-fast/exit here?
@@ -169,7 +170,7 @@ disconnected:
 }
 
 ray::Status RayletConnection::WriteMessage(MessageType type,
-    flatbuffers::FlatBufferBuilder *fbb) {
+                                           flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t version = RayConfig::instance().ray_protocol_version();
   int64_t length = fbb ? fbb->GetSize() : 0;
@@ -188,19 +189,23 @@ ray::Status RayletConnection::WriteMessage(MessageType type,
   return ray::Status::OK();
 }
 
-ray::Status RayletConnection::AtomicRequestReply(
-    MessageType request_type, MessageType reply_type, uint8_t *&reply_message,
-    flatbuffers::FlatBufferBuilder *fbb) {
+ray::Status RayletConnection::AtomicRequestReply(MessageType request_type,
+                                                 MessageType reply_type,
+                                                 uint8_t *&reply_message,
+                                                 flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   auto status = WriteMessage(MessageType::GetTask);
   if (!status.ok()) return status;
   return ReadMessage(MessageType::ExecuteTask, reply_message);
 }
 
-RayletClient::RayletClient(
-  const std::string &raylet_socket, const UniqueID &client_id, bool is_worker,
-  const JobID &driver_id, const Language &language): client_id(client_id),
-    is_worker(is_worker), driver_id(driver_id), language(language) {
+RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
+                           bool is_worker, const JobID &driver_id,
+                           const Language &language)
+    : client_id(client_id),
+      is_worker(is_worker),
+      driver_id(driver_id),
+      language(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
   RAY_CHECK_OK(RegisterClient());
@@ -218,9 +223,8 @@ ray::Status RayletClient::RegisterClient() {
   return status;
 }
 
-ray::Status RayletClient::SubmitTask(
-    const std::vector<ObjectID> &execution_dependencies,
-    const ray::raylet::TaskSpecification &task_spec) {
+ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
+                                     const ray::raylet::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
@@ -233,8 +237,8 @@ ray::raylet::TaskSpecification *RayletClient::GetTask() {
   uint8_t *reply;
   // Receive a task from the local scheduler. This will block until the local
   // scheduler gives this client a task.
-  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask,
-                                         reply));
+  RAY_CHECK_OK(
+      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
   // Set the resource IDs for this task.
@@ -242,8 +246,8 @@ ray::raylet::TaskSpecification *RayletClient::GetTask() {
   for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
     auto const &fractional_resource_ids =
         reply_message->fractional_resource_ids()->Get(i);
-    auto &acquired_resources = resource_ids_[string_from_flatbuf(
-        *fractional_resource_ids->resource_name())];
+    auto &acquired_resources =
+        resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
     size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
@@ -274,9 +278,9 @@ ray::Status RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
 
-ray::Status RayletClient::FetchOrReconstruct(
-    const std::vector<ObjectID> &object_ids, bool fetch_only,
-    const TaskID &current_task_id) {
+ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
+                                             bool fetch_only,
+                                             const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
@@ -307,8 +311,8 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   uint8_t *reply;
-  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::WaitRequest, 
-                                         MessageType::WaitReply, reply, &fbb));
+  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::WaitRequest, MessageType::WaitReply,
+                                         reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
@@ -329,8 +333,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
 }
 
 ray::Status RayletClient::PushError(const JobID &job_id, const std::string &type,
-                                      const std::string &error_message,
-                                      double timestamp) {
+                                    const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
       fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
@@ -348,8 +351,8 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
   return conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
 }
 
-ray::Status RayletClient::FreeObjects(
-    const std::vector<ray::ObjectID> &object_ids, bool local_only) {
+ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+                                      bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,
                                                          to_flatbuf(fbb, object_ids));

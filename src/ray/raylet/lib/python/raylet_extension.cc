@@ -14,8 +14,7 @@ typedef struct {
 } PyRayletClient;
 // clang-format on
 
-static int PyRayletClient_init(PyRayletClient *self, PyObject *args,
-                                       PyObject *kwds) {
+static int PyRayletClient_init(PyRayletClient *self, PyObject *args, PyObject *kwds) {
   char *socket_name;
   UniqueID client_id;
   PyObject *is_worker;
@@ -26,9 +25,9 @@ static int PyRayletClient_init(PyRayletClient *self, PyObject *args,
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->raylet_client = new RayletClient(
-      socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)), driver_id,
-      Language::PYTHON);
+  self->raylet_client = new RayletClient(socket_name, client_id,
+                                         static_cast<bool>(PyObject_IsTrue(is_worker)),
+                                         driver_id, Language::PYTHON);
   return 0;
 }
 
@@ -50,8 +49,7 @@ static PyObject *PyRayletClient_SubmitTask(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  RayletClient *client =
-      reinterpret_cast<PyRayletClient *>(self)->raylet_client;
+  RayletClient *client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
   RAY_CHECK_OK(client->SubmitTask(*task->execution_dependencies, *task->task_spec));
@@ -71,8 +69,7 @@ static PyObject *PyRayletClient_GetTask(PyObject *self) {
 }
 // clang-format on
 
-static PyObject *PyRayletClient_FetchOrReconstruct(PyObject *self,
-                                                   PyObject *args) {
+static PyObject *PyRayletClient_FetchOrReconstruct(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
   std::vector<ObjectID> object_ids;
@@ -127,8 +124,7 @@ static PyObject *PyRayletClient_compute_put_id(PyObject *self, PyObject *args) {
 
 static PyObject *PyRayletClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
-  std::vector<int> gpu_ids =
-      ((PyRayletClient *)self)->raylet_client->gpu_ids;
+  std::vector<int> gpu_ids = ((PyRayletClient *)self)->raylet_client->gpu_ids;
   int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
@@ -142,8 +138,8 @@ static PyObject *PyRayletClient_resource_ids(PyObject *self) {
   // Construct a Python dictionary of resource IDs and resource fractions.
   PyObject *resource_ids = PyDict_New();
 
-  for (auto const &resource_info : reinterpret_cast<PyRayletClient *>(self)
-                                       ->raylet_client->resource_ids_) {
+  for (auto const &resource_info :
+       reinterpret_cast<PyRayletClient *>(self)->raylet_client->resource_ids_) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
 
@@ -202,9 +198,9 @@ static PyObject *PyRayletClient_Wait(PyObject *self, PyObject *args) {
   }
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = \
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
       reinterpret_cast<PyRayletClient *>(self)->raylet_client->Wait(
-      object_ids, num_returns, timeout_ms, wait_local, current_task_id);
+          object_ids, num_returns, timeout_ms, wait_local, current_task_id);
 
   // Convert result to py object.
   PyObject *py_found = PyList_New(static_cast<Py_ssize_t>(result.first.size()));
@@ -232,9 +228,9 @@ static PyObject *PyRayletClient_PushError(PyObject *self, PyObject *args) {
   }
 
   auto client = reinterpret_cast<PyRayletClient *>(self)->raylet_client;
-  RAY_CHECK_OK(client->PushError(
-    job_id, std::string(type, type_length),
-    std::string(error_message, error_message_length), timestamp));
+  RAY_CHECK_OK(client->PushError(job_id, std::string(type, type_length),
+                                 std::string(error_message, error_message_length),
+                                 timestamp));
 
   Py_RETURN_NONE;
 }
@@ -255,8 +251,7 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
   return 0;
 }
 
-static PyObject *PyRayletClient_PushProfileEvents(PyObject *self,
-                                                            PyObject *args) {
+static PyObject *PyRayletClient_PushProfileEvents(PyObject *self, PyObject *args) {
   const char *component_type;
   int component_type_length;
   UniqueID component_id;
@@ -376,10 +371,10 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Submit a task to the local scheduler."},
     {"GetTask", (PyCFunction)PyRayletClient_GetTask, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"FetchOrReconstruct", (PyCFunction)PyRayletClient_FetchOrReconstruct,
-     METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
-    {"NotifyUnblocked", (PyCFunction)PyRayletClient_NotifyUnblocked,
-     METH_VARARGS, "Notify the local scheduler that we are unblocked."},
+    {"FetchOrReconstruct", (PyCFunction)PyRayletClient_FetchOrReconstruct, METH_VARARGS,
+     "Ask the local scheduler to reconstruct an object."},
+    {"NotifyUnblocked", (PyCFunction)PyRayletClient_NotifyUnblocked, METH_VARARGS,
+     "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyRayletClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
     {"gpu_ids", (PyCFunction)PyRayletClient_gpu_ids, METH_NOARGS,
@@ -390,52 +385,52 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Wait for a list of objects to be created."},
     {"PushError", (PyCFunction)PyRayletClient_PushError, METH_VARARGS,
      "Push an error message to the relevant driver."},
-    {"PushProfileEvents", (PyCFunction)PyRayletClient_PushProfileEvents,
-     METH_VARARGS, "Store some profiling events in the GCS."},
+    {"PushProfileEvents", (PyCFunction)PyRayletClient_PushProfileEvents, METH_VARARGS,
+     "Store some profiling events in the GCS."},
     {"FreeObjects", (PyCFunction)PyRayletClient_FreeObjects, METH_VARARGS,
      "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
 
 static PyTypeObject PyRayletClientType = {
-    PyVarObject_HEAD_INIT(NULL, 0)              /* ob_size */
-    "raylet.RayletClient",     /* tp_name */
+    PyVarObject_HEAD_INIT(NULL, 0)      /* ob_size */
+    "raylet.RayletClient",              /* tp_name */
     sizeof(PyRayletClient),             /* tp_basicsize */
-    0,                                          /* tp_itemsize */
+    0,                                  /* tp_itemsize */
     (destructor)PyRayletClient_dealloc, /* tp_dealloc */
-    0,                                          /* tp_print */
-    0,                                          /* tp_getattr */
-    0,                                          /* tp_setattr */
-    0,                                          /* tp_compare */
-    0,                                          /* tp_repr */
-    0,                                          /* tp_as_number */
-    0,                                          /* tp_as_sequence */
-    0,                                          /* tp_as_mapping */
-    0,                                          /* tp_hash */
-    0,                                          /* tp_call */
-    0,                                          /* tp_str */
-    0,                                          /* tp_getattro */
-    0,                                          /* tp_setattro */
-    0,                                          /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                         /* tp_flags */
+    0,                                  /* tp_print */
+    0,                                  /* tp_getattr */
+    0,                                  /* tp_setattr */
+    0,                                  /* tp_compare */
+    0,                                  /* tp_repr */
+    0,                                  /* tp_as_number */
+    0,                                  /* tp_as_sequence */
+    0,                                  /* tp_as_mapping */
+    0,                                  /* tp_hash */
+    0,                                  /* tp_call */
+    0,                                  /* tp_str */
+    0,                                  /* tp_getattro */
+    0,                                  /* tp_setattro */
+    0,                                  /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
     "RayletClient object",              /* tp_doc */
-    0,                                          /* tp_traverse */
-    0,                                          /* tp_clear */
-    0,                                          /* tp_richcompare */
-    0,                                          /* tp_weaklistoffset */
-    0,                                          /* tp_iter */
-    0,                                          /* tp_iternext */
+    0,                                  /* tp_traverse */
+    0,                                  /* tp_clear */
+    0,                                  /* tp_richcompare */
+    0,                                  /* tp_weaklistoffset */
+    0,                                  /* tp_iter */
+    0,                                  /* tp_iternext */
     PyRayletClient_methods,             /* tp_methods */
-    0,                                          /* tp_members */
-    0,                                          /* tp_getset */
-    0,                                          /* tp_base */
-    0,                                          /* tp_dict */
-    0,                                          /* tp_descr_get */
-    0,                                          /* tp_descr_set */
-    0,                                          /* tp_dictoffset */
+    0,                                  /* tp_members */
+    0,                                  /* tp_getset */
+    0,                                  /* tp_base */
+    0,                                  /* tp_dict */
+    0,                                  /* tp_descr_get */
+    0,                                  /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
     (initproc)PyRayletClient_init,      /* tp_init */
-    0,                                          /* tp_alloc */
-    PyType_GenericNew,                          /* tp_new */
+    0,                                  /* tp_alloc */
+    PyType_GenericNew,                  /* tp_new */
 };
 
 static PyMethodDef raylet_methods[] = {
@@ -456,12 +451,12 @@ static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "libraylet",                /* m_name */
     "A module for the raylet.", /* m_doc */
-    0,                                   /* m_size */
+    0,                          /* m_size */
     raylet_methods,             /* m_methods */
-    NULL,                                /* m_reload */
-    NULL,                                /* m_traverse */
-    NULL,                                /* m_clear */
-    NULL,                                /* m_free */
+    NULL,                       /* m_reload */
+    NULL,                       /* m_traverse */
+    NULL,                       /* m_clear */
+    NULL,                       /* m_free */
 };
 #endif
 
@@ -501,9 +496,8 @@ MOD_INIT(libraylet_library_python) {
 #if PY_MAJOR_VERSION >= 3
   PyObject *m = PyModule_Create(&moduledef);
 #else
-  PyObject *m =
-      Py_InitModule3("libraylet_library_python", raylet_methods,
-                     "A module for the raylet.");
+  PyObject *m = Py_InitModule3("libraylet_library_python", raylet_methods,
+                               "A module for the raylet.");
 #endif
 
   init_numpy_module();

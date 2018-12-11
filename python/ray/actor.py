@@ -822,8 +822,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             # the local scheduler will not be included, and may not be runnable
             # on checkpoint resumption.
             actor_id = ray.ObjectID(worker.actor_id)
-            frontier = worker.raylet_client.get_actor_frontier(
-                actor_id)
+            frontier = worker.raylet_client.get_actor_frontier(actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
             # should not be stored in Redis. Fix this.
             set_actor_checkpoint(worker, worker.actor_id, checkpoint_index,
