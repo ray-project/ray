@@ -124,6 +124,9 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
+                 trial_name_creator=None,
+                 custom_loggers=None,
+                 sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -146,6 +149,9 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.trial_name_creator = trial_name_creator
+        self.custom_loggers = custom_loggers
+        self.sync_function = sync_function
         self.verbose = True
         self.max_failures = max_failures
 
@@ -160,10 +166,7 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
-        if trial_id is not None:
-            self.trial_id = trial_id
-        else:
-            self.trial_id = Trial.generate_id()
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
 
@@ -181,8 +184,12 @@ class Trial(object):
                 prefix="{}_{}".format(
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
-            self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               self.upload_dir)
+            self.result_logger = UnifiedLogger(
+                self.config,
+                self.logdir,
+                upload_uri=self.upload_dir,
+                custom_loggers=self.custom_loggers,
+                sync_function=self.sync_function)
 
     def close_logger(self):
         """Close logger."""
@@ -316,7 +323,13 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Can be overriden with a custom string creator.
+        """
+        if self.trial_name_creator:
+            return self.trial_name_creator(self)
+
         if "env" in self.config:
             env = self.config["env"]
             if isinstance(env, type):

@@ -574,6 +574,7 @@ class _MockTrial(Trial):
         self.trainable_name = "trial_{}".format(i)
         self.config = config
         self.experiment_tag = "tag"
+        self.trial_name_creator = None
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
