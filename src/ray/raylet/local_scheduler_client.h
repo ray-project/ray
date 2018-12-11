@@ -54,8 +54,8 @@ private:
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn_;
-  /// A mutext to protect write operations of the local scheduler client.
-  std::mutex write_mutex;
+  /// A mutex to protect write operations of the local scheduler client.
+  std::mutex write_mutex_;
 };
 
 class RayletClient {
@@ -168,6 +168,7 @@ public:
   /// of that resource allocated for this worker.
   std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
 private:
+  /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 };
 

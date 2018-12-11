@@ -173,7 +173,7 @@ final_check:
 
 int RayletConnection::WriteMessage(MessageType type,
     flatbuffers::FlatBufferBuilder *fbb) {
-  std::unique_lock<std::mutex> guard(write_mutex);
+  std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t version = RayConfig::instance().ray_protocol_version();
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
