@@ -71,8 +71,7 @@ map_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 }
 
 std::vector<std::string> string_vec_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-        &flatbuf_vec) {
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &flatbuf_vec) {
   std::vector<std::string> string_vector;
   string_vector.reserve(flatbuf_vec.size());
   for (int64_t i = 0; i < flatbuf_vec.size(); i++) {
@@ -82,8 +81,7 @@ std::vector<std::string> string_vec_from_flatbuf(
   return string_vector;
 }
 
-flatbuffers::Offset<
-    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
                       const std::vector<std::string> &string_vector) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> flatbuf_str_vec;

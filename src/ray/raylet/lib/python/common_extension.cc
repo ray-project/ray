@@ -84,12 +84,10 @@ int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
   }
 }
 
-int PyListStringToFunctionDescriptor(
-    PyObject *object,
-    std::vector<std::string> *function_descriptor) {
+int PyListStringToFunctionDescriptor(PyObject *object,
+                                     std::vector<std::string> *function_descriptor) {
   if (function_descriptor == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    "function descriptor must be non-empty pointer");
+    PyErr_SetString(PyExc_TypeError, "function descriptor must be non-empty pointer");
     return 0;
   }
   function_descriptor->clear();
@@ -101,8 +99,7 @@ int PyListStringToFunctionDescriptor(
     Py_ssize_t size = PyList_Size(object);
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject *item = PyList_GetItem(object, i);
-      function_descriptor->emplace_back(PyBytes_AsString(item),
-                                        PyBytes_Size(item));
+      function_descriptor->emplace_back(PyBytes_AsString(item), PyBytes_Size(item));
     }
     return 1;
   } else {
@@ -415,13 +412,13 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // Function descriptor.
   std::vector<std::string> function_descriptor;
   if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOOi", &PyObjectToUniqueID, &driver_id,
-                        &PyListStringToFunctionDescriptor, &function_descriptor, &arguments, 
-                        &num_returns, &PyObjectToUniqueID, &parent_task_id, &parent_counter,
-                        &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
-                        &actor_creation_dummy_object_id, &PyObjectToUniqueID, &actor_id,
-                        &PyObjectToUniqueID, &actor_handle_id, &actor_counter,
-                        &execution_arguments, &resource_map, &placement_resource_map,
-                        &language)) {
+                        &PyListStringToFunctionDescriptor, &function_descriptor,
+                        &arguments, &num_returns, &PyObjectToUniqueID, &parent_task_id,
+                        &parent_counter, &PyObjectToUniqueID, &actor_creation_id,
+                        &PyObjectToUniqueID, &actor_creation_dummy_object_id,
+                        &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
+                        &actor_handle_id, &actor_counter, &execution_arguments,
+                        &resource_map, &placement_resource_map, &language)) {
     return -1;
   }
 
@@ -471,9 +468,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
-      actor_creation_dummy_object_id, actor_id, actor_handle_id, actor_counter,
-      task_args, num_returns, required_resources,
-      required_placement_resources, Language::PYTHON, function_descriptor);
+      actor_creation_dummy_object_id, actor_id, actor_handle_id, actor_counter, task_args,
+      num_returns, required_resources, required_placement_resources, Language::PYTHON,
+      function_descriptor);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();
@@ -639,9 +636,8 @@ static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
-    {"function_descriptor_list",
-     (PyCFunction) PyTask_function_descriptor_vector, METH_NOARGS,
-     "Return the function descriptor for this task."},
+    {"function_descriptor_list", (PyCFunction)PyTask_function_descriptor_vector,
+     METH_NOARGS, "Return the function descriptor for this task."},
     {"parent_task_id", (PyCFunction)PyTask_parent_task_id, METH_NOARGS,
      "Return the task ID of the parent task."},
     {"parent_counter", (PyCFunction)PyTask_parent_counter, METH_NOARGS,
