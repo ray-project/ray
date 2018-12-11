@@ -50,6 +50,8 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
+    CKPT_FILE = "experiment.state"
+
     def __init__(self,
                  search_alg,
                  scheduler=None,
@@ -67,7 +69,8 @@ class TrialRunner(object):
                 Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            checkpoint_dir (str): Path where global checkpoints are stored.
+            checkpoint_dir (str): Path where global checkpoints are stored
+                and restored from.
             checkpoint_freq (int): How many steps between global
                 checkpoints. A value of 0 (default) disables checkpointing.
             server_port (int): Port number for launching TuneServer
@@ -104,6 +107,12 @@ class TrialRunner(object):
         self._trial_checkpoints = {}
         self._checkpoint_dir = checkpoint_dir
         self._checkpoint_freq = checkpoint_freq
+        if self._checkpoint_freq and not self._checkpoint_dir:
+            logger.warning("No checkpoint directory specified - turning "
+                           "off checkpointing.")
+            self._checkpoint_freq = 0
+
+        assert self._checkpoint_freq >= 0, "checkpoint_freq must be positive."
 
     def checkpoint(self):
         """Saves all trial checkpoints to `self._checkpoint_dir.`"""
@@ -117,7 +126,8 @@ class TrialRunner(object):
                 self.trial_executor.get_checkpoints().values()),
             "runner": self
         }
-        with open(os.path.join(checkpoint_dir, "experiment.state"), "wb") as f:
+        with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
+                  "wb") as f:
             pickle.dump(runner_state, f)
 
         return checkpoint_dir
@@ -137,7 +147,8 @@ class TrialRunner(object):
         Returns:
             runner (TrialRunner): A TrialRunner to resume experiments from.
         """
-        with open(os.path.join(checkpoint_dir, "experiment.state"), "rb") as f:
+        with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
+                  "rb") as f:
             runner_state = pickle.load(f)
 
         logger.warning(

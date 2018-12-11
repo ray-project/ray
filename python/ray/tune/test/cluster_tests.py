@@ -344,7 +344,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     # Check that last_result.iteration = 1
     runner = TrialRunner.restore(dirpath)
     trials = runner.get_trials()
-    trials = tune.run_experiments(restore_from_path=dirpath)
+    trials = tune.run_experiments(checkpoint_dir=dirpath)
     assert len(trials) == 2
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     cluster.shutdown()
@@ -391,7 +391,7 @@ tune.run_experiments(
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     for i in range(30):
-        if os.path.exists(os.path.join(dirpath, "experiment.state")):
+        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
@@ -413,6 +413,6 @@ tune.run_experiments(
 
     # Restore properly from checkpoint
     trials = tune.run_experiments(
-        restore_from_path=dirpath, raise_on_failed_trial=False)
+        checkpoint_dir=dirpath, raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials)
     cluster.shutdown()

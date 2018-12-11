@@ -14,7 +14,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
-from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,6 @@ def _make_scheduler(args):
 def run_experiments(experiments=None,
                     search_alg=None,
                     scheduler=None,
-                    restore_from_path=None,
                     checkpoint_dir=None,
                     checkpoint_freq=0,
                     with_server=False,
@@ -56,10 +54,8 @@ def run_experiments(experiments=None,
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
-        restore_from_path (str): Restores experiment execution state to
-            given checkpoint path.
-        checkpoint_dir (str): Path at which experiment checkpoints are stored.
-            Defaults to DEFAULT_RESULTS_DIR.
+        checkpoint_dir (str): Path at which experiment checkpoints are stored
+            and restored from.
         checkpoint_freq (int): How many trial results between
             checkpoints. A value of 0 (default) disables checkpointing.
         with_server (bool): Starts a background Tune server. Needed for
@@ -95,12 +91,12 @@ def run_experiments(experiments=None,
 
     """
 
-    if restore_from_path:
-        if not os.path.exists(restore_from_path):
-            raise ValueError("Provided path invalid: %s" % restore_from_path)
-        assert not experiments, (
-            "Simultaneous starting experiments and restoring not supported.")
-        runner = TrialRunner.restore(restore_from_path, trial_executor)
+    if checkpoint_dir and os.path.exists(
+            os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
+        if experiments:
+            logger.warn("Restoring from previous experiment and "
+                        "ignoring given specification.")
+        runner = TrialRunner.restore(checkpoint_dir, trial_executor)
     else:
         if scheduler is None:
             scheduler = FIFOScheduler()
@@ -113,7 +109,7 @@ def run_experiments(experiments=None,
         runner = TrialRunner(
             search_alg,
             scheduler=scheduler,
-            checkpoint_dir=checkpoint_dir or DEFAULT_RESULTS_DIR,
+            checkpoint_dir=checkpoint_dir,
             checkpoint_freq=checkpoint_freq,
             launch_web_server=with_server,
             server_port=server_port,
