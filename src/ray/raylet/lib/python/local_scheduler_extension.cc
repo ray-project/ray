@@ -10,7 +10,7 @@ PyObject *LocalSchedulerError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  RayletClient *local_scheduler_client;
+  RayletClient *raylet_client;
 } PyRayletClient;
 // clang-format on
 
@@ -22,56 +22,56 @@ static int PyRayletClient_init(PyRayletClient *self, PyObject *args,
   JobID driver_id;
   if (!PyArg_ParseTuple(args, "sO&OO&", &socket_name, PyStringToUniqueID, &client_id,
                         &is_worker, &PyObjectToUniqueID, &driver_id)) {
-    self->local_scheduler_client = NULL;
+    self->raylet_client = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->local_scheduler_client = new RayletClient(
+  self->raylet_client = new RayletClient(
       socket_name, client_id, static_cast<bool>(PyObject_IsTrue(is_worker)), driver_id,
       Language::PYTHON);
   return 0;
 }
 
 static void PyRayletClient_dealloc(PyRayletClient *self) {
-  if (self->local_scheduler_client != NULL) {
-    delete self->local_scheduler_client;
+  if (self->raylet_client != NULL) {
+    delete self->raylet_client;
   }
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-static PyObject *PyRayletClient_disconnect(PyObject *self) {
-  ((PyRayletClient *)self)->local_scheduler_client->disconnect();
+static PyObject *PyRayletClient_Disconnect(PyObject *self) {
+  ((PyRayletClient *)self)->raylet_client->Disconnect();
   Py_RETURN_NONE;
 }
 
-static PyObject *PyRayletClient_submit(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_SubmitTask(PyObject *self, PyObject *args) {
   PyObject *py_task;
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
   RayletClient *client =
-      reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client;
+      reinterpret_cast<PyRayletClient *>(self)->raylet_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
-  client->submit_task(*task->execution_dependencies, *task->task_spec);
+  client->SubmitTask(*task->execution_dependencies, *task->task_spec);
 
   Py_RETURN_NONE;
 }
 
 // clang-format off
-static PyObject *PyRayletClient_get_task(PyObject *self) {
+static PyObject *PyRayletClient_GetTask(PyObject *self) {
   ray::raylet::TaskSpecification *task_spec;
   /* Drop the global interpreter lock while we get a task because
-   * local_scheduler_get_task may block for a long time. */
+   * local_scheduler_GetTask may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->get_task();
+  task_spec = reinterpret_cast<PyRayletClient *>(self)->raylet_client->GetTask();
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec);
 }
 // clang-format on
 
-static PyObject *PyRayletClient_fetch_or_reconstruct(PyObject *self,
-                                                             PyObject *args) {
+static PyObject *PyRayletClient_FetchOrReconstruct(PyObject *self,
+                                                   PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
   std::vector<ObjectID> object_ids;
@@ -90,13 +90,13 @@ static PyObject *PyRayletClient_fetch_or_reconstruct(PyObject *self,
     }
     object_ids.push_back(object_id);
   }
-  int ret = reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->fetch_or_reconstruct(
+  int ret = reinterpret_cast<PyRayletClient *>(self)->raylet_client->FetchOrReconstruct(
       object_ids, fetch_only, current_task_id);
   if (ret == 0) {
     Py_RETURN_NONE;
   } else {
     std::ostringstream stream;
-    stream << "local_scheduler_fetch_or_reconstruct failed: "
+    stream << "raylet_FetchOrReconstruct failed: "
            << "local scheduler client may be closed, "
            << "check raylet status. return value: " << ret;
     PyErr_SetString(CommonError, stream.str().c_str());
@@ -104,12 +104,12 @@ static PyObject *PyRayletClient_fetch_or_reconstruct(PyObject *self,
   }
 }
 
-static PyObject *PyRayletClient_notify_unblocked(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_NotifyUnblocked(PyObject *self, PyObject *args) {
   TaskID current_task_id;
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
-  ((PyRayletClient *)self)->local_scheduler_client->notify_unblocked(current_task_id);
+  ((PyRayletClient *)self)->raylet_client->NotifyUnblocked(current_task_id);
   Py_RETURN_NONE;
 }
 
@@ -126,7 +126,7 @@ static PyObject *PyRayletClient_compute_put_id(PyObject *self, PyObject *args) {
 static PyObject *PyRayletClient_gpu_ids(PyObject *self) {
   /* Construct a Python list of GPU IDs. */
   std::vector<int> gpu_ids =
-      ((PyRayletClient *)self)->local_scheduler_client->gpu_ids;
+      ((PyRayletClient *)self)->raylet_client->gpu_ids;
   int num_gpu_ids = gpu_ids.size();
   PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
   for (int i = 0; i < num_gpu_ids; ++i) {
@@ -141,7 +141,7 @@ static PyObject *PyRayletClient_resource_ids(PyObject *self) {
   PyObject *resource_ids = PyDict_New();
 
   for (auto const &resource_info : reinterpret_cast<PyRayletClient *>(self)
-                                       ->local_scheduler_client->resource_ids_) {
+                                       ->raylet_client->resource_ids_) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
 
@@ -166,7 +166,7 @@ static PyObject *PyRayletClient_resource_ids(PyObject *self) {
   return resource_ids;
 }
 
-static PyObject *PyRayletClient_wait(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_Wait(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   int num_returns;
   int64_t timeout_ms;
@@ -201,7 +201,7 @@ static PyObject *PyRayletClient_wait(PyObject *self, PyObject *args) {
 
   // Invoke wait.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result = \
-      reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->wait(
+      reinterpret_cast<PyRayletClient *>(self)->raylet_client->Wait(
       object_ids, num_returns, timeout_ms, wait_local, current_task_id);
 
   // Convert result to py object.
@@ -216,7 +216,7 @@ static PyObject *PyRayletClient_wait(PyObject *self, PyObject *args) {
   return Py_BuildValue("(OO)", py_found, py_remaining);
 }
 
-static PyObject *PyRayletClient_push_error(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_PushError(PyObject *self, PyObject *args) {
   JobID job_id;
   const char *type;
   int type_length;
@@ -229,7 +229,7 @@ static PyObject *PyRayletClient_push_error(PyObject *self, PyObject *args) {
     return NULL;
   }
 
-  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->push_error(
+  reinterpret_cast<PyRayletClient *>(self)->raylet_client->PushError(
       job_id, std::string(type, type_length),
       std::string(error_message, error_message_length), timestamp);
 
@@ -252,7 +252,7 @@ int PyBytes_or_PyUnicode_to_string(PyObject *py_string, std::string &out) {
   return 0;
 }
 
-static PyObject *PyRayletClient_push_profile_events(PyObject *self,
+static PyObject *PyRayletClient_PushProfileEvents(PyObject *self,
                                                             PyObject *args) {
   const char *component_type;
   int component_type_length;
@@ -325,12 +325,12 @@ static PyObject *PyRayletClient_push_profile_events(PyObject *self,
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
-  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->push_profile_events(profile_info);
+  reinterpret_cast<PyRayletClient *>(self)->raylet_client->PushProfileEvents(profile_info);
 
   Py_RETURN_NONE;
 }
 
-static PyObject *PyRayletClient_free(PyObject *self, PyObject *args) {
+static PyObject *PyRayletClient_FreeObjects(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_local_only;
 
@@ -359,22 +359,22 @@ static PyObject *PyRayletClient_free(PyObject *self, PyObject *args) {
     object_ids.push_back(object_id);
   }
 
-  // Invoke local_scheduler_free_objects_in_object_store.
-  reinterpret_cast<PyRayletClient *>(self)->local_scheduler_client->free_objects_in_object_store(
+  // Invoke local_scheduler_FreeObjects.
+  reinterpret_cast<PyRayletClient *>(self)->raylet_client->FreeObjects(
       object_ids, local_only);
   Py_RETURN_NONE;
 }
 
 static PyMethodDef PyRayletClient_methods[] = {
-    {"disconnect", (PyCFunction)PyRayletClient_disconnect, METH_NOARGS,
+    {"Disconnect", (PyCFunction)PyRayletClient_Disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
-    {"submit", (PyCFunction)PyRayletClient_submit, METH_VARARGS,
+    {"SubmitTask", (PyCFunction)PyRayletClient_SubmitTask, METH_VARARGS,
      "Submit a task to the local scheduler."},
-    {"get_task", (PyCFunction)PyRayletClient_get_task, METH_NOARGS,
+    {"GetTask", (PyCFunction)PyRayletClient_GetTask, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"fetch_or_reconstruct", (PyCFunction)PyRayletClient_fetch_or_reconstruct,
+    {"FetchOrReconstruct", (PyCFunction)PyRayletClient_FetchOrReconstruct,
      METH_VARARGS, "Ask the local scheduler to reconstruct an object."},
-    {"notify_unblocked", (PyCFunction)PyRayletClient_notify_unblocked,
+    {"NotifyUnblocked", (PyCFunction)PyRayletClient_NotifyUnblocked,
      METH_VARARGS, "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyRayletClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
@@ -382,13 +382,13 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Get the IDs of the GPUs that are reserved for this client."},
     {"resource_ids", (PyCFunction)PyRayletClient_resource_ids, METH_NOARGS,
      "Get the IDs of the resources that are reserved for this client."},
-    {"wait", (PyCFunction)PyRayletClient_wait, METH_VARARGS,
+    {"Wait", (PyCFunction)PyRayletClient_Wait, METH_VARARGS,
      "Wait for a list of objects to be created."},
-    {"push_error", (PyCFunction)PyRayletClient_push_error, METH_VARARGS,
+    {"PushError", (PyCFunction)PyRayletClient_PushError, METH_VARARGS,
      "Push an error message to the relevant driver."},
-    {"push_profile_events", (PyCFunction)PyRayletClient_push_profile_events,
+    {"PushProfileEvents", (PyCFunction)PyRayletClient_PushProfileEvents,
      METH_VARARGS, "Store some profiling events in the GCS."},
-    {"free", (PyCFunction)PyRayletClient_free, METH_VARARGS,
+    {"FreeObjects", (PyCFunction)PyRayletClient_FreeObjects, METH_VARARGS,
      "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
