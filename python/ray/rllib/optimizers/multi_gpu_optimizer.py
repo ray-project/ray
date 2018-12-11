@@ -2,16 +2,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+import math
 import numpy as np
 from collections import defaultdict
-import os
 import tensorflow as tf
 
 import ray
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
+
+logger = logging.getLogger(__name__)
 
 
 class LocalMultiGPUOptimizer(PolicyOptimizer):
@@ -30,6 +36,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     may result in unexpected behavior.
     """
 
+    @override(PolicyOptimizer)
     def _init(self,
               sgd_batch_size=128,
               num_sgd_iter=10,
@@ -42,7 +49,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
-            self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
+            self.devices = [
+                "/gpu:{}".format(i) for i in range(int(math.ceil(num_gpus)))
+            ]
         self.batch_size = int(sgd_batch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0
@@ -54,39 +63,40 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.update_weights_timer = TimerStat()
         self.standardize_fields = standardize_fields
 
-        print("LocalMultiGPUOptimizer devices", self.devices)
+        logger.info("LocalMultiGPUOptimizer devices {}".format(self.devices))
 
-        if set(self.local_evaluator.policy_map.keys()) != {"default"}:
-            raise ValueError(
-                "Multi-agent is not supported with multi-GPU. Try using the "
-                "simple optimizer instead.")
-        self.policy = self.local_evaluator.policy_map["default"]
-        if not isinstance(self.policy, TFPolicyGraph):
-            raise ValueError(
-                "Only TF policies are supported with multi-GPU. Try using the "
-                "simple optimizer instead.")
+        self.policies = self.local_evaluator.policy_map
+        for policy_id, policy in self.policies.items():
+            if not isinstance(policy, TFPolicyGraph):
+                raise ValueError(
+                    "Only TF policies are supported with multi-GPU. Try using "
+                    "the simple optimizer instead.")
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
+        self.optimizers = {}
         with self.local_evaluator.tf_sess.graph.as_default():
             with self.local_evaluator.tf_sess.as_default():
-                with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
-                    if self.policy._state_inputs:
-                        rnn_inputs = self.policy._state_inputs + [
-                            self.policy._seq_lens
-                        ]
-                    else:
-                        rnn_inputs = []
-                    self.par_opt = LocalSyncParallelOptimizer(
-                        self.policy.optimizer(), self.devices,
-                        [v for _, v in self.policy.loss_inputs()], rnn_inputs,
-                        self.per_device_batch_size, self.policy.copy,
-                        os.getcwd())
+                for policy_id, policy in self.policies.items():
+                    with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
+                        if policy._state_inputs:
+                            rnn_inputs = policy._state_inputs + [
+                                policy._seq_lens
+                            ]
+                        else:
+                            rnn_inputs = []
+                        self.optimizers[policy_id] = (
+                            LocalSyncParallelOptimizer(
+                                policy._optimizer, self.devices,
+                                [v
+                                 for _, v in policy._loss_inputs], rnn_inputs,
+                                self.per_device_batch_size, policy.copy))
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
+    @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
             if self.remote_evaluators:
@@ -102,48 +112,64 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                                           self.train_batch_size)
             else:
                 samples = self.local_evaluator.sample()
-            self._check_not_multiagent(samples)
+            # Handle everything as if multiagent
+            if isinstance(samples, SampleBatch):
+                samples = MultiAgentBatch({
+                    DEFAULT_POLICY_ID: samples
+                }, samples.count)
 
-        for field in self.standardize_fields:
-            value = samples[field]
-            standardized = (value - value.mean()) / max(1e-4, value.std())
-            samples[field] = standardized
+        for _, batch in samples.policy_batches.items():
+            for field in self.standardize_fields:
+                value = batch[field]
+                standardized = (value - value.mean()) / max(1e-4, value.std())
+                batch[field] = standardized
 
-        # Important: don't shuffle RNN sequence elements
-        if not self.policy._state_inputs:
-            samples.shuffle()
+        for policy_id, policy in self.policies.items():
+            # Important: don't shuffle RNN sequence elements
+            if (policy_id in samples.policy_batches
+                    and not policy._state_inputs):
+                samples.policy_batches[policy_id].shuffle()
 
+        num_loaded_tuples = {}
         with self.load_timer:
-            tuples = self.policy._get_loss_inputs_dict(samples)
-            data_keys = [ph for _, ph in self.policy.loss_inputs()]
-            if self.policy._state_inputs:
-                state_keys = (
-                    self.policy._state_inputs + [self.policy._seq_lens])
-            else:
-                state_keys = []
-            tuples_per_device = self.par_opt.load_data(
-                self.sess, [tuples[k] for k in data_keys],
-                [tuples[k] for k in state_keys])
+            for policy_id, batch in samples.policy_batches.items():
+                policy = self.policies[policy_id]
+                tuples = policy._get_loss_inputs_dict(batch)
+                data_keys = [ph for _, ph in policy._loss_inputs]
+                if policy._state_inputs:
+                    state_keys = policy._state_inputs + [policy._seq_lens]
+                else:
+                    state_keys = []
+                num_loaded_tuples[policy_id] = (
+                    self.optimizers[policy_id].load_data(
+                        self.sess, [tuples[k] for k in data_keys],
+                        [tuples[k] for k in state_keys]))
 
+        fetches = {}
         with self.grad_timer:
-            num_batches = (
-                int(tuples_per_device) // int(self.per_device_batch_size))
-            print("== sgd epochs ==")
-            for i in range(self.num_sgd_iter):
-                iter_extra_fetches = defaultdict(list)
-                permutation = np.random.permutation(num_batches)
-                for batch_index in range(num_batches):
-                    batch_fetches = self.par_opt.optimize(
-                        self.sess,
-                        permutation[batch_index] * self.per_device_batch_size)
-                    for k, v in batch_fetches.items():
-                        iter_extra_fetches[k].append(v)
-                print(i, _averaged(iter_extra_fetches))
+            for policy_id, tuples_per_device in num_loaded_tuples.items():
+                optimizer = self.optimizers[policy_id]
+                num_batches = (
+                    int(tuples_per_device) // int(self.per_device_batch_size))
+                logger.debug("== sgd epochs for {} ==".format(policy_id))
+                for i in range(self.num_sgd_iter):
+                    iter_extra_fetches = defaultdict(list)
+                    permutation = np.random.permutation(num_batches)
+                    for batch_index in range(num_batches):
+                        batch_fetches = optimizer.optimize(
+                            self.sess, permutation[batch_index] *
+                            self.per_device_batch_size)
+                        for k, v in batch_fetches.items():
+                            iter_extra_fetches[k].append(v)
+                    logger.debug("{} {}".format(i,
+                                                _averaged(iter_extra_fetches)))
+                fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
-        return _averaged(iter_extra_fetches)
+        return fetches
 
+    @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{

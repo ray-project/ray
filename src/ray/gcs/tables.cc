@@ -1,6 +1,6 @@
 #include "ray/gcs/tables.h"
 
-#include "common_protocol.h"
+#include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
 
 namespace {
@@ -38,6 +38,7 @@ namespace gcs {
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
@@ -56,6 +57,7 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
+  num_appends_++;
   auto callback = [this, id, dataT, done, failure](const std::string &data) {
     if (data.empty()) {
       if (done != nullptr) {
@@ -78,6 +80,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
+  num_lookups_++;
   auto callback = [this, id, lookup](const std::string &data) {
     if (lookup != nullptr) {
       std::vector<DataT> results;
@@ -165,8 +168,16 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+std::string Log<ID, Data>::DebugString() const {
+  std::stringstream result;
+  result << "num lookups: " << num_lookups_ << ", num appends: " << num_appends_;
+  return result.str();
+}
+
+template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
       (done)(client_, id, *dataT);
@@ -184,6 +195,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
                                const FailureCallback &failure) {
+  num_lookups_++;
   return Log<ID, Data>::Lookup(job_id, id,
                                [lookup, failure](AsyncGcsClient *client, const ID &id,
                                                  const std::vector<DataT> &data) {
@@ -221,6 +233,13 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
       done);
 }
 
+template <typename ID, typename Data>
+std::string Table<ID, Data>::DebugString() const {
+  std::stringstream result;
+  result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;
+  return result.str();
+}
+
 Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
                                      const std::string &error_message, double timestamp) {
   auto data = std::make_shared<ErrorTableDataT>();
@@ -232,6 +251,10 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
                                          const JobID &id, const ErrorTableDataT &data) {
     RAY_LOG(DEBUG) << "Error message pushed callback";
   });
+}
+
+std::string ErrorTable::DebugString() const {
+  return Log<JobID, ErrorTableData>::DebugString();
 }
 
 Status ProfileTable::AddProfileEvent(const std::string &event_type,
@@ -271,6 +294,10 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
                    const ProfileTableDataT &data) {
                   RAY_LOG(DEBUG) << "Profile message pushed callback";
                 });
+}
+
+std::string ProfileTable::DebugString() const {
+  return Log<UniqueID, ProfileTableData>::DebugString();
 }
 
 Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
@@ -421,20 +448,27 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
-const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) const {
+void ClientTable::GetClient(const ClientID &client_id,
+                            ClientTableDataT &client_info) const {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
   if (entry != client_cache_.end()) {
-    return entry->second;
+    client_info = entry->second;
   } else {
-    // If the requested client was not found, return a reference to the nil
-    // client entry.
-    return client_cache_.at(ClientID::nil());
+    client_info.client_id = ClientID::nil().binary();
   }
 }
 
 const std::unordered_map<ClientID, ClientTableDataT> &ClientTable::GetAllClients() const {
   return client_cache_;
+}
+
+std::string ClientTable::DebugString() const {
+  std::stringstream result;
+  result << Log<UniqueID, ClientTableData>::DebugString();
+  result << ", cache size: " << client_cache_.size()
+         << ", num removed: " << removed_clients_.size();
+  return result.str();
 }
 
 template class Log<ObjectID, ObjectTableData>;
@@ -445,6 +479,7 @@ template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Table<ClientID, HeartbeatBatchTableData>;
 template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 template class Log<JobID, DriverTableData>;

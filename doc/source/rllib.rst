@@ -15,9 +15,9 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]
+  pip install ray[rllib]  # also recommended: ray[debug]
 
-You might also want to clone the Ray repo for convenient access to RLlib helper scripts:
+You might also want to clone the `Ray repo <https://github.com/ray-project/ray>`__ for convenient access to RLlib helper scripts:
 
 .. code-block:: bash
 
@@ -27,7 +27,9 @@ You might also want to clone the Ray repo for convenient access to RLlib helper 
 Training APIs
 -------------
 * `Command-line <rllib-training.html>`__
+* `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
+* `Debugging <rllib-training.html#debugging>`__
 * `REST API <rllib-training.html#rest-api>`__
 
 Environments
@@ -36,8 +38,7 @@ Environments
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent <rllib-env.html#multi-agent>`__
-* `Agent-Driven <rllib-env.html#agent-driven>`__
-* `Offline Data Ingest <rllib-env.html#offline-data>`__ 
+* `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
 Algorithms
@@ -53,9 +54,9 @@ Algorithms
 
    -  `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
 
-   -  `Deep Deterministic Policy Gradients (DDPG) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg>`__
+   -  `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
 
-   -  `Deep Q Networks (DQN, Rainbow) <rllib-algorithms.html#deep-q-networks-dqn-rainbow>`__
+   -  `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
 
    -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 
@@ -74,6 +75,7 @@ Models and Preprocessors
 * `Custom Models <rllib-models.html#custom-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
+* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
 RLlib Concepts
@@ -98,3 +100,6 @@ If you encounter errors like
 `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
+
+For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
+the stack traces of all Ray workers on the current node. This requires py-spy to be installed.

@@ -80,9 +80,9 @@ class Net(nn.Module):
 
 
 class TrainMNIST(Trainable):
-    def _setup(self):
-        args = self.config.pop("args")
-        vars(args).update(self.config)
+    def _setup(self, config):
+        args = config.pop("args")
+        vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
         torch.manual_seed(args.seed)
@@ -145,13 +145,13 @@ class TrainMNIST(Trainable):
             output = self.model(data)
 
             # sum up batch loss
-            test_loss += F.nll_loss(output, target, size_average=False).data[0]
+            test_loss += F.nll_loss(output, target, size_average=False).item()
 
             # get the index of the max log-probability
             pred = output.data.max(1, keepdim=True)[1]
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
-        test_loss = test_loss.item() / len(self.test_loader.dataset)
+        test_loss = test_loss / len(self.test_loader.dataset)
         accuracy = correct.item() / len(self.test_loader.dataset)
         return {"mean_loss": test_loss, "mean_accuracy": accuracy}
 
@@ -159,12 +159,13 @@ class TrainMNIST(Trainable):
         self._train_iteration()
         return self._test()
 
-    def _save(self, path):
-        torch.save(self.model.state_dict(), os.path.join(path, "model.pth"))
-        return path
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        torch.save(self.model.state_dict(), checkpoint_path)
+        return checkpoint_path
 
-    def _restore(self, path):
-        self.model.load_state_dict(os.path.join(path, "model.pth"))
+    def _restore(self, checkpoint_path):
+        self.model.load_state_dict(checkpoint_path)
 
 
 if __name__ == '__main__':
@@ -194,8 +195,10 @@ if __name__ == '__main__':
                 "checkpoint_at_end": True,
                 "config": {
                     "args": args,
-                    "lr": lambda spec: np.random.uniform(0.001, 0.1),
-                    "momentum": lambda spec: np.random.uniform(0.1, 0.9),
+                    "lr": tune.sample_from(
+                        lambda spec: np.random.uniform(0.001, 0.1)),
+                    "momentum": tune.sample_from(
+                        lambda spec: np.random.uniform(0.1, 0.9)),
                 }
             }
         },

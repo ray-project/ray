@@ -3,11 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
 
 APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
-    DDPG_CONFIG,
+    DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
     {
         "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
@@ -17,7 +17,7 @@ APEX_DDPG_DEFAULT_CONFIG = merge_dicts(
                 "debug": False
             }),
         "n_step": 3,
-        "gpu": False,
+        "num_gpus": 0,
         "num_workers": 32,
         "buffer_size": 2000000,
         "learning_starts": 50000,
@@ -43,15 +43,7 @@ class ApexDDPGAgent(DDPGAgent):
     _agent_name = "APEX_DDPG"
     _default_config = APEX_DDPG_DEFAULT_CONFIG
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1 + cf["optimizer"]["num_replay_buffer_shards"],
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
+    @override(DDPGAgent)
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \

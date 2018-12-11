@@ -59,17 +59,7 @@ def profile(event_type, extra_data=None, worker=None):
     """
     if worker is None:
         worker = ray.worker.global_worker
-    if not worker.use_raylet:
-        # Log the event if this is a worker and not a driver, since the
-        # driver's event log never gets flushed.
-        if worker.mode == ray.WORKER_MODE:
-            return RayLogSpanNonRaylet(
-                worker.profiler, event_type, contents=extra_data)
-        else:
-            return NULL_LOG_SPAN
-    else:
-        return RayLogSpanRaylet(
-            worker.profiler, event_type, extra_data=extra_data)
+    return RayLogSpanRaylet(worker.profiler, event_type, extra_data=extra_data)
 
 
 class Profiler(object):
@@ -124,85 +114,31 @@ class Profiler(object):
             events = self.events
             self.events = []
 
-        if not self.worker.use_raylet:
-            event_log_key = b"event_log:" + self.worker.worker_id
-            event_log_value = json.dumps(events)
-            self.worker.local_scheduler_client.log_event(
-                event_log_key, event_log_value, time.time())
+        if self.worker.mode == ray.WORKER_MODE:
+            component_type = "worker"
         else:
-            if self.worker.mode == ray.WORKER_MODE:
-                component_type = "worker"
-            else:
-                component_type = "driver"
+            component_type = "driver"
 
-            self.worker.local_scheduler_client.push_profile_events(
-                component_type, ray.ObjectID(self.worker.worker_id),
-                self.worker.node_ip_address, events)
+        self.worker.local_scheduler_client.push_profile_events(
+            component_type, ray.ObjectID(self.worker.worker_id),
+            self.worker.node_ip_address, events)
 
     def add_event(self, event):
         with self.lock:
             self.events.append(event)
 
 
-class RayLogSpanNonRaylet(object):
-    """An object used to enable logging a span of events with a with statement.
+class NoopProfiler(object):
+    """A no-op profile used when collect_profile_data=False."""
 
-    Attributes:
-        event_type (str): The type of the event being logged.
-        contents: Additional information to log.
-    """
+    def start_flush_thread(self):
+        pass
 
-    def __init__(self, profiler, event_type, contents=None):
-        """Initialize a RayLogSpanNonRaylet object."""
-        self.profiler = profiler
-        self.event_type = event_type
-        self.contents = contents
+    def flush_profile_data(self):
+        pass
 
-    def _log(self, event_type, kind, contents=None):
-        """Log an event to the global state store.
-
-        This adds the event to a buffer of events locally. The buffer can be
-        flushed and written to the global state store by calling
-        flush_profile_data().
-
-        Args:
-            event_type (str): The type of the event.
-            contents: More general data to store with the event.
-            kind (int): Either LOG_POINT, LOG_SPAN_START, or LOG_SPAN_END. This
-                is LOG_POINT if the event being logged happens at a single
-                point in time. It is LOG_SPAN_START if we are starting to log a
-                span of time, and it is LOG_SPAN_END if we are finishing
-                logging a span of time.
-        """
-        # TODO(rkn): This code currently takes around half a microsecond. Since
-        # we call it tens of times per task, this adds up. We will need to redo
-        # the logging code, perhaps in C.
-        contents = {} if contents is None else contents
-        assert isinstance(contents, dict)
-        # Make sure all of the keys and values in the dictionary are strings.
-        contents = {str(k): str(v) for k, v in contents.items()}
-        self.profiler.add_event((time.time(), event_type, kind, contents))
-
-    def __enter__(self):
-        """Log the beginning of a span event."""
-        self._log(
-            event_type=self.event_type,
-            contents=self.contents,
-            kind=LOG_SPAN_START)
-
-    def __exit__(self, type, value, tb):
-        """Log the end of a span event. Log any exception that occurred."""
-        if type is None:
-            self._log(event_type=self.event_type, kind=LOG_SPAN_END)
-        else:
-            self._log(
-                event_type=self.event_type,
-                contents={
-                    "type": str(type),
-                    "value": value,
-                    "traceback": traceback.format_exc()
-                },
-                kind=LOG_SPAN_END)
+    def add_event(self, event):
+        pass
 
 
 class RayLogSpanRaylet(object):
@@ -230,8 +166,9 @@ class RayLogSpanRaylet(object):
             value: The attribute value.
         """
         if not isinstance(key, str) or not isinstance(value, str):
-            raise ValueError("The extra_data argument must be a "
-                             "dictionary mapping strings to strings.")
+            raise ValueError("The arguments 'key' and 'value' must both be "
+                             "strings. Instead they are {} and {}.".format(
+                                 key, value))
         self.extra_data[key] = value
 
     def __enter__(self):
@@ -250,7 +187,8 @@ class RayLogSpanRaylet(object):
         for key, value in self.extra_data.items():
             if not isinstance(key, str) or not isinstance(value, str):
                 raise ValueError("The extra_data argument must be a "
-                                 "dictionary mapping strings to strings.")
+                                 "dictionary mapping strings to strings. "
+                                 "Instead it is {}.".format(self.extra_data))
 
         if type is not None:
             extra_data = json.dumps({

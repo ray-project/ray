@@ -1,5 +1,7 @@
 #include "ray/raylet/actor_registration.h"
 
+#include <sstream>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -8,7 +10,6 @@ namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
     : actor_table_data_(actor_table_data),
-      alive_(true),
       execution_dependency_(ObjectID::nil()),
       frontier_() {}
 
@@ -35,11 +36,14 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.task_counter++;
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
+  dummy_objects_.push_back(execution_dependency);
 }
 
-bool ActorRegistration::IsAlive() const { return alive_; }
+bool ActorRegistration::IsAlive() const {
+  return actor_table_data_.state == ActorState::ALIVE;
+}
 
-void ActorRegistration::MarkDead() { alive_ = false; }
+int ActorRegistration::NumHandles() const { return frontier_.size(); }
 
 }  // namespace raylet
 

@@ -8,13 +8,24 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.impala.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.tune.trial import Resources
+from ray.rllib.utils.annotations import override
 
 OPTIMIZER_SHARED_CONFIGS = [
+    "lr",
+    "num_envs_per_worker",
+    "num_gpus",
     "sample_batch_size",
     "train_batch_size",
+    "replay_buffer_num_slots",
+    "replay_proportion",
+    "num_parallel_data_loaders",
+    "grad_clip",
+    "max_sample_requests_in_flight_per_worker",
+    "broadcast_interval",
 ]
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace.py).
     "vtrace": True,
@@ -25,10 +36,22 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "gpu": True,
     "num_workers": 2,
-    "num_cpus_per_worker": 1,
-    "num_gpus_per_worker": 0,
+    # number of GPUs the learner should use.
+    "num_gpus": 1,
+    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
+    # proportionally with the number of loaders.
+    "num_parallel_data_loaders": 1,
+    # level of queuing for sampling.
+    "max_sample_requests_in_flight_per_worker": 2,
+    # max number of workers to broadcast one set of weights to
+    "broadcast_interval": 1,
+    # set >0 to enable experience replay. Saved samples will be replayed with
+    # a p:1 proportion to new data samples.
+    "replay_proportion": 0.0,
+    # number of sample batches to store for replay. The number of transitions
+    # saved total will be (replay_buffer_num_slots * sample_batch_size).
+    "replay_buffer_num_slots": 100,
 
     # Learning params.
     "grad_clip": 40.0,
@@ -43,14 +66,9 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
-
-    # Model and preprocessor options.
-    "model": {
-        "use_lstm": False,
-        "max_seq_len": 20,
-        "dim": 84,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class ImpalaAgent(Agent):
@@ -60,15 +78,7 @@ class ImpalaAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1,
-            gpu=cf["gpu"] and cf["gpu_fraction"] or 0,
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
+    @override(Agent)
     def _init(self):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
@@ -80,19 +90,20 @@ class ImpalaAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"],
-            {"num_cpus": 1})
+            self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
                                                self.remote_evaluators,
                                                self.config["optimizer"])
 
+    @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
         self.optimizer.step()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-        result = self.optimizer.collect_metrics()
+        result = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result

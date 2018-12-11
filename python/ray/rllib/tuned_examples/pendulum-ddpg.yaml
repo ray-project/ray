@@ -34,8 +34,9 @@ pendulum-ddpg:
         clip_rewards: False
 
         # === Optimization ===
-        actor_lr: 0.0001
-        critic_lr: 0.001
+        lr: 0.001
+        actor_loss_coeff: 0.1
+        critic_loss_coeff: 1.0
         use_huber: True
         huber_threshold: 1.0
         l2_reg: 0.000001

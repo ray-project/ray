@@ -1,6 +1,8 @@
-#include "scheduling_policy.h"
-
+#include <algorithm>
 #include <chrono>
+#include <random>
+
+#include "scheduling_policy.h"
 
 #include "ray/util/logging.h"
 
@@ -123,21 +125,23 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
 
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
-  // Check if we can accommodate an infeasible task.
+  // Check if we can accommodate infeasible tasks.
   for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
     const auto &spec = task.GetTaskSpecification();
-    if (spec.GetRequiredPlacementResources().IsSubset(
-            remote_scheduling_resources.GetTotalResources())) {
+    const auto &placement_resources = spec.GetRequiredPlacementResources();
+    if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(spec.TaskId());
       new_load.AddResources(spec.GetRequiredResources());
     }
   }
 
+  // Try to accommodate up to a single ready task.
   for (const auto &task : scheduling_queue_.GetReadyTasks()) {
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
+      // Make sure the node has enough available resources to prevent forwarding cycles.
       if (spec.GetRequiredPlacementResources().IsSubset(
-              remote_scheduling_resources.GetTotalResources())) {
+              remote_scheduling_resources.GetAvailableResources())) {
         decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());
         break;

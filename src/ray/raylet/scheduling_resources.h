@@ -374,6 +374,11 @@ class SchedulingResources {
   /// negative resources.
   bool Acquire(const ResourceSet &resources);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;
@@ -386,5 +391,19 @@ class SchedulingResources {
 }  // namespace raylet
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::raylet::ResourceSet> {
+  size_t operator()(ray::raylet::ResourceSet const &k) const {
+    size_t seed = k.GetResourceMap().size();
+    for (auto &elem : k.GetResourceMap()) {
+      seed ^= std::hash<std::string>()(elem.first);
+      seed ^= std::hash<double>()(elem.second);
+    }
+    return seed;
+  }
+};
+}
 
 #endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H

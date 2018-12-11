@@ -38,12 +38,18 @@ class ObjectStoreNotificationManager {
   /// already exist in the local store
   ///
   /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjAdded(std::function<void(const ObjectInfoT &)> callback);
+  void SubscribeObjAdded(
+      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
  private:
   /// Async loop for handling object store notifications.
@@ -52,15 +58,18 @@ class ObjectStoreNotificationManager {
   void ProcessStoreNotification(const boost::system::error_code &error);
 
   /// Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const ObjectInfoT &object_info);
+  void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info);
   void ProcessStoreRemove(const ObjectID &object_id);
 
-  std::vector<std::function<void(const ObjectInfoT &)>> add_handlers_;
+  std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
+      add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
   plasma::PlasmaClient store_client_;
   int c_socket_;
   int64_t length_;
+  int64_t num_adds_processed_;
+  int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
 };

@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import traceback
 
 from ray.tune.trial import Trial, Checkpoint
 
@@ -33,12 +32,10 @@ class TrialExecutor(object):
                                   "has_resources() method")
 
     def start_trial(self, trial, checkpoint=None):
-        """Starts the trial restoring from checkpoint if checkpoint != None.
-
-        If an error is encountered when starting the trial, an exception will
-        be thrown.
+        """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
+            trial (Trial): Trial to be started.
             checkpoint(Checkpoint): A Python object or path storing the state
             of trial.
         """
@@ -59,26 +56,6 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
-
-    def restart_trial(self, trial, error_msg=None):
-        """Restarts the trial.
-
-        The state of the trial should restore from the last checkpoint.
-
-        Args:
-            error_msg (str): Optional error message.
-        """
-        try:
-            logger.info(
-                "Attempting to recover trial state from last checkpoint")
-            self.stop_trial(
-                trial, error=True, error_msg=error_msg, stop_logger=False)
-            trial.result_logger.flush()
-            self.start_trial(trial)
-        except Exception:
-            error_msg = traceback.format_exc()
-            logger.exception("Error recovering trial from checkpoint, abort.")
-            self.stop_trial(trial, error=True, error_msg=error_msg)
 
     def continue_training(self, trial):
         """Continues the training of this trial."""
@@ -158,7 +135,11 @@ class TrialExecutor(object):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-        pass
+        raise NotImplementedError
+
+    def resource_string(self):
+        """Returns a string describing the total resources available."""
+        raise NotImplementedError
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.

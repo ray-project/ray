@@ -10,6 +10,7 @@ import time
 
 import boto3
 from botocore.config import Config
+import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
@@ -114,7 +115,8 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    for i in range(10):
+    MAX_NUM_KEYS = 20
+    for i in range(MAX_NUM_KEYS):
         key_name, key_path = key_pair(i, config["provider"]["region"])
         key = _get_key(key_name, config)
 
@@ -131,7 +133,12 @@ def _configure_key_pair(config):
             os.chmod(key_path, 0o600)
             break
 
-    assert key, "AWS keypair {} not found for {}".format(key_name, key_path)
+    if not key:
+        raise ValueError(
+            "No matching local key file for any of the key pairs in this "
+            "account with ids from 0..{}. ".format(key_name) +
+            "Consider deleting some unused keys pairs from your account.")
+
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
@@ -146,9 +153,10 @@ def _configure_key_pair(config):
 
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
+    use_internal_ips = config["provider"].get("use_internal_ips", False)
     subnets = sorted(
-        (s for s in ec2.subnets.all()
-         if s.state == "available" and s.map_public_ip_on_launch),
+        (s for s in ec2.subnets.all() if s.state == "available" and (
+            use_internal_ips or s.map_public_ip_on_launch)),
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
     if not subnets:
@@ -156,7 +164,8 @@ def _configure_subnet(config):
             "No usable subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch.")
+            "on instance launch unless you set 'use_internal_ips': True in "
+            "the 'provider' config.")
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(',')
         subnets = [s for s in subnets if s.availability_zone in azs]
@@ -264,7 +273,7 @@ def _get_role(role_name, config):
     try:
         role.load()
         return role
-    except Exception:
+    except botocore.errorfactory.NoSuchEntityException:
         return None
 
 
@@ -274,7 +283,7 @@ def _get_instance_profile(profile_name, config):
     try:
         profile.load()
         return profile
-    except Exception:
+    except botocore.errorfactory.NoSuchEntityException:
         return None
 
 

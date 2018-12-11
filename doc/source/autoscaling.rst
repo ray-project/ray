@@ -76,6 +76,14 @@ You can use ``ray exec`` to conveniently run commands on clusters. Note that scr
     # Run a command in a screen (experimental)
     $ ray exec cluster.yaml 'echo "hello world"' --screen
 
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments.
+
+.. code-block:: bash
+
+    # Run a Python script in a detached tmux session
+    $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+
+
 Attaching to the cluster
 ------------------------
 
@@ -136,7 +144,8 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 -------------------------
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
+You can monitor cluster usage and auto-scaling status by tailing the autoscaling
+logs in ``/tmp/ray/session_*/logs/monitor*``.
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 

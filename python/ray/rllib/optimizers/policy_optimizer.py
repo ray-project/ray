@@ -2,10 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 import ray
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyOptimizer(object):
@@ -53,10 +56,13 @@ class PolicyOptimizer(object):
         self.num_steps_trained = 0
         self.num_steps_sampled = 0
 
+        logger.debug("Created policy optimizer with {}: {}".format(
+            config, self))
+
     def _init(self):
         """Subclasses should prefer overriding this instead of __init__."""
 
-        pass
+        raise NotImplementedError
 
     def step(self):
         """Takes a logical optimization step.
@@ -79,29 +85,6 @@ class PolicyOptimizer(object):
             "num_steps_sampled": self.num_steps_sampled,
         }
 
-    def collect_metrics(self, min_history=100):
-        """Returns evaluator and optimizer stats.
-
-        Arguments:
-            min_history (int): Min history length to smooth results over.
-
-        Returns:
-            res (dict): A training result dict from evaluator metrics with
-                `info` replaced with stats from self.
-        """
-        episodes = collect_episodes(self.local_evaluator,
-                                    self.remote_evaluators)
-        orig_episodes = list(episodes)
-        missing = min_history - len(episodes)
-        if missing > 0:
-            episodes.extend(self.episode_history[-missing:])
-            assert len(episodes) <= min_history
-        self.episode_history.extend(orig_episodes)
-        self.episode_history = self.episode_history[-min_history:]
-        res = summarize_episodes(episodes, orig_episodes)
-        res.update(info=self.stats())
-        return res
-
     def save(self):
         """Returns a serializable object representing the optimizer state."""
 
@@ -112,6 +95,42 @@ class PolicyOptimizer(object):
 
         self.num_steps_trained = data[0]
         self.num_steps_sampled = data[1]
+
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
+
+    def collect_metrics(self,
+                        timeout_seconds,
+                        min_history=100,
+                        selected_evaluators=None):
+        """Returns evaluator and optimizer stats.
+
+        Arguments:
+            timeout_seconds (int): Max wait time for a evaluator before
+                dropping its results. This usually indicates a hung evaluator.
+            min_history (int): Min history length to smooth results over.
+            selected_evaluators (list): Override the list of remote evaluators
+                to collect metrics from.
+
+        Returns:
+            res (dict): A training result dict from evaluator metrics with
+                `info` replaced with stats from self.
+        """
+        episodes, num_dropped = collect_episodes(
+            self.local_evaluator,
+            selected_evaluators or self.remote_evaluators,
+            timeout_seconds=timeout_seconds)
+        orig_episodes = list(episodes)
+        missing = min_history - len(episodes)
+        if missing > 0:
+            episodes.extend(self.episode_history[-missing:])
+            assert len(episodes) <= min_history
+        self.episode_history.extend(orig_episodes)
+        self.episode_history = self.episode_history[-min_history:]
+        res = summarize_episodes(episodes, orig_episodes, num_dropped)
+        res.update(info=self.stats())
+        return res
 
     def foreach_evaluator(self, func):
         """Apply the given function to each evaluator instance."""
@@ -133,12 +152,6 @@ class PolicyOptimizer(object):
             for i, ev in enumerate(self.remote_evaluators)
         ])
         return local_result + remote_results
-
-    @staticmethod
-    def _check_not_multiagent(sample_batch):
-        if isinstance(sample_batch, MultiAgentBatch):
-            raise NotImplementedError(
-                "This optimizer does not support multi-agent yet.")
 
     @classmethod
     def make(cls,

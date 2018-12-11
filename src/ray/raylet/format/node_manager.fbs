@@ -37,13 +37,11 @@ enum MessageType:int {
   ExecuteTask,
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a local scheduler.
-  ReconstructObjects,
+  FetchOrReconstruct,
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
   NotifyUnblocked,
-  // Add a result table entry for an object put.
-  PutObject,
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   GetActorFrontierRequest,
@@ -107,6 +105,10 @@ table ResourceIdSetInfo {
   resource_fractions: [double];
 }
 
+// This message is sent from a worker to the node manager.
+table DisconnectClient {
+}
+
 // This message is sent from the local scheduler to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.
@@ -148,11 +150,18 @@ table ForwardTaskRequest {
   uncommitted_tasks: [Task];
 }
 
-table ReconstructObjects {
+table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
+  // The current task ID. If fetch_only is false, then this task is blocked.
+  task_id: string;
+}
+
+table NotifyUnblocked {
+  // The current task ID. This task is no longer blocked.
+  task_id: string;
 }
 
 table WaitRequest {
@@ -164,6 +173,9 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  task_id: string;
 }
 
 table WaitReply {

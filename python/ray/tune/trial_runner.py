@@ -12,7 +12,7 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
@@ -108,6 +108,8 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        if self.is_finished():
+            raise TuneError("Called step when all trials finished?")
         self.trial_executor.on_step_begin()
         next_trial = self._get_next_trial()
         if next_trial is not None:
@@ -120,20 +122,19 @@ class TrialRunner(object):
                     if not self.has_resources(trial.resources):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster summary: {} "
+                             "trial requested {} but the cluster has only {}. "
                              "Pass `queue_trials=True` in "
                              "ray.tune.run_experiments() or on the command "
                              "line to queue trials until the cluster scales "
                              "up. {}").format(
                                  trial.resources.summary_string(),
-                                 self.trial_executor.debug_string(),
+                                 self.trial_executor.resource_string(),
                                  trial._get_trainable_cls().resource_help(
                                      trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
-            raise TuneError("Called step when all trials finished?")
 
         if self._server:
             self._process_requests()
@@ -215,7 +216,28 @@ class TrialRunner(object):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         messages.append(self.trial_executor.debug_string())
+        messages.append(self._memory_debug_string())
         return messages
+
+    def _memory_debug_string(self):
+        try:
+            import psutil
+            total_gb = psutil.virtual_memory().total / 1e9
+            used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            if used_gb > total_gb * 0.9:
+                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
+                        "this node is available for use. This can cause "
+                        "unexpected crashes. Consider "
+                        "reducing the memory used by your application "
+                        "or reducing the Ray object store size by setting "
+                        "`object_store_memory` when calling `ray.init`.")
+            else:
+                warn = ""
+            return "Memory usage on this node: {}/{} GB{}".format(
+                round(used_gb, 1), round(total_gb, 1), warn)
+        except ImportError:
+            return ("Unknown memory usage. Please run `pip install psutil` "
+                    "(or ray[debug]) to resolve)")
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -257,17 +279,14 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                if trial.should_checkpoint(result):
-                    # TODO(rliaw): This is a blocking call
-                    self.trial_executor.save(trial)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                if trial.should_checkpoint(result):
-                    self.trial_executor.save(trial)
+                self._checkpoint_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -276,24 +295,61 @@ class TrialRunner(object):
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
-                if trial.has_checkpoint() and \
-                        trial.num_failures < trial.max_failures:
+                if trial.should_recover():
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
-                    self.trial_executor.stop_trial(trial, True, error_msg)
+                    self.trial_executor.stop_trial(
+                        trial, error=True, error_msg=error_msg)
+
+    def _checkpoint_if_needed(self, trial):
+        """Checkpoints trial based off trial.last_result."""
+        if trial.should_checkpoint():
+            # Save trial runtime if possible
+            if hasattr(trial, "runner") and trial.runner:
+                self.trial_executor.save(trial, storage=Checkpoint.DISK)
 
     def _try_recover(self, trial, error_msg):
+        """Tries to recover trial.
+
+        Notifies SearchAlgorithm and Scheduler if failure to recover.
+
+        Args:
+            trial (Trial): Trial to recover.
+            error_msg (str): Error message from prior to invoking this method.
+        """
         try:
-            logger.info("Attempting to recover"
-                        " trial state from last checkpoint.")
-            self.trial_executor.restart_trial(trial, error_msg)
+            self.trial_executor.stop_trial(
+                trial,
+                error=error_msg is not None,
+                error_msg=error_msg,
+                stop_logger=False)
+            trial.result_logger.flush()
+            if self.trial_executor.has_resources(trial.resources):
+                logger.info("Attempting to recover"
+                            " trial state from last checkpoint.")
+                self.trial_executor.start_trial(trial)
+                if trial.status == Trial.ERROR:
+                    raise RuntimeError("Trial did not start correctly.")
+            else:
+                logger.debug("Notifying Scheduler and requeueing trial.")
+                self._requeue_trial(trial)
         except Exception:
-            error_msg = traceback.format_exc()
-            logger.warning("Error recovering trial from checkpoint, abort.")
-            self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
+            logger.exception("Error recovering trial from checkpoint, abort.")
+            self._scheduler_alg.on_trial_error(self, trial)
+            self._search_alg.on_trial_complete(trial.trial_id, error=True)
+
+    def _requeue_trial(self, trial):
+        """Notification to TrialScheduler and requeue trial.
+
+        This does not notify the SearchAlgorithm because
+        the function evaluation is still in progress.
+        """
+        self._scheduler_alg.on_trial_error(self, trial)
+        trial.status = Trial.PENDING
+        self._scheduler_alg.on_trial_add(self, trial)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.
@@ -302,13 +358,15 @@ class TrialRunner(object):
 
         Args:
             blocking (bool): Blocks until either a trial is available
-                or the Runner finishes (i.e., timeout or search algorithm
-                finishes).
+                or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
             start = time.time()
+            # Checking `is_finished` instead of _search_alg.is_finished
+            # is fine because blocking only occurs if all trials are
+            # finished and search_algorithm is not yet finished
             while (not trials and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")

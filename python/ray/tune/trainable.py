@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from datetime import datetime
 
+import copy
 import gzip
 import io
 import logging
@@ -83,7 +84,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._setup()
+        self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -143,6 +144,8 @@ class Trainable(object):
 
         start = time.time()
         result = self._train()
+        assert isinstance(result, dict), "_train() needs to return a dict."
+
         result = result.copy()
 
         self._iteration += 1
@@ -158,14 +161,14 @@ class Trainable(object):
         result.setdefault(DONE, False)
 
         # self._timesteps_total should only be tracked if increments provided
-        if result.get(TIMESTEPS_THIS_ITER):
+        if result.get(TIMESTEPS_THIS_ITER) is not None:
             if self._timesteps_total is None:
                 self._timesteps_total = 0
             self._timesteps_total += result[TIMESTEPS_THIS_ITER]
             self._timesteps_since_restore += result[TIMESTEPS_THIS_ITER]
 
-        # self._timesteps_total should only be tracked if increments provided
-        if result.get(EPISODES_THIS_ITER):
+        # self._episodes_total should only be tracked if increments provided
+        if result.get(EPISODES_THIS_ITER) is not None:
             if self._episodes_total is None:
                 self._episodes_total = 0
             self._episodes_total += result[EPISODES_THIS_ITER]
@@ -211,11 +214,38 @@ class Trainable(object):
             Checkpoint path that may be passed to restore().
         """
 
-        checkpoint_path = self._save(checkpoint_dir or self.logdir)
-        pickle.dump([
-            self._experiment_id, self._iteration, self._timesteps_total,
-            self._time_total, self._episodes_total
-        ], open(checkpoint_path + ".tune_metadata", "wb"))
+        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
+                                      "checkpoint_{}".format(self._iteration))
+        os.makedirs(checkpoint_dir)
+        checkpoint = self._save(checkpoint_dir)
+        saved_as_dict = False
+        if isinstance(checkpoint, str):
+            if (not checkpoint.startswith(checkpoint_dir)
+                    or checkpoint == checkpoint_dir):
+                raise ValueError(
+                    "The returned checkpoint path must be within the "
+                    "given checkpoint dir {}: {}".format(
+                        checkpoint_dir, checkpoint))
+            if not os.path.exists(checkpoint):
+                raise ValueError(
+                    "The returned checkpoint path does not exist: {}".format(
+                        checkpoint))
+            checkpoint_path = checkpoint
+        elif isinstance(checkpoint, dict):
+            saved_as_dict = True
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(checkpoint_path, "wb") as f:
+                pickle.dump(checkpoint, f)
+        else:
+            raise ValueError("Return value from `_save` must be dict or str.")
+        pickle.dump({
+            "experiment_id": self._experiment_id,
+            "iteration": self._iteration,
+            "timesteps_total": self._timesteps_total,
+            "time_total": self._time_total,
+            "episodes_total": self._episodes_total,
+            "saved_as_dict": saved_as_dict
+        }, open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
     def save_to_object(self):
@@ -259,13 +289,19 @@ class Trainable(object):
         This method restores additional metadata saved with the checkpoint.
         """
 
-        self._restore(checkpoint_path)
         metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
-        self._experiment_id = metadata[0]
-        self._iteration = metadata[1]
-        self._timesteps_total = metadata[2]
-        self._time_total = metadata[3]
-        self._episodes_total = metadata[4]
+        self._experiment_id = metadata["experiment_id"]
+        self._iteration = metadata["iteration"]
+        self._timesteps_total = metadata["timesteps_total"]
+        self._time_total = metadata["time_total"]
+        self._episodes_total = metadata["episodes_total"]
+        saved_as_dict = metadata["saved_as_dict"]
+        if saved_as_dict:
+            with open(checkpoint_path, "rb") as loaded_state:
+                checkpoint_dict = pickle.load(loaded_state)
+            self._restore(checkpoint_dict)
+        else:
+            self._restore(checkpoint_path)
         self._restored = True
 
     def restore_from_object(self, obj):
@@ -318,30 +354,39 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                can be stored.
+                file must be stored.
 
         Returns:
-            Checkpoint path that may be passed to restore(). Typically
-                would default to `checkpoint_dir`.
+            checkpoint (str | dict): If string, the return value is
+                expected to be the checkpoint path that will be passed to
+                `_restore()`. If dict, the return value will be automatically
+                serialized by Tune and passed to `_restore()`.
+
+        Examples:
+            >>> print(trainable1._save("/tmp/checkpoint_1"))
+            "/tmp/checkpoint_1/my_checkpoint_file"
+            >>> print(trainable2._save("/tmp/checkpoint_2"))
+            {"some": "data"}
         """
 
         raise NotImplementedError
 
-    def _restore(self, checkpoint_path):
+    def _restore(self, checkpoint):
         """Subclasses should override this to implement restore().
 
         Args:
-            checkpoint_path (str): The directory where the checkpoint
-                is stored.
+            checkpoint (str | dict): Value as returned by `_save`.
+                If a string, then it is the checkpoint path.
         """
 
         raise NotImplementedError
 
-    def _setup(self):
+    def _setup(self, config):
         """Subclasses should override this for custom initialization.
 
-        Subclasses can access the hyperparameter configuration via
-        ``self.config``.
+        Args:
+            config (dict): Hyperparameters and other configs given.
+                Copy of `self.config`.
         """
         pass
 

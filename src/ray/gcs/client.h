@@ -31,13 +31,14 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
   /// versions of the tables might be used, if available.
   AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
-                 CommandType command_type, bool is_test_client);
+                 CommandType command_type, bool is_test_client,
+                 const std::string &redis_password);
   AsyncGcsClient(const std::string &address, int port, const ClientID &client_id,
-                 bool is_test_client);
+                 bool is_test_client, const std::string &password);
   AsyncGcsClient(const std::string &address, int port, CommandType command_type);
   AsyncGcsClient(const std::string &address, int port, CommandType command_type,
                  bool is_test_client);
-  AsyncGcsClient(const std::string &address, int port);
+  AsyncGcsClient(const std::string &address, int port, const std::string &password);
   AsyncGcsClient(const std::string &address, int port, bool is_test_client);
 
   /// Attach this client to a plasma event loop. Note that only
@@ -53,13 +54,13 @@ class RAY_EXPORT AsyncGcsClient {
   inline CustomSerializerTable &custom_serializer_table();
   inline ConfigTable &config_table();
   ObjectTable &object_table();
-  TaskTable &task_table();
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
+  HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
   DriverTable &driver_table();
   ProfileTable &profile_table();
@@ -75,16 +76,21 @@ class RAY_EXPORT AsyncGcsClient {
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   std::unique_ptr<FunctionTable> function_table_;
   std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
-  std::unique_ptr<TaskTable> task_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
+  std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;

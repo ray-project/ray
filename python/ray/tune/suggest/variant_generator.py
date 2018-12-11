@@ -3,11 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import logging
 import numpy
 import random
 import types
 
 from ray.tune import TuneError
+
+logger = logging.getLogger(__name__)
 
 
 def generate_variants(unresolved_spec):
@@ -55,8 +58,29 @@ def grid_search(values):
     return {"grid_search": values}
 
 
+class sample_from(object):
+    """Specify that tune should sample configuration values from this function.
+
+    The use of function arguments in tune configs must be disambiguated by
+    either wrapped the function in tune.eval() or tune.function().
+
+    Arguments:
+        func: An callable function to draw a sample from.
+    """
+
+    def __init__(self, func):
+        self.func = func
+
+
 class function(object):
-    """Wraps `func` to make sure it is not expanded during resolution."""
+    """Wraps `func` to make sure it is not expanded during resolution.
+
+    The use of function arguments in tune configs must be disambiguated by
+    either wrapped the function in tune.eval() or tune.function().
+
+    Arguments:
+        func: A function literal.
+    """
 
     def __init__(self, func):
         self.func = func
@@ -155,6 +179,11 @@ def _resolve_lambda_vars(spec, lambda_vars):
                 value = fn(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:
                 error = e
+            except Exception:
+                raise ValueError(
+                    "Failed to evaluate expression: {}: {}".format(path, fn) +
+                    ". If you meant to pass this as a function literal, use "
+                    "tune.function() to escape it.")
             else:
                 _assign_value(spec, path, value)
                 resolved[path] = value
@@ -198,8 +227,17 @@ def _is_resolved(v):
 
 def _try_resolve(v):
     if isinstance(v, types.FunctionType):
-        # Lambda function
+        logger.warn(
+            "Deprecation warning: Function values are ambiguous in Tune "
+            "configuations. Either wrap the function with "
+            "`tune.function(func)` to specify a function literal, or "
+            "`tune.sample_from(func)` to tell Tune to "
+            "sample values from the function during variant generation: "
+            "{}".format(v))
         return False, v
+    elif isinstance(v, sample_from):
+        # Function to sample from
+        return False, v.func
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
         return False, lambda spec: eval(

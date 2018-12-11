@@ -2,12 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.utils import merge_dicts
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
-from ray.tune.trial import Resources
+from ray.rllib.utils.annotations import override
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
@@ -20,7 +25,7 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 200,
     # Number of timesteps collected for each SGD round
     "train_batch_size": 4000,
-    # Total SGD batch size across all devices for SGD (multi-gpu only)
+    # Total SGD batch size across all devices for SGD
     "sgd_minibatch_size": 128,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
@@ -41,26 +46,16 @@ DEFAULT_CONFIG = with_common_config({
     "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
-    # Number of GPUs to use for SGD
-    "num_gpus": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
-    # Use the sync samples optimizer instead of the multi-gpu one
+    # Uses the sync samples optimizer instead of the multi-gpu one. This does
+    # not support minibatches.
     "simple_optimizer": False,
-    # Override model config
-    "model": {
-        # Whether to use LSTM model
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -70,29 +65,18 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = PPOPolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
+    @override(Agent)
     def _init(self):
         self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, self._policy_graph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+            self.env_creator, self._policy_graph, self.config["num_workers"])
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "train_batch_size": self.config["train_batch_size"]
+                    "train_batch_size": self.config["train_batch_size"],
                 })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
@@ -103,6 +87,25 @@ class PPOAgent(Agent):
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
                 })
+
+    @override(Agent)
+    def _train(self):
+        prev_steps = self.optimizer.num_steps_sampled
+        fetches = self.optimizer.step()
+        if "kl" in fetches:
+            # single-agent
+            self.local_evaluator.for_policy(
+                lambda pi: pi.update_kl(fetches["kl"]))
+        else:
+            # multi-agent
+            self.local_evaluator.foreach_trainable_policy(
+                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
+        res = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
+        res.update(
+            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
+            info=dict(fetches, **res.get("info", {})))
+        return res
 
     def _validate_config(self):
         waste_ratio = (
@@ -115,7 +118,7 @@ class PPOAgent(Agent):
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
-                print("Warning: " + msg)
+                logger.warn(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(
@@ -125,20 +128,14 @@ class PPOAgent(Agent):
                 and not self.config["use_gae"]):
             raise ValueError(
                 "Episode truncation is not supported without a value function")
-
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        fetches = self.optimizer.step()
-        if "kl" in fetches:
-            # single-agent
-            self.local_evaluator.for_policy(
-                lambda pi: pi.update_kl(fetches["kl"]))
-        else:
-            # multi-agent
-            self.local_evaluator.foreach_trainable_policy(
-                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        res = self.optimizer.collect_metrics()
-        res.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.get("info", {})))
-        return res
+        if (self.config["multiagent"]["policy_graphs"]
+                and not self.config["simple_optimizer"]):
+            logger.info(
+                "In multi-agent mode, policies will be optimized sequentially "
+                "by the multi-GPU optimizer. Consider setting "
+                "simple_optimizer=True if this doesn't work for you.")
+        if self.config["observation_filter"] != "NoFilter":
+            # TODO(ekl): consider setting the default to be NoFilter
+            logger.warn(
+                "By default, observations will be normalized with {}".format(
+                    self.config["observation_filter"]))

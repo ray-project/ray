@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "common/state/ray_config.h"
+#include "ray/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
 
@@ -16,25 +16,46 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0], RAY_INFO,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc == 11);
+  RAY_CHECK(argc >= 14 && argc <= 16);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
-  const std::string node_ip_address = std::string(argv[3]);
-  const std::string redis_address = std::string(argv[4]);
-  int redis_port = std::stoi(argv[5]);
-  int num_initial_workers = std::stoi(argv[6]);
-  int maximum_startup_concurrency = std::stoi(argv[7]);
-  const std::string static_resource_list = std::string(argv[8]);
-  const std::string python_worker_command = std::string(argv[9]);
-  const std::string java_worker_command = std::string(argv[10]);
+  int object_manager_port = std::stoi(argv[3]);
+  int node_manager_port = std::stoi(argv[4]);
+  const std::string node_ip_address = std::string(argv[5]);
+  const std::string redis_address = std::string(argv[6]);
+  int redis_port = std::stoi(argv[7]);
+  int num_initial_workers = std::stoi(argv[8]);
+  int maximum_startup_concurrency = std::stoi(argv[9]);
+  const std::string static_resource_list = std::string(argv[10]);
+  const std::string config_list = std::string(argv[11]);
+  const std::string python_worker_command = std::string(argv[12]);
+  const std::string java_worker_command = std::string(argv[13]);
+  const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
+  const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
+  std::unordered_map<std::string, int> raylet_config;
+
+  // Parse the configuration list.
+  std::istringstream config_string(config_list);
+  std::string config_name;
+  std::string config_value;
+
+  while (std::getline(config_string, config_name, ',')) {
+    RAY_CHECK(std::getline(config_string, config_value, ','));
+    // TODO(rkn): The line below could throw an exception. What should we do about this?
+    raylet_config[config_name] = std::stoi(config_value);
+  }
+
+  RayConfig::instance().initialize(raylet_config);
+
   // Parse the resource list.
   std::istringstream resource_string(static_resource_list);
   std::string resource_name;
@@ -45,10 +66,12 @@ int main(int argc, char *argv[]) {
     // TODO(rkn): The line below could throw an exception. What should we do about this?
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
+
   node_manager_config.resource_config =
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
+  node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
       RayConfig::instance().num_workers_per_process();
@@ -69,11 +92,15 @@ int main(int argc, char *argv[]) {
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
+  node_manager_config.debug_dump_period_ms =
+      RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
+  node_manager_config.temp_dir = temp_dir;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
+  object_manager_config.object_manager_port = object_manager_port;
   object_manager_config.store_socket_name = store_socket_name;
   object_manager_config.pull_timeout_ms =
       RayConfig::instance().object_manager_pull_timeout_ms();
@@ -92,7 +119,8 @@ int main(int argc, char *argv[]) {
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port);
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
+                                                               redis_password);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
@@ -100,8 +128,8 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
 
   ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
-                             redis_address, redis_port, node_manager_config,
-                             object_manager_config, gcs_client);
+                             redis_address, redis_port, redis_password,
+                             node_manager_config, object_manager_config, gcs_client);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

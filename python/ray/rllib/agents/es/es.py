@@ -6,24 +6,28 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
 import numpy as np
 import time
 
 import ray
 from ray.rllib.agents import Agent, with_common_config
-from ray.tune.trial import Resources
 
 from ray.rllib.agents.es import optimizers
 from ray.rllib.agents.es import policies
-from ray.rllib.agents.es import tabular_logger as tlogger
 from ray.rllib.agents.es import utils
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils import FilterManager
+
+logger = logging.getLogger(__name__)
 
 Result = namedtuple("Result", [
     "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "l2_coeff": 0.005,
     "noise_stdev": 0.02,
@@ -36,10 +40,9 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
     "report_length": 10,
-    "env": None,
-    "env_config": {},
-    "model": {},
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 @ray.remote
@@ -77,12 +80,30 @@ class Worker(object):
 
         self.env = env_creator(config["env_config"])
         from ray.rllib import models
-        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = models.ModelCatalog.get_preprocessor(
+            self.env, config["model"])
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
-            self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"], config["model"], **policy_params)
+            self.sess, self.env.action_space, self.env.observation_space,
+            self.preprocessor, config["observation_filter"], config["model"],
+            **policy_params)
+
+    @property
+    def filters(self):
+        return {"default": self.policy.get_filter()}
+
+    def sync_filters(self, new_filters):
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -147,11 +168,7 @@ class ESAgent(Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
-
+    @override(Agent)
     def _init(self):
         policy_params = {"action_noise_std": 0.01}
 
@@ -161,19 +178,19 @@ class ESAgent(Agent):
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, preprocessor,
+            self.sess, env.action_space, env.observation_space, preprocessor,
             self.config["observation_filter"], self.config["model"],
             **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
         self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
-        print("Creating shared noise table.")
+        logger.info("Creating shared noise table.")
         noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
-        print("Creating actors.")
+        logger.info("Creating actors.")
         self.workers = [
             Worker.remote(self.config, policy_params, self.env_creator,
                           noise_id) for _ in range(self.config["num_workers"])
@@ -183,26 +200,7 @@ class ESAgent(Agent):
         self.reward_list = []
         self.tstart = time.time()
 
-    def _collect_results(self, theta_id, min_episodes, min_timesteps):
-        num_episodes, num_timesteps = 0, 0
-        results = []
-        while num_episodes < min_episodes or num_timesteps < min_timesteps:
-            print("Collected {} episodes {} timesteps so far this iter".format(
-                num_episodes, num_timesteps))
-            rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
-            ]
-            # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
-                results.append(result)
-                # Update the number of episodes and the number of timesteps
-                # keeping in mind that result.noisy_lengths is a list of lists,
-                # where the inner lists have length 2.
-                num_episodes += sum(len(pair) for pair in result.noisy_lengths)
-                num_timesteps += sum(
-                    sum(pair) for pair in result.noisy_lengths)
-        return results, num_episodes, num_timesteps
-
+    @override(Agent)
     def _train(self):
         config = self.config
 
@@ -268,20 +266,10 @@ class ESAgent(Agent):
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
 
-        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
-        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
-
-        tlogger.record_tabular("EpRewMean", noisy_returns.mean())
-        tlogger.record_tabular("EpRewStd", noisy_returns.std())
-        tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
-
-        tlogger.record_tabular("Norm", float(np.square(theta).sum()))
-        tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-        tlogger.record_tabular("UpdateRatio", float(update_ratio))
-
-        tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
-        tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        tlogger.dump_tabular()
+        # Now sync the filters
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)
 
         info = {
             "weights_norm": np.square(theta).sum(),
@@ -300,20 +288,49 @@ class ESAgent(Agent):
 
         return result
 
+    @override(Agent)
+    def compute_action(self, observation):
+        return self.policy.compute(observation, update=False)[0]
+
+    @override(Agent)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
+    def _collect_results(self, theta_id, min_episodes, min_timesteps):
+        num_episodes, num_timesteps = 0, 0
+        results = []
+        while num_episodes < min_episodes or num_timesteps < min_timesteps:
+            logger.info(
+                "Collected {} episodes {} timesteps so far this iter".format(
+                    num_episodes, num_timesteps))
+            rollout_ids = [
+                worker.do_rollouts.remote(theta_id) for worker in self.workers
+            ]
+            # Get the results of the rollouts.
+            for result in ray.get(rollout_ids):
+                results.append(result)
+                # Update the number of episodes and the number of timesteps
+                # keeping in mind that result.noisy_lengths is a list of lists,
+                # where the inner lists have length 2.
+                num_episodes += sum(len(pair) for pair in result.noisy_lengths)
+                num_timesteps += sum(
+                    sum(pair) for pair in result.noisy_lengths)
+
+        return results, num_episodes, num_timesteps
+
     def __getstate__(self):
         return {
             "weights": self.policy.get_weights(),
+            "filter": self.policy.get_filter(),
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
-        self.policy.set_weights(state["weights"])
         self.episodes_so_far = state["episodes_so_far"]
-
-    def compute_action(self, observation):
-        return self.policy.compute(observation, update=False)[0]
+        self.policy.set_weights(state["weights"])
+        self.policy.set_filter(state["filter"])
+        FilterManager.synchronize({
+            "default": self.policy.get_filter()
+        }, self.workers)

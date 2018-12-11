@@ -36,18 +36,21 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     locations_[object_id] = locations;
   }
 
+  std::string DebugString() const { return ""; }
+
   MOCK_METHOD0(RegisterBackend, void(void));
-  MOCK_METHOD3(GetInformation, ray::Status(const ClientID &, const InfoSuccessCallback &,
-                                           const InfoFailureCallback &));
+  MOCK_METHOD0(GetLocalClientID, ray::ClientID());
+  MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
+  MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD3(SubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &,
                            const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
-               ray::Status(const ObjectID &, const ClientID &, const ObjectInfoT &));
+               ray::Status(const ObjectID &, const ClientID &,
+                           const object_manager::protocol::ObjectInfoT &));
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
-  MOCK_METHOD1(RunFunctionForEachClient, void(const InfoSuccessCallback &success_cb));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;

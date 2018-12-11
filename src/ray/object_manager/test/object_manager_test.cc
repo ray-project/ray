@@ -232,13 +232,13 @@ class TestObjectManager : public TestObjectManagerBase {
   void TestNotifications() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_2(ObjectID::from_binary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
@@ -447,13 +447,15 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server client ids:"
                    << "\n";
-    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
+    ClientTableDataT data;
+    gcs_client_1->client_table().GetClient(client_id_1, data);
     RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
     ASSERT_EQ(client_id_1, ClientID::from_binary(data.client_id));
-    const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+    ClientTableDataT data2;
+    gcs_client_1->client_table().GetClient(client_id_2, data2);
     RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
     RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
     RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;

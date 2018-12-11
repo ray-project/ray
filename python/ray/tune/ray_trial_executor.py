@@ -29,6 +29,8 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+        if ray.is_initialized():
+            self._update_avail_resources()
 
     def _setup_runner(self, trial):
         cls = ray.remote(
@@ -108,19 +110,27 @@ class RayTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.close_logger()
 
-    def start_trial(self, trial, checkpoint_obj=None):
-        """Starts the trial."""
+    def start_trial(self, trial, checkpoint=None):
+        """Starts the trial.
+
+        Will not return resources if trial repeatedly fails on start.
+
+        Args:
+            trial (Trial): Trial to be started.
+            checkpoint (Checkpoint): A Python object or path storing the state
+                of trial.
+        """
 
         self._commit_resources(trial.resources)
         try:
-            self._start_trial(trial, checkpoint_obj)
+            self._start_trial(trial, checkpoint)
         except Exception:
             logger.exception("Error stopping runner - retrying...")
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                self._start_trial(trial)
+                self._start_trial(trial, checkpoint)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
@@ -138,6 +148,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
+            logger.debug("Returning resources for this trial.")
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
@@ -213,20 +224,9 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.gpu >= 0
 
     def _update_avail_resources(self):
-        if ray.worker.global_worker.use_raylet:
-            # TODO(rliaw): Remove once raylet flag is swapped
-            resources = ray.global_state.cluster_resources()
-            num_cpus = resources["CPU"]
-            num_gpus = resources["GPU"]
-        else:
-            clients = ray.global_state.client_table()
-            local_schedulers = [
-                entry for client in clients.values() for entry in client
-                if (entry['ClientType'] == 'local_scheduler'
-                    and not entry['Deleted'])
-            ]
-            num_cpus = sum(ls['CPU'] for ls in local_schedulers)
-            num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
+        resources = ray.global_state.cluster_resources()
+        num_cpus = resources["CPU"]
+        num_gpus = resources["GPU"]
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
 
@@ -268,7 +268,16 @@ class RayTrialExecutor(TrialExecutor):
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
         else:
-            return ""
+            return "Resources requested: ?"
+
+    def resource_string(self):
+        """Returns a string describing the total resources available."""
+
+        if self._resources_initialized:
+            return "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
+                                             self._avail_resources.gpu)
+        else:
+            return "? CPUs, ? GPUs"
 
     def on_step_begin(self):
         """Before step() called, update the available resources."""
@@ -278,6 +287,7 @@ class RayTrialExecutor(TrialExecutor):
     def save(self, trial, storage=Checkpoint.DISK):
         """Saves the trial's state to a checkpoint."""
         trial._checkpoint.storage = storage
+        trial._checkpoint.last_result = trial.last_result
         if storage == Checkpoint.MEMORY:
             trial._checkpoint.value = trial.runner.save_to_object.remote()
         else:
@@ -301,6 +311,8 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
                 ray.get(trial.runner.restore.remote(value))
+            trial.last_result = checkpoint.last_result
+
             return True
         except Exception:
             logger.exception("Error restoring runner.")

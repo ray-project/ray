@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import json
 import os
 import ray
 import sys
@@ -394,9 +395,7 @@ def ray_start_object_store_memory():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_put_error1(ray_start_object_store_memory):
     num_objects = 3
     object_size = 4 * 10**5
@@ -438,9 +437,7 @@ def test_put_error1(ray_start_object_store_memory):
     wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
@@ -494,9 +491,6 @@ def test_version_mismatch(shutdown_only):
     ray.__version__ = ray_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_warning_monitor_died(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -507,10 +501,10 @@ def test_warning_monitor_died(shutdown_only):
     # addition to the monitor.
     fake_id = 20 * b"\x00"
     malformed_message = "asdf"
-    redis_client = ray.worker.global_state.redis_clients[0]
+    redis_client = ray.worker.global_worker.redis_client
     redis_client.execute_command(
-        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT,
-        ray.gcs_utils.TablePubsub.HEARTBEAT, fake_id, malformed_message)
+        "RAY.TABLE_ADD", ray.gcs_utils.TablePrefix.HEARTBEAT_BATCH,
+        ray.gcs_utils.TablePubsub.HEARTBEAT_BATCH, fake_id, malformed_message)
 
     wait_for_errors(ray_constants.MONITOR_DIED_ERROR, 1)
 
@@ -538,9 +532,6 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
 
@@ -561,9 +552,6 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 2)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself
@@ -583,7 +571,13 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    ray.worker._init(start_ray_local=True, num_local_schedulers=2, num_cpus=0)
+    ray.worker._init(
+        start_ray_local=True,
+        num_local_schedulers=2,
+        num_cpus=0,
+        _internal_config=json.dumps({
+            "num_heartbeats_timeout": 40
+        }))
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -591,9 +585,6 @@ def ray_start_two_nodes():
 
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") != "1",
-    reason="This test only works with xray.")
 def test_warning_for_dead_node(ray_start_two_nodes):
     # Wait for the raylet to appear in the client table.
     while len(ray.global_state.client_table()) < 2:
@@ -610,7 +601,7 @@ def test_warning_for_dead_node(ray_start_two_nodes):
     ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
 
     # Check that we get warning messages for both raylets.
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=20)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=40)
 
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.

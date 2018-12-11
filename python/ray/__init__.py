@@ -46,7 +46,10 @@ except ImportError as e:
             e.args += (helpful_message, )
     raise
 
-from ray.local_scheduler import ObjectID, _config  # noqa: E402
+modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
+sys.path.insert(0, modin_path)
+
+from ray.raylet import ObjectID, _config  # noqa: E402
 from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
                         remote, get_gpu_ids, get_resource_ids, get_webui_url,
@@ -61,9 +64,8 @@ import ray.internal  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 
-# Ray version string. TODO(rkn): This is also defined separately in setup.py.
-# Fix this.
-__version__ = "0.5.3"
+# Ray version string.
+__version__ = "0.6.0"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",

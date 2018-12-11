@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import os
 
-from ray.local_scheduler import ObjectID
+from ray.raylet import ObjectID
 
 
 def env_integer(key, default):
@@ -42,7 +42,6 @@ REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
-HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"

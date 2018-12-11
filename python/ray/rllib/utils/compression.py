@@ -2,18 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 import base64
 import numpy as np
 import pyarrow
 
+logger = logging.getLogger(__name__)
+
 try:
     import lz4.frame
     LZ4_ENABLED = True
 except ImportError:
-    print("WARNING: lz4 not available, disabling sample compression. "
-          "This will significantly impact RLlib performance. "
-          "To install lz4, run `pip install lz4`.")
+    logger.warn("lz4 not available, disabling sample compression. "
+                "This will significantly impact RLlib performance. "
+                "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 

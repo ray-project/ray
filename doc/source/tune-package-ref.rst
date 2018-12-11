@@ -12,6 +12,11 @@ ray.tune
     :members:
     :private-members:
 
+
+.. autoclass:: ray.tune.function_runner.StatusReporter
+    :members: __call__
+
+
 ray.tune.schedulers
 -------------------
 
@@ -24,7 +29,7 @@ ray.tune.suggest
 
 .. automodule:: ray.tune.suggest
     :members:
-    :exclude-members: function, grid_search, SuggestionAlgorithm
+    :exclude-members: function, sample_from, grid_search, SuggestionAlgorithm
     :show-inheritance:
 
 .. autoclass:: ray.tune.suggest.SuggestionAlgorithm

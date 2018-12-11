@@ -1,49 +1,26 @@
 #ifndef RAY_UTIL_LOGGING_H
 #define RAY_UTIL_LOGGING_H
 
-#ifndef _WIN32
-#include <execinfo.h>
-#endif
-
-#include <cstdlib>
 #include <iostream>
-#include <memory>
-
-#include "ray/util/macros.h"
-
-// Forward declaration for the log provider.
-#ifdef RAY_USE_GLOG
-namespace google {
-class LogMessage;
-}  // namespace google
-typedef google::LogMessage LoggingProvider;
-#else
-namespace ray {
-class CerrLog;
-}  // namespace ray
-typedef ray::CerrLog LoggingProvider;
-#endif
+#include <string>
 
 namespace ray {
-// Log levels. LOG ignores them, so their values are abitrary.
 
-#define RAY_DEBUG (-1)
-#define RAY_INFO 0
-#define RAY_WARNING 1
-#define RAY_ERROR 2
-#define RAY_FATAL 3
+enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
-#define RAY_LOG(level) \
-  if (ray::RayLog::IsLevelEnabled(RAY_##level)) RAY_LOG_INTERNAL(RAY_##level)
+#define RAY_LOG(level)                                      \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                          \
-  (condition) ? RAY_IGNORE_EXPR(0) : ::ray::Voidify() &                               \
-                                         ::ray::RayLog(__FILE__, __LINE__, RAY_FATAL) \
-                                             << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                   \
+  (condition) ? RAY_IGNORE_EXPR(0)                                             \
+              : ::ray::Voidify() &                                             \
+                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                        << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
@@ -67,14 +44,13 @@ class RayLogBase {
  public:
   virtual ~RayLogBase(){};
 
+  // By default, this class is a null log because it return false here.
   virtual bool IsEnabled() const { return false; };
 
   template <typename T>
   RayLogBase &operator<<(const T &t) {
     if (IsEnabled()) {
       Stream() << t;
-    } else {
-      RAY_IGNORE_EXPR(t);
     }
     return *this;
   }
@@ -85,7 +61,7 @@ class RayLogBase {
 
 class RayLog : public RayLogBase {
  public:
-  RayLog(const char *file_name, int line_number, int severity);
+  RayLog(const char *file_name, int line_number, RayLogLevel severity);
 
   virtual ~RayLog();
 
@@ -94,29 +70,37 @@ class RayLog : public RayLogBase {
   /// \return True if logging is enabled and false otherwise.
   virtual bool IsEnabled() const;
 
-  // The init function of ray log for a program which should be called only once.
-  // If logDir is empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName, int severity_threshold = RAY_ERROR,
+  /// The init function of ray log for a program which should be called only once.
+  ///
+  /// \parem appName The app name which starts the log.
+  /// \param severity_threshold Logging threshold for the program.
+  /// \param logDir Logging output file name. If empty, the log won't output to file.
+  static void StartRayLog(const std::string &appName,
+                          RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &logDir = "");
 
-  // The shutdown function of ray log which should be used with StartRayLog as a pair.
+  /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
 
   /// Return whether or not the log level is enabled in current setting.
   ///
   /// \param log_level The input log level to test.
   /// \return True if input log level is not lower than the threshold.
-  static bool IsLevelEnabled(int log_level);
+  static bool IsLevelEnabled(RayLogLevel log_level);
 
-  // Install the failure signal handler to output call stack when crash.
-  // If glog is not installed, this function won't do anything.
+  /// Install the failure signal handler to output call stack when crash.
+  /// If glog is not installed, this function won't do anything.
   static void InstallFailureSignalHandler();
+  // Get the log level from environment variable.
+  static RayLogLevel GetLogLevelFromEnv();
 
  private:
-  std::unique_ptr<LoggingProvider> logging_provider_;
+  // Hide the implementation of log provider by void *.
+  // Otherwise, lib user may define the same macro to use the correct header file.
+  void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
-  static int severity_threshold_;
+  static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;

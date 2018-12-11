@@ -150,6 +150,7 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
             CreateChunkState::REFERENCED);
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
   create_buffer_state_[object_id].num_seals_remaining--;
+  RAY_CHECK(create_buffer_state_[object_id].num_seals_remaining >= 0);
   RAY_LOG(DEBUG) << "SealChunk" << object_id << " "
                  << create_buffer_state_[object_id].num_seals_remaining;
   if (create_buffer_state_[object_id].num_seals_remaining == 0) {
@@ -192,6 +193,14 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
     plasma_ids.push_back(id.to_plasma_id());
   }
   ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
+}
+
+std::string ObjectBufferPool::DebugString() const {
+  std::stringstream result;
+  result << "BufferPool:";
+  result << "\n- get buffer state map size: " << get_buffer_state_.size();
+  result << "\n- create buffer state map size: " << create_buffer_state_.size();
+  return result.str();
 }
 
 }  // namespace ray

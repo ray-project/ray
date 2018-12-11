@@ -10,7 +10,9 @@ import tensorflow.contrib.layers as layers
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 Q_SCOPE = "q_func"
@@ -28,17 +30,23 @@ class QNetwork(object):
                  v_min=-10.0,
                  v_max=10.0,
                  sigma0=0.5):
+        self.model = model
         with tf.variable_scope("action_value"):
-            action_out = model.last_layer
-            for i in range(len(hiddens)):
-                if use_noisy:
-                    action_out = self.noisy_layer("hidden_%d" % i, action_out,
-                                                  hiddens[i], sigma0)
-                else:
-                    action_out = layers.fully_connected(
-                        action_out,
-                        num_outputs=hiddens[i],
-                        activation_fn=tf.nn.relu)
+            if hiddens:
+                action_out = model.last_layer
+                for i in range(len(hiddens)):
+                    if use_noisy:
+                        action_out = self.noisy_layer(
+                            "hidden_%d" % i, action_out, hiddens[i], sigma0)
+                    else:
+                        action_out = layers.fully_connected(
+                            action_out,
+                            num_outputs=hiddens[i],
+                            activation_fn=tf.nn.relu)
+            else:
+                # Avoid postprocessing the outputs. This enables custom models
+                # to be used for parametric action DQN.
+                action_out = model.outputs
             if use_noisy:
                 action_scores = self.noisy_layer(
                     "output",
@@ -46,11 +54,13 @@ class QNetwork(object):
                     num_actions * num_atoms,
                     sigma0,
                     non_linear=False)
-            else:
+            elif hiddens:
                 action_scores = layers.fully_connected(
                     action_out,
                     num_outputs=num_actions * num_atoms,
                     activation_fn=None)
+            else:
+                action_scores = model.outputs
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution
@@ -106,7 +116,7 @@ class QNetwork(object):
                 self.logits = support_logits_per_action
                 self.dist = support_prob_per_action
             else:
-                action_scores_mean = tf.reduce_mean(action_scores, 1)
+                action_scores_mean = _reduce_mean_ignore_inf(action_scores, 1)
                 action_scores_centered = action_scores - tf.expand_dims(
                     action_scores_mean, 1)
                 self.value = state_score + action_scores_centered
@@ -175,11 +185,15 @@ class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps):
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
-        random_actions = tf.random_uniform(
-            tf.stack([batch_size]),
-            minval=0,
-            maxval=num_actions,
-            dtype=tf.int64)
+
+        # Special case masked out actions (q_value ~= -inf) so that we don't
+        # even consider them for exploration.
+        random_valid_action_logits = tf.where(
+            tf.equal(q_values, tf.float32.min),
+            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
+        random_actions = tf.squeeze(
+            tf.multinomial(random_valid_action_logits, 1), axis=1)
+
         chose_random = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(chose_random, random_actions,
@@ -241,6 +255,10 @@ class QLoss(object):
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
             self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
         else:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
@@ -252,6 +270,12 @@ class QLoss(object):
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
                 importance_weights * _huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
 
 
 class DQNPolicyGraph(TFPolicyGraph):
@@ -274,8 +298,8 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Action Q network
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_values, q_logits, q_dist = self._build_q_network(
-                self.cur_observations)
+            q_values, q_logits, q_dist, _ = self._build_q_network(
+                self.cur_observations, observation_space)
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -294,12 +318,17 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_t, q_logits_t, q_dist_t = self._build_q_network(self.obs_t)
+            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+            q_t, q_logits_t, q_dist_t, model = self._build_q_network(
+                self.obs_t, observation_space)
+            q_batchnorm_update_ops = list(
+                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                prev_update_ops)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, q_logits_tp1, q_dist_tp1 = self._build_q_network(
-                self.obs_tp1)
+            q_tp1, q_logits_tp1, q_dist_tp1, _ = self._build_q_network(
+                self.obs_tp1, observation_space)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -312,8 +341,8 @@ class DQNPolicyGraph(TFPolicyGraph):
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                    q_dist_tp1_using_online_net = self._build_q_network(
-                        self.obs_tp1)
+                    q_dist_tp1_using_online_net, _ = self._build_q_network(
+                        self.obs_tp1, observation_space)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best_one_hot_selection = tf.one_hot(
                 q_tp1_best_using_online_net, self.num_actions)
@@ -358,35 +387,18 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.loss,
-            loss_inputs=self.loss_inputs)
+            loss=model.loss() + self.loss.loss,
+            loss_inputs=self.loss_inputs,
+            update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_q_network(self, obs):
-        qnet = QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]),
-            self.num_actions, self.config["dueling"], self.config["hiddens"],
-            self.config["noisy"], self.config["num_atoms"],
-            self.config["v_min"], self.config["v_max"], self.config["sigma0"])
-        return qnet.value, qnet.logits, qnet.dist
-
-    def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
-                            self.stochastic, self.eps).action
-
-    def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
-                      q_dist_tp1_best):
-        return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
-                     q_dist_tp1_best, self.importance_weights, self.rew_t,
-                     self.done_mask, self.config["gamma"],
-                     self.config["n_step"], self.config["num_atoms"],
-                     self.config["v_min"], self.config["v_max"])
-
+    @override(TFPolicyGraph)
     def optimizer(self):
         return tf.train.AdamOptimizer(
             learning_rate=self.config["lr"],
             epsilon=self.config["adam_epsilon"])
 
+    @override(TFPolicyGraph)
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
             grads_and_vars = _minimize_and_clip(
@@ -400,19 +412,35 @@ class DQNPolicyGraph(TFPolicyGraph):
         grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
 
+    @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
         return {
             self.stochastic: True,
             self.eps: self.cur_epsilon,
         }
 
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
+            "stats": self.loss.stats,
         }
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         return _postprocess_dqn(self, sample_batch)
+
+    @override(PolicyGraph)
+    def get_state(self):
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        TFPolicyGraph.set_state(self, state[0])
+        self.set_epsilon(state[1])
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -434,15 +462,31 @@ class DQNPolicyGraph(TFPolicyGraph):
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+    def _build_q_network(self, obs, space):
+        qnet = QNetwork(
+            ModelCatalog.get_model({
+                "obs": obs,
+                "is_training": self._get_is_training_placeholder(),
+            }, space, self.num_actions, self.config["model"]),
+            self.num_actions, self.config["dueling"], self.config["hiddens"],
+            self.config["noisy"], self.config["num_atoms"],
+            self.config["v_min"], self.config["v_max"], self.config["sigma0"])
+        return qnet.value, qnet.logits, qnet.dist, qnet.model
 
-    def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
-        self.set_epsilon(state[1])
+    def _build_q_value_policy(self, q_values):
+        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
+                            self.stochastic, self.eps).action
+
+    def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
+                      q_dist_tp1_best):
+        return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                     q_dist_tp1_best, self.importance_weights, self.rew_t,
+                     self.done_mask, self.config["gamma"],
+                     self.config["n_step"], self.config["num_atoms"],
+                     self.config["v_min"], self.config["v_max"])
 
 
-def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
@@ -475,9 +519,9 @@ def _postprocess_dqn(policy_graph, sample_batch):
 
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
-        adjust_nstep(policy_graph.config["n_step"],
-                     policy_graph.config["gamma"], obs, actions, rewards,
-                     new_obs, dones)
+        _adjust_nstep(policy_graph.config["n_step"],
+                      policy_graph.config["gamma"], obs, actions, rewards,
+                      new_obs, dones)
 
     batch = SampleBatch({
         "obs": obs,
@@ -498,6 +542,14 @@ def _postprocess_dqn(policy_graph, sample_batch):
         batch.data["weights"] = new_priorities
 
     return batch
+
+
+def _reduce_mean_ignore_inf(x, axis):
+    """Same as tf.reduce_mean() but ignores -inf values."""
+    mask = tf.not_equal(x, tf.float32.min)
+    x_zeroed = tf.where(mask, x, tf.zeros_like(x))
+    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
+        tf.cast(mask, tf.float32), axis))
 
 
 def _huber_loss(x, delta=1.0):

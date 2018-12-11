@@ -29,6 +29,18 @@ inline int64_t current_sys_time_ms() {
   return ms_since_epoch.count();
 }
 
+inline int64_t current_sys_time_us() {
+  std::chrono::microseconds mu_since_epoch =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return mu_since_epoch.count();
+}
+
+inline double current_sys_time_seconds() {
+  int64_t microseconds_in_seconds = 1000000;
+  return static_cast<double>(current_sys_time_us()) / microseconds_in_seconds;
+}
+
 inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   switch (error.value()) {
   case boost::system::errc::success:
@@ -47,11 +59,11 @@ class InitShutdownRAII {
   /// function when it is out of scope.
   ///
   /// \param init_func The init function.
-  /// \param shuntdown_func The shutdown function.
-  /// \param args The auguments for the init function.
+  /// \param shutdown_func The shutdown function.
+  /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shuntdown_func, Args &&... args)
-      : shutdown_(shuntdown_func) {
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+      : shutdown_(shutdown_func) {
     init_func(args...);
   }
 

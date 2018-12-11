@@ -7,9 +7,10 @@ import time
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils import merge_dicts
-from ray.tune.trial import Resources
+from ray.rllib.utils.annotations import override
 
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
@@ -27,37 +28,14 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": -0.01,
-    # Whether to place workers on GPUs
-    "use_gpu_for_workers": False,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
     # sample_batch_size by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Model and preprocessor options
-    "model": {
-        # Use LSTM model. Requires TF.
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-        # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
-        # (Image statespace) - Each pixel
-        "zero_mean": False,
-        # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 84,
-        # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
-    },
-    # Configure TF for single-process operation
-    "tf_session_args": {
-        "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 1,
-        "gpu_options": {
-            "allow_growth": True,
-        },
-    },
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class A3CAgent(Agent):
@@ -67,15 +45,7 @@ class A3CAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = A3CPolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = merge_dicts(cls._default_config, config)
-        return Resources(
-            cpu=1,
-            gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
-
+    @override(Agent)
     def _init(self):
         if self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
@@ -87,21 +57,22 @@ class A3CAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"],
-            {"num_gpus": 1 if self.config["use_gpu_for_workers"] else 0})
+            self.env_creator, policy_cls, self.config["num_workers"])
         self.optimizer = self._make_optimizer()
 
-    def _make_optimizer(self):
-        return AsyncGradientsOptimizer(self.local_evaluator,
-                                       self.remote_evaluators,
-                                       self.config["optimizer"])
-
+    @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         start = time.time()
         while time.time() - start < self.config["min_iter_time_s"]:
             self.optimizer.step()
-        result = self.optimizer.collect_metrics()
+        result = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result
+
+    def _make_optimizer(self):
+        return AsyncGradientsOptimizer(self.local_evaluator,
+                                       self.remote_evaluators,
+                                       self.config["optimizer"])

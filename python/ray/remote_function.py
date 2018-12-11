@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import logging
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
@@ -11,6 +12,8 @@ import ray.signature
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
 DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
+
+logger = logging.getLogger(__name__)
 
 
 class RemoteFunction(object):
@@ -68,9 +71,26 @@ class RemoteFunction(object):
 
     def remote(self, *args, **kwargs):
         """This runs immediately when a remote function is called."""
-        return self._submit(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
+                args=None,
+                kwargs=None,
+                num_return_vals=None,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None):
+        logger.warn(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args,
+            kwargs=kwargs,
+            num_return_vals=num_return_vals,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources)
+
+    def _remote(self,
                 args=None,
                 kwargs=None,
                 num_return_vals=None,

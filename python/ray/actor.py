@@ -5,17 +5,21 @@ from __future__ import print_function
 import copy
 import hashlib
 import inspect
+import logging
+import sys
 import traceback
 
 import ray.cloudpickle as pickle
 from ray.function_manager import FunctionDescriptor
-import ray.local_scheduler
+import ray.raylet
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import _random_string
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
+
+logger = logging.getLogger(__name__)
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
@@ -209,9 +213,15 @@ class ActorMethod(object):
                                                        self._method_name))
 
     def remote(self, *args, **kwargs):
-        return self._submit(args, kwargs)
+        return self._remote(args, kwargs)
 
     def _submit(self, args, kwargs, num_return_vals=None):
+        logger.warn(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args, kwargs=kwargs, num_return_vals=num_return_vals)
+
+    def _remote(self, args, kwargs, num_return_vals=None):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
@@ -314,9 +324,24 @@ class ActorClass(object):
         Returns:
             A handle to the newly created actor.
         """
-        return self._submit(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
+                args,
+                kwargs,
+                num_cpus=None,
+                num_gpus=None,
+                resources=None):
+        logger.warn(
+            "WARNING: _submit() is being deprecated. Please use _remote().")
+        return self._remote(
+            args=args,
+            kwargs=kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources)
+
+    def _remote(self,
                 args,
                 kwargs,
                 num_cpus=None,
@@ -500,6 +525,7 @@ class ActorHandle(object):
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
         self._ray_previous_actor_handle_id = previous_actor_handle_id
+        self._ray_previously_generated_actor_handle_id = None
 
     def _actor_method_call(self,
                            method_name,
@@ -553,10 +579,22 @@ class ActorHandle(object):
 
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
+        # Right now, if the actor handle has been pickled, we create a
+        # temporary actor handle id for invocations.
+        # TODO(pcm): This still leads to a lot of actor handles being
+        # created, there should be a better way to handle pickled
+        # actor handles.
         if self._ray_actor_handle_id is None:
             actor_handle_id = compute_actor_handle_id_non_forked(
                 self._ray_actor_id, self._ray_previous_actor_handle_id,
                 worker.current_task_id)
+            # Each new task creates a new actor handle id, so we need to
+            # reset the actor counter to 0
+            if (actor_handle_id !=
+                    self._ray_previously_generated_actor_handle_id):
+                self._ray_actor_counter = 0
+                self._ray_previously_generated_actor_handle_id = (
+                    actor_handle_id)
         else:
             actor_handle_id = self._ray_actor_handle_id
 
@@ -745,8 +783,8 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
                 worker.local_scheduler_client.disconnect()
-                import os
-                os._exit(0)
+                sys.exit(0)
+                assert False, "This process should have terminated."
 
         def __ray_save_checkpoint__(self):
             if hasattr(self, "__ray_save__"):

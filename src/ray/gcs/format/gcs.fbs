@@ -15,6 +15,7 @@ enum TablePrefix:int {
   FUNCTION,
   TASK_RECONSTRUCTION,
   HEARTBEAT,
+  HEARTBEAT_BATCH,
   ERROR_INFO,
   DRIVER,
   PROFILE,
@@ -30,9 +31,73 @@ enum TablePubsub:int {
   OBJECT,
   ACTOR,
   HEARTBEAT,
+  HEARTBEAT_BATCH,
   ERROR_INFO,
   TASK_LEASE,
   DRIVER,
+}
+
+table Arg {
+  // Object ID for pass-by-reference arguments. Normally there is only one
+  // object ID in this list which represents the object that is being passed.
+  // However to support reducers in a MapReduce workload, we also support
+  // passing multiple object IDs for each argument.
+  object_ids: [string];
+  // Data for pass-by-value arguments.
+  data: string;
+}
+
+table TaskInfo {
+  // ID of the driver that created this task.
+  driver_id: string;
+  // Task ID of the task.
+  task_id: string;
+  // Task ID of the parent task.
+  parent_task_id: string;
+  // A count of the number of tasks submitted by the parent task before this one.
+  parent_counter: int;
+  // The ID of the actor to create if this is an actor creation task.
+  actor_creation_id: string;
+  // The dummy object ID of the actor creation task if this is an actor method.
+  actor_creation_dummy_object_id: string;
+  // Actor ID of the task. This is the actor that this task is executed on
+  // or NIL_ACTOR_ID if the task is just a normal task.
+  actor_id: string;
+  // The ID of the handle that was used to submit the task. This should be
+  // unique across handles with the same actor_id.
+  actor_handle_id: string;
+  // Number of tasks that have been submitted to this actor so far.
+  actor_counter: int;
+  // True if this task is an actor checkpoint task and false otherwise.
+  is_actor_checkpoint_method: bool;
+  // Function ID of the task.
+  function_id: string;
+  // Task arguments.
+  args: [Arg];
+  // Object IDs of return values.
+  returns: [string];
+  // The required_resources vector indicates the quantities of the different
+  // resources required by this task.
+  required_resources: [ResourcePair];
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  required_placement_resources: [ResourcePair];
+  // The language that this task belongs to.
+  language: Language;
+  // Function descriptor, which is a list of strings that can
+  // uniquely describe a function.
+  // For a Python function, it should be: [module_name, class_name, function_name]
+  // For a Java function, it should be: [class_name, method_name, type_descriptor]
+  // TODO(hchen): after changing Python worker to use function_descriptor,
+  // function_id can be removed.
+  function_descriptor: [string];
+}
+
+table ResourcePair {
+  // The name of the resource.
+  key: string;
+  // The quantity of the resource.
+  value: double;
 }
 
 table GcsTableEntry {
@@ -99,6 +164,13 @@ table TaskTableTestAndUpdate {
 table ClassTableData {
 }
 
+enum ActorState:int {
+  // Actor is alive.
+  ALIVE = 0,
+  // Actor is already dead and won't be reconstructed.
+  DEAD
+}
+
 table ActorTableData {
   // The ID of the actor that was created.
   actor_id: string;
@@ -110,6 +182,8 @@ table ActorTableData {
   driver_id: string;
   // The ID of the node manager that created the actor.
   node_manager_id: string;
+  // Current state of this actor.
+  state: ActorState;
 }
 
 table ErrorTableData {
@@ -197,6 +271,10 @@ table HeartbeatTableData {
   // Aggregate outstanding resource load on this node manager.
   resource_load_label: [string];
   resource_load_capacity: [double];
+}
+
+table HeartbeatBatchTableData {
+  batch: [HeartbeatTableData];
 }
 
 // Data for a lease on task execution.

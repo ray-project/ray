@@ -170,10 +170,12 @@ bool TaskDependencyManager::SubscribeDependencies(
   return (task_entry.num_missing_dependencies == 0);
 }
 
-void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
+bool TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
-  RAY_CHECK(it != task_dependencies_.end());
+  if (it == task_dependencies_.end()) {
+    return false;
+  }
 
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
@@ -206,6 +208,8 @@ void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   for (const auto &object_id : task_entry.object_dependencies) {
     HandleRemoteDependencyCanceled(object_id);
   }
+
+  return true;
 }
 
 std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
@@ -323,6 +327,17 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
       it++;
     }
   }
+}
+
+std::string TaskDependencyManager::DebugString() const {
+  std::stringstream result;
+  result << "TaskDependencyManager:";
+  result << "\n- task dep map size: " << task_dependencies_.size();
+  result << "\n- task req map size: " << required_tasks_.size();
+  result << "\n- req objects map size: " << required_objects_.size();
+  result << "\n- local objects map size: " << local_objects_.size();
+  result << "\n- pending tasks map size: " << pending_tasks_.size();
+  return result.str();
 }
 
 }  // namespace raylet

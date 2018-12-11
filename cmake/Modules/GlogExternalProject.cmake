@@ -6,8 +6,8 @@
 #  - GLOG_INCLUDE_DIR
 #  - GLOG_STATIC_LIB
 
-if(DEFINED ENV{GLOG_HOME} AND EXISTS ENV{GLOG_HOME})
-  set(GLOG_HOME "$ENV{GLOG_HOME}")
+if(DEFINED ENV{RAY_GLOG_HOME} AND EXISTS $ENV{RAY_GLOG_HOME})
+  set(GLOG_HOME "$ENV{RAY_GLOG_HOME}")
   set(GLOG_INCLUDE_DIR "${GLOG_HOME}/include")
   set(GLOG_STATIC_LIB "${GLOG_HOME}/lib/libglog.a")
 
@@ -23,7 +23,7 @@ else()
   endif()
 
   set(GLOG_URL "https://github.com/google/glog/archive/v${GLOG_VERSION}.tar.gz")
-  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/glog/src/glog_ep")
+  set(GLOG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/glog-install")
   set(GLOG_HOME "${GLOG_PREFIX}")
   set(GLOG_INCLUDE_DIR "${GLOG_PREFIX}/include")
   set(GLOG_STATIC_LIB "${GLOG_PREFIX}/lib/libglog.a")

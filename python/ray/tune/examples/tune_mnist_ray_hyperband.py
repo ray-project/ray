@@ -31,7 +31,7 @@ import time
 
 import ray
 from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable
+    Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -128,7 +128,7 @@ def bias_variable(shape):
 class TrainMNIST(Trainable):
     """Example MNIST trainable."""
 
-    def _setup(self):
+    def _setup(self, config):
         global activation_fn
 
         self.timestep = 0
@@ -148,7 +148,7 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, self.config['activation'])
+        activation_fn = getattr(tf.nn, config['activation'])
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
@@ -160,7 +160,7 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope('adam_optimizer'):
             train_step = tf.train.AdamOptimizer(
-                self.config['learning_rate']).minimize(cross_entropy)
+                config['learning_rate']).minimize(cross_entropy)
 
         self.train_step = train_step
 
@@ -221,7 +221,8 @@ if __name__ == '__main__':
             'time_total_s': 600,
         },
         'config': {
-            'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
+            'learning_rate': sample_from(
+                lambda spec: 10**np.random.uniform(-5, -3)),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
         "num_samples": 10,

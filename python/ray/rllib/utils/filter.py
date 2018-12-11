@@ -2,8 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 class Filter(object):
@@ -39,7 +42,10 @@ class NoFilter(Filter):
         pass
 
     def __call__(self, x, update=True):
-        return np.asarray(x)
+        try:
+            return np.asarray(x)
+        except Exception:
+            raise ValueError("Failed to convert to array", x)
 
     def apply_changes(self, other, *args, **kwargs):
         pass
@@ -74,8 +80,10 @@ class RunningStat(object):
     def push(self, x):
         x = np.asarray(x)
         # Unvectorized update of the running statistics.
-        assert x.shape == self._M.shape, ("x.shape = {}, self.shape = {}"
-                                          .format(x.shape, self._M.shape))
+        if x.shape != self._M.shape:
+            raise ValueError(
+                "Unexpected input shape {}, expected {}, value = {}".format(
+                    x.shape, self._M.shape, x))
         n1 = self._n
         self._n += 1
         if self._n == 1:

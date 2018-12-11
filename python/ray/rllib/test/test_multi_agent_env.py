@@ -15,10 +15,17 @@ from ray.rllib.optimizers import SyncSamplesOptimizer, \
 from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
     MockPolicyGraph
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
+
+
+def one_hot(i, n):
+    out = [0.0] * n
+    out[i] = 1.0
+    return out
 
 
 class BasicMultiAgent(MultiAgentEnv):
@@ -63,7 +70,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_info = {}
         self.i = 0
         self.num = num
-        self.observation_space = gym.spaces.Discrete(2)
+        self.observation_space = gym.spaces.Discrete(10)
         self.action_space = gym.spaces.Discrete(2)
 
     def reset(self):
@@ -99,25 +106,32 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
-class MultiCartpole(MultiAgentEnv):
-    def __init__(self, num):
-        self.agents = [gym.make("CartPole-v0") for _ in range(num)]
-        self.dones = set()
-        self.observation_space = self.agents[0].observation_space
-        self.action_space = self.agents[0].action_space
+def make_multiagent(env_name):
+    class MultiEnv(MultiAgentEnv):
+        def __init__(self, num):
+            self.agents = [gym.make(env_name) for _ in range(num)]
+            self.dones = set()
+            self.observation_space = self.agents[0].observation_space
+            self.action_space = self.agents[0].action_space
 
-    def reset(self):
-        self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
+        def reset(self):
+            self.dones = set()
+            return {i: a.reset() for i, a in enumerate(self.agents)}
 
-    def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
-        for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-            if done[i]:
-                self.dones.add(i)
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        def step(self, action_dict):
+            obs, rew, done, info = {}, {}, {}, {}
+            for i, action in action_dict.items():
+                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+                if done[i]:
+                    self.dones.add(i)
+            done["__all__"] = len(self.dones) == len(self.agents)
+            return obs, rew, done, info
+
+    return MultiEnv
+
+
+MultiCartpole = make_multiagent("CartPole-v0")
+MultiMountainCar = make_multiagent("MountainCarContinuous-v0")
 
 
 class TestMultiAgentEnv(unittest.TestCase):
@@ -282,7 +296,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def testMultiAgentSampleRoundRobin(self):
         act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
+        obs_space = gym.spaces.Discrete(10)
         ev = PolicyEvaluator(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             policy_graph={
@@ -295,10 +309,20 @@ class TestMultiAgentEnv(unittest.TestCase):
         # since we round robin introduce agents into the env, some of the env
         # steps don't count as proper transitions
         self.assertEqual(batch.policy_batches["p0"].count, 42)
-        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10],
-                         [0, 1, 2, 3, 4] * 2)
-        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10],
-                         [1, 2, 3, 4, 5] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10], [
+            one_hot(0, 10),
+            one_hot(1, 10),
+            one_hot(2, 10),
+            one_hot(3, 10),
+            one_hot(4, 10),
+        ] * 2)
+        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10], [
+            one_hot(1, 10),
+            one_hot(2, 10),
+            one_hot(3, 10),
+            one_hot(4, 10),
+            one_hot(5, 10),
+        ] * 2)
         self.assertEqual(batch.policy_batches["p0"]["rewards"].tolist()[:10],
                          [100, 100, 100, 100, 0] * 2)
         self.assertEqual(batch.policy_batches["p0"]["dones"].tolist()[:10],
@@ -306,12 +330,39 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist()[:10],
                          [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
+    def testCustomRNNStateValues(self):
+        h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
+
+        class StatefulPolicyGraph(PolicyGraph):
+            def compute_actions(self,
+                                obs_batch,
+                                state_batches,
+                                prev_action_batch=None,
+                                prev_reward_batch=None,
+                                episodes=None):
+                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
+
+            def get_initial_state(self):
+                return [{}]  # empty dict
+
+        ev = PolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_graph=StatefulPolicyGraph,
+            batch_steps=5)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 5)
+        self.assertEqual(batch["state_in_0"][0], {})
+        self.assertEqual(batch["state_out_0"][0], h)
+        self.assertEqual(batch["state_in_0"][1], h)
+        self.assertEqual(batch["state_out_0"][1], h)
+
     def testReturningModelBasedRolloutsData(self):
         class ModelBasedPolicyGraph(PGPolicyGraph):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches,
-                                is_training=False,
+                                prev_action_batch=None,
+                                prev_reward_batch=None,
                                 episodes=None):
                 # Pretend we did a model-based rollout and want to return
                 # the extra trajectory.
@@ -329,7 +380,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                         dones=t == 4,
                         infos={},
                         new_obs=obs_batch[0])
-                batch = builder.build_and_reset()
+                batch = builder.build_and_reset(episode=None)
                 episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions

@@ -5,26 +5,60 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
-In the high-level agent APIs, environments are identified with string names. By default, the string will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__, however you can also register custom environments by name:
+**Compatibility matrix**:
+
+=============  =======================  ==================  ===========  ==================
+Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
+=============  =======================  ==================  ===========  ==================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
+DDPG, TD3       No                      **Yes**             **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
+APEX-DDPG       No                      **Yes**             **Yes**      No
+ES              **Yes**                 **Yes**             No           No
+ARS             **Yes**                 **Yes**             No           No
+=============  =======================  ==================  ===========  ==================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the agent must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
-    import ray
-    from ray.tune.registry import register_env
+    import gym, ray
     from ray.rllib.agents import ppo
 
-    def env_creator(env_config):
-        import gym
-        return gym.make("CartPole-v0")  # or return your own custom env
+    class MyEnv(gym.Env):
+        def __init__(self, env_config):
+            self.action_space = <gym.Space>
+            self.observation_space = <gym.Space>
+        def reset(self):
+            return <obs>
+        def step(self, action):
+            return <obs>, <reward: float>, <done: bool>, <info: dict>
 
-    register_env("my_env", env_creator)
     ray.init()
-    trainer = ppo.PPOAgent(env="my_env", config={
-        "env_config": {},  # config to pass to env creator
+    trainer = ppo.PPOAgent(env=MyEnv, config={
+        "env_config": {},  # config to pass to env class
     })
 
     while True:
         print(trainer.train())
+
+You can also register a custom env creator function with a string name. This function must take a single ``env_config`` parameter and return an env instance:
+
+.. code-block:: python
+
+    from ray.tune.registry import register_env
+
+    def env_creator(env_config):
+        return MyEnv(...)  # return an env instance
+
+    register_env("my_env", env_creator)
+    trainer = ppo.PPOAgent(env="my_env")
 
 Configuring Environments
 ------------------------
@@ -57,7 +91,7 @@ Performance
 
 There are two ways to scale experience collection with Gym environments:
 
-    1. **Vectorization within a single process:** Though many envs can very achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
+    1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
 
       You can configure ``{"num_envs_per_worker": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__.
 
@@ -75,6 +109,10 @@ RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_wo
 
 Multi-Agent
 -----------
+
+.. note::
+
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
@@ -132,25 +170,93 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__.
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+
+.. code-block:: bash
+   :emphasize-lines: 6,14,22
+
+    Result for PPO_multi_cartpole_0:
+      episode_len_mean: 34.025862068965516
+      episode_reward_max: 159.0
+      episode_reward_mean: 86.06896551724138
+      info:
+        policy_0:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6833480000495911
+          kl: 0.010264254175126553
+          policy_loss: -11.95590591430664
+          total_loss: 197.7039794921875
+          vf_explained_var: 0.0010995268821716309
+          vf_loss: 209.6578826904297
+        policy_1:
+          cur_lr: 4.999999873689376e-05
+          entropy: 0.6827034950256348
+          kl: 0.01119876280426979
+          policy_loss: -8.787769317626953
+          total_loss: 88.26161193847656
+          vf_explained_var: 0.0005457401275634766
+          vf_loss: 97.0471420288086
+      policy_reward_mean:
+        policy_0: 21.194444444444443
+        policy_1: 21.798387096774192
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
 
-Agent-Driven
-------------
+Variable-Sharing Between Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time.
+RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
 
-RLlib provides the `ServingEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/serving_env.py>`__ class for this purpose. Unlike other envs, ServingEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+.. code-block:: python
 
-For example, ServingEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
+        with tf.variable_scope(
+                tf.VariableScope(tf.AUTO_REUSE, "name_of_global_shared_scope"),
+                reuse=tf.AUTO_REUSE,
+                auxiliary_name_scope=False):
+            <create the shared layers here>
 
-Offline Data
-~~~~~~~~~~~~
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__.
 
-ServingEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
+Implementing a Centralized Critic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``log_action`` API of ServingEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ServingEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
+Implementing a centralized critic that takes as input the observations and actions of other concurrent agents requires the definition of custom policy graphs. It can be done as follows:
+
+1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy graph, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
+
+.. code-block:: python
+
+    def postprocess_trajectory(self, sample_batch, other_agent_batches, episode):
+        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
+        global_obs_batch = np.stack(
+            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
+            axis=1)
+        # add the global obs and global critic value
+        sample_batch["global_obs"] = global_obs_batch
+        sample_batch["central_vf"] = self.sess.run(
+            self.critic_network, feed_dict={"obs": global_obs_batch})
+        return sample_batch
+
+2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy graph, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicyGraph example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy_graph.py>`__.
+
+Interfacing with External Agents
+--------------------------------
+
+In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
+
+RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+
+ExternalEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
+
+Logging off-policy actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ExternalEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
+
+Data ingest
+~~~~~~~~~~~
+
+The ``log_action`` API of ExternalEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ExternalEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
 
 Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/env_context.py>`__ passed into the environment constructor.
 

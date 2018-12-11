@@ -223,12 +223,6 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
-void CheckFlush(LineageCache &lineage_cache, MockGcs &mock_gcs,
-                size_t num_tasks_flushed) {
-  lineage_cache.Flush();
-  ASSERT_EQ(mock_gcs.TaskTable().size(), num_tasks_flushed);
-}
-
 TEST_F(LineageCacheTest, TestWritebackNoneReady) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
@@ -237,7 +231,7 @@ TEST_F(LineageCacheTest, TestWritebackNoneReady) {
 
   // Check that when no tasks have been marked as ready, we do not flush any
   // entries.
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
 TEST_F(LineageCacheTest, TestWritebackReady) {
@@ -249,69 +243,126 @@ TEST_F(LineageCacheTest, TestWritebackReady) {
   // Check that after marking the first task as ready, we flush only that task.
   ASSERT_TRUE(lineage_cache_.AddReadyTask(tasks.front()));
   num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
 TEST_F(LineageCacheTest, TestWritebackOrder) {
   // Insert a chain of dependent tasks.
-  size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  size_t num_tasks_flushed = tasks.size();
 
-  // Mark all tasks as ready. The first task, which has no dependencies, should
-  // be flushed.
+  // Mark all tasks as ready. All tasks should be flushed.
   for (const auto &task : tasks) {
     ASSERT_TRUE(lineage_cache_.AddReadyTask(task));
   }
-  // Check that we write back the tasks in order of data dependencies.
-  for (size_t i = 0; i < tasks.size(); i++) {
-    num_tasks_flushed++;
-    ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
-    // Flush acknowledgements. The next task should have been flushed.
-    mock_gcs_.Flush();
-  }
+
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
-TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
-  // Create two independent tasks, task1 and task2, and a dependent task
-  // that depends on both tasks.
+TEST_F(LineageCacheTest, TestEvictChain) {
+  // Create a chain of 3 tasks.
   size_t num_tasks_flushed = 0;
-  auto task1 = ExampleTask({}, 1);
-  auto task2 = ExampleTask({}, 1);
-  std::vector<ObjectID> returns;
-  for (int64_t i = 0; i < task1.GetTaskSpecification().NumReturns(); i++) {
-    returns.push_back(task1.GetTaskSpecification().ReturnId(i));
+  std::vector<Task> tasks;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < 3; i++) {
+    auto task = ExampleTask(arguments, 1);
+    tasks.push_back(task);
+    arguments = {task.GetTaskSpecification().ReturnId(0)};
   }
-  for (int64_t i = 0; i < task2.GetTaskSpecification().NumReturns(); i++) {
-    returns.push_back(task2.GetTaskSpecification().ReturnId(i));
+
+  Lineage uncommitted_lineage;
+  for (const auto &task : tasks) {
+    uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED_REMOTE);
   }
-  auto dependent_task = ExampleTask(returns, 1);
-
-  // Insert all tasks as waiting for execution.
-  ASSERT_TRUE(lineage_cache_.AddWaitingTask(task1, Lineage()));
-  ASSERT_TRUE(lineage_cache_.AddWaitingTask(task2, Lineage()));
-  ASSERT_TRUE(lineage_cache_.AddWaitingTask(dependent_task, Lineage()));
-
-  // Flush one of the independent tasks.
-  ASSERT_TRUE(lineage_cache_.AddReadyTask(task1));
-  num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-  // Flush acknowledgements. The lineage cache should receive the commit for
-  // the first task.
-  mock_gcs_.Flush();
-  // Mark the other independent task and the dependent as ready.
-  ASSERT_TRUE(lineage_cache_.AddReadyTask(task2));
-  ASSERT_TRUE(lineage_cache_.AddReadyTask(dependent_task));
-  // Two tasks are ready, but only the independent task should be flushed. The
-  // dependent task should only be flushed once commits for both independent
-  // tasks are received.
-  num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-  // Flush acknowledgements. Both independent tasks should now be committed.
-  mock_gcs_.Flush();
-  // The dependent task should now be flushed.
+  // Mark the last task as ready to flush.
+  ASSERT_TRUE(lineage_cache_.AddWaitingTask(tasks.back(), uncommitted_lineage));
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
+  ASSERT_TRUE(lineage_cache_.AddReadyTask(tasks.back()));
   num_tasks_flushed++;
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+  // Flush acknowledgements. The lineage cache should receive the commit for
+  // the flushed task, but its lineage should not be evicted yet.
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_
+                .GetUncommittedLineage(tasks.back().GetTaskSpecification().TaskId(),
+                                       ClientID::nil())
+                .GetEntries()
+                .size(),
+            tasks.size());
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
+
+  // Simulate executing the task on a remote node and adding it to the GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(tasks.at(1).GetTaskSpecification().TaskId(), task_data));
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_
+                .GetUncommittedLineage(tasks.back().GetTaskSpecification().TaskId(),
+                                       ClientID::nil())
+                .GetEntries()
+                .size(),
+            tasks.size());
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
+
+  // Simulate executing the task on a remote node and adding it to the GCS.
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(tasks.at(0).GetTaskSpecification().TaskId(), task_data));
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
+}
+
+TEST_F(LineageCacheTest, TestEvictManyParents) {
+  // Create some independent tasks.
+  std::vector<Task> parent_tasks;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < 10; i++) {
+    auto task = ExampleTask({}, 1);
+    parent_tasks.push_back(task);
+    arguments.push_back(task.GetTaskSpecification().ReturnId(0));
+    ASSERT_TRUE(lineage_cache_.AddWaitingTask(task, Lineage()));
+  }
+  // Create a child task that is dependent on all of the previous tasks.
+  auto child_task = ExampleTask(arguments, 1);
+  ASSERT_TRUE(lineage_cache_.AddWaitingTask(child_task, Lineage()));
+
+  // Flush the child task. Make sure that it remains in the cache, since none
+  // of its parents have been committed yet, and that the uncommitted lineage
+  // still includes all of the parent tasks.
+  size_t total_tasks = parent_tasks.size() + 1;
+  lineage_cache_.AddReadyTask(child_task);
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), total_tasks);
+  ASSERT_EQ(lineage_cache_
+                .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                       ClientID::nil())
+                .GetEntries()
+                .size(),
+            total_tasks);
+
+  // Flush each parent task and check for eviction safety.
+  for (const auto &parent_task : parent_tasks) {
+    lineage_cache_.AddReadyTask(parent_task);
+    mock_gcs_.Flush();
+    total_tasks--;
+    if (total_tasks > 1) {
+      // Each task should be evicted as soon as its commit is acknowledged,
+      // since the parent tasks have no dependencies.
+      ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), total_tasks);
+      ASSERT_EQ(lineage_cache_
+                    .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                           ClientID::nil())
+                    .GetEntries()
+                    .size(),
+                total_tasks);
+    } else {
+      // After the last task has been committed, then the child task should
+      // also be evicted. The lineage cache should now be empty.
+      ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
+    }
+  }
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
 }
 
 TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
@@ -352,16 +403,19 @@ TEST_F(LineageCacheTest, TestForwardTask) {
   auto uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(task_id_to_remove, ClientID::nil());
   ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id_to_remove));
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 3);
 
   // Simulate executing the remaining tasks.
   for (const auto &task : tasks) {
     ASSERT_TRUE(lineage_cache_.AddReadyTask(task));
+    num_tasks_flushed++;
   }
   // Check that the first task, which has no dependencies can be flushed. The
   // last task cannot be flushed since one of its dependencies has not been
   // added by the remote node yet.
-  num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+  mock_gcs_.Flush();
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 2);
 
   // Simulate executing the task on a remote node and adding it to the GCS.
   auto task_data = std::make_shared<protocol::TaskT>();
@@ -369,15 +423,15 @@ TEST_F(LineageCacheTest, TestForwardTask) {
       mock_gcs_.RemoteAdd(forwarded_task.GetTaskSpecification().TaskId(), task_data));
   // Check that the remote task is flushed.
   num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
   ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 1);
 
   // Check that once we receive the callback for the remote task, we can now
   // flush the last task.
   mock_gcs_.Flush();
-  num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
   ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 0);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
 }
 
 TEST_F(LineageCacheTest, TestEviction) {
@@ -409,10 +463,12 @@ TEST_F(LineageCacheTest, TestEviction) {
   // Check that the remote task is flushed.
   num_tasks_flushed++;
   mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(),
+            lineage_size - num_tasks_flushed);
 
   // Simulate executing all the rest of the tasks except the last one on a
   // remote node and adding them to the GCS.
@@ -422,7 +478,9 @@ TEST_F(LineageCacheTest, TestEviction) {
     // Check that the remote task is flushed.
     num_tasks_flushed++;
     mock_gcs_.Flush();
-    CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+    ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+    ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(),
+              lineage_size - num_tasks_flushed);
   }
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
@@ -431,6 +489,7 @@ TEST_F(LineageCacheTest, TestEviction) {
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
   // The remaining task should have no uncommitted lineage.
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), 1);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 1);
 }
 
 TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
@@ -447,8 +506,6 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
     auto task_id = task.GetTaskSpecification().TaskId();
     ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id));
   }
-  // Check that we requested at most 2 notifications
-  ASSERT_TRUE(mock_gcs_.NumRequestedNotifications() <= 2);
 
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
@@ -456,37 +513,30 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   auto uncommitted_lineage =
       lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
-
-  // Simulate executing all the rest of the tasks except the last one at the
-  // remote node. Simulate receiving the notifications from the GCS in reverse
-  // order of execution.
-  tasks.pop_back();
-  auto task_data = std::make_shared<protocol::TaskT>();
-  auto it = tasks.rbegin();
-  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
-  it++;
-  // Check that the remote task is flushed.
-  num_tasks_flushed++;
-  mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-  // Check that the last task in the chain still has all tasks in its
-  // uncommitted lineage.
-  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size);
 
   // Simulate executing the rest of the tasks on a remote node and receiving
   // the notifications from the GCS in reverse order of execution.
-  for (; it != tasks.rend(); it++) {
+  auto last_task = tasks.front();
+  tasks.erase(tasks.begin());
+  for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
+    auto task_data = std::make_shared<protocol::TaskT>();
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
     num_tasks_flushed++;
     mock_gcs_.Flush();
-    CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+    ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+    ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size);
   }
-  // All tasks have now been flushed. Check that enough lineage has been
-  // evicted that the uncommitted lineage is now less than the maximum size.
-  uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::nil());
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+  // Flush the last task. The lineage should not get evicted until this task's
+  // commit is received.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(last_task.GetTaskSpecification().TaskId(), task_data));
+  num_tasks_flushed++;
+  mock_gcs_.Flush();
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
 }
 
 TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
@@ -515,18 +565,22 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
     num_tasks_flushed++;
   }
 
-  // Simulate executing the last task on a remote node and adding it to the
-  // GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
-  auto it = tasks.rbegin();
-  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
-  // We expect the task that was added remotely to be flushed.
-  num_tasks_flushed++;
-  // Check that once the last task in the forwarded chain is flushed, all local
-  // tasks are flushed, since all of their dependencies have been evicted and
-  // are therefore committed in the GCS.
-  mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  // Simulate executing the tasks on the remote node in reverse order and
+  // adding them to the GCS. Lineage at the local node should not get evicted
+  // until after the final remote task is executed, since a task can only be
+  // evicted once all of its ancestors have been committed.
+  for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
+    auto task_data = std::make_shared<protocol::TaskT>();
+    ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size * 2);
+    RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+    num_tasks_flushed++;
+    mock_gcs_.Flush();
+    ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+  }
+  // Check that after the final remote task is executed, all local lineage is
+  // now evicted.
+  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
+  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
 }
 
 }  // namespace raylet

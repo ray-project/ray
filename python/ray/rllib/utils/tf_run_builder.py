@@ -2,11 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import time
 
 import tensorflow as tf
 from tensorflow.python.client import timeline
+
+logger = logging.getLogger(__name__)
 
 
 class TFRunBuilder(object):
@@ -26,7 +29,8 @@ class TFRunBuilder(object):
     def add_feed_dict(self, feed_dict):
         assert not self._executed
         for k in feed_dict:
-            assert k not in self.feed_dict
+            if k in self.feed_dict:
+                raise ValueError("Key added twice: {}".format(k))
         self.feed_dict.update(feed_dict)
 
     def add_fetches(self, fetches):
@@ -41,10 +45,9 @@ class TFRunBuilder(object):
                 self._executed = run_timeline(
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
-            except Exception as e:
-                print("Error fetching: {}, feed_dict={}".format(
+            except Exception:
+                raise ValueError("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
-                raise e
         if isinstance(to_fetch, int):
             return self._executed[to_fetch]
         elif isinstance(to_fetch, list):
@@ -75,8 +78,8 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
                 debug_name, os.getpid(), _count))
         _count += 1
         trace_file = open(outf, "w")
-        print("Wrote tf timeline ({} s) to {}".format(time.time() - start,
-                                                      os.path.abspath(outf)))
+        logger.info("Wrote tf timeline ({} s) to {}".format(
+            time.time() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
         fetches = sess.run(ops, feed_dict=feed_dict)

@@ -8,6 +8,7 @@ import logging
 import time
 import tempfile
 import os
+from numbers import Number
 
 import ray
 from ray.tune import TuneError
@@ -33,12 +34,14 @@ class Resources(
         namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
+    TODO: Custom resources.
+
     Attributes:
-        cpu (int): Number of CPUs to allocate to the trial.
-        gpu (int): Number of GPUs to allocate to the trial.
-        extra_cpu (int): Extra CPUs to reserve in case the trial needs to
+        cpu (float): Number of CPUs to allocate to the trial.
+        gpu (float): Number of GPUs to allocate to the trial.
+        extra_cpu (float): Extra CPUs to reserve in case the trial needs to
             launch additional Ray actors that use CPUs.
-        extra_gpu (int): Extra GPUs to reserve in case the trial needs to
+        extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
 
     """
@@ -46,6 +49,9 @@ class Resources(
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
+        for entry in [cpu, gpu, extra_cpu, extra_gpu]:
+            assert isinstance(entry, Number), "Improper resource value."
+            assert entry >= 0, "Resource cannot be negative."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
                                              extra_gpu)
 
@@ -79,9 +85,10 @@ class Checkpoint(object):
     MEMORY = "memory"
     DISK = "disk"
 
-    def __init__(self, storage, value):
+    def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
+        self.last_result = last_result
 
     @staticmethod
     def from_object(value=None):
@@ -209,16 +216,18 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self, result):
+    def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        result = self.last_result or {}
 
         if result.get(DONE) and self.checkpoint_at_end:
             return True
 
-        if not self.checkpoint_freq:
+        if self.checkpoint_freq:
+            return result.get(TRAINING_ITERATION,
+                              0) % self.checkpoint_freq == 0
+        else:
             return False
-
-        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -271,6 +280,16 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def should_recover(self):
+        """Returns whether the trial qualifies for restoring.
+
+        This is if a checkpoint frequency is set and has not failed more than
+        max_failures. This may return true even when there may not yet
+        be a checkpoint.
+        """
+        return (self.checkpoint_freq > 0
+                and self.num_failures < self.max_failures)
+
     def update_last_result(self, result, terminate=False):
         if terminate:
             result.update(done=True)
@@ -299,8 +318,10 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+            env = self.config["env"]
+            if isinstance(env, type):
+                env = env.__name__
+            identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
         if self.experiment_tag:

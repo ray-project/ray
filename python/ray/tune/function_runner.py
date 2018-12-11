@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through.
+    """Object passed into your function that you can report status through.
 
     Example:
-        >>> reporter = StatusReporter()
-        >>> reporter(timesteps_total=1)
+        >>> def trainable_function(config, reporter):
+        >>>     assert isinstance(reporter, StatusReporter)
+        >>>     reporter(timesteps_total=1)
     """
 
     def __init__(self):
@@ -33,6 +34,9 @@ class StatusReporter(object):
 
         Args:
             kwargs: Latest training result status.
+
+        Example:
+            >>> reporter(mean_accuracy=1, training_iteration=4)
         """
 
         with self._lock:
@@ -90,10 +94,10 @@ class FunctionRunner(Trainable):
     _name = "func"
     _default_config = DEFAULT_CONFIG
 
-    def _setup(self):
+    def _setup(self, config):
         entrypoint = self._trainable_func()
         self._status_reporter = StatusReporter()
-        scrubbed_config = self.config.copy()
+        scrubbed_config = config.copy()
         for k in self._default_config:
             if k in scrubbed_config:
                 del scrubbed_config[k]

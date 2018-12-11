@@ -27,6 +27,7 @@ def make_inc_temp(suffix="", prefix="", directory_name="/tmp/ray"):
         the returned name will look like
         "{directory_name}/{prefix}.{unique_index}{suffix}"
     """
+    directory_name = os.path.expanduser(directory_name)
     index = _incremental_dict[suffix, prefix, directory_name]
     # `tempfile.TMP_MAX` could be extremely large,
     # so using `range` in Python2.x should be avoided.
@@ -51,6 +52,7 @@ def try_to_create_directory(directory_path):
     Args:
         directory_path: The path of the directory to create.
     """
+    directory_path = os.path.expanduser(directory_path)
     if not os.path.exists(directory_path):
         try:
             os.makedirs(directory_path)
@@ -117,27 +119,6 @@ def get_object_store_socket_name():
     return make_inc_temp(prefix="plasma_store", directory_name=sockets_dir)
 
 
-def get_plasma_manager_socket_name():
-    """Get a socket name for plasma manager."""
-    sockets_dir = get_sockets_dir_path()
-    return make_inc_temp(prefix="plasma_manager", directory_name=sockets_dir)
-
-
-def get_local_scheduler_socket_name(suffix=""):
-    """Get a socket name for local scheduler.
-
-    This function could be unsafe. The socket name may
-    refer to a file that did not exist at some point, but by the time
-    you get around to creating it, someone else may have beaten you to
-    the punch.
-    """
-    sockets_dir = get_sockets_dir_path()
-    raylet_socket_name = make_inc_temp(
-        prefix="scheduler", directory_name=sockets_dir, suffix=suffix)
-
-    return raylet_socket_name
-
-
 def get_ipython_notebook_path(port):
     """Get a new ipython notebook path"""
 
@@ -147,20 +128,12 @@ def get_ipython_notebook_path(port):
     # the user.
     notebook_name = make_inc_temp(
         suffix=".ipynb", prefix="ray_ui", directory_name=get_temp_root())
-    new_notebook_filepath = os.path.join(get_logs_dir_path(), notebook_name)
-    shutil.copy(notebook_filepath, new_notebook_filepath)
-    new_notebook_directory = os.path.dirname(new_notebook_filepath)
+    shutil.copy(notebook_filepath, notebook_name)
+    new_notebook_directory = os.path.dirname(notebook_name)
     token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
         port, os.path.basename(notebook_name), token))
     return new_notebook_directory, webui_url, token
-
-
-def get_temp_redis_config_path():
-    """Get a temp name of the redis config file."""
-    redis_config_name = make_inc_temp(
-        prefix="redis_conf", directory_name=get_temp_root())
-    return redis_config_name
 
 
 def new_log_files(name, redirect_output):
@@ -218,33 +191,11 @@ def new_raylet_log_file(local_scheduler_index, redirect_output):
     return raylet_stdout_file, raylet_stderr_file
 
 
-def new_local_scheduler_log_file(local_scheduler_index, redirect_output):
-    """Create new logging files for local scheduler.
-
-    It is only used in non-raylet versions.
-    """
-    local_scheduler_stdout_file, local_scheduler_stderr_file = (new_log_files(
-        "local_scheduler_{}".format(local_scheduler_index),
-        redirect_output=redirect_output))
-    return local_scheduler_stdout_file, local_scheduler_stderr_file
-
-
 def new_webui_log_file():
     """Create new logging files for web ui."""
     ui_stdout_file, ui_stderr_file = new_log_files(
         "webui", redirect_output=True)
     return ui_stdout_file, ui_stderr_file
-
-
-def new_worker_log_file(local_scheduler_index, worker_index, redirect_output):
-    """Create new logging files for workers with local scheduler index.
-
-    It is only used in non-raylet versions.
-    """
-    worker_stdout_file, worker_stderr_file = new_log_files(
-        "worker_{}_{}".format(local_scheduler_index, worker_index),
-        redirect_output)
-    return worker_stdout_file, worker_stderr_file
 
 
 def new_worker_redirected_log_file(worker_id):
@@ -261,28 +212,11 @@ def new_log_monitor_log_file():
     return log_monitor_stdout_file, log_monitor_stderr_file
 
 
-def new_global_scheduler_log_file(redirect_output):
-    """Create new logging files for the new global scheduler.
-
-    It is only used in non-raylet versions.
-    """
-    global_scheduler_stdout_file, global_scheduler_stderr_file = (
-        new_log_files("global_scheduler", redirect_output))
-    return global_scheduler_stdout_file, global_scheduler_stderr_file
-
-
 def new_plasma_store_log_file(local_scheduler_index, redirect_output):
     """Create new logging files for the plasma store."""
     plasma_store_stdout_file, plasma_store_stderr_file = new_log_files(
         "plasma_store_{}".format(local_scheduler_index), redirect_output)
     return plasma_store_stdout_file, plasma_store_stderr_file
-
-
-def new_plasma_manager_log_file(local_scheduler_index, redirect_output):
-    """Create new logging files for the plasma manager."""
-    plasma_manager_stdout_file, plasma_manager_stderr_file = new_log_files(
-        "plasma_manager_{}".format(local_scheduler_index), redirect_output)
-    return plasma_manager_stdout_file, plasma_manager_stderr_file
 
 
 def new_monitor_log_file(redirect_output):

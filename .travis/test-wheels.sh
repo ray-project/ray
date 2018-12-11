@@ -56,10 +56,10 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../.whl/*.whl | wc -l)
-  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
     echo "Wrong number of wheels found."
     ls -l $ROOT_DIR/../.whl/
-    exit 1
+    exit 2
   fi
 
 elif [[ "$platform" == "macosx" ]]; then
@@ -67,12 +67,14 @@ elif [[ "$platform" == "macosx" ]]; then
   PY_MMS=("2.7"
           "3.4"
           "3.5"
-          "3.6")
+          "3.6"
+          "3.7")
   # This array is just used to find the right wheel.
   PY_WHEEL_VERSIONS=("27"
                      "34"
                      "35"
-                     "36")
+                     "36"
+                     "37")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM=${PY_MMS[i]}
@@ -92,5 +94,5 @@ elif [[ "$platform" == "macosx" ]]; then
   done
 else
   echo "Unrecognized environment."
-  exit 1
+  exit 3
 fi

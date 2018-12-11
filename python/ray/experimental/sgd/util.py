@@ -2,9 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import filelock
 import json
 import logging
+import numpy as np
 import os
+import pyarrow
+import pyarrow.plasma as plasma
 import time
 import tensorflow as tf
 
@@ -13,16 +17,29 @@ import ray
 logger = logging.getLogger(__name__)
 
 
+def warmup():
+    logger.info("Warming up object store")
+    zeros = np.zeros(int(100e6 / 8), dtype=np.float64)
+    start = time.time()
+    for _ in range(10):
+        ray.put(zeros)
+    logger.info("Initial latency for 100MB put {}".format(
+        (time.time() - start) / 10))
+    for _ in range(5):
+        for _ in range(100):
+            ray.put(zeros)
+        start = time.time()
+        for _ in range(10):
+            ray.put(zeros)
+        logger.info("Warmed up latency for 100MB put {}".format(
+            (time.time() - start) / 10))
+
+
 def fetch(oids):
-    if ray.global_state.use_raylet:
-        local_sched_client = ray.worker.global_worker.local_scheduler_client
-        for o in oids:
-            ray_obj_id = ray.ObjectID(o)
-            local_sched_client.reconstruct_objects([ray_obj_id], True)
-    else:
-        for o in oids:
-            plasma_id = ray.pyarrow.plasma.ObjectID(o)
-            ray.worker.global_worker.plasma_client.fetch([plasma_id])
+    local_sched_client = ray.worker.global_worker.local_scheduler_client
+    for o in oids:
+        ray_obj_id = ray.ObjectID(o)
+        local_sched_client.fetch_or_reconstruct([ray_obj_id], True)
 
 
 def run_timeline(sess, ops, feed_dict=None, write_timeline=False, name=""):
@@ -104,6 +121,16 @@ class Timeline(object):
         with open(filename, "w") as f:
             f.write(json.dumps(out))
         logger.info("Wrote chrome timeline to", filename)
+
+
+def ensure_plasma_tensorflow_op():
+    base_path = os.path.join(pyarrow.__path__[0], "tensorflow")
+    lock_path = os.path.join(base_path, "compile_op.lock")
+    with filelock.FileLock(lock_path):
+        if not os.path.exists(os.path.join(base_path, "plasma_op.so")):
+            plasma.build_plasma_tensorflow_op()
+        else:
+            plasma.load_plasma_tensorflow_op()
 
 
 if __name__ == "__main__":
