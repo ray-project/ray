@@ -194,9 +194,9 @@ ray::Status RayletConnection::AtomicRequestReply(MessageType request_type,
                                                  uint8_t *&reply_message,
                                                  flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
-  auto status = WriteMessage(MessageType::GetTask);
+  auto status = WriteMessage(request_type, fbb);
   if (!status.ok()) return status;
-  return ReadMessage(MessageType::ExecuteTask, reply_message);
+  return ReadMessage(reply_type, reply_message);
 }
 
 RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,

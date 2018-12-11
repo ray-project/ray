@@ -79,7 +79,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   auto conn = reinterpret_cast<RayletClient *>(client);
 
   // TODO: handle actor failure later
-  ray::raylet::TaskSpecification *spec = conn->GetTask(conn);
+  ray::raylet::TaskSpecification *spec = conn->GetTask();
 
   // We serialize the task specification using flatbuffers and then parse the
   // resulting string. This awkwardness is due to the fact that the Java
@@ -137,7 +137,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto conn = reinterpret_cast<RayletClient *>(client);
   auto status = conn->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
-  return std::static_cast<int>(status->code());
+  return std::static_cast<int>(status.code());
 }
 
 /*
