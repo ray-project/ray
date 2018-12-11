@@ -21,7 +21,6 @@
 
 using MessageType = ray::protocol::MessageType;
 
-// TODO(rkn): The io methods below should be removed.
 
 RayletConnection::RayletConnection(const std::string &raylet_socket,
                                    int num_retries, int64_t timeout) {
@@ -52,6 +51,8 @@ RayletConnection::RayletConnection(const std::string &raylet_socket,
 }
 
 RayletConnection::~RayletConnection() { close(conn_); }
+
+// TODO(rkn): The io methods below should be removed.
 
 int RayletConnection::connect_ipc_sock(const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
@@ -132,9 +133,8 @@ ray::Status RayletConnection::Disconnect() {
   return WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
 }
 
-ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t** message) {
+ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t *&message) {
   int64_t version;
-  uint8_t *bytes;
   int64_t type_field;
   int64_t length;
   int closed = read_bytes((uint8_t *)&version, sizeof(version));
@@ -144,21 +144,16 @@ ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t** message) {
   if (closed) goto disconnected;
   closed = read_bytes((uint8_t *)&length, sizeof(length));
   if (closed) goto disconnected;
-  bytes = (uint8_t *)malloc(length * sizeof(uint8_t));
-  closed = read_bytes(bytes, length);
+  message = (uint8_t *)malloc(length * sizeof(uint8_t));
+  closed = read_bytes(message, length);
   if (closed) {
-    free(bytes);
-    goto disconnected;
-  }
-  goto final_check;
-
+    /* Handle the case in which the socket is closed. */
+    free(message);
 disconnected:
-  /* Handle the case in which the socket is closed. */
-  type_field = static_cast<int64_t>(MessageType::DisconnectClient);
-  length = 0;
-  bytes = nullptr;
-
-final_check:
+    message = nullptr;
+    type_field = static_cast<int64_t>(MessageType::DisconnectClient);
+    length = 0;
+  }
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
@@ -170,7 +165,6 @@ final_check:
     return ray::Status::UnknownError(err_msg);
     // TODO: Why don't fail-fast/exit here?
   }
-  *message = bytes;
   return ray::Status::OK();
 }
 
@@ -192,6 +186,15 @@ ray::Status RayletConnection::WriteMessage(MessageType type,
   closed = write_bytes(bytes, length * sizeof(char));
   if (closed) return io_error;
   return ray::Status::OK();
+}
+
+ray::Status RayletConnection::AtomicRequestReply(
+    MessageType request_type, MessageType reply_type, uint8_t *&reply_message,
+    flatbuffers::FlatBufferBuilder *fbb) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  auto status = WriteMessage(MessageType::GetTask);
+  if (!status.ok()) return status;
+  return ReadMessage(MessageType::ExecuteTask, reply_message);
 }
 
 RayletClient::RayletClient(
@@ -228,13 +231,10 @@ ray::Status RayletClient::SubmitTask(
 
 ray::raylet::TaskSpecification *RayletClient::GetTask() {
   uint8_t *reply;
-  {
-    std::unique_lock<std::mutex> guard(conn_->mutex);
-    RAY_CHECK_OK(conn_->WriteMessage(MessageType::GetTask));
-    // Receive a task from the local scheduler. This will block until the local
-    // scheduler gives this client a task.
-    RAY_CHECK_OK(conn_->ReadMessage(MessageType::ExecuteTask, &reply));
-  }
+  // Receive a task from the local scheduler. This will block until the local
+  // scheduler gives this client a task.
+  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask,
+                                         reply));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
   // Set the resource IDs for this task.
@@ -307,12 +307,8 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   uint8_t *reply;
-  {
-    std::unique_lock<std::mutex> guard(conn_->mutex);
-    RAY_CHECK_OK(conn_->WriteMessage(MessageType::WaitRequest, &fbb));
-    // Read result.
-    RAY_CHECK_OK(conn_->ReadMessage(MessageType::WaitReply, &reply));
-  }
+  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::WaitRequest, 
+                                         MessageType::WaitReply, reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.

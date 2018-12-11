@@ -40,12 +40,12 @@ public:
    * @return ray::Status.
    */
   ray::Status Disconnect();
-  ray::Status ReadMessage(MessageType type, uint8_t** message);
+  ray::Status ReadMessage(MessageType type, uint8_t *&message);
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
-  /// A mutex to protect stateful operations of the local scheduler client.
-  std::mutex mutex;
-
+  ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
+                                 uint8_t *&reply_message,
+                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
 private:
   // TODO(rkn): The io methods below should be removed.
   int connect_ipc_sock(const std::string &socket_pathname);
@@ -55,6 +55,8 @@ private:
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn_;
+  /// A mutex to protect stateful operations of the raylet client.
+  std::mutex mutex_;
   /// A mutex to protect write operations of the local scheduler client.
   std::mutex write_mutex_;
 };
