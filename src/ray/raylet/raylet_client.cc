@@ -153,16 +153,14 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
     length = 0;
   }
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
-    return ray::Status(ray::StatusCode::IOError,
-                       "[RayletClient] Raylet connection closed");
+    return ray::Status::IOError("[RayletClient] Raylet connection closed.");
   }
   if (type_field != static_cast<int64_t>(type)) {
-    return ray::Status(
-        ray::StatusCode::TypeError,
+    return ray::Status::TypeError(
         std::string("[RayletClient] Raylet connection corrupted. ") +
-            "Expected message type: " + std::to_string(static_cast<int64_t>(type)) +
-            "; got message type: " + std::to_string(type_field) +
-            ". Check logs or dmesg for previous errors.");
+        "Expected message type: " + std::to_string(static_cast<int64_t>(type)) +
+        "; got message type: " + std::to_string(type_field) +
+        ". Check logs or dmesg for previous errors.");
   }
   return ray::Status::OK();
 }
@@ -174,7 +172,7 @@ ray::Status RayletConnection::WriteMessage(MessageType type,
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
   int64_t type_field = static_cast<int64_t>(type);
-  auto io_error = ray::Status::IOError("Connection closed unexpectedly.");
+  auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
   closed = write_bytes((uint8_t *)&version, sizeof(version));
   if (closed) return io_error;
@@ -214,7 +212,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &cli
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
-  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet");
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
@@ -278,9 +276,6 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
       fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
-  RAY_CHECK(status.ok()) << "raylet_FetchOrReconstruct failed: "
-                         << "raylet client may be closed, check raylet status. "
-                         << "return value: " << status.ToString();
   return status;
 }
 
