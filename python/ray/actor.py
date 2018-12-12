@@ -383,7 +383,8 @@ class ActorClass(object):
         if worker.mode == ray.LOCAL_MODE:
             worker.actors[actor_id] = self._modified_class.__new__(
                 self._modified_class)
-            worker.actors[actor_id].__init__(*copy.deepcopy(args))
+            worker.actors[actor_id].__init__(*copy.deepcopy(args),
+                                             **copy.deepcopy(kwargs))
         else:
             # Export the actor.
             if not self._exported:
