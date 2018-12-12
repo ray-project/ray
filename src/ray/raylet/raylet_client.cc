@@ -130,7 +130,8 @@ ray::Status RayletConnection::Disconnect() {
   return WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
 }
 
-ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t *&message) {
+ray::Status RayletConnection::ReadMessage(MessageType type,
+                                          std::unique_ptr<uint8_t[]> &message) {
   int64_t version;
   int64_t type_field;
   int64_t length;
@@ -141,18 +142,18 @@ ray::Status RayletConnection::ReadMessage(MessageType type, uint8_t *&message) {
   if (closed) goto disconnected;
   closed = read_bytes((uint8_t *)&length, sizeof(length));
   if (closed) goto disconnected;
-  message = (uint8_t *)malloc(length * sizeof(uint8_t));
-  closed = read_bytes(message, length);
+  message = std::unique_ptr<uint8_t[]>(new uint8_t[length]);
+  closed = read_bytes(message.get(), length);
   if (closed) {
     // Handle the case in which the socket is closed.
-    free(message);
+    message.reset(nullptr);
   disconnected:
     message = nullptr;
     type_field = static_cast<int64_t>(MessageType::DisconnectClient);
     length = 0;
   }
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
-    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
+    RAY_LOG(DEBUG) << "Exiting because raylet closed connection.";
     exit(1);
   }
   if (type_field != static_cast<int64_t>(type)) {
@@ -186,10 +187,9 @@ ray::Status RayletConnection::WriteMessage(MessageType type,
   return ray::Status::OK();
 }
 
-ray::Status RayletConnection::AtomicRequestReply(MessageType request_type,
-                                                 MessageType reply_type,
-                                                 uint8_t *&reply_message,
-                                                 flatbuffers::FlatBufferBuilder *fbb) {
+ray::Status RayletConnection::AtomicRequestReply(
+    MessageType request_type, MessageType reply_type,
+    std::unique_ptr<uint8_t[]> &reply_message, flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   auto status = WriteMessage(request_type, fbb);
   if (!status.ok()) return status;
@@ -228,13 +228,13 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
 }
 
 ray::raylet::TaskSpecification *RayletClient::GetTask() {
-  uint8_t *reply;
-  // Receive a task from the local scheduler. This will block until the local
+  std::unique_ptr<uint8_t[]> reply;
+  // Receive a task from the raylet. This will block until the local
   // scheduler gives this client a task.
   RAY_CHECK_OK(
       conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply));
   // Parse the flatbuffer object.
-  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
   // Set the resource IDs for this task.
   resource_ids_.clear();
   for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
@@ -260,9 +260,6 @@ ray::raylet::TaskSpecification *RayletClient::GetTask() {
 
   ray::raylet::TaskSpecification *task_spec = new ray::raylet::TaskSpecification(
       string_from_flatbuf(*reply_message->task_spec()));
-
-  // Free the original message from the local scheduler.
-  free(reply);
 
   // Return the copy of the task spec and pass ownership to the caller.
   return task_spec;
@@ -295,22 +292,21 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
+ray::Status RayletClient::Wait(
     const std::vector<ObjectID> &object_ids, int num_returns,
-    int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id) {
+    int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
+    WaitResultPair &result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  uint8_t *reply;
-  RAY_CHECK_OK(conn_->AtomicRequestReply(MessageType::WaitRequest, MessageType::WaitReply,
-                                         reply, &fbb));
+  std::unique_ptr<uint8_t[]> reply;
+  auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,
+                                          MessageType::WaitReply, reply, &fbb);
   // Parse the flatbuffer object.
-  auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
-  // Convert result.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
   for (uint i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::from_binary(found->Get(i)->str());
@@ -321,9 +317,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> RayletClient::Wait(
     ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
     result.second.push_back(object_id);
   }
-  // Free the original message from the local scheduler.
-  free(reply);
-  return result;
+  return status;
 }
 
 ray::Status RayletClient::PushError(const JobID &job_id, const std::string &type,

@@ -18,13 +18,13 @@ using ray::UniqueID;
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
+using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
 class RayletConnection {
  public:
-  /// Connect to the local scheduler.
+  /// Connect to the raylet.
   ///
-  /// \param raylet_socket The name of the socket to use to connect to the
-  ///        local scheduler.
+  /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   ///        additional message will be sent to register as one.
@@ -34,17 +34,17 @@ class RayletConnection {
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
 
   ~RayletConnection() { close(conn_); }
-  /// Notify the local scheduler that this client is disconnecting gracefully. This
-  /// is used by actors to exit gracefully so that the local scheduler doesn't
+  /// Notify the raylet that this client is disconnecting gracefully. This
+  /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
   ray::Status Disconnect();
-  ray::Status ReadMessage(MessageType type, uint8_t *&message);
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
-                                 uint8_t *&reply_message,
+                                 std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
@@ -57,13 +57,13 @@ class RayletConnection {
   int conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
-  /// A mutex to protect write operations of the local scheduler client.
+  /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
 };
 
 class RayletClient {
  public:
-  /// Connect to the local scheduler.
+  /// Connect to the raylet.
   ///
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
@@ -91,12 +91,12 @@ class RayletClient {
   /// \return The assigned task.
   ray::raylet::TaskSpecification *GetTask();
 
-  /// Tell the local scheduler that the client has finished executing a task.
+  /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
   ray::Status TaskDone();
 
-  /// Tell the local scheduler to reconstruct or fetch objects.
+  /// Tell the raylet to reconstruct or fetch objects.
   ///
   /// \param object_ids The IDs of the objects to reconstruct.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
@@ -104,7 +104,7 @@ class RayletClient {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
                                  const TaskID &current_task_id);
-  /// Notify the local scheduler that this client (worker) is no longer blocked.
+  /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
@@ -118,11 +118,13 @@ class RayletClient {
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
   /// \param current_task_id The task that called wait.
-  /// \return A pair with the first element containing the object ids that were
+  /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> Wait(
+  /// \return ray::Status.
+  ray::Status Wait(
       const std::vector<ObjectID> &object_ids, int num_returns,
-      int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id);
+      int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
+      WaitResultPair &result);
 
   /// Push an error to the relevant driver.
   ///
@@ -157,9 +159,9 @@ class RayletClient {
   bool IsWorker() const { return is_worker_; }
 
   /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
-  std::vector<int> GetGPUIDs() { return gpu_ids_; }
+  const std::vector<int> &GetGPUIDs() const { return gpu_ids_; }
 
-  ResourceMappingType GetResourceIDs() { return resource_ids_; }
+  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
   UniqueID client_id_;

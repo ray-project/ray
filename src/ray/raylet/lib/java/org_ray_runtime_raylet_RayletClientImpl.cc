@@ -56,7 +56,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
     JNIEnv *env, jclass, jlong client, jbyteArray cursorId, jobject taskBuff, jint pos,
     jint taskSize) {
-  auto conn = reinterpret_cast<RayletClient *>(client);
+  auto client = reinterpret_cast<RayletClient *>(client);
 
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
@@ -66,7 +66,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 
   auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
   ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
-  RAY_CHECK_OK(conn->SubmitTask(execution_dependencies, task_spec));
+  RAY_CHECK_OK(client->SubmitTask(execution_dependencies, task_spec));
 }
 
 /*
@@ -76,10 +76,10 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(
     JNIEnv *env, jclass, jlong client) {
-  auto conn = reinterpret_cast<RayletClient *>(client);
+  auto client = reinterpret_cast<RayletClient *>(client);
 
   // TODO: handle actor failure later
-  ray::raylet::TaskSpecification *spec = conn->GetTask();
+  ray::raylet::TaskSpecification *spec = client->GetTask();
 
   // We serialize the task specification using flatbuffers and then parse the
   // resulting string. This awkwardness is due to the fact that the Java
@@ -111,9 +111,9 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *, jclass, jlong client) {
-  auto conn = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(conn->Disconnect());
-  delete conn;
+  auto client = reinterpret_cast<RayletClient *>(client);
+  RAY_CHECK_OK(client->Disconnect());
+  delete client;
 }
 
 /*
@@ -135,8 +135,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
     env->DeleteLocalRef(object_id_bytes);
   }
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
-  auto conn = reinterpret_cast<RayletClient *>(client);
-  auto status = conn->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
+  auto client = reinterpret_cast<RayletClient *>(client);
+  auto status = client->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
   return static_cast<jint>(status.code());
 }
 
@@ -148,8 +148,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
     JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
-  auto conn = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(conn->NotifyUnblocked(*current_task_id.PID));
+  auto client = reinterpret_cast<RayletClient *>(client);
+  RAY_CHECK_OK(client->NotifyUnblocked(*current_task_id.PID));
 }
 
 /*
@@ -172,12 +172,13 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
   }
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
 
-  auto conn = reinterpret_cast<RayletClient *>(client);
+  auto client = reinterpret_cast<RayletClient *>(client);
 
   // Invoke wait.
-  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
-      conn->Wait(object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal),
-                 *current_task_id.PID);
+  WaitResultPair result;
+  auto status = client->Wait(object_ids, numReturns, timeoutMillis,
+                           static_cast<bool>(isWaitLocal), *current_task_id.PID, result);
+  RAY_CHECK(status.ok()) << status.ToString() << " Waiting for objects failed.";
 
   // Convert result to java object.
   jboolean put_value = true;
@@ -246,8 +247,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
   }
-  auto conn = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(conn->FreeObjects(object_ids, localOnly));
+  auto client = reinterpret_cast<RayletClient *>(client);
+  RAY_CHECK_OK(client->FreeObjects(object_ids, localOnly));
 }
 
 #ifdef __cplusplus
