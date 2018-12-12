@@ -48,7 +48,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               max_sample_requests_in_flight_per_worker=2,
               broadcast_interval=1,
               num_sgd_iter=1,
-              minibatch_buffer_size=1):
+              minibatch_buffer_size=1,
+              _fake_gpus=False):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
@@ -64,10 +65,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     "parallel data loader buffers as minibatch buffers: "
                     "{} vs {}".format(num_data_loader_buffers,
                                       minibatch_buffer_size))
-            if train_batch_size // max(1, num_gpus) % (
-                    sample_batch_size // num_envs_per_worker) != 0:
-                raise ValueError(
-                    "Sample batches must evenly divide across GPUs.")
             self.learner = TFMultiGPULearner(
                 self.local_evaluator,
                 lr=lr,
@@ -75,7 +72,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 train_batch_size=train_batch_size,
                 num_data_loader_buffers=num_data_loader_buffers,
                 minibatch_buffer_size=minibatch_buffer_size,
-                num_sgd_iter=num_sgd_iter)
+                num_sgd_iter=num_sgd_iter,
+                _fake_gpus=_fake_gpus)
         else:
             self.learner = LearnerThread(self.local_evaluator,
                                          minibatch_buffer_size, num_sgd_iter)
@@ -100,8 +98,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.batch_buffer = []
 
         if replay_proportion:
-            assert replay_buffer_num_slots > 0
-            assert (replay_buffer_num_slots * sample_batch_size >
+            if replay_buffer_num_slots * sample_batch_size <= train_batch_size:
+                raise ValueError(
+                    "Replay buffer size is too small to produce train, "
+                    "please increase replay_buffer_num_slots.",
+                    replay_buffer_num_slots, sample_batch_size,
                     train_batch_size)
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
@@ -273,7 +274,8 @@ class TFMultiGPULearner(LearnerThread):
                  train_batch_size=500,
                  num_data_loader_buffers=1,
                  minibatch_buffer_size=1,
-                 num_sgd_iter=1):
+                 num_sgd_iter=1,
+                 _fake_gpus=False):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
@@ -283,9 +285,11 @@ class TFMultiGPULearner(LearnerThread):
         self.train_batch_size = train_batch_size
         if not num_gpus:
             self.devices = ["/cpu:0"]
+        elif _fake_gpus:
+            self.devices = ["/cpu:{}".format(i) for i in range(num_gpus)]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
-            logger.info("TFMultiGPULearner devices {}".format(self.devices))
+        logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
         self.policy = self.local_evaluator.policy_map["default"]
