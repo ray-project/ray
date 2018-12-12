@@ -294,6 +294,12 @@ def test_simple(ray_start_reconstruction):
         del values
 
 
+def sorted_random_indexes(total, output_num):
+    random_indexes = [np.random.randint(total) for _ in range(output_num)]
+    random_indexes.sort()
+    return random_indexes
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -338,8 +344,8 @@ def test_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
@@ -398,8 +404,8 @@ def test_multiple_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
 

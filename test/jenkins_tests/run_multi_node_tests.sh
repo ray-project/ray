@@ -249,6 +249,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_local.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/rllib/test/test_io.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_checkpoint_restore.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -299,6 +302,20 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/python/ray/rllib/test/test_rollout.sh
 
+# Run all single-agent regression tests (3x retry each)
+for yaml in $(ls $ROOT_DIR/../../python/ray/rllib/tuned_examples/regression_tests); do
+    docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/run_regression_tests.py /ray/python/ray/rllib/tuned_examples/regression_tests/$yaml
+done
+
+# Try a couple times since it's stochastic
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py || \
+    docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py || \
+    docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+        python /ray/python/ray/rllib/test/multiagent_pendulum.py
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
     --smoke-test
@@ -321,6 +338,10 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_async_hyperband.py \
+    --smoke-test
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/logging_example.py \
     --smoke-test
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \

@@ -10,8 +10,10 @@ import pickle
 import six
 import tempfile
 import tensorflow as tf
+from types import FunctionType
 
 import ray
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -122,10 +124,44 @@ COMMON_CONFIG = {
         "intra_op_parallelism_threads": 8,
         "inter_op_parallelism_threads": 8,
     },
-    # Whether to LZ4 compress observations
+    # Whether to LZ4 compress individual observations
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+
+    # === Offline Data Input / Output ===
+    # Specify how to generate experiences:
+    #  - "sampler": generate experiences via online simulation (default)
+    #  - a local directory or file glob expression (e.g., "/tmp/*.json")
+    #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
+    #    "s3://bucket/2.json"])
+    #  - a dict with string keys and sampling probabilities as values (e.g.,
+    #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+    #  - a function that returns a rllib.offline.InputReader
+    "input": "sampler",
+    # Specify how to evaluate the current policy. This only makes sense to set
+    # when the input is not already generating simulation data:
+    #  - None: don't evaluate the policy. The episode reward and other
+    #    metrics will be NaN if using offline data.
+    #  - "simulation": run the environment in the background, but use
+    #    this data for evaluation only and not for learning.
+    #  - "counterfactual": use counterfactual policy evaluation to estimate
+    #    performance (this option is not implemented yet).
+    "input_evaluation": None,
+    # Specify where experiences should be saved:
+    #  - None: don't save any experiences
+    #  - "logdir" to save to the agent log dir
+    #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
+    #  - a function that returns a rllib.offline.OutputWriter
+    "output": None,
+    # What sample batch columns to LZ4 compress in the output data.
+    "output_compress_columns": ["obs", "new_obs"],
+    # Max output file size before rolling over to a new file.
+    "output_max_file_size": 64 * 1024 * 1024,
+    # Whether to run postprocess_trajectory() on the trajectory fragments from
+    # offline inputs. Whether this makes sense is algorithm-specific.
+    # TODO(ekl) implement this and multi-agent batch handling
+    # "postprocess_inputs": False,
 
     # === Multiagent ===
     "multiagent": {
@@ -179,7 +215,6 @@ class Agent(Trainable):
         """
 
         config = config or {}
-        Agent._validate_config(config)
 
         # Vars to synchronize to evaluators on each train call
         self.global_vars = {"timestep": 0}
@@ -267,6 +302,7 @@ class Agent(Trainable):
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
         self.config = merged_config
+        Agent._validate_config(self.config)
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
@@ -315,8 +351,10 @@ class Agent(Trainable):
 
         if state is None:
             state = []
+        preprocessed = self.local_evaluator.preprocessors[policy_id].transform(
+            observation)
         filtered_obs = self.local_evaluator.filters[policy_id](
-            observation, update=False)
+            preprocessed, update=False)
         if state:
             return self.local_evaluator.for_policy(
                 lambda p: p.compute_single_action(filtered_obs, state),
@@ -389,6 +427,32 @@ class Agent(Trainable):
                                  self.config) for i in range(count)
         ]
 
+    @classmethod
+    def resource_help(cls, config):
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers` and other configs. See the "
+                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: {}".format(config))
+
+    @staticmethod
+    def _validate_config(config):
+        if "gpu" in config:
+            raise ValueError(
+                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
+                "instead.")
+        if "gpu_fraction" in config:
+            raise ValueError(
+                "The `gpu_fraction` config is deprecated, please use "
+                "`num_gpus=<fraction>` instead.")
+        if "use_gpu_for_workers" in config:
+            raise ValueError(
+                "The `use_gpu_for_workers` config is deprecated, please use "
+                "`num_gpus_per_worker=1` instead.")
+        if (config["input"] == "sampler"
+                and config["input_evaluation"] is not None):
+            raise ValueError(
+                "`input_evaluation` should not be set when input=sampler")
+
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
         def session_creator():
@@ -396,6 +460,32 @@ class Agent(Trainable):
                 config["tf_session_args"]))
             return tf.Session(
                 config=tf.ConfigProto(**config["tf_session_args"]))
+
+        if isinstance(config["input"], FunctionType):
+            input_creator = config["input"]
+        elif config["input"] == "sampler":
+            input_creator = (lambda ioctx: ioctx.default_sampler_input())
+        elif isinstance(config["input"], dict):
+            input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
+        else:
+            input_creator = (lambda ioctx: JsonReader(ioctx, config["input"]))
+
+        if isinstance(config["output"], FunctionType):
+            output_creator = config["output"]
+        elif config["output"] is None:
+            output_creator = (lambda ioctx: NoopOutput())
+        elif config["output"] == "logdir":
+            output_creator = (lambda ioctx: JsonWriter(
+                ioctx,
+                ioctx.log_dir,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
+        else:
+            output_creator = (lambda ioctx: JsonWriter(
+                    ioctx,
+                    config["output"],
+                    max_file_size=config["output_max_file_size"],
+                    compress_columns=config["output_compress_columns"]))
 
         return cls(
             env_creator,
@@ -419,30 +509,12 @@ class Agent(Trainable):
             policy_config=config,
             worker_index=worker_index,
             monitor_path=self.logdir if config["monitor"] else None,
+            log_dir=self.logdir,
             log_level=config["log_level"],
-            callbacks=config["callbacks"])
-
-    @classmethod
-    def resource_help(cls, config):
-        return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers` and other configs. See the "
-                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: {}".format(config))
-
-    @staticmethod
-    def _validate_config(config):
-        if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
-        if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
-        if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            callbacks=config["callbacks"],
+            input_creator=input_creator,
+            input_evaluation_method=config["input_evaluation"],
+            output_creator=output_creator)
 
     def __getstate__(self):
         state = {}

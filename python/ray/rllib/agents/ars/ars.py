@@ -305,7 +305,7 @@ class ARSAgent(Agent):
         num_episodes, num_timesteps = 0, 0
         results = []
         while num_episodes < min_episodes:
-            logger.info(
+            logger.debug(
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
             rollout_ids = [
