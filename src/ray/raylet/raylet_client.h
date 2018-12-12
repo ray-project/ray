@@ -122,10 +122,9 @@ class RayletClient {
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
-  ray::Status Wait(
-      const std::vector<ObjectID> &object_ids, int num_returns,
-      int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
-      WaitResultPair &result);
+  ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+                   int64_t timeout_milliseconds, bool wait_local,
+                   const TaskID &current_task_id, WaitResultPair &result);
 
   /// Push an error to the relevant driver.
   ///
