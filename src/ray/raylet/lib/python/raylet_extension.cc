@@ -39,7 +39,8 @@ static void PyRayletClient_dealloc(PyRayletClient *self) {
 }
 
 static PyObject *PyRayletClient_Disconnect(PyRayletClient *self) {
-  RAY_CHECK_OK(self->raylet_client->Disconnect());
+  auto status = self->raylet_client->Disconnect();
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to disconnect.");
   Py_RETURN_NONE;
 }
 
@@ -48,11 +49,10 @@ static PyObject *PyRayletClient_SubmitTask(PyRayletClient *self, PyObject *args)
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  auto client = self->raylet_client;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
-
-  RAY_CHECK_OK(client->SubmitTask(*task->execution_dependencies, *task->task_spec));
-
+  auto status =
+      self->raylet_client->SubmitTask(*task->execution_dependencies, *task->task_spec);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to submit a task to raylet.");
   Py_RETURN_NONE;
 }
 
@@ -62,7 +62,8 @@ static PyObject *PyRayletClient_GetTask(PyRayletClient *self) {
   /* Drop the global interpreter lock while we get a task because
    * raylet_GetTask may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  task_spec = self->raylet_client->GetTask();
+  auto status = self->raylet_client->GetTask(task_spec);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to get a task from raylet.");
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec);
 }
@@ -94,8 +95,7 @@ static PyObject *PyRayletClient_FetchOrReconstruct(PyRayletClient *self, PyObjec
   } else {
     std::ostringstream stream;
     stream << status.ToString() << " raylet_FetchOrReconstruct failed: "
-           << "local scheduler client may be closed, "
-           << "check raylet status. return value: ";
+           << "raylet client may be closed, check raylet status. return value: ";
     PyErr_SetString(CommonError, stream.str().c_str());
     Py_RETURN_NONE;
   }
@@ -106,7 +106,8 @@ static PyObject *PyRayletClient_NotifyUnblocked(PyRayletClient *self, PyObject *
   if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
-  RAY_CHECK_OK(self->raylet_client->NotifyUnblocked(current_task_id));
+  auto status = self->raylet_client->NotifyUnblocked(current_task_id);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to notify unblocked.");
   Py_RETURN_NONE;
 }
 
@@ -197,7 +198,7 @@ static PyObject *PyRayletClient_Wait(PyRayletClient *self, PyObject *args) {
   WaitResultPair result;
   auto status = self->raylet_client->Wait(object_ids, num_returns, timeout_ms, wait_local,
                                           current_task_id, result);
-  RAY_CHECK(status.ok()) << status.ToString() << " Waiting for objects failed.";
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to wait for objects.");
 
   // Convert result to py object.
   PyObject *py_found = PyList_New(static_cast<Py_ssize_t>(result.first.size()));
@@ -224,10 +225,10 @@ static PyObject *PyRayletClient_PushError(PyRayletClient *self, PyObject *args) 
     return NULL;
   }
 
-  RAY_CHECK_OK(self->raylet_client->PushError(
+  auto status = self->raylet_client->PushError(
       job_id, std::string(type, type_length),
-      std::string(error_message, error_message_length), timestamp));
-
+      std::string(error_message, error_message_length), timestamp);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to push errors to raylet.");
   Py_RETURN_NONE;
 }
 
@@ -319,8 +320,8 @@ static PyObject *PyRayletClient_PushProfileEvents(PyRayletClient *self, PyObject
     profile_info.profile_events.emplace_back(new ProfileEventT(profile_event));
   }
 
-  RAY_CHECK_OK(self->raylet_client->PushProfileEvents(profile_info));
-
+  auto status = self->raylet_client->PushProfileEvents(profile_info);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to push profile events to raylet.");
   Py_RETURN_NONE;
 }
 
@@ -354,7 +355,8 @@ static PyObject *PyRayletClient_FreeObjects(PyRayletClient *self, PyObject *args
   }
 
   // Invoke raylet_FreeObjects.
-  RAY_CHECK_OK(self->raylet_client->FreeObjects(object_ids, local_only));
+  auto status = self->raylet_client->FreeObjects(object_ids, local_only);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to free objects.");
   Py_RETURN_NONE;
 }
 

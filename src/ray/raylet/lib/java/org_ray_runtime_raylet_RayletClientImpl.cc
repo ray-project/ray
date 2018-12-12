@@ -79,7 +79,9 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   auto client = reinterpret_cast<RayletClient *>(client);
 
   // TODO: handle actor failure later
-  ray::raylet::TaskSpecification *spec = client->GetTask();
+  ray::raylet::TaskSpecification *spec;
+  auto status = client->GetTask(spec);
+  RAY_CHECK(status.ok()) << status.ToString() << " Failed to get a task from raylet."
 
   // We serialize the task specification using flatbuffers and then parse the
   // resulting string. This awkwardness is due to the fact that the Java

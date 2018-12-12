@@ -153,16 +153,16 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
     length = 0;
   }
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
-    RAY_LOG(DEBUG) << "Exiting because raylet closed connection.";
-    exit(1);
+    return ray::Status(ray::StatusCode::IOError,
+                       "[RayletClient] Raylet connection closed");
   }
   if (type_field != static_cast<int64_t>(type)) {
-    std::string err_msg =
-        "Problem communicating with raylet from worker: "
-        "check logs or dmesg for previous errors.";
-    RAY_LOG(FATAL) << err_msg;
-    return ray::Status::UnknownError(err_msg);
-    // TODO: Why don't fail-fast/exit here?
+    return ray::Status(
+        ray::StatusCode::TypeError,
+        std::string("[RayletClient] Raylet connection corrupted. ") +
+            "Expected message type: " + std::to_string(static_cast<int64_t>(type)) +
+            "; got message type: " + std::to_string(type_field) +
+            ". Check logs or dmesg for previous errors.");
   }
   return ray::Status::OK();
 }
@@ -214,7 +214,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &cli
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
-  RAY_CHECK(status.ok()) << "Unable to register worker with raylet";
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet");
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
@@ -227,12 +227,13 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::raylet::TaskSpecification *RayletClient::GetTask() {
+ray::Status RayletClient::GetTask(ray::raylet::TaskSpecification *&task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the local
   // scheduler gives this client a task.
-  RAY_CHECK_OK(
-      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply));
+  auto status =
+      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply);
+  if (!status.ok()) return status;
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
   // Set the resource IDs for this task.
@@ -258,11 +259,10 @@ ray::raylet::TaskSpecification *RayletClient::GetTask() {
     }
   }
 
-  ray::raylet::TaskSpecification *task_spec = new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec()));
-
   // Return the copy of the task spec and pass ownership to the caller.
-  return task_spec;
+  task_spec = new ray::raylet::TaskSpecification(
+      string_from_flatbuf(*reply_message->task_spec()));
+  return ray::Status::OK();
 }
 
 ray::Status RayletClient::TaskDone() {
@@ -292,10 +292,9 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-ray::Status RayletClient::Wait(
-    const std::vector<ObjectID> &object_ids, int num_returns,
-    int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
-    WaitResultPair &result) {
+ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
+                               int64_t timeout_milliseconds, bool wait_local,
+                               const TaskID &current_task_id, WaitResultPair &result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
@@ -305,6 +304,7 @@ ray::Status RayletClient::Wait(
   std::unique_ptr<uint8_t[]> reply;
   auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,
                                           MessageType::WaitReply, reply, &fbb);
+  if (!status.ok()) return status;
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
@@ -317,7 +317,7 @@ ray::Status RayletClient::Wait(
     ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
     result.second.push_back(object_id);
   }
-  return status;
+  return ray::Status::OK();
 }
 
 ray::Status RayletClient::PushError(const JobID &job_id, const std::string &type,
@@ -339,7 +339,8 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
   // Don't be too strict for profile errors. Just create logs and prevent it from crash.
   if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString() << " Failed to push profile events.";
+    RAY_LOG(ERROR) << status.ToString()
+                   << "[RayletClient] Failed to push profile events.";
   }
   return ray::Status::OK();
 }

@@ -88,8 +88,9 @@ class RayletClient {
   /// a task to this worker. The caller takes ownership of the returned task
   /// specification and must free it.
   ///
-  /// \return The assigned task.
-  ray::raylet::TaskSpecification *GetTask();
+  /// \param task_spec The assigned task.
+  /// \return ray::Status.
+  ray::Status GetTask(ray::raylet::TaskSpecification *&task_spec);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
