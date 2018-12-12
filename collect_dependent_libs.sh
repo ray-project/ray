@@ -13,6 +13,7 @@ function usage() {
   echo "  -h|--help               print the help info"
   echo "  -d|--target-dir         the target directory to put all the thirdparty libs"
   echo "  -n|--no-build           do not build ray, used in case that ray is already built"
+  echo "  -r|--resource           the resource file name (default: resource.txt)"
   echo
 }
 
@@ -23,6 +24,8 @@ DIR="$ROOT_DIR/thirdparty/external_project_libs"
 # By default ray will be build before copying the libs.
 # Users can diable the building process if they have built ray.
 BUILD="YES"
+
+RESOURCE="resource.txt"
 
 # Parse options
 while [[ $# > 0 ]]; do
@@ -38,6 +41,10 @@ while [[ $# > 0 ]]; do
       ;;
     -n|--no-build)
       BUILD="NO"
+      ;;
+    -r|--resource)
+      RESOURCE="$2"
+      shift
       ;;
     *)
       echo "ERROR: unknown option \"$key\""
@@ -90,19 +97,20 @@ cp_one_lib $ARROW_BUILD_DIR/snappy_ep/src/snappy_ep-install
 cp_one_lib $ARROW_BUILD_DIR/thrift_ep/src/thrift_ep-install
 
 # generate the export script.
-echo "export BOOST_ROOT=$DIR/boost-install" > $DIR/resource.txt
-echo "export RAY_BOOST_ROOT=\$BOOST_ROOT" >> $DIR/resource.txt
+echo "Output the exporting resource file to $DIR/$RESOURCE."
+echo "export BOOST_ROOT=$DIR/boost-install" > $DIR/$RESOURCE
+echo "export RAY_BOOST_ROOT=\$BOOST_ROOT" >> $DIR/$RESOURCE
 
-echo "export FLATBUFFERS_HOME=$DIR/flatbuffers-install" >> $DIR/resource.txt
-echo "export RAY_FLATBUFFERS_HOME=\$FLATBUFFERS_HOME" >> $DIR/resource.txt
+echo "export FLATBUFFERS_HOME=$DIR/flatbuffers-install" >> $DIR/$RESOURCE
+echo "export RAY_FLATBUFFERS_HOME=\$FLATBUFFERS_HOME" >> $DIR/$RESOURCE
 
-echo "export GTEST_HOME=$DIR/googletest-install" >> $DIR/resource.txt
-echo "export RAY_GTEST_HOME=\$GTEST_HOME" >> $DIR/resource.txt
+echo "export GTEST_HOME=$DIR/googletest-install" >> $DIR/$RESOURCE
+echo "export RAY_GTEST_HOME=\$GTEST_HOME" >> $DIR/$RESOURCE
 
-echo "export GLOG_HOME=$DIR/glog-install" >> $DIR/resource.txt
-echo "export RAY_GLOG_HOME=\$GLOG_HOME" >> $DIR/resource.txt
+echo "export GLOG_HOME=$DIR/glog-install" >> $DIR/$RESOURCE
+echo "export RAY_GLOG_HOME=\$GLOG_HOME" >> $DIR/$RESOURCE
 
-echo "export THRIFT_HOME=$DIR/snappy_ep-install" >> $DIR/resource.txt
-echo "export SNAPPY_HOME=$DIR/thrift_ep-install" >> $DIR/resource.txt
+echo "export THRIFT_HOME=$DIR/snappy_ep-install" >> $DIR/$RESOURCE
+echo "export SNAPPY_HOME=$DIR/thrift_ep-install" >> $DIR/$RESOURCE
 
 popd
