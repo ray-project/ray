@@ -66,6 +66,15 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         })
         self._wait_for(optimizer, 1000, 1000)
 
+    def testMultiGPUParallelLoad(self):
+        local, remotes = self._make_evs()
+        optimizer = AsyncSamplesOptimizer(local, remotes, {
+            "num_gpus": 2,
+            "num_data_loader_buffers": 2,
+            "_fake_gpus": True
+        })
+        self._wait_for(optimizer, 1000, 1000)
+
     def testMultiplePasses(self):
         local, remotes = self._make_evs()
         optimizer = AsyncSamplesOptimizer(
