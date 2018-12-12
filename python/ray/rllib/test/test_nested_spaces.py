@@ -214,6 +214,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
                     "use_lstm": test_lstm,
@@ -242,6 +243,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite2",
                 },
@@ -301,6 +303,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "multiagent": {
                     "policy_graphs": {
                         "tuple_policy": (
