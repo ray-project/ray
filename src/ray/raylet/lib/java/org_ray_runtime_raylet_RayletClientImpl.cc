@@ -66,7 +66,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 
   auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
   ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
-  RAY_CHECK_OK(client->SubmitTask(execution_dependencies, task_spec));
+  auto status = client->SubmitTask(execution_dependencies, task_spec);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to submit a task to raylet.");
 }
 
 /*
@@ -81,7 +82,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   // TODO: handle actor failure later
   ray::raylet::TaskSpecification *spec;
   auto status = client->GetTask(spec);
-  RAY_CHECK(status.ok()) << status.ToString() << " Failed to get a task from raylet."
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to get a task from raylet.");
 
   // We serialize the task specification using flatbuffers and then parse the
   // resulting string. This awkwardness is due to the fact that the Java
@@ -114,7 +115,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *, jclass, jlong client) {
   auto client = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(client->Disconnect());
+  RAY_CHECK_OK_PREPEND(client->Disconnect(), "[RayletClient] Failed to disconnect.");
   delete client;
 }
 
@@ -151,7 +152,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
     JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
   auto client = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(client->NotifyUnblocked(*current_task_id.PID));
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to notify unblocked.");
 }
 
 /*
@@ -178,9 +179,10 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
 
   // Invoke wait.
   WaitResultPair result;
-  auto status = client->Wait(object_ids, numReturns, timeoutMillis,
-                           static_cast<bool>(isWaitLocal), *current_task_id.PID, result);
-  RAY_CHECK(status.ok()) << status.ToString() << " Waiting for objects failed.";
+  auto status =
+      client->Wait(object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal),
+                   *current_task_id.PID, result);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to wait for objects.");
 
   // Convert result to java object.
   jboolean put_value = true;
@@ -250,7 +252,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     env->DeleteLocalRef(object_id_bytes);
   }
   auto client = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK(client->FreeObjects(object_ids, localOnly));
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to free objects.");
 }
 
 #ifdef __cplusplus
