@@ -19,13 +19,12 @@ class SamplerInput(InputReader):
 
     def __init__(self, sampler):
         self.sampler = sampler
-        self.pending = []
 
     @override(InputReader)
     def next(self):
-        if self.pending:
-            batch = self.pending.pop(0)
+        batches = [self.sampler.get_data()]
+        batches.extend(self.sampler.get_extra_batches())
+        if len(batches) > 1:
+            return batches[0].concat_samples(batches)
         else:
-            batch = self.sampler.get_data()
-            self.pending.extend(self.sampler.get_extra_batches())
-        return batch
+            return batches[0]
