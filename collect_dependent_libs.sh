@@ -110,7 +110,7 @@ echo "export RAY_GTEST_HOME=\$GTEST_HOME" >> $DIR/$RESOURCE
 echo "export GLOG_HOME=$DIR/glog-install" >> $DIR/$RESOURCE
 echo "export RAY_GLOG_HOME=\$GLOG_HOME" >> $DIR/$RESOURCE
 
-echo "export THRIFT_HOME=$DIR/snappy_ep-install" >> $DIR/$RESOURCE
-echo "export SNAPPY_HOME=$DIR/thrift_ep-install" >> $DIR/$RESOURCE
+echo "export SNAPPY_HOME=$DIR/snappy_ep-install" >> $DIR/$RESOURCE
+echo "export THRIFT_HOME=$DIR/thrift_ep-install" >> $DIR/$RESOURCE
 
 popd
