@@ -1119,7 +1119,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   for (int64_t i = 0; i < num_returns; i++) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
-    object_directory_->LookupLocations(
+    RAY_CHECK_OK(object_directory_->LookupLocations(
         object_id,
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
@@ -1135,7 +1135,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
               *task_marked_as_failed = true;
             }
           }
-        });
+        }));
   }
 }
 
