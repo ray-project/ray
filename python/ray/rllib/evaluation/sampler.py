@@ -256,7 +256,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        logger.warn("no episode horizon specified, assuming inf")
+        logger.debug("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 
@@ -342,12 +342,12 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is not intentional, check that the "
-                "the `horizon` config is set correctly, or consider setting "
-                "`batch_mode` to 'truncate_episodes'. Note that in "
-                "multi-agent environments, `sample_batch_size` sets the "
-                "batch size based on environment steps, not the steps of "
-                "individual agents.")
+                "the sampler. If this is more than you expected, check that "
+                "that you set a horizon on your environment correctly. Note "
+                "that in multi-agent environments, `sample_batch_size` sets "
+                "the batch size based on environment steps, not the steps of "
+                "individual agents, which can result in unexpectedly large "
+                "batches.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
