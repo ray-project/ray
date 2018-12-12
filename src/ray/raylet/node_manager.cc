@@ -412,6 +412,9 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
       HandleDisconnectedActor(actor_entry.first, /*was_local=*/false);
     }
   }
+  // Notify the object directory that the client has been removed so that it
+  // can remove it from any cached locations.
+  object_directory_->HandleClientRemoved(client_id);
 }
 
 void NodeManager::HeartbeatAdded(const ClientID &client_id,

@@ -143,6 +143,27 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
+void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+  for (auto &listener : listeners_) {
+    const ObjectID &object_id = listener.first;
+    if (listener.second.current_object_locations.count(client_id) > 0) {
+      // If the subscribed object has the removed client as a location, update
+      // its locations with an empty log so that the location will be removed.
+      UpdateObjectLocations({}, gcs_client_->client_table(),
+                            &listener.second.current_object_locations,
+                            &listener.second.has_been_created);
+      // Re-call all the subscribed callbacks for the object, since its
+      // locations have changed.
+      for (const auto &callback_pair : listener.second.callbacks) {
+        // It is safe to call the callback directly since this is already running
+        // in the subscription callback stack.
+        callback_pair.second(object_id, listener.second.current_object_locations,
+                             listener.second.has_been_created);
+      }
+    }
+  }
+}
+
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {

@@ -60,6 +60,13 @@ class ObjectDirectoryInterface {
   virtual ray::Status LookupLocations(const ObjectID &object_id,
                                       const OnLocationsFound &callback) = 0;
 
+  /// Handle the removal of an object manager client. This updates the
+  /// locations of all subscribed objects that have the removed client as a
+  /// location, and fires the subscribed callbacks for those objects.
+  ///
+  /// \param client_id The object manager client that was removed.
+  virtual void HandleClientRemoved(const ClientID &client_id) = 0;
+
   /// Subscribe to be notified of locations (ClientID) of the given object.
   /// The callback will be invoked with the complete list of known locations
   /// whenever the set of locations changes. The callback will also be fired if
@@ -138,6 +145,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status LookupLocations(const ObjectID &object_id,
                               const OnLocationsFound &callback) override;
+
+  void HandleClientRemoved(const ClientID &client_id) override;
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,

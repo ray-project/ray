@@ -42,6 +42,12 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     locations_[object_id] = locations;
   }
 
+  void HandleClientRemoved(const ClientID &client_id) override {
+    for (auto &locations : locations_) {
+      locations.second.erase(client_id);
+    }
+  }
+
   std::string DebugString() const { return ""; }
 
   MOCK_METHOD0(RegisterBackend, void(void));
@@ -249,6 +255,30 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 
   // Simulate evicting one of the objects.
   mock_object_directory_->SetObjectLocations(object_id, {});
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was triggered, since one of the objects was
+  // evicted.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ClientID client_id = ClientID::from_random();
+  mock_object_directory_->SetObjectLocations(object_id, {client_id});
+
+  // Listen for both objects.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was not triggered, since the objects still
+  // exist on a live node.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Simulate evicting one of the objects.
+  mock_object_directory_->HandleClientRemoved(client_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was
