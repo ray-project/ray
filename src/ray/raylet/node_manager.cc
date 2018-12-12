@@ -551,8 +551,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       // respective actor creation task. Since the actor location is now known,
       // we can remove the task from the queue and forget its dependency on the
       // actor creation task.
-      task_dependency_manager_.UnsubscribeDependencies(
-          method.GetTaskSpecification().TaskId());
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+          method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
@@ -565,7 +565,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task);
-      task_dependency_manager_.TaskCanceled(task.GetTaskSpecification().TaskId());
     }
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorState::RECONSTRUCTING);
@@ -1647,25 +1646,14 @@ void NodeManager::ResubmitTask(const Task &task) {
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
     const auto it = actor_registry_.find(actor_id);
-    if (it != actor_registry_.end()) {
-      // The actor has been created before.
-      if (it->second.GetState() == ActorState::ALIVE) {
-        // If the actor is still alive, then do not resubmit the task. If the
-        // actor actually is dead and a result is needed, then reconstruction
-        // for this task will be triggered again.
-        RAY_LOG(WARNING)
-            << "Actor creation task resubmitted, but the actor is still alive.";
-        return;
-      } else if (it->second.GetState() == ActorState::DEAD) {
-        // If the actor has been marked as permanently dead, treat the actor
-        // creation task as failed so that the application can catch the
-        // exception.
-        TreatTaskAsFailed(task);
-        return;
-      }
+    if (it != actor_registry_.end() && it->second.GetState() == ActorState::ALIVE) {
+      // If the actor is still alive, then do not resubmit the task. If the
+      // actor actually is dead and a result is needed, then reconstruction
+      // for this task will be triggered again.
+      RAY_LOG(WARNING)
+          << "Actor creation task resubmitted, but the actor is still alive.";
+      return;
     }
-    // Else, the actor has never been created, so this means the first
-    // initialization failed.
   }
 
   // Driver tasks cannot be reconstructed. If this is a driver task, push an
