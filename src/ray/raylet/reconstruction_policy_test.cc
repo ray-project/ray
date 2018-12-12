@@ -19,7 +19,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MockObjectDirectory() {}
 
   ray::Status LookupLocations(const ObjectID &object_id,
-                              const OnLocationsFound &callback) {
+                              const OnLocationsFound &callback) override {
     callbacks_.push_back({object_id, callback});
     return ray::Status::OK();
   }
@@ -48,7 +48,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     }
   }
 
-  std::string DebugString() const { return ""; }
+  std::string DebugString() const override { return ""; }
 
   MOCK_METHOD0(RegisterBackend, void(void));
   MOCK_METHOD0(GetLocalClientID, ray::ClientID());
