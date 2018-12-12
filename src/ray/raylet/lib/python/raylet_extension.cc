@@ -364,15 +364,15 @@ static PyObject *PyRayletClient_FreeObjects(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef PyRayletClient_methods[] = {
-    {"Disconnect", (PyCFunction)PyRayletClient_Disconnect, METH_NOARGS,
+    {"disconnect", (PyCFunction)PyRayletClient_Disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
-    {"SubmitTask", (PyCFunction)PyRayletClient_SubmitTask, METH_VARARGS,
+    {"submit_task", (PyCFunction)PyRayletClient_SubmitTask, METH_VARARGS,
      "Submit a task to the local scheduler."},
-    {"GetTask", (PyCFunction)PyRayletClient_GetTask, METH_NOARGS,
+    {"get_task", (PyCFunction)PyRayletClient_GetTask, METH_NOARGS,
      "Get a task from the local scheduler."},
-    {"FetchOrReconstruct", (PyCFunction)PyRayletClient_FetchOrReconstruct, METH_VARARGS,
+    {"fetch_or_reconstruct", (PyCFunction)PyRayletClient_FetchOrReconstruct, METH_VARARGS,
      "Ask the local scheduler to reconstruct an object."},
-    {"NotifyUnblocked", (PyCFunction)PyRayletClient_NotifyUnblocked, METH_VARARGS,
+    {"notify_unblocked", (PyCFunction)PyRayletClient_NotifyUnblocked, METH_VARARGS,
      "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyRayletClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
@@ -380,13 +380,13 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Get the IDs of the GPUs that are reserved for this client."},
     {"resource_ids", (PyCFunction)PyRayletClient_resource_ids, METH_NOARGS,
      "Get the IDs of the resources that are reserved for this client."},
-    {"Wait", (PyCFunction)PyRayletClient_Wait, METH_VARARGS,
+    {"wait", (PyCFunction)PyRayletClient_Wait, METH_VARARGS,
      "Wait for a list of objects to be created."},
-    {"PushError", (PyCFunction)PyRayletClient_PushError, METH_VARARGS,
+    {"push_error", (PyCFunction)PyRayletClient_PushError, METH_VARARGS,
      "Push an error message to the relevant driver."},
-    {"PushProfileEvents", (PyCFunction)PyRayletClient_PushProfileEvents, METH_VARARGS,
+    {"push_profile_events", (PyCFunction)PyRayletClient_PushProfileEvents, METH_VARARGS,
      "Store some profiling events in the GCS."},
-    {"FreeObjects", (PyCFunction)PyRayletClient_FreeObjects, METH_VARARGS,
+    {"free_objects", (PyCFunction)PyRayletClient_FreeObjects, METH_VARARGS,
      "Free a list of objects from object stores."},
     {NULL} /* Sentinel */
 };
