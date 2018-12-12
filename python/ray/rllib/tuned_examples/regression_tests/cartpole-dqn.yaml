@@ -2,8 +2,8 @@ cartpole-dqn:
     env: CartPole-v0
     run: DQN
     stop:
-        episode_reward_mean: 200
-        time_total_s: 600
+        episode_reward_mean: 150
+        timesteps_total: 50000
     config:
         n_step: 3
         gamma: 0.95
