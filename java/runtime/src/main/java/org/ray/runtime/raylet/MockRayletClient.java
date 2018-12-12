@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.objectstore.MockObjectStore;
@@ -67,7 +68,7 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
-      UniqueId currentTaskId) {
+      UniqueId currentTaskId) throws RayException {
 
   }
 

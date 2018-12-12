@@ -1,5 +1,6 @@
 colorama
 click
+filelock
 flatbuffers
 funcsigs
 mock
