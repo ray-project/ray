@@ -618,19 +618,22 @@ def test_warning_for_dead_node(ray_start_two_nodes):
 
 def test_raylet_crash_when_get(ray_start_regular):
     nonexistent_id = ray.ObjectID(_random_string())
+
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
         ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
+
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     try:
-        obj = ray.get(nonexistent_id)
+        ray.get(nonexistent_id)
         # The following assertion should not be reached.
         assert False
     except SystemError as e:
         stack_message = traceback.format_exc()
-        expected_message = ("common.error: "
+        expected_message = (
+            "common.error: "
             "local_scheduler_fetch_or_reconstruct failed:"
             " raylet connection may be closed, check raylet status")
         assert expected_message in stack_message
