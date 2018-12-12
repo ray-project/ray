@@ -479,8 +479,7 @@ void NodeManager::PublishActorStateTransition(
     const ActorID &actor_id, const ActorTableDataT &data,
     const ray::gcs::ActorTable::WriteCallback &failure_callback) {
   // Copy the actor notification data.
-  auto actor_notification = std::make_shared<ActorTableDataT>();
-  *actor_notification = data;
+  auto actor_notification = std::make_shared<ActorTableDataT>(data);
 
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
