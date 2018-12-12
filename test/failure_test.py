@@ -617,7 +617,7 @@ def test_warning_for_dead_node(ray_start_two_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    none_exist_id = ray.ObjectID(_random_string())
+    nonexistent_id = ray.ObjectID(_random_string())
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
@@ -625,7 +625,7 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     try:
-        obj = ray.get(none_exist_id)
+        obj = ray.get(nonexistent_id)
         # The following assertion should not be reached.
         assert False
     except SystemError as e:
