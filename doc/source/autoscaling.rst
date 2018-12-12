@@ -1,7 +1,7 @@
 Cluster Setup and Auto-Scaling
 ==============================
 
-This document provides instructions for launching a Ray cluster either locally, on AWS, or on GCP.
+This document provides instructions for launching a Ray cluster either privately, on AWS, or on GCP.
 
 The ``ray up`` command starts or updates a Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
@@ -52,8 +52,8 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
     # Teardown the cluster
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-Quick start (Local)
--------------------
+Quick start (Private Cluster)
+-----------------------------
 
 This is used when you have a list of machine IP addresses to connect in a Ray cluster. You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
 Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.

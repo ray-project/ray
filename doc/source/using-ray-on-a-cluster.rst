@@ -7,7 +7,7 @@ Manual Cluster Setup
 
 The instructions in this document work well for small clusters. For larger
 clusters, consider using the pssh package: ``sudo apt-get install pssh`` or
-the `setup commands for local clusters <autoscaling.html#quick-start-local>`_.
+the `setup commands for private clusters <autoscaling.html#quick-start-private-cluster>`_.
 
 
 Deploying Ray on a Cluster
