@@ -11,9 +11,6 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
-from ray.rllib.env.async_vector_env import _ExternalEnvToAsync
-from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
@@ -311,29 +308,6 @@ class ModelCatalog(object):
         return prep
 
     @staticmethod
-    def get_preprocessor_as_wrapper(env, options=None):
-        """Returns a preprocessor as a gym observation wrapper.
-
-        Args:
-            env (gym.Env|VectorEnv|ExternalEnv): The environment to wrap.
-            options (dict): Options to pass to the preprocessor.
-
-        Returns:
-            env (RLlib env): Wrapped environment
-        """
-
-        options = options or MODEL_DEFAULTS
-        preprocessor = ModelCatalog.get_preprocessor(env, options)
-        if isinstance(env, gym.Env):
-            return _RLlibPreprocessorWrapper(env, preprocessor)
-        elif isinstance(env, VectorEnv):
-            return _RLlibVectorPreprocessorWrapper(env, preprocessor)
-        elif isinstance(env, ExternalEnv):
-            return _ExternalEnvToAsync(env, preprocessor)
-        else:
-            raise ValueError("Don't know how to wrap {}".format(env))
-
-    @staticmethod
     def register_custom_preprocessor(preprocessor_name, preprocessor_class):
         """Register a custom preprocessor class by name.
 
@@ -359,40 +333,3 @@ class ModelCatalog(object):
             model_class (type): Python class of the model.
         """
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
-
-
-class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
-    """Adapts a RLlib preprocessor for use as an observation wrapper."""
-
-    def __init__(self, env, preprocessor):
-        super(_RLlibPreprocessorWrapper, self).__init__(env)
-        self.preprocessor = preprocessor
-        self.observation_space = preprocessor.observation_space
-
-    def observation(self, observation):
-        return self.preprocessor.transform(observation)
-
-
-class _RLlibVectorPreprocessorWrapper(VectorEnv):
-    """Preprocessing wrapper for vector envs."""
-
-    def __init__(self, env, preprocessor):
-        self.env = env
-        self.prep = preprocessor
-        self.action_space = env.action_space
-        self.observation_space = preprocessor.observation_space
-        self.num_envs = env.num_envs
-
-    def vector_reset(self):
-        return [self.prep.transform(obs) for obs in self.env.vector_reset()]
-
-    def reset_at(self, index):
-        return self.prep.transform(self.env.reset_at(index))
-
-    def vector_step(self, actions):
-        obs, rewards, dones, infos = self.env.vector_step(actions)
-        obs = [self.prep.transform(o) for o in obs]
-        return obs, rewards, dones, infos
-
-    def get_unwrapped(self):
-        return self.env.get_unwrapped()
