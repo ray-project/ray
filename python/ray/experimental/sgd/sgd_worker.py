@@ -56,9 +56,11 @@ class SGDWorker(object):
                     with tf.variable_scope("device_%d" % device_idx):
                         model = model_creator(worker_index, device_idx)
                         self.models.append(model)
+                        optimizer = model.get_optimizer()
+                        loss = model.get_loss()
                         grads = [
-                            t for t in model.optimizer.compute_gradients(
-                                model.loss) if t[0] is not None
+                            t for t in optimizer.compute_gradients(loss)
+                            if t[0] is not None
                         ]
                         grad_ops.append(grads)
 
@@ -123,7 +125,7 @@ class SGDWorker(object):
             ]
             for j in range(num_grads):
                 grad = self.per_device_grads[0][j]
-                with tf.device(self.models[0].loss.device):
+                with tf.device(self.models[0].get_loss().device):
                     plasma_grad = plasma.tf_plasma_op.tensor_to_plasma(
                         [grad],
                         self.plasma_in_grads_oids[j],
@@ -174,10 +176,9 @@ class SGDWorker(object):
         apply_ops = []
         to_apply = unpacked_gv[0]
         for ix, m in enumerate(self.models):
-            apply_ops.append(
-                m.optimizer.apply_gradients(
-                    [(g, v)
-                     for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])]))
+            apply_ops.append(m.get_optimizer().apply_gradients([
+                (g, v) for ((g, _), (_, v)) in zip(to_apply, unpacked_gv[ix])
+            ]))
         self.apply_op = tf.group(*apply_ops)
         init_op = tf.group(tf.global_variables_initializer(),
                            tf.local_variables_initializer())
@@ -209,7 +210,7 @@ class SGDWorker(object):
         # averaged across all devices by allreduce.
         fetches = self.sess.run(
             [
-                self.models[0].loss, self.per_device_grads[0],
+                self.models[0].get_loss(), self.per_device_grads[0],
                 self.nccl_control_out
             ],
             feed_dict=feed_dict)
@@ -229,7 +230,7 @@ class SGDWorker(object):
     def compute_apply(self):
         fetches = run_timeline(
             self.sess,
-            [self.models[0].loss, self.apply_op, self.nccl_control_out],
+            [self.models[0].get_loss(), self.apply_op, self.nccl_control_out],
             feed_dict=self._grad_feed_dict(),
             name="compute_apply")
         return fetches[0]
@@ -247,7 +248,7 @@ class SGDWorker(object):
         fetch(agg_grad_shard_oids)
         fetches = run_timeline(
             self.sess, [
-                self.models[0].loss, self.plasma_in_grads, self.apply_op,
+                self.models[0].get_loss(), self.plasma_in_grads, self.apply_op,
                 self.nccl_control_out
             ],
             feed_dict=feed_dict,

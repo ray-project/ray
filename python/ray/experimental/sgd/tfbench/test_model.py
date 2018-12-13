@@ -14,6 +14,7 @@ class MockDataset():
 
 class TFBenchModel(Model):
     def __init__(self, batch=64, use_cpus=False):
+
         image_shape = [batch, 224, 224, 3]
         labels_shape = [batch]
 
@@ -44,6 +45,12 @@ class TFBenchModel(Model):
         # Implement model interface
         self.loss = tf.reduce_mean(loss, name='xentropy-loss')
         self.optimizer = tf.train.GradientDescentOptimizer(1e-6)
+
+    def get_loss(self):
+        return self.loss
+
+    def get_optimizer(self):
+        return self.optimizer
 
     def get_feed_dict(self):
         return {}
