@@ -3,8 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import glob
+import gym
 import numpy as np
 import os
+import random
 import shutil
 import tempfile
 import time
@@ -12,9 +14,12 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
+from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.tune.registry import register_env
 
 SAMPLES = SampleBatch({
     "actions": np.array([1, 2, 3]),
@@ -111,6 +116,33 @@ class AgentIOTest(unittest.TestCase):
             })
         result = agent.train()
         self.assertTrue(not np.isnan(result["episode_reward_mean"]))
+
+    def testMultiAgent(self):
+        register_env("multi_cartpole", lambda _: MultiCartpole(10))
+        single_env = gym.make("CartPole-v0")
+
+        def gen_policy():
+            obs_space = single_env.observation_space
+            act_space = single_env.action_space
+            return (PGPolicyGraph, obs_space, act_space, {})
+
+        pg = PGAgent(
+            env="multi_cartpole",
+            config={
+                "num_workers": 0,
+                "output": self.test_dir,
+                "multiagent": {
+                    "policy_graphs": {
+                        "policy_1": gen_policy(),
+                        "policy_2": gen_policy(),
+                    },
+                    "policy_mapping_fn": (
+                        lambda agent_id: random.choice(
+                            ["policy_1", "policy_2"])),
+                },
+            })
+        pg.train()
+        self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
 
 class JsonIOTest(unittest.TestCase):

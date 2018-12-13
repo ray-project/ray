@@ -15,6 +15,7 @@ try:
 except ImportError:
     smart_open = None
 
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
@@ -102,7 +103,19 @@ def _to_jsonable(v, compress):
 
 
 def _to_json(batch, compress_columns):
-    return json.dumps({
-        k: _to_jsonable(v, compress=k in compress_columns)
-        for k, v in batch.data.items()
-    })
+    out = {}
+    if isinstance(batch, MultiAgentBatch):
+        out["type"] = "MultiAgentBatch"
+        out["count"] = batch.count
+        policy_batches = {}
+        for policy_id, sub_batch in batch.policy_batches.items():
+            policy_batches[policy_id] = {}
+            for k, v in sub_batch.data.items():
+                policy_batches[policy_id][k] = _to_jsonable(
+                    v, compress=k in compress_columns)
+        out["policy_batches"] = policy_batches
+    else:
+        out["type"] = "SampleBatch"
+        for k, v in batch.data.items():
+            out[k] = _to_jsonable(v, compress=k in compress_columns)
+    return json.dumps(out)

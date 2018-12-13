@@ -16,7 +16,7 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import unpack_if_needed
 
@@ -121,6 +121,25 @@ def _from_json(batch):
     if isinstance(batch, bytes):  # smart_open S3 doesn't respect "r"
         batch = batch.decode("utf-8")
     data = json.loads(batch)
-    for k, v in data.items():
-        data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
-    return SampleBatch(data)
+
+    if "type" in data:
+        data_type = data["type"]
+        del data["type"]
+    else:
+        data_type = "Event"  # for simplicity, default to event type
+
+    if data_type == "SampleBatch":
+        for k, v in data.items():
+            data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
+        return SampleBatch(data)
+    elif data_type == "MultiAgentBatch":
+        policy_batches = {}
+        for policy_id, policy_batch in data["policy_batches"].items():
+            for k, v in policy_batch.items():
+                policy_batches[k] = [
+                    unpack_if_needed(x) for x in unpack_if_needed(v)
+                ]
+            policy_batches[policy_id] = SampleBatch(data)
+        return MultiAgentBatch(policy_batches, data["count"])
+    else:
+        raise ValueError("Unknown batch type", data_type)

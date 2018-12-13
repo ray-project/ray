@@ -383,6 +383,10 @@ class PolicyEvaluator(EvaluatorInterface):
                 "samples": batch
             })
 
+        # Always do writes prior to compression for consistency and to allow
+        # for better compression inside the writer.
+        self.output_writer.write(batch)
+
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
                 for data in batch.policy_batches.values():
@@ -392,7 +396,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
-        self.output_writer.write(batch)
         return batch
 
     @ray.method(num_return_vals=2)
