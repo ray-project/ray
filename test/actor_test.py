@@ -2178,7 +2178,7 @@ def test_actor_eviction(shutdown_only):
         try:
             ray.get(obj)
             num_success += 1
-        except ray.worker.RayGetError:
+        except ray.worker.RayTaskError:
             num_evicted += 1
     # Some objects should have been evicted, and some should still be in the
     # object store.
