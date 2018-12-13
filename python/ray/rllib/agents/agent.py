@@ -160,8 +160,7 @@ COMMON_CONFIG = {
     "output_max_file_size": 64 * 1024 * 1024,
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Whether this makes sense is algorithm-specific.
-    # TODO(ekl) implement this and multi-agent batch handling
-    # "postprocess_inputs": False,
+    "postprocess_inputs": False,
 
     # === Multiagent ===
     "multiagent": {

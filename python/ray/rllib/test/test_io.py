@@ -6,6 +6,7 @@ import glob
 import gym
 import numpy as np
 import os
+import json
 import random
 import shutil
 import tempfile
@@ -22,8 +23,9 @@ from ray.rllib.test.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
 SAMPLES = SampleBatch({
-    "actions": np.array([1, 2, 3]),
-    "obs": np.array([4, 5, 6])
+    "actions": np.array([1, 2, 3, 4]),
+    "obs": np.array([4, 5, 6, 7]),
+    "eps_id": [1, 1, 2, 3],
 })
 
 
@@ -70,6 +72,40 @@ class AgentIOTest(unittest.TestCase):
                 "input": self.test_dir,
                 "input_evaluation": None,
             })
+        result = agent.train()
+        self.assertEqual(result["timesteps_total"], 250)  # read from input
+        self.assertTrue(np.isnan(result["episode_reward_mean"]))
+
+    def testSplitByEpisode(self):
+        splits = SAMPLES.split_by_episode()
+        self.assertEqual(len(splits), 3)
+        self.assertEqual(len(splits[0]), 2)
+        self.assertEqual(len(splits[1]), 1)
+        self.assertEqual(len(splits[2]), 1)
+
+    def testAgentInputPostprocessingEnabled(self):
+        self.writeOutputs(self.test_dir)
+
+        # Rewrite the files to drop advantages and value_targets for testing
+        for path in glob.glob(self.test_dir + "/*.json"):
+            out = []
+            for line in open(path).readlines():
+                data = json.loads(line)
+                del data["advantages"]
+                del data["value_targets"]
+                out.append(data)
+            with open(path, "w") as f:
+                for data in out:
+                    f.write(json.dumps(data))
+
+        agent = PGAgent(
+            env="CartPole-v0",
+            config={
+                "input": self.test_dir,
+                "input_evaluation": None,
+                "postprocess_inputs": True,  # adds back 'advantages'
+            })
+
         result = agent.train()
         self.assertEqual(result["timesteps_total"], 250)  # read from input
         self.assertTrue(np.isnan(result["episode_reward_mean"]))

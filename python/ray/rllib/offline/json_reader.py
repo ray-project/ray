@@ -16,7 +16,8 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
+    DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import unpack_if_needed
 
@@ -74,7 +75,23 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return batch
+        return self._postprocess_if_needed(batch)
+
+    def _postprocess_if_needed(self, batch):
+        if not self.ioctx.config.get("postprocess_inputs"):
+            return batch
+
+        if isinstance(batch, SampleBatch):
+            out = []
+            for sub_batch in batch.split_by_episode():
+                out.append(self.ioctx.evaluator.policy_map[DEFAULT_POLICY_ID]
+                           .postprocess_trajectory(sub_batch))
+            return SampleBatch.concat_samples(out)
+        else:
+            # TODO(ekl) this is trickier since the alignments between agent
+            # trajectories in the episode are not available any more.
+            raise NotImplementedError(
+                "Postprocessing of multi-agent data not implemented yet.")
 
     def _try_parse(self, line):
         line = line.strip()
