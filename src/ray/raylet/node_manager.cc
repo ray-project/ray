@@ -55,7 +55,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       debug_dump_period_(config.debug_dump_period_ms),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
-      local_resources_(config.resource_config),
+      initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.num_workers_per_process,
                    config.maximum_startup_concurrency, config.worker_commands),
@@ -332,7 +332,7 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[client_id] = local_resources_;
+    cluster_resource_map_[client_id] = initial_config_.resource_config;
     return;
   }
 
@@ -1778,7 +1778,7 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
-  result << "\nLocalResources: " << local_resources_.DebugString();
+  result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
   result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
     result << "\n" << pair.first.hex() << ": " << pair.second.DebugString();
