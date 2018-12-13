@@ -41,9 +41,6 @@ class RemoteFunction(object):
     def __init__(self, function, num_cpus, num_gpus, resources,
                  num_return_vals, max_calls):
         self._function = function
-        # TODO(rkn): We store the function ID as a string, so that
-        # RemoteFunction objects can be pickled. We should undo this when
-        # we allow ObjectIDs to be pickled.
         self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
             self._function.__module__ + '.' + self._function.__name__)

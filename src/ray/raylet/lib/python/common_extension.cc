@@ -84,8 +84,8 @@ int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
   }
 }
 
-int PyListStringToFunctionDescriptor(PyObject *object,
-                                     std::vector<std::string> *function_descriptor) {
+int PyListStringToStringVector(PyObject *object,
+                               std::vector<std::string> *function_descriptor) {
   if (function_descriptor == nullptr) {
     PyErr_SetString(PyExc_TypeError, "function descriptor must be non-empty pointer");
     return 0;
@@ -99,6 +99,10 @@ int PyListStringToFunctionDescriptor(PyObject *object,
     Py_ssize_t size = PyList_Size(object);
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject *item = PyList_GetItem(object, i);
+      if (PyBytes_Check(item) == 0) {
+        PyErr_SetString(PyExc_TypeError, "PyListStringToStringVector gets bytes failed");
+        return 0;
+      }
       function_descriptor->emplace_back(PyBytes_AsString(item), PyBytes_Size(item));
     }
     return 1;
@@ -412,8 +416,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // Function descriptor.
   std::vector<std::string> function_descriptor;
   if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOOi", &PyObjectToUniqueID, &driver_id,
-                        &PyListStringToFunctionDescriptor, &function_descriptor,
-                        &arguments, &num_returns, &PyObjectToUniqueID, &parent_task_id,
+                        &PyListStringToStringVector, &function_descriptor, &arguments,
+                        &num_returns, &PyObjectToUniqueID, &parent_task_id,
                         &parent_counter, &PyObjectToUniqueID, &actor_creation_id,
                         &PyObjectToUniqueID, &actor_creation_dummy_object_id,
                         &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
@@ -495,7 +499,7 @@ static void PyTask_dealloc(PyTask *self) {
   Py_TYPE(self)->tp_free(reinterpret_cast<PyObject *>(self));
 }
 
-// Helper function to change a function descriptor to Python list.
+// Helper function to change a c++ string vector to a Python string list.
 static PyObject *VectorStringToPyBytesList(
     const std::vector<std::string> &function_descriptor) {
   size_t size = function_descriptor.size();

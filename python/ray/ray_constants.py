@@ -77,3 +77,9 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
+
+# This definition should be the same with gcs.fbs.
+# The other language types could be used in cross-language ray call.
+LANGUAGE_PYTHON = 0
+LANGUAGE_CPP = 1
+LANGUAGE_JAVA = 2

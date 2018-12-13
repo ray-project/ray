@@ -48,10 +48,6 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 PYTHON_MODE = 3
 
-# This definition should be the same with gcs.fbs.
-LANGUAGE_PYTHON = 0
-LANGUAGE_CPP = 1
-LANGUAGE_JAVA = 2
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -577,7 +573,7 @@ class Worker(object):
                     resources=None,
                     placement_resources=None,
                     driver_id=None,
-                    language=LANGUAGE_PYTHON):
+                    language=ray_constants.LANGUAGE_PYTHON):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with

@@ -381,10 +381,8 @@ class ActorClass(object):
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
-            worker.actors[actor_id] = self._modified_class.__new__(
-                self._modified_class)
-            worker.actors[actor_id].__init__(*copy.deepcopy(args),
-                                             **copy.deepcopy(kwargs))
+            worker.actors[actor_id] = self._modified_class(
+                *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
             if not self._exported:

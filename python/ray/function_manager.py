@@ -448,8 +448,8 @@ class FunctionActorManager(object):
 
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
-        func_desc = FunctionDescriptor.from_class(Class)
-        key = b"ActorClass:" + func_desc.function_id.id()
+        function_descriptor = FunctionDescriptor.from_class(Class)
+        key = b"ActorClass:" + function_descriptor.function_id.id()
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
