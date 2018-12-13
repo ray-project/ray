@@ -35,6 +35,7 @@ int connect_ipc_sock(const std::string &socket_pathname) {
   socket_address.sun_family = AF_UNIX;
   if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
     RAY_LOG(ERROR) << "Socket pathname is too long.";
+    close(socket_fd);
     return -1;
   }
   strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
@@ -126,7 +127,14 @@ ray::Status RayletConnection::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
-  return WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
+  auto status = WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
+  // Don't be too strict for disconnection errors.
+  // Just create logs and prevent it from crash.
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << status.ToString()
+                   << " [RayletClient] Failed to disconnect from raylet.";
+  }
+  return ray::Status::OK();
 }
 
 ray::Status RayletConnection::ReadMessage(MessageType type,
