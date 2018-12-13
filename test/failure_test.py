@@ -10,7 +10,6 @@ import sys
 import tempfile
 import threading
 import time
-import traceback
 
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
