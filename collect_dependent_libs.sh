@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -x
 
 # Cause the script to exit if a single command fails.
@@ -17,12 +17,12 @@ function usage() {
   echo
 }
 
-# By default all the libs will be put to ./thirdparty/external_project_libs.
+# By default all the libs will be put into ./thirdparty/external_project_libs.
 # However, this directory could be cleaned by `git clean`.
 # Users can provide another directory using -d option.
 DIR="$ROOT_DIR/thirdparty/external_project_libs"
-# By default ray will be build before copying the libs.
-# Users can diable the building process if they have built ray.
+# By default ray will be built before copying the libs.
+# Users can skip the building process if they have built ray.
 BUILD="YES"
 
 RESOURCE="resource.txt"
