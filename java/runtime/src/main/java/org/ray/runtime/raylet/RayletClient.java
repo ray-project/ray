@@ -3,7 +3,6 @@ package org.ray.runtime.raylet;
 import java.util.List;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.task.TaskSpec;
 
@@ -16,8 +15,7 @@ public interface RayletClient {
 
   TaskSpec getTask();
 
-  void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId)
-      throws RayException;
+  void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId);
 
   void notifyUnblocked(UniqueId currentTaskId);
 
