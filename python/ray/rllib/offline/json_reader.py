@@ -130,16 +130,15 @@ def _from_json(batch):
 
     if data_type == "SampleBatch":
         for k, v in data.items():
-            data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
+            data[k] = unpack_if_needed(v)
         return SampleBatch(data)
     elif data_type == "MultiAgentBatch":
         policy_batches = {}
         for policy_id, policy_batch in data["policy_batches"].items():
+            inner = {}
             for k, v in policy_batch.items():
-                policy_batches[k] = [
-                    unpack_if_needed(x) for x in unpack_if_needed(v)
-                ]
-            policy_batches[policy_id] = SampleBatch(data)
+                inner[k] = unpack_if_needed(v)
+            policy_batches[policy_id] = SampleBatch(inner)
         return MultiAgentBatch(policy_batches, data["count"])
     else:
-        raise ValueError("Unknown batch type", data_type)
+        raise ValueError("Unknown input data type", data_type)

@@ -144,6 +144,31 @@ class AgentIOTest(unittest.TestCase):
         pg.train()
         self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
+        pg.stop()
+        pg = PGAgent(
+            env="multi_cartpole",
+            config={
+                "num_workers": 0,
+                "input": self.test_dir,
+                "input_evaluation": "simulation",
+                "train_batch_size": 2000,
+                "multiagent": {
+                    "policy_graphs": {
+                        "policy_1": gen_policy(),
+                        "policy_2": gen_policy(),
+                    },
+                    "policy_mapping_fn": (
+                        lambda agent_id: random.choice(
+                            ["policy_1", "policy_2"])),
+                },
+            })
+        for _ in range(50):
+            result = pg.train()
+            if not np.isnan(result["episode_reward_mean"]):
+                return  # simulation ok
+            time.sleep(0.1)
+        assert False, "did not see any simulation results"
+
 
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
