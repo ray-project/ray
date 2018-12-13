@@ -85,7 +85,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 50,
             })
         self._wait_for(optimizer, 1000, 10000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 3000)
+        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
         self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
 
     def testReplay(self):
@@ -98,8 +98,8 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 2000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 9000)
+        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
+        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
         self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
 
     def testReplayAndMultiplePasses(self):
@@ -114,9 +114,9 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 "train_batch_size": 10,
             })
         self._wait_for(optimizer, 1000, 1000)
-        self.assertLess(optimizer.stats()["num_steps_sampled"], 2000)
-        self.assertGreater(optimizer.stats()["num_steps_replayed"], 9000)
-        self.assertGreater(optimizer.stats()["num_steps_trained"], 50000)
+        self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
+        self.assertGreater(optimizer.stats()["num_steps_replayed"], 8000)
+        self.assertGreater(optimizer.stats()["num_steps_trained"], 40000)
 
     def testRejectBadConfigs(self):
         local, remotes = self._make_evs()
