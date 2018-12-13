@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.agents.agent import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -131,6 +132,7 @@ class DDPGAgent(DQNAgent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = DDPGPolicyGraph
 
+    @override(DQNAgent)
     def _make_exploration_schedule(self, worker_index):
         # Override DQN's schedule to take into account `noise_scale`
         if self.config["per_worker_exploration"]:

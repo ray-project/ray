@@ -200,7 +200,7 @@ class RayConfig {
       : ray_protocol_version_(0x0000000000000000),
         handler_warning_timeout_ms_(100),
         heartbeat_timeout_milliseconds_(100),
-        num_heartbeats_timeout_(100),
+        num_heartbeats_timeout_(300),
         num_heartbeats_warning_(5),
         debug_dump_period_milliseconds_(10000),
         initial_reconstruction_timeout_milliseconds_(10000),

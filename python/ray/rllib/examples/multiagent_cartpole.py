@@ -107,7 +107,8 @@ if __name__ == "__main__":
                 "training_iteration": args.num_iters
             },
             "config": {
-                "simple_optimizer": True,
+                "log_level": "DEBUG",
+                "num_sgd_iter": 10,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(

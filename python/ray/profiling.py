@@ -128,6 +128,19 @@ class Profiler(object):
             self.events.append(event)
 
 
+class NoopProfiler(object):
+    """A no-op profile used when collect_profile_data=False."""
+
+    def start_flush_thread(self):
+        pass
+
+    def flush_profile_data(self):
+        pass
+
+    def add_event(self, event):
+        pass
+
+
 class RayLogSpanRaylet(object):
     """An object used to enable logging a span of events with a with statement.
 

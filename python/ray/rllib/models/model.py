@@ -82,19 +82,6 @@ class Model(object):
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
-    def _validate_output_shape(self):
-        """Checks that the model has the correct number of outputs."""
-        try:
-            out = tf.convert_to_tensor(self.outputs)
-            shape = out.shape.as_list()
-        except Exception:
-            raise ValueError("Output is not a tensor: {}".format(self.outputs))
-        else:
-            if len(shape) != 2 or shape[1] != self._num_outputs:
-                raise ValueError(
-                    "Expected output shape of [None, {}], got {}".format(
-                        self._num_outputs, shape))
-
     def _build_layers(self, inputs, num_outputs, options):
         """Builds and returns the output and last layer of the network.
 
@@ -158,6 +145,19 @@ class Model(object):
             Scalar tensor for the self-supervised loss.
         """
         return tf.constant(0.0)
+
+    def _validate_output_shape(self):
+        """Checks that the model has the correct number of outputs."""
+        try:
+            out = tf.convert_to_tensor(self.outputs)
+            shape = out.shape.as_list()
+        except Exception:
+            raise ValueError("Output is not a tensor: {}".format(self.outputs))
+        else:
+            if len(shape) != 2 or shape[1] != self._num_outputs:
+                raise ValueError(
+                    "Expected output shape of [None, {}], got {}".format(
+                        self._num_outputs, shape))
 
 
 def _restore_original_dimensions(input_dict, obs_space):
