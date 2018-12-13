@@ -801,7 +801,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # Disconnect the worker from the local scheduler. The point of
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
-                worker.local_scheduler_client.disconnect()
+                worker.raylet_client.disconnect()
                 sys.exit(0)
                 assert False, "This process should have terminated."
 
@@ -842,8 +842,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             # the local scheduler will not be included, and may not be runnable
             # on checkpoint resumption.
             actor_id = ray.ObjectID(worker.actor_id)
-            frontier = worker.local_scheduler_client.get_actor_frontier(
-                actor_id)
+            frontier = worker.raylet_client.get_actor_frontier(actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
             # should not be stored in Redis. Fix this.
             set_actor_checkpoint(worker, worker.actor_id, checkpoint_index,
@@ -873,7 +872,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # Set the number of tasks executed so far.
                 worker.actor_task_counter = checkpoint_index
                 # Set the actor frontier in the local scheduler.
-                worker.local_scheduler_client.set_actor_frontier(frontier)
+                worker.raylet_client.set_actor_frontier(frontier)
                 checkpoint_resumed = True
 
             return checkpoint_resumed

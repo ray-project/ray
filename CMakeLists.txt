@@ -101,7 +101,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   set(ray_file_list
         "src/ray/thirdparty/redis/src/redis-server"
         "src/ray/gcs/redis_module/libray_redis_module.so"
-        "src/ray/raylet/liblocal_scheduler_library_python.so"
+        "src/ray/raylet/libraylet_library_python.so"
         "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
 
@@ -128,8 +128,8 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_dependencies(copy_ray copy_ray_files)
 
   # Make sure that the Python extensions are built before copying the files.
-  get_local_scheduler_library("python" LOCAL_SCHEDULER_LIBRARY_PYTHON)
-  add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_PYTHON})
+  get_raylet_library("python" RAYLET_LIBRARY_PYTHON)
+  add_dependencies(copy_ray ${RAYLET_LIBRARY_PYTHON})
 
   foreach(file ${ray_file_list})
   add_custom_command(TARGET copy_ray POST_BUILD
@@ -146,8 +146,8 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 endif()
 
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
-  get_local_scheduler_library("java" LOCAL_SCHEDULER_LIBRARY_JAVA)
-  add_dependencies(copy_ray ${LOCAL_SCHEDULER_LIBRARY_JAVA})
+  get_raylet_library("java" RAYLET_LIBRARY_JAVA)
+  add_dependencies(copy_ray ${RAYLET_LIBRARY_JAVA})
 
   # copy libplasma_java files
   add_custom_command(TARGET copy_ray POST_BUILD
