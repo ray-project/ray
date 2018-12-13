@@ -58,14 +58,14 @@ static PyObject *PyRayletClient_SubmitTask(PyRayletClient *self, PyObject *args)
 
 // clang-format off
 static PyObject *PyRayletClient_GetTask(PyRayletClient *self) {
-  ray::raylet::TaskSpecification *task_spec;
+  std::unique_ptr<ray::raylet::TaskSpecification> task_spec;
   /* Drop the global interpreter lock while we get a task because
    * raylet_GetTask may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
-  auto status = self->raylet_client->GetTask(task_spec);
+  auto status = self->raylet_client->GetTask(&task_spec);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to get a task from raylet.");
   Py_END_ALLOW_THREADS
-  return PyTask_make(task_spec);
+  return PyTask_make(task_spec.release());
 }
 // clang-format on
 
@@ -121,18 +121,6 @@ static PyObject *PyRayletClient_compute_put_id(PyObject *self, PyObject *args) {
   return PyObjectID_make(put_id);
 }
 
-static PyObject *PyRayletClient_gpu_ids(PyRayletClient *self) {
-  /* Construct a Python list of GPU IDs. */
-  std::vector<int> gpu_ids = self->raylet_client->GetGPUIDs();
-  int num_gpu_ids = gpu_ids.size();
-  PyObject *gpu_ids_list = PyList_New((Py_ssize_t)num_gpu_ids);
-  for (int i = 0; i < num_gpu_ids; ++i) {
-    PyList_SetItem(gpu_ids_list, i, PyLong_FromLong(gpu_ids[i]));
-  }
-  return gpu_ids_list;
-}
-
-// NOTE(rkn): This function only makes sense for the raylet code path.
 static PyObject *PyRayletClient_resource_ids(PyRayletClient *self) {
   // Construct a Python dictionary of resource IDs and resource fractions.
   PyObject *resource_ids = PyDict_New();
@@ -197,7 +185,7 @@ static PyObject *PyRayletClient_Wait(PyRayletClient *self, PyObject *args) {
   // Invoke wait.
   WaitResultPair result;
   auto status = self->raylet_client->Wait(object_ids, num_returns, timeout_ms, wait_local,
-                                          current_task_id, result);
+                                          current_task_id, &result);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to wait for objects.");
 
   // Convert result to py object.
@@ -373,8 +361,6 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction)PyRayletClient_compute_put_id, METH_VARARGS,
      "Return the object ID for a put call within a task."},
-    {"gpu_ids", (PyCFunction)PyRayletClient_gpu_ids, METH_NOARGS,
-     "Get the IDs of the GPUs that are reserved for this client."},
     {"resource_ids", (PyCFunction)PyRayletClient_resource_ids, METH_NOARGS,
      "Get the IDs of the resources that are reserved for this client."},
     {"wait", (PyCFunction)PyRayletClient_Wait, METH_VARARGS,

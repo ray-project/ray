@@ -48,11 +48,6 @@ class RayletConnection {
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
-  // TODO(rkn): The io methods below should be removed.
-  int connect_ipc_sock(const std::string &socket_pathname);
-  int read_bytes(uint8_t *cursor, size_t length);
-  int write_bytes(uint8_t *cursor, size_t length);
-
   /// File descriptor of the Unix domain socket that connects to raylet.
   int conn_;
   /// A mutex to protect stateful operations of the raylet client.
@@ -90,7 +85,7 @@ class RayletClient {
   ///
   /// \param task_spec The assigned task.
   /// \return ray::Status.
-  ray::Status GetTask(ray::raylet::TaskSpecification *&task_spec);
+  ray::Status GetTask(std::unique_ptr<ray::raylet::TaskSpecification> *task_spec);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
@@ -124,7 +119,7 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
-                   const TaskID &current_task_id, WaitResultPair &result);
+                   const TaskID &current_task_id, WaitResultPair *result);
 
   /// Push an error to the relevant driver.
   ///
@@ -158,9 +153,6 @@ class RayletClient {
 
   bool IsWorker() const { return is_worker_; }
 
-  /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
-  const std::vector<int> &GetGPUIDs() const { return gpu_ids_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
@@ -168,9 +160,6 @@ class RayletClient {
   const bool is_worker_;
   const JobID driver_id_;
   const Language language_;
-  /// The IDs of the GPUs that this client can use.
-  /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
-  std::vector<int> gpu_ids_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

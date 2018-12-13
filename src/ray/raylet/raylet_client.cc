@@ -20,6 +20,80 @@
 
 using MessageType = ray::protocol::MessageType;
 
+// TODO(rkn): The io methods below should be removed.
+int connect_ipc_sock(const std::string &socket_pathname) {
+  struct sockaddr_un socket_address;
+  int socket_fd;
+
+  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (socket_fd < 0) {
+    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
+    return -1;
+  }
+
+  memset(&socket_address, 0, sizeof(socket_address));
+  socket_address.sun_family = AF_UNIX;
+  if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
+    RAY_LOG(ERROR) << "Socket pathname is too long.";
+    return -1;
+  }
+  strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
+
+  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
+      0) {
+    close(socket_fd);
+    return -1;
+  }
+  return socket_fd;
+}
+
+int read_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+  ssize_t nbytes = 0;
+  // Termination condition: EOF or read 'length' bytes total.
+  size_t bytesleft = length;
+  size_t offset = 0;
+  while (bytesleft > 0) {
+    nbytes = read(socket_fd, cursor + offset, bytesleft);
+    if (nbytes < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        continue;
+      }
+      return -1;  // Errno will be set.
+    } else if (0 == nbytes) {
+      // Encountered early EOF.
+      return -1;
+    }
+    RAY_CHECK(nbytes > 0);
+    bytesleft -= nbytes;
+    offset += nbytes;
+  }
+  return 0;
+}
+
+int write_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+  ssize_t nbytes = 0;
+  size_t bytesleft = length;
+  size_t offset = 0;
+  while (bytesleft > 0) {
+    // While we haven't written the whole message, write to the file
+    // descriptor, advance the cursor, and decrease the amount left to write.
+    nbytes = write(socket_fd, cursor + offset, bytesleft);
+    if (nbytes < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        continue;
+      }
+      return -1;  // Errno will be set.
+    } else if (0 == nbytes) {
+      // Encountered early EOF.
+      return -1;
+    }
+    RAY_CHECK(nbytes > 0);
+    bytesleft -= nbytes;
+    offset += nbytes;
+  }
+  return 0;
+}
+
 RayletConnection::RayletConnection(const std::string &raylet_socket, int num_retries,
                                    int64_t timeout) {
   // Pick the default values if the user did not specify.
@@ -48,81 +122,6 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
   }
 }
 
-// TODO(rkn): The io methods below should be removed.
-
-int RayletConnection::connect_ipc_sock(const std::string &socket_pathname) {
-  struct sockaddr_un socket_address;
-  int socket_fd;
-
-  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (socket_fd < 0) {
-    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
-    return -1;
-  }
-
-  memset(&socket_address, 0, sizeof(socket_address));
-  socket_address.sun_family = AF_UNIX;
-  if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
-    RAY_LOG(ERROR) << "Socket pathname is too long.";
-    return -1;
-  }
-  strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
-
-  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
-      0) {
-    close(socket_fd);
-    return -1;
-  }
-  return socket_fd;
-}
-
-int RayletConnection::read_bytes(uint8_t *cursor, size_t length) {
-  ssize_t nbytes = 0;
-  // Termination condition: EOF or read 'length' bytes total.
-  size_t bytesleft = length;
-  size_t offset = 0;
-  while (bytesleft > 0) {
-    nbytes = read(conn_, cursor + offset, bytesleft);
-    if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        continue;
-      }
-      return -1;  // Errno will be set.
-    } else if (0 == nbytes) {
-      // Encountered early EOF.
-      return -1;
-    }
-    RAY_CHECK(nbytes > 0);
-    bytesleft -= nbytes;
-    offset += nbytes;
-  }
-  return 0;
-}
-
-int RayletConnection::write_bytes(uint8_t *cursor, size_t length) {
-  ssize_t nbytes = 0;
-  size_t bytesleft = length;
-  size_t offset = 0;
-  while (bytesleft > 0) {
-    // While we haven't written the whole message, write to the file
-    // descriptor, advance the cursor, and decrease the amount left to write.
-    nbytes = write(conn_, cursor + offset, bytesleft);
-    if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        continue;
-      }
-      return -1;  // Errno will be set.
-    } else if (0 == nbytes) {
-      // Encountered early EOF.
-      return -1;
-    }
-    RAY_CHECK(nbytes > 0);
-    bytesleft -= nbytes;
-    offset += nbytes;
-  }
-  return 0;
-}
-
 ray::Status RayletConnection::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateDisconnectClient(fbb);
@@ -135,15 +134,15 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
   int64_t version;
   int64_t type_field;
   int64_t length;
-  int closed = read_bytes((uint8_t *)&version, sizeof(version));
+  int closed = read_bytes(conn_, (uint8_t *)&version, sizeof(version));
   if (closed) goto disconnected;
   RAY_CHECK(version == RayConfig::instance().ray_protocol_version());
-  closed = read_bytes((uint8_t *)&type_field, sizeof(type_field));
+  closed = read_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) goto disconnected;
-  closed = read_bytes((uint8_t *)&length, sizeof(length));
+  closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
   if (closed) goto disconnected;
   message = std::unique_ptr<uint8_t[]>(new uint8_t[length]);
-  closed = read_bytes(message.get(), length);
+  closed = read_bytes(conn_, message.get(), length);
   if (closed) {
     // Handle the case in which the socket is closed.
     message.reset(nullptr);
@@ -174,13 +173,13 @@ ray::Status RayletConnection::WriteMessage(MessageType type,
   int64_t type_field = static_cast<int64_t>(type);
   auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
-  closed = write_bytes((uint8_t *)&version, sizeof(version));
+  closed = write_bytes(conn_, (uint8_t *)&version, sizeof(version));
   if (closed) return io_error;
-  closed = write_bytes((uint8_t *)&type_field, sizeof(type_field));
+  closed = write_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) return io_error;
-  closed = write_bytes((uint8_t *)&length, sizeof(length));
+  closed = write_bytes(conn_, (uint8_t *)&length, sizeof(length));
   if (closed) return io_error;
-  closed = write_bytes(bytes, length * sizeof(char));
+  closed = write_bytes(conn_, bytes, length * sizeof(char));
   if (closed) return io_error;
   return ray::Status::OK();
 }
@@ -225,7 +224,8 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(ray::raylet::TaskSpecification *&task_spec) {
+ray::Status RayletClient::GetTask(
+    std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the local
   // scheduler gives this client a task.
@@ -258,8 +258,8 @@ ray::Status RayletClient::GetTask(ray::raylet::TaskSpecification *&task_spec) {
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec = new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec()));
+  task_spec->reset(new ray::raylet::TaskSpecification(
+      string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 
@@ -289,7 +289,7 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               const TaskID &current_task_id, WaitResultPair &result) {
+                               const TaskID &current_task_id, WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
@@ -305,12 +305,12 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   auto found = reply_message->found();
   for (uint i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::from_binary(found->Get(i)->str());
-    result.first.push_back(object_id);
+    result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
   for (uint i = 0; i < remaining->size(); i++) {
     ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
-    result.second.push_back(object_id);
+    result->second.push_back(object_id);
   }
   return ray::Status::OK();
 }

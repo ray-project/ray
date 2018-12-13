@@ -80,8 +80,8 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   auto client = reinterpret_cast<RayletClient *>(client);
 
   // TODO: handle actor failure later
-  ray::raylet::TaskSpecification *spec;
-  auto status = client->GetTask(spec);
+  std::unique_ptr<ray::raylet::TaskSpecification> spec;
+  auto status = client->GetTask(&spec);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to get a task from raylet.");
 
   // We serialize the task specification using flatbuffers and then parse the
@@ -103,7 +103,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
       result, 0, task_message->size(),
       reinterpret_cast<jbyte *>(const_cast<char *>(task_message->data())));
 
-  delete spec;
   return result;
 }
 
@@ -181,7 +180,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
   WaitResultPair result;
   auto status =
       client->Wait(object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal),
-                   *current_task_id.PID, result);
+                   *current_task_id.PID, &result);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to wait for objects.");
 
   // Convert result to java object.
