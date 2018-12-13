@@ -164,10 +164,10 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  UniqueID client_id_;
-  bool is_worker_;
-  JobID driver_id_;
-  Language language_;
+  const UniqueID client_id_;
+  const bool is_worker_;
+  const JobID driver_id_;
+  const Language language_;
   /// The IDs of the GPUs that this client can use.
   /// NOTE(rkn): This is only used by legacy Ray and will be deprecated.
   std::vector<int> gpu_ids_;
