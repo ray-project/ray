@@ -630,11 +630,10 @@ def test_raylet_crash_when_get(ray_start_regular):
         ray.get(nonexistent_id)
         # The following assertion should not be reached.
         assert False
-    except SystemError as e:
+    except Exception:
         stack_message = traceback.format_exc()
         expected_message = (
-            "common.error: "
-            "local_scheduler_fetch_or_reconstruct failed:"
+            "error: local_scheduler_fetch_or_reconstruct failed:"
             " raylet connection may be closed, check raylet status")
         assert expected_message in stack_message
     thread.join()

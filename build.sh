@@ -103,8 +103,8 @@ pushd "$BUILD_DIR"
 
 # avoid the command failed and exits
 # and cmake will check some directories to determine whether some targets built
-make clean || true
-rm -rf external/arrow-install
+#make clean || true
+#rm -rf external/arrow-install
 
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
