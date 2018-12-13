@@ -256,6 +256,8 @@ class FunctionActorManager(object):
             and execution_info.
         _num_task_executions: The map from driver_id to function
             execution times.
+        imported_actor_classes: The set of actor classes keys (format:
+            ActorClass:function_id) that are already in GCS.
     """
 
     def __init__(self, worker):
@@ -273,7 +275,6 @@ class FunctionActorManager(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
-        self._loaded_actor_classes = {}
 
     def increase_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id.id()
@@ -525,18 +526,15 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        function_id = function_descriptor.function_id.id()
-        actor_class = self._loaded_actor_classes.get(function_id, None)
-        if actor_class is None:
-            key = b"ActorClass:" + function_descriptor.function_id.id()
-            # Wait for the actor class key to have been imported by the
-            # import thread. TODO(rkn): It shouldn't be possible to end
-            # up in an infinite loop here, but we should push an error to
-            # the driver if too much time is spent here.
-            while key not in self.imported_actor_classes:
-                time.sleep(0.001)
-            with self._worker.lock:
-                self.fetch_and_register_actor(key)
+        key = b"ActorClass:" + function_descriptor.function_id.id()
+        # Wait for the actor class key to have been imported by the
+        # import thread. TODO(rkn): It shouldn't be possible to end
+        # up in an infinite loop here, but we should push an error to
+        # the driver if too much time is spent here.
+        while key not in self.imported_actor_classes:
+            time.sleep(0.001)
+        with self._worker.lock:
+            self.fetch_and_register_actor(key)
 
     def fetch_and_register_actor(self, actor_class_key):
         """Import an actor.
