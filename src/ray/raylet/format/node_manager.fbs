@@ -118,7 +118,7 @@ table GetTaskReply {
 }
 
 // This struct is used to register a new worker with the local scheduler.
-// It is shipped as part of local_scheduler_connect.
+// It is shipped as part of raylet_connect.
 table RegisterClientRequest {
   // True if the client is a worker and false if the client is a driver.
   is_worker: bool;
