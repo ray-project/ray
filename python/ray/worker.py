@@ -49,7 +49,6 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 PYTHON_MODE = 3
 
-
 ERROR_KEY_PREFIX = b"Error:"
 
 # This must match the definition of NIL_ACTOR_ID in task.h.
@@ -2085,7 +2084,7 @@ def connect(info,
         # rerun the driver.
         nil_actor_counter = 0
 
-        function_descriptor = FunctionDescriptor.create_driver_task()
+        function_descriptor = FunctionDescriptor.for_driver_task()
         driver_task = ray.raylet.Task(
             worker.task_driver_id,
             function_descriptor.get_function_descriptor_list(), [], 0,

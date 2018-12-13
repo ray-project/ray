@@ -48,6 +48,7 @@ class FunctionDescriptor(object):
         function_hash: the hash code of the function source code if the
             function code is available.
         function_id: the function id calculated from this descriptor.
+        is_for_driver_task: whether this descriptor is for driver task.
     """
 
     def __init__(self,
@@ -60,7 +61,6 @@ class FunctionDescriptor(object):
         self._class_name = class_name
         self._function_name = function_name
         self._function_source_hash = function_source_hash
-        self._is_driver_task = is_driver_task
         self._function_id = self._get_function_id()
 
     def __repr__(self):
@@ -86,7 +86,7 @@ class FunctionDescriptor(object):
         assert isinstance(function_descriptor_list, list)
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
-            return cls("", "", "", b"", True)
+            return FunctionDescriptor.for_driver_task()
         elif (len(function_descriptor_list) == 3
               or len(function_descriptor_list) == 4):
             module_name = function_descriptor_list[0].decode()
@@ -157,9 +157,15 @@ class FunctionDescriptor(object):
         return cls(module_name, "", class_name)
 
     @classmethod
-    def create_driver_task(cls):
-        """Create a FunctionDescriptor instance representing a driver task."""
-        return cls("", "", "", b"", True)
+    def for_driver_task(cls):
+        """Create a FunctionDescriptor instance for a driver task."""
+        return cls("", "", "", b"")
+
+    @property
+    def is_for_driver_task(self):
+        """bool: whether this function descriptor is for driver task."""
+        return (len(self.module_name) == 0  and len(self.class_name) == 0
+                    and len(self.function_name) == 0)
 
     @property
     def module_name(self):
@@ -209,7 +215,7 @@ class FunctionDescriptor(object):
         Returns:
             bytes with length of ray_constants.ID_SIZE.
         """
-        if self._is_driver_task:
+        if self.is_for_driver_task:
             return ray_constants.NIL_FUNCTION_ID.id()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
@@ -231,7 +237,7 @@ class FunctionDescriptor(object):
             A list of bytes.
         """
         descriptor_list = []
-        if self._is_driver_task:
+        if self.is_for_driver_task:
             # Driver task returns an empty list.
             return descriptor_list
         else:
