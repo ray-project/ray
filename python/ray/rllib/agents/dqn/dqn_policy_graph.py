@@ -10,7 +10,9 @@ import tensorflow.contrib.layers as layers
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 
 Q_SCOPE = "q_func"
@@ -253,6 +255,10 @@ class QLoss(object):
             self.td_error = tf.nn.softmax_cross_entropy_with_logits(
                 labels=m, logits=q_logits_t_selected)
             self.loss = tf.reduce_mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
         else:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
@@ -264,6 +270,12 @@ class QLoss(object):
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
                 importance_weights * _huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": tf.reduce_mean(q_t_selected),
+                "min_q": tf.reduce_min(q_t_selected),
+                "max_q": tf.reduce_max(q_t_selected),
+                "mean_td_error": tf.reduce_mean(self.td_error),
+            }
 
 
 class DQNPolicyGraph(TFPolicyGraph):
@@ -380,6 +392,76 @@ class DQNPolicyGraph(TFPolicyGraph):
             update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
 
+    @override(TFPolicyGraph)
+    def optimizer(self):
+        return tf.train.AdamOptimizer(
+            learning_rate=self.config["lr"],
+            epsilon=self.config["adam_epsilon"])
+
+    @override(TFPolicyGraph)
+    def gradients(self, optimizer):
+        if self.config["grad_norm_clipping"] is not None:
+            grads_and_vars = _minimize_and_clip(
+                optimizer,
+                self.loss.loss,
+                var_list=self.q_func_vars,
+                clip_val=self.config["grad_norm_clipping"])
+        else:
+            grads_and_vars = optimizer.compute_gradients(
+                self.loss.loss, var_list=self.q_func_vars)
+        grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
+        return grads_and_vars
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_feed_dict(self):
+        return {
+            self.stochastic: True,
+            self.eps: self.cur_epsilon,
+        }
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return {
+            "td_error": self.loss.td_error,
+            "stats": self.loss.stats,
+        }
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return _postprocess_dqn(self, sample_batch)
+
+    @override(PolicyGraph)
+    def get_state(self):
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        TFPolicyGraph.set_state(self, state[0])
+        self.set_epsilon(state[1])
+
+    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
+                         importance_weights):
+        td_err = self.sess.run(
+            self.loss.td_error,
+            feed_dict={
+                self.obs_t: [np.array(ob) for ob in obs_t],
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err
+
+    def update_target(self):
+        return self.sess.run(self.update_target_expr)
+
+    def set_epsilon(self, epsilon):
+        self.cur_epsilon = epsilon
+
     def _build_q_network(self, obs, space):
         qnet = QNetwork(
             ModelCatalog.get_model({
@@ -403,70 +485,8 @@ class DQNPolicyGraph(TFPolicyGraph):
                      self.config["n_step"], self.config["num_atoms"],
                      self.config["v_min"], self.config["v_max"])
 
-    def optimizer(self):
-        return tf.train.AdamOptimizer(
-            learning_rate=self.config["lr"],
-            epsilon=self.config["adam_epsilon"])
 
-    def gradients(self, optimizer):
-        if self.config["grad_norm_clipping"] is not None:
-            grads_and_vars = _minimize_and_clip(
-                optimizer,
-                self.loss.loss,
-                var_list=self.q_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
-        else:
-            grads_and_vars = optimizer.compute_gradients(
-                self.loss.loss, var_list=self.q_func_vars)
-        grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
-        return grads_and_vars
-
-    def extra_compute_action_feed_dict(self):
-        return {
-            self.stochastic: True,
-            self.eps: self.cur_epsilon,
-        }
-
-    def extra_compute_grad_fetches(self):
-        return {
-            "td_error": self.loss.td_error,
-        }
-
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        return _postprocess_dqn(self, sample_batch)
-
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        td_err = self.sess.run(
-            self.loss.td_error,
-            feed_dict={
-                self.obs_t: [np.array(ob) for ob in obs_t],
-                self.act_t: act_t,
-                self.rew_t: rew_t,
-                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
-                self.done_mask: done_mask,
-                self.importance_weights: importance_weights
-            })
-        return td_err
-
-    def update_target(self):
-        return self.sess.run(self.update_target_expr)
-
-    def set_epsilon(self, epsilon):
-        self.cur_epsilon = epsilon
-
-    def get_state(self):
-        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
-
-    def set_state(self, state):
-        TFPolicyGraph.set_state(self, state[0])
-        self.set_epsilon(state[1])
-
-
-def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
@@ -499,9 +519,9 @@ def _postprocess_dqn(policy_graph, sample_batch):
 
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
-        adjust_nstep(policy_graph.config["n_step"],
-                     policy_graph.config["gamma"], obs, actions, rewards,
-                     new_obs, dones)
+        _adjust_nstep(policy_graph.config["n_step"],
+                      policy_graph.config["gamma"], obs, actions, rewards,
+                      new_obs, dones)
 
     batch = SampleBatch({
         "obs": obs,

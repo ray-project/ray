@@ -119,13 +119,26 @@ class Profiler(object):
         else:
             component_type = "driver"
 
-        self.worker.local_scheduler_client.push_profile_events(
+        self.worker.raylet_client.push_profile_events(
             component_type, ray.ObjectID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 
     def add_event(self, event):
         with self.lock:
             self.events.append(event)
+
+
+class NoopProfiler(object):
+    """A no-op profile used when collect_profile_data=False."""
+
+    def start_flush_thread(self):
+        pass
+
+    def flush_profile_data(self):
+        pass
+
+    def add_event(self, event):
+        pass
 
 
 class RayLogSpanRaylet(object):

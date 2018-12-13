@@ -184,7 +184,6 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "train_batch_size": 10,
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
-                "simple_optimizer": True,
             })
         check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
         check_support_multiagent("DDPG", {"timesteps_per_iteration": 1})

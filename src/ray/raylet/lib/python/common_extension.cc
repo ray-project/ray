@@ -117,7 +117,7 @@ TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size) {
  *
  * This is called from Python like
  *
- * task = local_scheduler.task_from_string("...")
+ * task = raylet.task_from_string("...")
  *
  * @param task_string String representation of the task specification.
  * @return Python task specification object.
@@ -142,7 +142,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  *
  * This is called from Python like
  *
- * s = local_scheduler.task_to_string(task)
+ * s = raylet.task_to_string(task)
  *
  * @param task Ray task specification Python object.
  * @return String representing the task specification.

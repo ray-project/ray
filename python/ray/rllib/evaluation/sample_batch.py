@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import collections
 import numpy as np
 
@@ -78,6 +79,11 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_builders = {}
         self.agent_to_policy = {}
         self.count = 0  # increment this manually
+
+    def total(self):
+        """Returns summed number of steps across all agent buffers."""
+
+        return sum(p.count for p in self.policy_builders.values())
 
     def has_pending_data(self):
         """Returns whether there is pending unprocessed data."""
@@ -195,6 +201,11 @@ class MultiAgentBatch(object):
             out[policy_id] = SampleBatch.concat_samples(batches)
         return MultiAgentBatch(out, total_count)
 
+    def copy(self):
+        return MultiAgentBatch(
+            {k: v.copy()
+             for (k, v) in self.policy_batches.items()}, self.count)
+
     def total(self):
         ct = 0
         for batch in self.policy_batches.values():
@@ -223,8 +234,9 @@ class SampleBatch(object):
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert type(k) == str, self
+            assert isinstance(k, six.string_types), self
             lengths.append(len(v))
+            self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, "data columns must be same length"
@@ -255,6 +267,11 @@ class SampleBatch(object):
         for k in self.keys():
             out[k] = np.concatenate([self[k], other[k]])
         return SampleBatch(out)
+
+    def copy(self):
+        return SampleBatch(
+            {k: np.array(v, copy=True)
+             for (k, v) in self.data.items()})
 
     def rows(self):
         """Returns an iterator over data rows, i.e. dicts with column values.

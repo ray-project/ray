@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import unittest
 
-from ray.rllib.agents.dqn.dqn_policy_graph import adjust_nstep
+from ray.rllib.agents.dqn.dqn_policy_graph import _adjust_nstep
 
 
 class DQNTest(unittest.TestCase):
@@ -14,7 +14,7 @@ class DQNTest(unittest.TestCase):
         rewards = [10.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0]
         new_obs = [2, 3, 4, 5, 6, 7, 8]
         dones = [0, 0, 0, 0, 0, 0, 1]
-        adjust_nstep(3, 0.9, obs, actions, rewards, new_obs, dones)
+        _adjust_nstep(3, 0.9, obs, actions, rewards, new_obs, dones)
         self.assertEqual(obs, [1, 2, 3, 4, 5, 6, 7])
         self.assertEqual(actions, ["a", "b", "a", "a", "a", "b", "a"])
         self.assertEqual(new_obs, [4, 5, 6, 7, 8, 8, 8])

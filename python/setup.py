@@ -23,7 +23,7 @@ ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server",
-    "ray/core/src/ray/raylet/liblocal_scheduler_library_python.so",
+    "ray/core/src/ray/raylet/libraylet_library_python.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
@@ -136,6 +136,7 @@ def find_version(*filepath):
 
 requires = [
     "numpy",
+    "filelock",
     "funcsigs",
     "click",
     "colorama",

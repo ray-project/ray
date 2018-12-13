@@ -141,6 +141,7 @@ class DistributedSGD(object):
         Returns:
             List of results from applying the function.
         """
+
         results = ray.get([w.foreach_model.remote(fn) for w in self.workers])
         out = []
         for r in results:

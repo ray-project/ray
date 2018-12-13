@@ -137,13 +137,12 @@ def train_mnist(args, config, reporter):
             data, target = Variable(data, volatile=True), Variable(target)
             output = model(data)
             test_loss += F.nll_loss(
-                output, target,
-                size_average=False).data[0]  # sum up batch loss
+                output, target, size_average=False).item()  # sum up batch loss
             pred = output.data.max(
                 1, keepdim=True)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
-        test_loss = test_loss.item() / len(test_loader.dataset)
+        test_loss = test_loss / len(test_loader.dataset)
         accuracy = correct.item() / len(test_loader.dataset)
         reporter(mean_loss=test_loss, mean_accuracy=accuracy)
 
@@ -182,8 +181,10 @@ if __name__ == '__main__':
                 "run": "train_mnist",
                 "num_samples": 1 if args.smoke_test else 10,
                 "config": {
-                    "lr": lambda spec: np.random.uniform(0.001, 0.1),
-                    "momentum": lambda spec: np.random.uniform(0.1, 0.9),
+                    "lr": tune.sample_from(
+                        lambda spec: np.random.uniform(0.001, 0.1)),
+                    "momentum": tune.sample_from(
+                        lambda spec: np.random.uniform(0.1, 0.9)),
                 }
             }
         },

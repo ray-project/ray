@@ -29,10 +29,17 @@ ray.tune.suggest
 
 .. automodule:: ray.tune.suggest
     :members:
-    :exclude-members: function, grid_search, SuggestionAlgorithm
+    :exclude-members: function, sample_from, grid_search, SuggestionAlgorithm
     :show-inheritance:
 
 .. autoclass:: ray.tune.suggest.SuggestionAlgorithm
     :members:
     :private-members:
     :show-inheritance:
+
+
+ray.tune.logger
+---------------
+
+.. autoclass:: ray.tune.logger.Logger
+    :members:

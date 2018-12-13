@@ -24,18 +24,21 @@ ARS             **Yes**                 **Yes**             No           No
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the agent must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
-    import ray
+    import gym, ray
     from ray.rllib.agents import ppo
 
     class MyEnv(gym.Env):
         def __init__(self, env_config):
-            self.action_space = ...
-            self.observation_space = ...
-        ...
+            self.action_space = <gym.Space>
+            self.observation_space = <gym.Space>
+        def reset(self):
+            return <obs>
+        def step(self, action):
+            return <obs>, <reward: float>, <done: bool>, <info: dict>
 
     ray.init()
     trainer = ppo.PPOAgent(env=MyEnv, config={
@@ -106,6 +109,10 @@ RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_wo
 
 Multi-Agent
 -----------
+
+.. note::
+
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
