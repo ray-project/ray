@@ -252,6 +252,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     env->DeleteLocalRef(object_id_bytes);
   }
   auto client = reinterpret_cast<RayletClient *>(client);
+  auto status = client->FreeObjects(object_ids, localOnly);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to free objects.");
 }
 
