@@ -94,8 +94,9 @@ static PyObject *PyRayletClient_FetchOrReconstruct(PyRayletClient *self, PyObjec
     Py_RETURN_NONE;
   } else {
     std::ostringstream stream;
-    stream << status.ToString() << "[RayletClient] FetchOrReconstruct failed: "
-           << "raylet client may be closed, check raylet status. return value: ";
+    stream << "[RayletClient] FetchOrReconstruct failed: "
+           << "raylet client may be closed, check raylet status. error message: "
+           << status.ToString();
     PyErr_SetString(CommonError, stream.str().c_str());
     Py_RETURN_NONE;
   }

@@ -42,10 +42,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = new RayletClient(nativeString, *worker_id.PID, isWorker, *driver_id.PID,
-                                 Language::JAVA);
+  auto raylet_client = new RayletClient(nativeString, *worker_id.PID, isWorker,
+                                        *driver_id.PID, Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
-  return reinterpret_cast<jlong>(client);
+  return reinterpret_cast<jlong>(raylet_client);
 }
 
 /*
@@ -56,7 +56,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
     JNIEnv *env, jclass, jlong client, jbyteArray cursorId, jobject taskBuff, jint pos,
     jint taskSize) {
-  auto client = reinterpret_cast<RayletClient *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
@@ -66,7 +66,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 
   auto data = reinterpret_cast<char *>(env->GetDirectBufferAddress(taskBuff)) + pos;
   ray::raylet::TaskSpecification task_spec(std::string(data, taskSize));
-  auto status = client->SubmitTask(execution_dependencies, task_spec);
+  auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to submit a task to raylet.");
 }
 
@@ -77,11 +77,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeGetTask(
     JNIEnv *env, jclass, jlong client) {
-  auto client = reinterpret_cast<RayletClient *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
   // TODO: handle actor failure later
   std::unique_ptr<ray::raylet::TaskSpecification> spec;
-  auto status = client->GetTask(&spec);
+  auto status = raylet_client->GetTask(&spec);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to get a task from raylet.");
 
   // We serialize the task specification using flatbuffers and then parse the
@@ -113,9 +113,10 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *, jclass, jlong client) {
-  auto client = reinterpret_cast<RayletClient *>(client);
-  RAY_CHECK_OK_PREPEND(client->Disconnect(), "[RayletClient] Failed to disconnect.");
-  delete client;
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  RAY_CHECK_OK_PREPEND(raylet_client->Disconnect(),
+                       "[RayletClient] Failed to disconnect.");
+  delete raylet_client;
 }
 
 /*
@@ -137,8 +138,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
     env->DeleteLocalRef(object_id_bytes);
   }
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
-  auto client = reinterpret_cast<RayletClient *>(client);
-  auto status = client->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status =
+      raylet_client->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
   return static_cast<jint>(status.code());
 }
 
@@ -150,7 +152,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
     JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
-  auto client = reinterpret_cast<RayletClient *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status = raylet_client->NotifyUnblocked(*current_task_id.PID);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to notify unblocked.");
 }
 
@@ -174,13 +177,13 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
   }
   UniqueIdFromJByteArray current_task_id(env, currentTaskId);
 
-  auto client = reinterpret_cast<RayletClient *>(client);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
   // Invoke wait.
   WaitResultPair result;
   auto status =
-      client->Wait(object_ids, numReturns, timeoutMillis, static_cast<bool>(isWaitLocal),
-                   *current_task_id.PID, &result);
+      raylet_client->Wait(object_ids, numReturns, timeoutMillis,
+                          static_cast<bool>(isWaitLocal), *current_task_id.PID, &result);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to wait for objects.");
 
   // Convert result to java object.
@@ -250,8 +253,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
     object_ids.push_back(*object_id.PID);
     env->DeleteLocalRef(object_id_bytes);
   }
-  auto client = reinterpret_cast<RayletClient *>(client);
-  auto status = client->FreeObjects(object_ids, localOnly);
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  auto status = raylet_client->FreeObjects(object_ids, localOnly);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to free objects.");
 }
 
