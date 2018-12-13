@@ -71,8 +71,17 @@ class FunctionDescriptor(object):
     @classmethod
     def from_bytes_list(cls, function_descriptor_list):
         """Create a FunctionDescriptor instance from list of bytes.
-        This function is used to load the function descriptor from
+
+        This function is used to create the function descriptor from
         backend data.
+
+        Args:
+            cls: Current class which is required argument for classmethod.
+            function_descriptor_list: list of bytes to represent the
+                function descriptor.
+
+        Returns:
+            The FunctionDescriptor instance created from the bytes list.
         """
         assert isinstance(function_descriptor_list, list)
         if len(function_descriptor_list) == 0:
@@ -94,9 +103,20 @@ class FunctionDescriptor(object):
 
     @classmethod
     def from_function(cls, function, function_class=None):
-        """Create a FunctionDescriptorm from a function instance.
-        function_class could be None if this function does not belong to
-        any Classes.
+        """Create a FunctionDescriptor from a function instance.
+
+        This function is used to create the function descriptor from
+        a python function.
+
+        Args:
+            cls: Current class which is required argument for classmethod.
+            function: the python function used to create the function
+                descriptor.
+            function_class: The class that the function belongs to, which
+                could be None when this function is not a method of class.
+
+        Returns:
+            The FunctionDescriptor instance created according to the function.
         """
         module_name = function.__module__
         function_name = function.__name__
@@ -122,13 +142,23 @@ class FunctionDescriptor(object):
 
     @classmethod
     def from_class(cls, target_class):
-        """Create a FunctionDescriptor for a class."""
+        """Create a FunctionDescriptor from a class.
+
+        Args:
+            cls: Current class which is required argument for classmethod.
+            target_class: the python class used to create the function
+                descriptor.
+
+        Returns:
+            The FunctionDescriptor instance created according to the class.
+        """
         module_name = target_class.__module__
         class_name = target_class.__name__
         return cls(module_name, "", class_name)
 
     @classmethod
     def create_driver_task(cls):
+        """Create a FunctionDescriptor instance representing a driver task."""
         return cls("", "", "", b"", True)
 
     @property
@@ -159,15 +189,25 @@ class FunctionDescriptor(object):
         return ray.ObjectID(self._function_id)
 
     def get_actor_descriptor(self):
-        """ FunctionDescriptor: a function descriptor
-        Return a function descriptor that represent a actor uniquely.
+        """Get the function descriptor representing the actor class.
+
+        This function is used in an actor function's function descriptor
+        to return a function descriptor to represent the class that
+        contains this function.
+
+        Returns:
+            The FunctionDescriptor instance representing the class.
         """
         return self.__class__(self.module_name, "", self.class_name)
 
     def _get_function_id(self):
-        """str: The function id of the function.
+        """Calculate the function id of current function descriptor.
+
         This function id is calculated from all the fields of function
         descriptor.
+
+        Returns:
+            bytes with length of ray_constants.ID_SIZE.
         """
         if self._is_driver_task:
             return ray_constants.NIL_FUNCTION_ID.id()
@@ -183,7 +223,13 @@ class FunctionDescriptor(object):
         return function_id
 
     def get_function_descriptor_list(self):
-        """Return a list of bytes which is needed by the backend."""
+        """Return a list of bytes representing the function descriptor.
+
+        This function is used to pass this function descriptor to backend.
+
+        Returns:
+            A list of bytes.
+        """
         descriptor_list = []
         if self._is_driver_task:
             # Driver task returns an empty list.
@@ -380,7 +426,7 @@ class FunctionActorManager(object):
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
         # we spend too long in this loop.
-        # The driver function may not be found in worker lib path. Try to load
+        # The driver function may not be found in sys.path. Try to load
         # the function from GCS.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_descriptor, driver_id)
