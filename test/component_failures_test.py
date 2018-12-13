@@ -408,7 +408,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             for i, out in enumerate(children_out):
                 try:
                     ray.get(out)
-                except ray.worker.RayGetError:
+                except ray.worker.RayTaskError:
                     children[i] = Child.remote(death_probability)
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be reconstructed.

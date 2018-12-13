@@ -668,6 +668,16 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
+        if (worker.mode == ray.worker.SCRIPT_MODE
+                and self._ray_actor_driver_id.id() != worker.worker_id):
+            # If the worker is a driver and driver id has changed because
+            # Ray was shut down re-initialized, the actor is already cleaned up
+            # and we don't need to send `__ray_terminate__` again.
+            logger.warn(
+                "Actor is garbage collected in the wrong driver." +
+                " Actor id = %s, class name = %s.", self._ray_actor_id,
+                self._ray_class_name)
+            return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
             # dependency here?

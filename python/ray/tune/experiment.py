@@ -7,9 +7,10 @@ import logging
 import six
 import types
 
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.error import TuneError
+from ray.tune.log_sync import validate_sync_function
 from ray.tune.registry import register_trainable
+from ray.tune.result import DEFAULT_RESULTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,14 @@ class Experiment(object):
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results
             to (e.g. ``s3://bucket``).
+        trial_name_creator (func): Optional function for generating
+            the trial string representation.
+        custom_loggers (list): List of custom logger creators to be used with
+            each Trial. See `ray/tune/logger.py`.
+        sync_function (func|str): Function for syncing the local_dir to
+            upload_dir. If string, then it must be a string template for
+            syncer to run. If not provided, the sync command defaults
+            to standard S3 or gsutil sync comamnds.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
@@ -86,10 +95,16 @@ class Experiment(object):
                  num_samples=1,
                  local_dir=None,
                  upload_dir=None,
+                 trial_name_creator=None,
+                 custom_loggers=None,
+                 sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  max_failures=3,
                  restore=None):
+        validate_sync_function(sync_function)
+        if sync_function:
+            assert upload_dir, "Need `upload_dir` if sync_function given."
         spec = {
             "run": self._register_if_needed(run),
             "stop": stop or {},
@@ -98,6 +113,9 @@ class Experiment(object):
             "num_samples": num_samples,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
+            "trial_name_creator": trial_name_creator,
+            "custom_loggers": custom_loggers,
+            "sync_function": sync_function or "",  # See `upload_dir`.
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,

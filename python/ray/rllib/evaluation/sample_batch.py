@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import collections
 import numpy as np
 
@@ -233,8 +234,9 @@ class SampleBatch(object):
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert type(k) == str, self
+            assert isinstance(k, six.string_types), self
             lengths.append(len(v))
+            self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, "data columns must be same length"

@@ -22,6 +22,8 @@ General Examples
    Example of using a Trainable class with PopulationBasedTraining scheduler.
 - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__:
    Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
+- `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__:
+   Example of custom loggers and custom trial directory naming.
 
 
 Keras Examples

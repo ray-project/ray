@@ -112,7 +112,8 @@ class AsyncSampler(threading.Thread):
                  horizon=None,
                  pack=False,
                  tf_sess=None,
-                 clip_actions=True):
+                 clip_actions=True,
+                 blackhole_outputs=False):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -133,6 +134,8 @@ class AsyncSampler(threading.Thread):
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
+        self.blackhole_outputs = blackhole_outputs
+        self.shutdown = False
 
     def run(self):
         try:
@@ -142,12 +145,19 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
+        if self.blackhole_outputs:
+            queue_putter = (lambda x: None)
+            extra_batches_putter = (lambda x: None)
+        else:
+            queue_putter = self.queue.put
+            extra_batches_putter = (
+                lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            self.async_vector_env, self.extra_batches.put, self.policies,
+            self.async_vector_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess)
-        while True:
+        while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
@@ -155,7 +165,7 @@ class AsyncSampler(threading.Thread):
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
-                self.queue.put(item, timeout=600.0)
+                queue_putter(item)
 
     def get_data(self):
         rollout = self.queue.get(timeout=600.0)
@@ -246,7 +256,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        logger.warn("no episode horizon specified, assuming inf")
+        logger.debug("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 
@@ -332,12 +342,12 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is not intentional, check that the "
-                "the `horizon` config is set correctly, or consider setting "
-                "`batch_mode` to 'truncate_episodes'. Note that in "
-                "multi-agent environments, `sample_batch_size` sets the "
-                "batch size based on environment steps, not the steps of "
-                "individual agents.")
+                "the sampler. If this is more than you expected, check that "
+                "that you set a horizon on your environment correctly. Note "
+                "that in multi-agent environments, `sample_batch_size` sets "
+                "the batch size based on environment steps, not the steps of "
+                "individual agents, which can result in unexpectedly large "
+                "batches.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
