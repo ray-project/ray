@@ -172,8 +172,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       return finalRet;
     } catch (RayException e) {
-      LOGGER.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
-          + " get with Exception", e);
+      LOGGER.error("Failed to get objects for task {}.", taskId, e);
       throw e;
     } finally {
       // If there were objects that we weren't able to get locally, let the local
