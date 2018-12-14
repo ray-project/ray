@@ -56,6 +56,7 @@ class TwoStepGame(MultiAgentEnv):
 if __name__ == "__main__":
     ray.init()
     # Naive use of independent policies converges to 7 reward instead of 8.
+    # Actually it will eventually get to 8 reward but only after a long time.
     run_experiments({
         "two_step": {
             "run": "PG",
