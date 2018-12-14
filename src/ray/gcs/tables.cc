@@ -368,10 +368,13 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       }
       RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
     } else {
+      // NOTE(swang): The client should be added to this data structure before
+      // the callback gets called, in case the callback depends on the data
+      // structure getting updated.
+      removed_clients_.insert(client_id);
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, data);
       }
-      removed_clients_.insert(client_id);
     }
   }
 }
