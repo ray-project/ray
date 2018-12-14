@@ -389,8 +389,8 @@ class NodeManager {
   uint64_t last_heartbeat_at_ms_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
-  /// The resources local to this node.
-  const SchedulingResources local_resources_;
+  /// Initial node manager configuration.
+  const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
