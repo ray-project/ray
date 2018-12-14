@@ -76,11 +76,7 @@ public class ObjectStoreProxy {
   }
 
   public void putSerialized(UniqueId id, byte[] obj, byte[] metadata) {
-    try {
-      objectStore.get().put(id.getBytes(), obj, metadata);
-    } catch (DuplicateObjectException e) {
-      LOGGER.warn(e.getMessage());
-    }
+    store.put(id.getBytes(), obj, metadata);
   }
 
   public enum GetStatus {

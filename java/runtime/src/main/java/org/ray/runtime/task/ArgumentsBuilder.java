@@ -33,8 +33,6 @@ public class ArgumentsBuilder {
         data = Serializer.encode(arg);
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
-      } else if (arg instanceof byte[]) {
-        id = Ray.put(arg).getId();
       } else {
         byte[] serialized = Serializer.encode(arg);
         if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {

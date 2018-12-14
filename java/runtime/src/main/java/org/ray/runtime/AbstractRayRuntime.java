@@ -90,7 +90,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     UniqueId objectId = UniqueIdUtil.computePutId(
             workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
     UniqueId taskId = workerContext.getCurrentTask().taskId;
-    LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.putSerialized(objectId, obj, null);
     return new RayObjectImpl<>(objectId);
   }
