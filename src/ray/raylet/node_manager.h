@@ -269,22 +269,25 @@ class NodeManager {
   /// \return Void.
   void KillWorker(std::shared_ptr<Worker> worker);
 
-  /// Methods for actor scheduling.
-  /// Handler for an actor state transition, for a newly created actor or an
-  /// actor that died. This method is idempotent and will ignore old state
-  /// transitions.
+  /// The callback for handling an actor state transition (e.g., from ALIVE to
+  /// DEAD), whether as a notification from the actor table or as a handler for
+  /// a local actor's state transition. This method is idempotent and will ignore
+  /// old state transition.
   ///
-  /// \param actor_id The actor ID of the actor that was created.
-  /// \param data Data associated with the actor state transition.
+  /// \param actor_id The actor ID of the actor whose state was updated.
+  /// \param data Data associated with this notification.
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
 
-  /// Handler for an actor dying. The actor may be remote.
+  /// Publish an actor's state transition to all other nodes.
   ///
-  /// \param actor_id The actor ID of the actor that died.
-  /// \param was_local Whether the actor was local.
-  /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local);
+  /// \param actor_id The actor ID of the actor whose state was updated.
+  /// \param data Data to publish.
+  /// \param failure_callback An optional callback to call if the publish is
+  /// unsuccessful.
+  void PublishActorStateTransition(
+      const ActorID &actor_id, const ActorTableDataT &data,
+      const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
   /// When a driver dies, loop over all of the queued tasks for that driver and
   /// treat them as failed.
@@ -341,10 +344,11 @@ class NodeManager {
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param push_warning Propogate error message if true.
+  /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
   void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client, bool push_warning = true);
+      const std::shared_ptr<LocalClientConnection> &client,
+      bool intentional_disconnect = false);
 
   /// Process client message of SubmitTask
   ///
@@ -374,6 +378,18 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
+  /// Handle the case where an actor is disconnected, determine whether this
+  /// actor needs to be reconstructed and then update actor table.
+  /// This function needs to be called either when actor process dies or when
+  /// a node dies.
+  ///
+  /// \param actor_id Id of this actor.
+  /// \param was_local Whether the disconnected was on this local node.
+  /// \param intentional_disconnect Wether the client was intentionally disconnected.
+  /// \return Void.
+  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
+                               bool intentional_disconnect);
+
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
@@ -400,8 +416,8 @@ class NodeManager {
   uint64_t last_heartbeat_at_ms_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
-  /// The resources local to this node.
-  const SchedulingResources local_resources_;
+  /// Initial node manager configuration.
+  const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;

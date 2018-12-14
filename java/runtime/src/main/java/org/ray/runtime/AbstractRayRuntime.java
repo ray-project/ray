@@ -270,6 +270,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
+    int maxActorReconstruction = 0;
+    if (taskOptions instanceof ActorCreationOptions) {
+      maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
+    }
     RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
     return new TaskSpec(
         current.driverId,
@@ -277,6 +281,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         current.taskId,
         -1,
         actorCreationId,
+        maxActorReconstruction,
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),

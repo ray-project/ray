@@ -271,12 +271,14 @@ class ActorClass(object):
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id, checkpoint_interval, num_cpus,
-                 num_gpus, resources, actor_method_cpus):
+    def __init__(self, modified_class, class_id, checkpoint_interval,
+                 max_reconstructions, num_cpus, num_gpus, resources,
+                 actor_method_cpus):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
         self._checkpoint_interval = checkpoint_interval
+        self._max_reconstructions = max_reconstructions
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
@@ -413,6 +415,7 @@ class ActorClass(object):
                 function_id,
                 creation_args,
                 actor_creation_id=actor_id,
+                max_actor_reconstructions=self._max_reconstructions,
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
@@ -775,12 +778,19 @@ class ActorHandle(object):
 
 
 def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
-               checkpoint_interval):
+               checkpoint_interval, max_reconstructions):
     if checkpoint_interval is None:
         checkpoint_interval = -1
+    if max_reconstructions is None:
+        max_reconstructions = 0
 
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
+    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
+            ray_constants.INFINITE_RECONSTRUCTION):
+        raise Exception("max_reconstructions must be in range [%d, %d]." %
+                        (ray_constants.NO_RECONSTRUCTION,
+                         ray_constants.INFINITE_RECONSTRUCTION))
 
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
@@ -872,8 +882,9 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
 
     class_id = _random_string()
 
-    return ActorClass(Class, class_id, checkpoint_interval, num_cpus, num_gpus,
-                      resources, actor_method_cpus)
+    return ActorClass(Class, class_id, checkpoint_interval,
+                      max_reconstructions, num_cpus, num_gpus, resources,
+                      actor_method_cpus)
 
 
 ray.worker.global_worker.make_actor = make_actor
