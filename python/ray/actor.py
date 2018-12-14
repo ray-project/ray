@@ -273,22 +273,25 @@ class ActorClass(object):
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
-        # Assign an __init__ function will avoid many checks later on.
-        def __init__(self):
-            pass
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
         self._actor_method_names = [
             method_name for method_name, _ in self._actor_methods
         ]
-        if "__init__" not in self._actor_method_names:
+
+        constructor_name = "__init__"
+        # Assign an __init__ function will avoid many checks later on.
+        def __init__(self):
+            pass
+
+        if constructor_name not in self._actor_method_names:
+            # Add __init__ if it does not exist.
+            # Actor creation will be executed with __init__ together.
             self._modified_class.__init__ = __init__
-            self._actor_methods = inspect.getmembers(
-                self._modified_class, ray.utils.is_function_or_method)
-            self._actor_method_names = [
-                method_name for method_name, _ in self._actor_methods
-            ]
+            self._actor_method_names.append(constructor_name)
+            self._actor_methods.append((constructor_name, __init__))
+
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
