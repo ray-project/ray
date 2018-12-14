@@ -161,8 +161,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         }
       }
 
-      LOGGER
-          .debug("Task {} Objects {} get" , taskId, Arrays.toString(objectIds.toArray()));
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Got objects {} for task {}.", Arrays.toString(objectIds.toArray()), taskId);
+      }
       List<T> finalRet = new ArrayList<>();
 
       for (Pair<T, GetStatus> value : ret) {
