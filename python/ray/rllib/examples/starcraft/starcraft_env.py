@@ -65,11 +65,12 @@ if __name__ == "__main__":
     os.environ["SC2PATH"] = os.path.join(path_to_pymarl,
                                          "3rdparty/StarCraftII")
     from ray.rllib.agents.pg import PGAgent
+    from ray.tune.logger import pretty_print
     ray.init()
     register_env("starcraft", lambda _: SC2MultiAgentEnv())
     agent = PGAgent(env="starcraft")
     for i in range(100):
-        agent.train()
+        print(pretty_print(agent.train()))
 
     # env = SC2MultiAgentEnv()
     # x = env.reset()
