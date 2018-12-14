@@ -8,7 +8,7 @@ Ray SGD is built on top of the Ray task and actor abstractions to provide seamle
 Interface
 ---------
 
-To use Ray SGD, define a `model class <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/model.py>`__ with ``loss`` and ``optimizer`` attributes:
+To use Ray SGD, define a `model class <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/model.py>`__:
 
 .. autoclass:: ray.experimental.sgd.Model
 

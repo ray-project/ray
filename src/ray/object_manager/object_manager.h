@@ -70,25 +70,16 @@ class ObjectManagerInterface {
 // TODO(hme): Add success/failure callbacks for push and pull.
 class ObjectManager : public ObjectManagerInterface {
  public:
-  /// Implicitly instantiates Ray implementation of ObjectDirectory.
-  ///
-  /// \param main_service The main asio io_service.
-  /// \param config ObjectManager configuration.
-  /// \param gcs_client A client connection to the Ray GCS.
-  explicit ObjectManager(boost::asio::io_service &main_service,
-                         const ObjectManagerConfig &config,
-                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
-
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
   ///
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
-  /// \param od An object implementing the object directory interface.
+  /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::unique_ptr<ObjectDirectoryInterface> od);
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
 
@@ -363,7 +354,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   ClientID client_id_;
   const ObjectManagerConfig config_;
-  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 

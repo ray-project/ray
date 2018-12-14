@@ -24,7 +24,8 @@ class MockServer {
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config,
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -285,8 +286,9 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
-                                           const ray::ObjectID &object_id) {
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool created) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }

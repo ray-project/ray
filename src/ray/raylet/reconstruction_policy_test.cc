@@ -19,7 +19,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MockObjectDirectory() {}
 
   ray::Status LookupLocations(const ObjectID &object_id,
-                              const OnLocationsFound &callback) {
+                              const OnLocationsFound &callback) override {
     callbacks_.push_back({object_id, callback});
     return ray::Status::OK();
   }
@@ -27,16 +27,28 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   void FlushCallbacks() {
     for (const auto &callback : callbacks_) {
       const ObjectID object_id = callback.first;
-      callback.second(locations_[object_id], object_id);
+      auto it = locations_.find(object_id);
+      if (it == locations_.end()) {
+        callback.second(object_id, {}, /*created=*/false);
+      } else {
+        callback.second(object_id, it->second, /*created=*/true);
+      }
     }
     callbacks_.clear();
   }
 
-  void SetObjectLocations(const ObjectID &object_id, std::vector<ClientID> locations) {
+  void SetObjectLocations(const ObjectID &object_id,
+                          const std::unordered_set<ClientID> &locations) {
     locations_[object_id] = locations;
   }
 
-  std::string DebugString() const { return ""; }
+  void HandleClientRemoved(const ClientID &client_id) override {
+    for (auto &locations : locations_) {
+      locations.second.erase(client_id);
+    }
+  }
+
+  std::string DebugString() const override { return ""; }
 
   MOCK_METHOD0(RegisterBackend, void(void));
   MOCK_METHOD0(GetLocalClientID, ray::ClientID());
@@ -54,7 +66,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
-  std::unordered_map<ObjectID, std::vector<ClientID>> locations_;
+  std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
 class MockGcs : public gcs::PubsubInterface<TaskID>,
@@ -138,8 +150,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
-            io_service_,
-            [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
+            io_service_, [this](const TaskID &task_id,
+                                bool created) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_, ClientID::from_random(), mock_gcs_,
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
@@ -243,6 +255,30 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 
   // Simulate evicting one of the objects.
   mock_object_directory_->SetObjectLocations(object_id, {});
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was triggered, since one of the objects was
+  // evicted.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+  ClientID client_id = ClientID::from_random();
+  mock_object_directory_->SetObjectLocations(object_id, {client_id});
+
+  // Listen for both objects.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was not triggered, since the objects still
+  // exist on a live node.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Simulate evicting one of the objects.
+  mock_object_directory_->HandleClientRemoved(client_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was
