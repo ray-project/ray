@@ -18,23 +18,23 @@ cdef extern from "ray/api.h" namespace "ray" nogil:
         RayStatus(StatusCode code, const c_string &msg)
         RayStatus(const RayStatus &s);
 
-        @ staticmethod
+        @staticmethod
         RayStatus OK()
-        @ staticmethod
+        @staticmethod
         RayStatus OutOfMemory()
-        @ staticmethod
+        @staticmethod
         RayStatus KeyError()
-        @ staticmethod
+        @staticmethod
         RayStatus Invalid()
-        @ staticmethod
+        @staticmethod
         RayStatus IOError()
-        @ staticmethod
+        @staticmethod
         RayStatus TypeError()
-        @ staticmethod
+        @staticmethod
         RayStatus UnknownError()
-        @ staticmethod
+        @staticmethod
         RayStatus NotImplemented()
-        @ staticmethod
+        @staticmethod
         RayStatus RedisError()
 
         c_bool ok()
@@ -55,10 +55,10 @@ cdef extern from "ray/api.h" namespace "ray" nogil:
     cdef cppclass UniqueID "ray::UniqueID":
         # TODO: Add Plasma UniqueID support.
         UniqueID()
-        @ staticmethod
+        @staticmethod
         UniqueID from_random()
         UniqueID from_binary(const c_string & binary)
-        @ staticmethod
+        @staticmethod
         const UniqueID nil()
         size_t hash() const
         c_bool is_nil() const
