@@ -98,7 +98,7 @@ static PyObject *PyRayletClient_FetchOrReconstruct(PyRayletClient *self, PyObjec
            << "raylet client may be closed, check raylet status. error message: "
            << status.ToString();
     PyErr_SetString(CommonError, stream.str().c_str());
-    Py_RETURN_NONE;
+    return NULL;
   }
 }
 
