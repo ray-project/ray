@@ -18,8 +18,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
@@ -44,8 +43,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_notification_(main_service, config_.store_socket_name),
       // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
-                   /*release_delay=*/2 * config_.max_sends),
+      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),

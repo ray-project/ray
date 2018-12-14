@@ -2091,7 +2091,7 @@ def connect(info,
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
-        plasma.connect(info["store_socket_name"], "", 64))
+        plasma.connect(info["store_socket_name"], ""))
 
     raylet_socket = info["raylet_socket_name"]
 
