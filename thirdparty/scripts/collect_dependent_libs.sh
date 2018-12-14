@@ -20,7 +20,7 @@ function usage() {
 # By default all the libs will be put into ./thirdparty/external_project_libs.
 # However, this directory could be cleaned by `git clean`.
 # Users can provide another directory using -d option.
-DIR="$ROOT_DIR/thirdparty/external_project_libs"
+DIR="$ROOT_DIR/../external_project_libs"
 # By default ray will be built before copying the libs.
 # Users can skip the building process if they have built ray.
 BUILD="YES"
@@ -64,11 +64,11 @@ fi
 pushd $ROOT_DIR
 if [ "$BUILD" = "YES" ]; then
   echo "Build Ray First."
-  ./build.sh
+  ../../build.sh
 fi
 
-RAY_BUILD_DIR=$ROOT_DIR/build/external/
-ARROW_BUILD_DIR=$ROOT_DIR/build/external/arrow/src/arrow_ep-build/
+RAY_BUILD_DIR=$ROOT_DIR/../../build/external/
+ARROW_BUILD_DIR=$ROOT_DIR/../../build/external/arrow/src/arrow_ep-build/
 
 function cp_one_lib() {
   if [[ ! -d "$1" ]]; then
