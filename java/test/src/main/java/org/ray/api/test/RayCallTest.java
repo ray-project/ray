@@ -2,6 +2,8 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import org.junit.Assert;
@@ -66,6 +68,15 @@ public class RayCallTest {
     return val;
   }
 
+  public static class LargeObject implements Serializable {
+    private byte[] data = new byte[1024 * 1024];
+  }
+
+  @RayRemote
+  private static LargeObject testLargeObject(LargeObject largeObject) {
+    return largeObject;
+  }
+
   /**
    * Test calling and returning different types.
    */
@@ -83,6 +94,8 @@ public class RayCallTest {
     Assert.assertEquals(list, Ray.call(RayCallTest::testList, list).get());
     Map<String, Integer> map = ImmutableMap.of("1", 1, "2", 2);
     Assert.assertEquals(map, Ray.call(RayCallTest::testMap, map).get());
+    LargeObject largeObject = new LargeObject();
+    Assert.assertNotNull(Ray.call(RayCallTest::testLargeObject, largeObject).get());
   }
 
   @RayRemote
@@ -130,4 +143,5 @@ public class RayCallTest {
     Assert.assertEquals(5, (int) Ray.call(RayCallTest::testFiveParams, 1, 1, 1, 1, 1).get());
     Assert.assertEquals(6, (int) Ray.call(RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).get());
   }
+
 }
