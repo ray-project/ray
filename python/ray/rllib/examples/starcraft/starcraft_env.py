@@ -7,10 +7,8 @@ import os
 import random
 import sys
 import yaml
-from types import SimpleNamespace
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-
 
 
 class SC2MultiAgentEnv(MultiAgentEnv):
@@ -24,22 +22,30 @@ class SC2MultiAgentEnv(MultiAgentEnv):
             pymarl_args = yaml.load(f)
             # HACK
             pymarl_args["env_args"]["seed"] = 0
-            
+
         self._starcraft_env = StarCraft2Env(**pymarl_args)
 
     def reset(self):
-        self._starcraft_env.reset()
+        obs_list, state_list = self._starcraft_env.reset()
+        return dict(enumerate(obs_list))
 
     def step(self, action_dict):
-        actions = process_action_dict(action_dict)
+        # TODO(rliaw): Check to handle missing agents, if any
+        actions = [action_dict[k] for k in sorted(action_dict)]
         rew, done, info = self._starcraft_env.step(actions)
-        obs = self._starcraft_env.get_obs()
-        return obs, rew, done, info
+        obs_list = self._starcraft_env.get_obs()
+        obs = dict(enumerate(obs_list))
+        rews = {i: rew for i in range(len(obs_list))}
+        dones = {i: done for i in range(len(obs_list))}
+        infos = {i: info for i in range(len(obs_list))}
+        return obs, rews, dones, infos
 
 
 if __name__ == "__main__":
     path_to_pymarl = "/data/rliaw/pymarl/"
-    os.environ["PYMARL_PATH"] = path_to_pymarl
-    os.environ["SC2PATH"] = os.path.join(path_to_pymarl, "3rdparty/StarCraftII")
+    os.environ.setdefault("PYMARL_PATH", path_to_pymarl)
+    os.environ["SC2PATH"] = os.path.join(path_to_pymarl,
+                                         "3rdparty/StarCraftII")
     env = SC2MultiAgentEnv()
-    env.reset()
+    x = env.reset()
+    returns = env.step({i: 0 for i in range(len(x))})
