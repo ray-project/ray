@@ -9,7 +9,9 @@ import random
 import sys
 import yaml
 
+import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.tune.registry import register_env
 
 
 class SC2MultiAgentEnv(MultiAgentEnv):
@@ -31,7 +33,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         #     "action_mask": Box(0, 1, shape=(num_actions,)),
         #     "real_obs": Box(-1, 1, shape=(obs_size,))
         # })
-        self.obs_space = Box(-1, 1, shape=(obs_size,))
+        self.observation_space = Box(-1, 1, shape=(obs_size,))
         self.action_space = Discrete(self._starcraft_env.get_total_actions())
 
     def reset(self):
@@ -52,7 +54,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         obs = dict(enumerate(obs_list))
         rews = {i: rew for i in range(len(obs_list))}
         dones = {i: done for i in range(len(obs_list))}
-        done["__all__"] = done
+        dones["__all__"] = done
         infos = {i: info for i in range(len(obs_list))}
         return obs, rews, dones, infos
 
@@ -62,9 +64,10 @@ if __name__ == "__main__":
     os.environ.setdefault("PYMARL_PATH", path_to_pymarl)
     os.environ["SC2PATH"] = os.path.join(path_to_pymarl,
                                          "3rdparty/StarCraftII")
-    register_env("starcraft2", SC2MultiAgentEnv)
     from ray.rllib.agents.pg import PGAgent
-    agent = PGAgent(env="starcraft2")
+    ray.init()
+    register_env("starcraft", lambda _: SC2MultiAgentEnv())
+    agent = PGAgent(env="starcraft")
     for i in range(100):
         agent.train()
 
