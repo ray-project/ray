@@ -18,6 +18,7 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
@@ -108,8 +109,12 @@ class PolicyEvaluator(EvaluatorInterface):
                  policy_config=None,
                  worker_index=0,
                  monitor_path=None,
+                 log_dir=None,
                  log_level=None,
-                 callbacks=None):
+                 callbacks=None,
+                 input_creator=lambda ioctx: ioctx.default_sampler_input(),
+                 input_evaluation_method=None,
+                 output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -170,8 +175,22 @@ class PolicyEvaluator(EvaluatorInterface):
                 through EnvContext so that envs can be configured per worker.
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
+            log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (dict): Dict of custom debug callbacks.
+            input_creator (func): Function that returns an InputReader object
+                for loading previous generated experiences.
+            input_evaluation_method (str): How to evaluate the current policy.
+                This only applies when the input is reading offline data.
+                Options are:
+                  - None: don't evaluate the policy. The episode reward and
+                    other metrics will be NaN.
+                  - "simulation": run the environment in the background, but
+                    use this data for evaluation only and never for learning.
+                  - "counterfactual": use counterfactual policy evaluation to
+                    estimate performance.
+            output_creator (func): Function that returns an OutputWriter object
+                for saving generated experiences.
         """
 
         if log_level:
@@ -284,6 +303,20 @@ class PolicyEvaluator(EvaluatorInterface):
         else:
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
+
+        if input_evaluation_method == "simulation":
+            logger.warn(
+                "Requested 'simulation' input evaluation method: "
+                "will discard all sampler outputs and keep only metrics.")
+            sample_async = True
+        elif input_evaluation_method == "counterfactual":
+            raise NotImplementedError
+        elif input_evaluation_method is None:
+            pass
+        else:
+            raise ValueError("Unknown evaluation method: {}".format(
+                input_evaluation_method))
+
         if sample_async:
             self.sampler = AsyncSampler(
                 self.async_env,
@@ -297,7 +330,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                clip_actions=clip_actions,
+                blackhole_outputs=input_evaluation_method == "simulation")
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -314,6 +348,12 @@ class PolicyEvaluator(EvaluatorInterface):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions)
 
+        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
+        self.input_reader = input_creator(self.io_context)
+        assert isinstance(self.input_reader, InputReader), self.input_reader
+        self.output_writer = output_creator(self.io_context)
+        assert isinstance(self.output_writer, OutputWriter), self.output_writer
+
         logger.debug("Created evaluator with env {} ({}), policies {}".format(
             self.async_env, self.env, self.policy_map))
 
@@ -325,7 +365,7 @@ class PolicyEvaluator(EvaluatorInterface):
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
-        batches = [self.sampler.get_data()]
+        batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
@@ -337,10 +377,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         while steps_so_far < self.sample_batch_size and len(
                 batches) < max_batches:
-            batch = self.sampler.get_data()
+            batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
-        batches.extend(self.sampler.get_extra_batches())
         batch = batches[0].concat_samples(batches)
 
         if self.callbacks.get("on_sample_end"):
@@ -358,6 +397,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
+        self.output_writer.write(batch)
         return batch
 
     @ray.method(num_return_vals=2)
@@ -535,6 +575,10 @@ class PolicyEvaluator(EvaluatorInterface):
             with tf.variable_scope(name):
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
         return policy_map, preprocessors
+
+    def __del__(self):
+        if isinstance(self.sampler, AsyncSampler):
+            self.sampler.shutdown = True
 
 
 def _validate_and_canonicalize(policy_graph, env):

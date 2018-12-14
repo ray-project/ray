@@ -13,6 +13,7 @@ import numpy as np
 import os
 import redis
 import signal
+from six.moves import queue
 import sys
 import threading
 import time
@@ -97,82 +98,34 @@ class RayTaskError(Exception):
         traceback_str (str): The traceback from the exception.
     """
 
-    def __init__(self, function_name, exception, traceback_str):
+    def __init__(self, function_name, traceback_str):
         """Initialize a RayTaskError."""
-        self.function_name = function_name
-        if (isinstance(exception, RayGetError)
-                or isinstance(exception, RayGetArgumentError)):
-            self.exception = exception
+        if setproctitle:
+            self.proctitle = setproctitle.getproctitle()
         else:
-            self.exception = None
+            self.proctitle = "ray_worker"
+        self.pid = os.getpid()
+        self.host = os.uname()[1]
+        self.function_name = function_name
         self.traceback_str = traceback_str
 
     def __str__(self):
         """Format a RayTaskError as a string."""
-        if self.traceback_str is None:
-            # This path is taken if getting the task arguments failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.exception))
-        else:
-            # This path is taken if the task execution failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.traceback_str))
-
-
-class RayGetError(Exception):
-    """An exception used when get is called on an output of a failed task.
-
-    Attributes:
-        objectid (lib.ObjectID): The ObjectID that get was called on.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, objectid, task_error):
-        """Initialize a RayGetError object."""
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetError as a string."""
-        return ("Could not get objectid {}. It was created by remote function "
-                "{}{}{} which failed with:\n\n{}".format(
-                    self.objectid, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
-
-
-class RayGetArgumentError(Exception):
-    """An exception used when a task's argument was produced by a failed task.
-
-    Attributes:
-        argument_index (int): The index (zero indexed) of the failed argument
-            in present task's remote function call.
-        function_name (str): The name of the function for the current task.
-        objectid (lib.ObjectID): The ObjectID that was passed in as the
-            argument.
-        task_error (RayTaskError): The RayTaskError object created by the
-            failed task.
-    """
-
-    def __init__(self, function_name, argument_index, objectid, task_error):
-        """Initialize a RayGetArgumentError object."""
-        self.argument_index = argument_index
-        self.function_name = function_name
-        self.objectid = objectid
-        self.task_error = task_error
-
-    def __str__(self):
-        """Format a RayGetArgumentError as a string."""
-        return ("Failed to get objectid {} as argument {} for remote function "
-                "{}{}{}. It was created by remote function {}{}{} which "
-                "failed with:\n{}".format(
-                    self.objectid, self.argument_index, colorama.Fore.RED,
-                    self.function_name, colorama.Fore.RESET, colorama.Fore.RED,
-                    self.task_error.function_name, colorama.Fore.RESET,
-                    self.task_error))
+        lines = self.traceback_str.split("\n")
+        out = []
+        in_worker = False
+        for line in lines:
+            if line.startswith("Traceback "):
+                out.append("{}{}{} (pid={}, host={})".format(
+                    colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
+                    self.pid, self.host))
+            elif in_worker:
+                in_worker = False
+            elif "ray/worker.py" in line or "ray/function_manager.py" in line:
+                in_worker = True
+            else:
+                out.append(line)
+        return "\n".join(out)
 
 
 class Worker(object):
@@ -449,7 +402,7 @@ class Worker(object):
                 # TODO(ekl): the local scheduler could include relevant
                 # metadata in the task kill case for a better error message
                 invalid_error = RayTaskError(
-                    "<unknown>", None,
+                    "<unknown>",
                     "Invalid return value: likely worker died or was killed "
                     "while executing the task; check previous logs or dmesg "
                     "for errors.")
@@ -502,7 +455,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.local_scheduler_client.fetch_or_reconstruct(
+            self.raylet_client.fetch_or_reconstruct(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -537,7 +490,7 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.local_scheduler_client.fetch_or_reconstruct(
+                        self.raylet_client.fetch_or_reconstruct(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
                             current_task_id)
@@ -558,7 +511,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked(current_task_id)
+                self.raylet_client.notify_unblocked(current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -675,7 +628,7 @@ class Worker(object):
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, execution_dependencies,
                 resources, placement_resources)
-            self.local_scheduler_client.submit(task)
+            self.raylet_client.submit_task(task)
 
             return task.returns()
 
@@ -757,7 +710,7 @@ class Worker(object):
                 passed by value.
 
         Raises:
-            RayGetArgumentError: This exception is raised if a task that
+            RayTaskError: This exception is raised if a task that
                 created one of the arguments failed.
         """
         arguments = []
@@ -766,10 +719,7 @@ class Worker(object):
                 # get the object from the local object store
                 argument = self.get_object([arg])[0]
                 if isinstance(argument, RayTaskError):
-                    # If the result is a RayTaskError, then the task that
-                    # created this object failed, and we should propagate the
-                    # error message here.
-                    raise RayGetArgumentError(function_name, i, arg, argument)
+                    raise argument
             else:
                 # pass the argument by value
                 argument = arg
@@ -842,7 +792,7 @@ class Worker(object):
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
-        except (RayGetError, RayGetArgumentError) as e:
+        except RayTaskError as e:
             self._handle_process_task_failure(function_id, function_name,
                                               return_object_ids, e, None)
             return
@@ -889,7 +839,7 @@ class Worker(object):
 
     def _handle_process_task_failure(self, function_id, function_name,
                                      return_object_ids, error, backtrace):
-        failure_object = RayTaskError(function_name, error, backtrace)
+        failure_object = RayTaskError(function_name, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
@@ -986,7 +936,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             driver_id, function_id.id()) == execution_info.max_calls)
         if reached_max_executions:
-            self.local_scheduler_client.disconnect()
+            self.raylet_client.disconnect()
             sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
@@ -996,7 +946,7 @@ class Worker(object):
             A task from the local scheduler.
         """
         with profiling.profile("worker_idle", worker=self):
-            task = self.local_scheduler_client.get_task()
+            task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -1032,7 +982,7 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
-    all_resource_ids = global_worker.local_scheduler_client.resource_ids()
+    all_resource_ids = global_worker.raylet_client.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
     ]
@@ -1060,7 +1010,7 @@ def get_resource_ids():
             "ray.get_resource_ids() currently does not work in PYTHON "
             "MODE.")
 
-    return global_worker.local_scheduler_client.resource_ids()
+    return global_worker.raylet_client.resource_ids()
 
 
 def _webui_url_helper(client):
@@ -1196,18 +1146,6 @@ def _initialize_serialization(driver_id, worker=global_worker):
         local=True,
         driver_id=driver_id,
         class_id="ray.RayTaskError")
-    register_custom_serializer(
-        RayGetError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetError")
-    register_custom_serializer(
-        RayGetArgumentError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayGetArgumentError")
     # Tell Ray to serialize lambdas with pickle.
     register_custom_serializer(
         type(lambda: 0),
@@ -1795,8 +1733,8 @@ def shutdown(worker=global_worker):
     will need to reload the module.
     """
     disconnect(worker)
-    if hasattr(worker, "local_scheduler_client"):
-        del worker.local_scheduler_client
+    if hasattr(worker, "raylet_client"):
+        del worker.raylet_client
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
@@ -1833,12 +1771,38 @@ def custom_excepthook(type, value, tb):
 
 sys.excepthook = custom_excepthook
 
+# The last time we raised a TaskError in this process. We use this value to
+# suppress redundant error messages pushed from the workers.
+last_task_error_raise_time = 0
 
-def print_error_messages_raylet(worker):
-    """Print error messages in the background on the driver.
+# The max amount of seconds to wait before printing out an uncaught error.
+UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
-    This runs in a separate thread on the driver and prints error messages in
-    the background.
+
+def print_error_messages_raylet(task_error_queue):
+    """Prints message received in the given output queue.
+
+    This checks periodically if any un-raised errors occured in the background.
+    """
+
+    while True:
+        error, t = task_error_queue.get()
+        # Delay errors a little bit of time to attempt to suppress redundant
+        # messages originating from the worker.
+        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
+            time.sleep(1)
+        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
+            logger.debug("Suppressing error from worker: {}".format(error))
+        else:
+            logger.error(
+                "Possible unhandled error from worker: {}".format(error))
+
+
+def listen_error_messages_raylet(worker, task_error_queue):
+    """Listen to error messages in the background on the driver.
+
+    This runs in a separate thread on the driver and pushes (error, time)
+    tuples to the output queue.
     """
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
@@ -1875,7 +1839,12 @@ def print_error_messages_raylet(worker):
                 continue
 
             error_message = ray.utils.decode(error_data.ErrorMessage())
-            logger.error(error_message)
+            if (ray.utils.decode(
+                    error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
+                # Delay it a bit to see if we can suppress it
+                task_error_queue.put((error_message, time.time()))
+            else:
+                logger.error(error_message)
 
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
@@ -2151,7 +2120,7 @@ def connect(info,
     # multithreading per worker.
     worker.multithreading_warned = False
 
-    worker.local_scheduler_client = ray.raylet.LocalSchedulerClient(
+    worker.raylet_client = ray.raylet.RayletClient(
         raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
 
     # Start the import thread
@@ -2164,14 +2133,19 @@ def connect(info,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
-        t = threading.Thread(
+        q = queue.Queue()
+        listener = threading.Thread(
+            target=listen_error_messages_raylet,
+            name="ray_listen_error_messages",
+            args=(worker, q))
+        printer = threading.Thread(
             target=print_error_messages_raylet,
             name="ray_print_error_messages",
-            args=(worker, ))
-        # Making the thread a daemon causes it to exit when the main thread
-        # exits.
-        t.daemon = True
-        t.start()
+            args=(q, ))
+        listener.daemon = True
+        listener.start()
+        printer.daemon = True
+        printer.start()
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
@@ -2399,11 +2373,13 @@ def get(object_ids, worker=global_worker):
             # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
+        global last_task_error_raise_time
         if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
-                    raise RayGetError(object_ids[i], value)
+                    last_task_error_raise_time = time.time()
+                    raise value
             return values
         else:
             value = worker.get_object([object_ids])[0]
@@ -2411,7 +2387,8 @@ def get(object_ids, worker=global_worker):
                 # If the result is a RayTaskError, then the task that created
                 # this object failed, and we should propagate the error message
                 # here.
-                raise RayGetError(object_ids, value)
+                last_task_error_raise_time = time.time()
+                raise value
             return value
 
 
@@ -2429,7 +2406,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = worker.local_scheduler_client.compute_put_id(
+        object_id = worker.raylet_client.compute_put_id(
             worker.current_task_id, worker.put_index)
         worker.put_object(object_id, value)
         worker.put_index += 1
@@ -2509,7 +2486,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             current_task_id = worker.get_current_thread_task_id()
 
         timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.local_scheduler_client.wait(
+        ready_ids, remaining_ids = worker.raylet_client.wait(
             object_ids, num_returns, timeout, False, current_task_id)
         return ready_ids, remaining_ids
 
