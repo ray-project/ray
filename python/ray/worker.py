@@ -450,7 +450,7 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            self.local_scheduler_client.fetch_or_reconstruct(
+            self.raylet_client.fetch_or_reconstruct(
                 object_ids[i:(i + ray._config.worker_fetch_request_size())],
                 True)
 
@@ -485,7 +485,7 @@ class Worker(object):
                         ray._config.worker_fetch_request_size())
                     for i in range(0, len(object_ids_to_fetch),
                                    fetch_request_size):
-                        self.local_scheduler_client.fetch_or_reconstruct(
+                        self.raylet_client.fetch_or_reconstruct(
                             ray_object_ids_to_fetch[i:(
                                 i + fetch_request_size)], False,
                             current_task_id)
@@ -506,7 +506,7 @@ class Worker(object):
 
                 # If there were objects that we weren't able to get locally,
                 # let the local scheduler know that we're now unblocked.
-                self.local_scheduler_client.notify_unblocked(current_task_id)
+                self.raylet_client.notify_unblocked(current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -520,6 +520,7 @@ class Worker(object):
                     is_actor_checkpoint_method=False,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
+                    max_actor_reconstructions=0,
                     execution_dependencies=None,
                     num_return_vals=None,
                     resources=None,
@@ -622,10 +623,11 @@ class Worker(object):
             task = ray.raylet.Task(
                 driver_id, function_descriptor_list, args_for_local_scheduler,
                 num_return_vals, self.current_task_id, task_index,
-                actor_creation_id, actor_creation_dummy_object_id, actor_id,
-                actor_handle_id, actor_counter, execution_dependencies,
-                resources, placement_resources)
-            self.local_scheduler_client.submit(task)
+                actor_creation_id, actor_creation_dummy_object_id,
+                max_actor_reconstructions, actor_id, actor_handle_id,
+                actor_counter, execution_dependencies, resources,
+                placement_resources)
+            self.raylet_client.submit_task(task)
 
             return task.returns()
 
@@ -927,7 +929,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             driver_id, function_descriptor) == execution_info.max_calls)
         if reached_max_executions:
-            self.local_scheduler_client.disconnect()
+            self.raylet_client.disconnect()
             sys.exit(0)
 
     def _get_next_task_from_local_scheduler(self):
@@ -937,7 +939,7 @@ class Worker(object):
             A task from the local scheduler.
         """
         with profiling.profile("worker_idle", worker=self):
-            task = self.local_scheduler_client.get_task()
+            task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -973,7 +975,7 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
-    all_resource_ids = global_worker.local_scheduler_client.resource_ids()
+    all_resource_ids = global_worker.raylet_client.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
     ]
@@ -1001,7 +1003,7 @@ def get_resource_ids():
             "ray.get_resource_ids() currently does not work in PYTHON "
             "MODE.")
 
-    return global_worker.local_scheduler_client.resource_ids()
+    return global_worker.raylet_client.resource_ids()
 
 
 def _webui_url_helper(client):
@@ -1724,8 +1726,8 @@ def shutdown(worker=global_worker):
     will need to reload the module.
     """
     disconnect(worker)
-    if hasattr(worker, "local_scheduler_client"):
-        del worker.local_scheduler_client
+    if hasattr(worker, "raylet_client"):
+        del worker.raylet_client
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
@@ -2089,7 +2091,7 @@ def connect(info,
             worker.task_driver_id,
             function_descriptor.get_function_descriptor_list(), [], 0,
             worker.current_task_id, worker.task_index,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID), 0,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter, [], {"CPU": 0}, {})
 
@@ -2110,7 +2112,7 @@ def connect(info,
     # multithreading per worker.
     worker.multithreading_warned = False
 
-    worker.local_scheduler_client = ray.raylet.LocalSchedulerClient(
+    worker.raylet_client = ray.raylet.RayletClient(
         raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
 
     # Start the import thread
@@ -2396,7 +2398,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = worker.local_scheduler_client.compute_put_id(
+        object_id = worker.raylet_client.compute_put_id(
             worker.current_task_id, worker.put_index)
         worker.put_object(object_id, value)
         worker.put_index += 1
@@ -2476,7 +2478,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             current_task_id = worker.get_current_thread_task_id()
 
         timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.local_scheduler_client.wait(
+        ready_ids, remaining_ids = worker.raylet_client.wait(
             object_ids, num_returns, timeout, False, current_task_id)
         return ready_ids, remaining_ids
 
@@ -2502,6 +2504,7 @@ def make_decorator(num_return_vals=None,
                    resources=None,
                    max_calls=None,
                    checkpoint_interval=None,
+                   max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -2509,6 +2512,9 @@ def make_decorator(num_return_vals=None,
             # Set the remote function default resources.
             if checkpoint_interval is not None:
                 raise Exception("The keyword 'checkpoint_interval' is not "
+                                "allowed for remote functions.")
+            if max_reconstructions is not None:
+                raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
@@ -2539,7 +2545,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
                                      resources, actor_method_cpus,
-                                     checkpoint_interval)
+                                     checkpoint_interval, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2581,6 +2587,11 @@ def remote(*args, **kwargs):
       third-party libraries or to reclaim resources that cannot easily be
       released, e.g., GPU memory that was acquired by TensorFlow). By
       default this is infinite.
+    * **max_reconstructions**: Only for *actors*. This specifies the maximum
+      number of times that the actor should be reconstructed when it dies
+      unexpectedly. The minimum valid value is 0 (default), which indicates
+      that the actor doesn't need to be reconstructed. And the maximum valid
+      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
 
     This can be done as follows:
 
@@ -2606,14 +2617,15 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', or 'checkpoint_interval', like "
+                    "'resources', 'max_calls', 'checkpoint_interval',"
+                    "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "checkpoint_interval"
+            "max_calls", "checkpoint_interval", "max_reconstructions"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2631,6 +2643,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     checkpoint_interval = kwargs.get("checkpoint_interval")
+    max_reconstructions = kwargs.get("max_reconstructions")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -2639,4 +2652,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         checkpoint_interval=checkpoint_interval,
+        max_reconstructions=max_reconstructions,
         worker=worker)

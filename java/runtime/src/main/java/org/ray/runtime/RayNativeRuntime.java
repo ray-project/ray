@@ -61,7 +61,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // Load native libraries.
     try {
       resetLibaryPath();
-      System.loadLibrary("local_scheduler_library_java");
+      System.loadLibrary("raylet_library_java");
       System.loadLibrary("plasma_java");
     } catch (Exception e) {
       LOGGER.error("Failed to load native libraries.", e);

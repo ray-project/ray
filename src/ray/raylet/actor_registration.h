@@ -46,6 +46,9 @@ class ActorRegistration {
   /// \return The actor's current state.
   const ActorState &GetState() const { return actor_table_data_.state; }
 
+  /// Update actor's state.
+  void SetState(const ActorState &state) { actor_table_data_.state = state; }
+
   /// Get the actor's node manager location.
   ///
   /// \return The actor's node manager location. All tasks for the actor should
@@ -58,6 +61,15 @@ class ActorRegistration {
   ///
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
+
+  /// Get actor's driver ID.
+  const DriverID GetDriverId() const;
+
+  /// Get the max number of times this actor should be reconstructed.
+  const int64_t GetMaxReconstructions() const;
+
+  /// Get the remaining number of times this actor should be reconstructed.
+  const int64_t GetRemainingReconstructions() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
@@ -88,12 +100,6 @@ class ActorRegistration {
   void ExtendFrontier(const ActorHandleID &handle_id,
                       const ObjectID &execution_dependency);
 
-  /// Return whether the actor is alive or not. This should only be called on
-  /// local actors.
-  ///
-  /// \return True if the local actor is alive and false if it is dead.
-  bool IsAlive() const;
-
   /// Returns num handles to this actor entry.
   ///
   /// \return int.
@@ -111,6 +117,7 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+
   /// All of the dummy object IDs from this actor's tasks.
   std::vector<ObjectID> dummy_objects_;
 };

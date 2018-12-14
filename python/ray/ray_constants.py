@@ -78,6 +78,11 @@ LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
+# A constant indicating that an actor doesn't need reconstructions.
+NO_RECONSTRUCTION = 0
+# A constant indicating that an actor should be reconstructed infinite times.
+INFINITE_RECONSTRUCTION = 2**30
+
 # This definition should be the same with gcs.fbs.
 # The other language types could be used in cross-language ray call.
 LANGUAGE_PYTHON = 0

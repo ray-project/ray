@@ -50,7 +50,7 @@ declare -a nativeBinaries=(
 
 declare -a nativeLibraries=(
     "./src/ray/gcs/redis_module/libray_redis_module.so"
-    "./src/ray/raylet/liblocal_scheduler_library_java.*"
+    "./src/ray/raylet/libraylet_library_java.*"
     "./src/plasma/libplasma_java.*"
     "./src/ray/raylet/*lib.a"
 )

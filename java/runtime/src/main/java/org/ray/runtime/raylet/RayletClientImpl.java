@@ -127,6 +127,7 @@ public class RayletClientImpl implements RayletClient {
     UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
+    int maxActorReconstructions = info.maxActorReconstructions();
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
@@ -162,8 +163,9 @@ public class RayletClientImpl implements RayletClient {
     FunctionDescriptor functionDescriptor = new FunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
-    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId, actorId,
-        actorHandleId, actorCounter, args, returnIds, resources, functionDescriptor);
+    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
+        maxActorReconstructions, actorId, actorHandleId, actorCounter, args, returnIds, resources,
+        functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -177,6 +179,7 @@ public class RayletClientImpl implements RayletClient {
     final int parentCounter = task.parentCounter;
     final int actorCreateIdOffset = fbb.createString(task.actorCreationId.toByteBuffer());
     final int actorCreateDummyIdOffset = fbb.createString(task.actorId.toByteBuffer());
+    final int maxActorReconstructions = task.maxActorReconstructions;
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
@@ -229,12 +232,23 @@ public class RayletClientImpl implements RayletClient {
     int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
 
     int root = TaskInfo.createTaskInfo(
-        fbb, driverIdOffset, taskIdOffset,
-        parentTaskIdOffset, parentCounter,
-        actorCreateIdOffset, actorCreateDummyIdOffset,
-        actorIdOffset, actorHandleIdOffset, actorCounter,
-        false, argsOffset, returnsOffset, requiredResourcesOffset,
-        requiredPlacementResourcesOffset, Language.JAVA,
+        fbb,
+        driverIdOffset,
+        taskIdOffset,
+        parentTaskIdOffset,
+        parentCounter,
+        actorCreateIdOffset,
+        actorCreateDummyIdOffset,
+        maxActorReconstructions,
+        actorIdOffset,
+        actorHandleIdOffset,
+        actorCounter,
+        false,
+        argsOffset,
+        returnsOffset,
+        requiredResourcesOffset,
+        requiredPlacementResourcesOffset,
+        Language.JAVA,
         functionDescriptorOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();

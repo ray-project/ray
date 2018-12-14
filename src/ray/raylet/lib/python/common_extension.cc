@@ -145,7 +145,7 @@ TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size) {
  *
  * This is called from Python like
  *
- * task = local_scheduler.task_from_string("...")
+ * task = raylet.task_from_string("...")
  *
  * @param task_string String representation of the task specification.
  * @return Python task specification object.
@@ -170,7 +170,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
  *
  * This is called from Python like
  *
- * s = local_scheduler.task_to_string(task)
+ * s = raylet.task_to_string(task)
  *
  * @param task Ray task specification Python object.
  * @return String representing the task specification.
@@ -405,6 +405,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   ActorID actor_creation_id = ActorID::nil();
   // The dummy object for the actor creation task (if this is an actor method).
   ObjectID actor_creation_dummy_object_id = ObjectID::nil();
+  // Max number of times to reconstruct this actor (only used for actor creation
+  // task).
+  int32_t max_actor_reconstructions;
   // Arguments of the task that are execution-dependent. These must be
   // PyObjectIDs).
   PyObject *execution_arguments = nullptr;
@@ -415,14 +418,14 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   // Function descriptor.
   std::vector<std::string> function_descriptor;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOOi", &PyObjectToUniqueID, &driver_id,
-                        &PyListStringToStringVector, &function_descriptor, &arguments,
-                        &num_returns, &PyObjectToUniqueID, &parent_task_id,
-                        &parent_counter, &PyObjectToUniqueID, &actor_creation_id,
-                        &PyObjectToUniqueID, &actor_creation_dummy_object_id,
-                        &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
-                        &actor_handle_id, &actor_counter, &execution_arguments,
-                        &resource_map, &placement_resource_map, &language)) {
+  if (!PyArg_ParseTuple(
+          args, "O&O&OiO&i|O&O&iO&O&iOOOi", &PyObjectToUniqueID, &driver_id,
+          &PyListStringToStringVector, &function_descriptor, &arguments, &num_returns,
+          &PyObjectToUniqueID, &parent_task_id, &parent_counter, &PyObjectToUniqueID,
+          &actor_creation_id, &PyObjectToUniqueID, &actor_creation_dummy_object_id,
+          &max_actor_reconstructions, &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
+          &actor_handle_id, &actor_counter, &execution_arguments, &resource_map,
+          &placement_resource_map, &language)) {
     return -1;
   }
 
@@ -472,9 +475,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
-      actor_creation_dummy_object_id, actor_id, actor_handle_id, actor_counter, task_args,
-      num_returns, required_resources, required_placement_resources, Language::PYTHON,
-      function_descriptor);
+      actor_creation_dummy_object_id, max_actor_reconstructions, actor_id,
+      actor_handle_id, actor_counter, task_args, num_returns, required_resources,
+      required_placement_resources, Language::PYTHON, function_descriptor);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();
