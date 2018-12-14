@@ -58,7 +58,8 @@ class NodeManager {
   /// \param object_manager A reference to the local object manager.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
-              std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+              std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
   ///
@@ -153,9 +154,17 @@ class NodeManager {
   /// it were any other task that had been assigned, executed, and removed from
   /// the local queue.
   ///
-  /// \param spec The specification of the task.
+  /// \param task The task to fail.
   /// \return Void.
   void TreatTaskAsFailed(const Task &task);
+  /// This is similar to TreatTaskAsFailed, but it will only mark the task as
+  /// failed if at least one of the task's return values is lost. A return
+  /// value is lost if it has been created before, but no longer exists on any
+  /// nodes, due to either node failure or eviction.
+  ///
+  /// \param task The task to potentially fail.
+  /// \return Void.
+  void TreatTaskAsFailedIfLost(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
@@ -389,6 +398,8 @@ class NodeManager {
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  /// The object table. This is shared with the object manager.
+  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.

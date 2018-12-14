@@ -48,8 +48,9 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
-                                              const ray::ObjectID &object_id)>;
+  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
+                                              const std::unordered_set<ray::ClientID> &,
+                                              bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -58,6 +59,13 @@ class ObjectDirectoryInterface {
   /// \return Status of whether async call to backend succeeded.
   virtual ray::Status LookupLocations(const ObjectID &object_id,
                                       const OnLocationsFound &callback) = 0;
+
+  /// Handle the removal of an object manager client. This updates the
+  /// locations of all subscribed objects that have the removed client as a
+  /// location, and fires the subscribed callbacks for those objects.
+  ///
+  /// \param client_id The object manager client that was removed.
+  virtual void HandleClientRemoved(const ClientID &client_id) = 0;
 
   /// Subscribe to be notified of locations (ClientID) of the given object.
   /// The callback will be invoked with the complete list of known locations
@@ -138,6 +146,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status LookupLocations(const ObjectID &object_id,
                               const OnLocationsFound &callback) override;
 
+  void HandleClientRemoved(const ClientID &client_id) override;
+
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const OnLocationsFound &callback) override;
@@ -164,6 +174,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
+    /// This flag will get set to true if the object has ever been created. It
+    /// should never go back to false once set to true. If this is true, and
+    /// the current_object_locations is empty, then this means that the object
+    /// does not exist on any nodes due to eviction (rather than due to the
+    /// object never getting created, for instance).
+    bool has_been_created;
   };
 
   /// Reference to the event loop.

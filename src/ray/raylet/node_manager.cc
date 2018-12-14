@@ -46,10 +46,12 @@ namespace raylet {
 
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
-                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
       object_manager_(object_manager),
-      gcs_client_(gcs_client),
+      gcs_client_(std::move(gcs_client)),
+      object_directory_(std::move(object_directory)),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
@@ -62,18 +64,19 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
-          [this](const TaskID &task_id) { HandleTaskReconstruction(task_id); },
+          [this](const TaskID &task_id, bool return_values_lost) {
+            HandleTaskReconstruction(task_id);
+          },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_->client_table().GetLocalClientId(), gcs_client->task_lease_table(),
-          std::make_shared<ObjectDirectory>(io_service, gcs_client),
-          gcs_client_->task_reconstruction_log()),
+          gcs_client_->client_table().GetLocalClientId(), gcs_client_->task_lease_table(),
+          object_directory_, gcs_client_->task_reconstruction_log()),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
           gcs_client_->client_table().GetLocalClientId(),
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client->task_lease_table()),
+          gcs_client_->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
-                     gcs_client->raylet_task_table(), gcs_client->raylet_task_table(),
+                     gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
       remote_clients_(),
       remote_server_connections_(),
@@ -417,6 +420,9 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
                               /*intentional_disconnect=*/false);
     }
   }
+  // Notify the object directory that the client has been removed so that it
+  // can remove it from any cached locations.
+  object_directory_->HandleClientRemoved(client_id);
 }
 
 void NodeManager::HeartbeatAdded(const ClientID &client_id,
@@ -1157,6 +1163,44 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
   task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
 }
 
+void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  // Loop over the return IDs (except the dummy ID) and check whether a
+  // location for the return ID exists.
+  int64_t num_returns = spec.NumReturns();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
+    // information about the TaskSpecification implementation.
+    num_returns -= 1;
+  }
+  // Use a shared flag to make sure that we only treat the task as failed at
+  // most once. This flag will get deallocated once all of the object table
+  // lookup callbacks are fired.
+  auto task_marked_as_failed = std::make_shared<bool>(false);
+  for (int64_t i = 0; i < num_returns; i++) {
+    const ObjectID object_id = spec.ReturnId(i);
+    // Lookup the return value's locations.
+    RAY_CHECK_OK(object_directory_->LookupLocations(
+        object_id,
+        [this, task_marked_as_failed, task](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+          if (!*task_marked_as_failed) {
+            // Only process the object locations if we haven't already marked the
+            // task as failed.
+            if (clients.empty() && has_been_created) {
+              // The object does not exist on any nodes but has been created
+              // before, so the object has been lost. Mark the task as failed to
+              // prevent any tasks that depend on this object from hanging.
+              TreatTaskAsFailed(task);
+              *task_marked_as_failed = true;
+            }
+          }
+        }));
+  }
+}
+
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
   const TaskSpecification &spec = task.GetTaskSpecification();
@@ -1401,7 +1445,11 @@ bool NodeManager::AssignTask(const Task &task) {
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
     if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      // This actor has been already assigned, so ignore it.
+      // The actor is alive, and a task that has already been executed before
+      // has been found. The task will be treated as failed if at least one of
+      // the task's return values have been evicted, to prevent the application
+      // from hanging.
+      TreatTaskAsFailedIfLost(task);
       return true;
     }
   }

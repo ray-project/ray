@@ -8,10 +8,15 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
-std::vector<ClientID> UpdateObjectLocations(
-    std::unordered_set<ClientID> &client_ids,
-    const std::vector<ObjectTableDataT> &location_history,
-    const ray::gcs::ClientTable &client_table) {
+/// Process a suffix of the object table log and store the result in
+/// client_ids. This assumes that client_ids already contains the result of the
+/// object table log up to but not including this suffix. This also stores a
+/// bool in has_been_created indicating whether the object has ever been
+/// created before.
+void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
+                           const ray::gcs::ClientTable &client_table,
+                           std::unordered_set<ClientID> *client_ids,
+                           bool *has_been_created) {
   // location_history contains the history of locations of the object (it is a log),
   // which might look like the following:
   //   client1.is_eviction = false
@@ -19,23 +24,27 @@ std::vector<ClientID> UpdateObjectLocations(
   //   client2.is_eviction = false
   // In such a scenario, we want to indicate client2 is the only client that contains
   // the object, which the following code achieves.
+  if (!location_history.empty()) {
+    // If there are entries, then the object has been created. Once this flag
+    // is set to true, it should never go back to false.
+    *has_been_created = true;
+  }
   for (const auto &object_table_data : location_history) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
     if (!object_table_data.is_eviction) {
-      client_ids.insert(client_id);
+      client_ids->insert(client_id);
     } else {
-      client_ids.erase(client_id);
+      client_ids->erase(client_id);
     }
   }
   // Filter out the removed clients from the object locations.
-  for (auto it = client_ids.begin(); it != client_ids.end();) {
+  for (auto it = client_ids->begin(); it != client_ids->end();) {
     if (client_table.IsRemoved(*it)) {
-      it = client_ids.erase(it);
+      it = client_ids->erase(it);
     } else {
       it++;
     }
   }
-  return std::vector<ClientID>(client_ids.begin(), client_ids.end());
 }
 
 }  // namespace
@@ -45,18 +54,18 @@ void ObjectDirectory::RegisterBackend() {
       gcs::AsyncGcsClient *client, const ObjectID &object_id,
       const std::vector<ObjectTableDataT> &location_history) {
     // Objects are added to this map in SubscribeObjectLocations.
-    auto object_id_listener_pair = listeners_.find(object_id);
+    auto it = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
-    if (object_id_listener_pair == listeners_.end()) {
+    if (it == listeners_.end()) {
       return;
     }
     // Update entries for this object.
-    std::vector<ClientID> client_id_vec =
-        UpdateObjectLocations(object_id_listener_pair->second.current_object_locations,
-                              location_history, gcs_client_->client_table());
+    UpdateObjectLocations(location_history, gcs_client_->client_table(),
+                          &it->second.current_object_locations,
+                          &it->second.has_been_created);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
-    auto callbacks = object_id_listener_pair->second.callbacks;
+    auto callbacks = it->second.callbacks;
     // Call all callbacks associated with the object id locations we have
     // received.  This notifies the client even if the list of locations is
     // empty, since this may indicate that the objects have been evicted from
@@ -64,7 +73,8 @@ void ObjectDirectory::RegisterBackend() {
     for (const auto &callback_pair : callbacks) {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
-      callback_pair.second(client_id_vec, object_id);
+      callback_pair.second(object_id, it->second.current_object_locations,
+                           it->second.has_been_created);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
@@ -133,28 +143,51 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
+void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+  for (auto &listener : listeners_) {
+    const ObjectID &object_id = listener.first;
+    if (listener.second.current_object_locations.count(client_id) > 0) {
+      // If the subscribed object has the removed client as a location, update
+      // its locations with an empty log so that the location will be removed.
+      UpdateObjectLocations({}, gcs_client_->client_table(),
+                            &listener.second.current_object_locations,
+                            &listener.second.has_been_created);
+      // Re-call all the subscribed callbacks for the object, since its
+      // locations have changed.
+      for (const auto &callback_pair : listener.second.callbacks) {
+        // It is safe to call the callback directly since this is already running
+        // in the subscription callback stack.
+        callback_pair.second(object_id, listener.second.current_object_locations,
+                             listener.second.has_been_created);
+      }
+    }
+  }
+}
+
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {
   ray::Status status = ray::Status::OK();
-  if (listeners_.find(object_id) == listeners_.end()) {
-    listeners_.emplace(object_id, LocationListenerState());
+  auto it = listeners_.find(object_id);
+  if (it == listeners_.end()) {
+    it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
         JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
-  auto &listener_state = listeners_.find(object_id)->second;
+  auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
   if (listener_state.callbacks.count(callback_id) > 0) {
     return ray::Status::OK();
   }
   listener_state.callbacks.emplace(callback_id, callback);
-  // Immediately notify of object locations. This notifies the client even if
-  // the list of locations is empty, since this may indicate that the objects
-  // have been evicted from all nodes.
-  std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
-                                      listener_state.current_object_locations.end());
-  io_service_.post(
-      [callback, client_id_vec, object_id]() { callback(client_id_vec, object_id); });
+  // If we previously received some notifications about the object's locations,
+  // immediately notify the caller of the current known locations.
+  if (listener_state.has_been_created) {
+    auto &locations = listener_state.current_object_locations;
+    io_service_.post([callback, locations, object_id]() {
+      callback(object_id, locations, /*has_been_created=*/true);
+    });
+  }
   return status;
 }
 
@@ -176,19 +209,32 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
 
 ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
-  JobID job_id = JobID::nil();
-  ray::Status status = gcs_client_->object_table().Lookup(
-      job_id, object_id,
-      [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
-                       const std::vector<ObjectTableDataT> &location_history) {
-        // Build the set of current locations based on the entries in the log.
-        std::unordered_set<ClientID> client_ids;
-        std::vector<ClientID> locations_vector = UpdateObjectLocations(
-            client_ids, location_history, gcs_client_->client_table());
-        // It is safe to call the callback directly since this is already running
-        // in the GCS client's lookup callback stack.
-        callback(locations_vector, object_id);
-      });
+  ray::Status status;
+  auto it = listeners_.find(object_id);
+  if (it == listeners_.end()) {
+    JobID job_id = JobID::nil();
+    status = gcs_client_->object_table().Lookup(
+        job_id, object_id,
+        [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+                         const std::vector<ObjectTableDataT> &location_history) {
+          // Build the set of current locations based on the entries in the log.
+          std::unordered_set<ClientID> client_ids;
+          bool has_been_created = false;
+          UpdateObjectLocations(location_history, gcs_client_->client_table(),
+                                &client_ids, &has_been_created);
+          // It is safe to call the callback directly since this is already running
+          // in the GCS client's lookup callback stack.
+          callback(object_id, client_ids, has_been_created);
+        });
+  } else {
+    // If we have locations cached due to a concurrent SubscribeObjectLocations
+    // call, call the callback immediately with the cached locations.
+    auto &locations = it->second.current_object_locations;
+    bool has_been_created = it->second.has_been_created;
+    io_service_.post([callback, object_id, locations, has_been_created]() {
+      callback(object_id, locations, has_been_created);
+    });
+  }
   return status;
 }
 

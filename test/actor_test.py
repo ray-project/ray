@@ -21,7 +21,12 @@ import ray.test.cluster_utils
 @pytest.fixture
 def ray_start_regular():
     # Start the Ray processes.
-    ray.init(num_cpus=1)
+    ray.init(
+        num_cpus=1,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200,
+            "num_heartbeats_timeout": 10,
+        }))
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -2092,6 +2097,48 @@ def test_creating_more_actors_than_resources(shutdown_only):
         ray.wait([object_id])
 
     ray.get(results)
+
+
+def test_actor_eviction(shutdown_only):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def create_object(self, size):
+            return np.random.rand(size)
+
+    object_store_memory = 10**8
+    ray.init(
+        object_store_memory=object_store_memory,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
+
+    a = Actor.remote()
+    # Submit enough methods on the actor so that they exceed the size of the
+    # object store.
+    objects = []
+    num_objects = 20
+    for _ in range(num_objects):
+        obj = a.create_object.remote(object_store_memory // num_objects)
+        objects.append(obj)
+        # Get each object once to make sure each object gets created.
+        ray.get(obj)
+
+    # Get each object again. At this point, the earlier objects should have
+    # been evicted.
+    num_evicted, num_success = 0, 0
+    for obj in objects:
+        try:
+            ray.get(obj)
+            num_success += 1
+        except ray.worker.RayTaskError:
+            num_evicted += 1
+    # Some objects should have been evicted, and some should still be in the
+    # object store.
+    assert num_evicted > 0
+    assert num_success > 0
 
 
 def test_actor_reconstruction(ray_start_regular):
