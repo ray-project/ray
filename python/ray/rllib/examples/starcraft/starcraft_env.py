@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+from gym.spaces import Discrete, Box, Dict
 import os
 import random
 import sys
@@ -24,6 +25,14 @@ class SC2MultiAgentEnv(MultiAgentEnv):
             pymarl_args["env_args"]["seed"] = 0
 
         self._starcraft_env = StarCraft2Env(**pymarl_args)
+        obs_size = self._starcraft_env.get_obs_size()
+        num_actions = self._starcraft_env.get_total_actions()
+        # self.obs_space = Dict({
+        #     "action_mask": Box(0, 1, shape=(num_actions,)),
+        #     "real_obs": Box(-1, 1, shape=(obs_size,))
+        # })
+        self.obs_space = Box(-1, 1, shape=(obs_size,))
+        self.action_space = Discrete(self._starcraft_env.get_total_actions())
 
     def reset(self):
         obs_list, state_list = self._starcraft_env.reset()
@@ -34,9 +43,16 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         actions = [action_dict[k] for k in sorted(action_dict)]
         rew, done, info = self._starcraft_env.step(actions)
         obs_list = self._starcraft_env.get_obs()
+        # return_obs = {}
+        # for i, obs in enumerate(obs_list):
+        #     return_obs[i] = {
+        #         "action_mask": self._starcraft_env.get_avail_agent_actions(i),
+
+        #     }
         obs = dict(enumerate(obs_list))
         rews = {i: rew for i in range(len(obs_list))}
         dones = {i: done for i in range(len(obs_list))}
+        done["__all__"] = done
         infos = {i: info for i in range(len(obs_list))}
         return obs, rews, dones, infos
 
@@ -46,6 +62,12 @@ if __name__ == "__main__":
     os.environ.setdefault("PYMARL_PATH", path_to_pymarl)
     os.environ["SC2PATH"] = os.path.join(path_to_pymarl,
                                          "3rdparty/StarCraftII")
-    env = SC2MultiAgentEnv()
-    x = env.reset()
-    returns = env.step({i: 0 for i in range(len(x))})
+    register_env("starcraft2", SC2MultiAgentEnv)
+    from ray.rllib.agents.pg import PGAgent
+    agent = PGAgent(env="starcraft2")
+    for i in range(100):
+        agent.train()
+
+    # env = SC2MultiAgentEnv()
+    # x = env.reset()
+    # returns = env.step({i: 0 for i in range(len(x))})
