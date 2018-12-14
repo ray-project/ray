@@ -6,14 +6,17 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {
 
-  private static boolean checkSimpleValue(Object o) {
-    // TODO(raulchen): implement this.
-    return true;
-  }
+  /**
+   * If the the size of an argument's serialized data is smaller than this number,
+   * the argument will be passed by value. Otherwise it'll be passed by reference.
+   */
+  private static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
+
 
   /**
    * Convert real function arguments to task spec arguments.
@@ -30,10 +33,13 @@ public class ArgumentsBuilder {
         data = Serializer.encode(arg);
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
-      } else if (checkSimpleValue(arg)) {
-        data = Serializer.encode(arg);
       } else {
-        id = Ray.put(arg).getId();
+        byte[] serialized = Serializer.encode(arg);
+        if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
+          id = ((AbstractRayRuntime)Ray.internal()).putSerialized(serialized).getId();
+        } else {
+          data = serialized;
+        }
       }
       if (id != null) {
         ret[i] = FunctionArg.passByReference(id);
