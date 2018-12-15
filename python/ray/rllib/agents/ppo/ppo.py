@@ -53,6 +53,10 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
+    # Use a centralized value function
+    "use_centralized_vf": False,
+    # how many agents worth of observations to potentially pad the global observation with
+    "max_vf_agents": 100
 })
 # __sphinx_doc_end__
 # yapf: enable
