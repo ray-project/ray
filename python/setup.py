@@ -165,7 +165,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.27, < 0.28"],
+    setup_requires=["cython >= 0.29"],
     extras_require=extras,
     entry_points={
         "console_scripts": [
