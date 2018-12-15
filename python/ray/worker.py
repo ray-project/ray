@@ -1916,7 +1916,7 @@ def connect(info,
 
     Args:
         info (dict): A dictionary with address of the Redis server and the
-            sockets of the plasma store, plasma manager, and local scheduler.
+            sockets of the plasma store and raylet.
         object_id_seed: A seed to use to make the generation of object IDs
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
@@ -2061,7 +2061,7 @@ def connect(info,
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
-        plasma.connect(info["store_socket_name"], ""))
+        plasma.connect(info["store_socket_name"]))
 
     raylet_socket = info["raylet_socket_name"]
 
