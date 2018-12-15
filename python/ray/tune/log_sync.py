@@ -30,6 +30,20 @@ GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
 
+def validate_sync_function(sync_function):
+    if sync_function is None:
+        return
+    elif isinstance(sync_function, str):
+        assert "{remote_dir}" in sync_function, (
+            "Sync template missing '{remote_dir}'.")
+        assert "{local_dir}" in sync_function, (
+            "Sync template missing '{local_dir}'.")
+    elif not (isinstance(sync_function, types.FunctionType)
+              or isinstance(sync_function, tune_function)):
+        raise ValueError("Sync function {} must be string or function".format(
+            sync_function))
+
+
 def get_syncer(local_dir, remote_dir=None, sync_function=None):
     if remote_dir:
         if not sync_function and not any(
@@ -63,20 +77,6 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
 def wait_for_log_sync():
     for syncer in _syncers.values():
         syncer.wait()
-
-
-def validate_sync_function(sync_function):
-    if sync_function is None:
-        return
-    elif isinstance(sync_function, str):
-        assert "{remote_dir}" in sync_function, (
-            "Sync template missing '{remote_dir}'.")
-        assert "{local_dir}" in sync_function, (
-            "Sync template missing '{local_dir}'.")
-    elif not (isinstance(sync_function, types.FunctionType)
-              or isinstance(sync_function, tune_function)):
-        raise ValueError("Sync function {} must be string or function".format(
-            sync_function))
 
 
 class _LogSyncer(object):
