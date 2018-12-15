@@ -2,10 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import filelock
 import json
 import logging
 import numpy as np
 import os
+import pyarrow
+import pyarrow.plasma as plasma
 import time
 import tensorflow as tf
 
@@ -118,6 +121,16 @@ class Timeline(object):
         with open(filename, "w") as f:
             f.write(json.dumps(out))
         logger.info("Wrote chrome timeline to", filename)
+
+
+def ensure_plasma_tensorflow_op():
+    base_path = os.path.join(pyarrow.__path__[0], "tensorflow")
+    lock_path = os.path.join(base_path, "compile_op.lock")
+    with filelock.FileLock(lock_path):
+        if not os.path.exists(os.path.join(base_path, "plasma_op.so")):
+            plasma.build_plasma_tensorflow_op()
+        else:
+            plasma.load_plasma_tensorflow_op()
 
 
 if __name__ == "__main__":
