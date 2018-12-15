@@ -11,6 +11,8 @@ import unittest
 
 import ray
 from ray.rllib import _register_all
+
+from ray import tune
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -18,6 +20,7 @@ from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              EPISODES_TOTAL)
+from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -679,6 +682,83 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
+
+    def testCustomLogger(self):
+        class CustomLogger(Logger):
+            def on_result(self, result):
+                with open(os.path.join(self.logdir, "test.log"), "w") as f:
+                    f.write("hi")
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "custom_loggers": [CustomLogger]
+            }
+        })
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+
+    def testCustomTrialString(self):
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "trial_name_creator": tune.function(
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+            }
+        })
+        self.assertEquals(
+            str(trial), "{}_{}_321".format(trial.trainable_name,
+                                           trial.trial_id))
+
+    def testSyncFunction(self):
+        def fail_sync_local():
+            [trial] = run_experiments({
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_function": "ls {remote_dir}"
+                }
+            })
+
+        self.assertRaises(AssertionError, fail_sync_local)
+
+        def fail_sync_remote():
+            [trial] = run_experiments({
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_function": "ls {local_dir}"
+                }
+            })
+
+        self.assertRaises(AssertionError, fail_sync_remote)
+
+        def sync_func(local, remote):
+            with open(os.path.join(local, "test.log"), "w") as f:
+                f.write(remote)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "upload_dir": "test",
+                "sync_function": tune.function(sync_func)
+            }
+        })
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
 
 class VariantGeneratorTest(unittest.TestCase):

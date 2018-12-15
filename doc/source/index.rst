@@ -32,7 +32,7 @@ Example Use
 |  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
 +------------------------------------------------+----------------------------------------------------+
 
-
+To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.rst>`_.
 
 View the `codebase on GitHub`_.
 
@@ -66,6 +66,13 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    using-ray-with-gpus.rst
    webui.rst
    async_api.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Cluster Usage
+
+   autoscaling.rst
+   using-ray-on-a-cluster.rst
 
 .. toctree::
    :maxdepth: 1
@@ -123,15 +130,6 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    resources.rst
    redis-memory-management.rst
    tempfile.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Cluster Usage
-
-   autoscaling.rst
-   using-ray-on-a-cluster.rst
-   using-ray-on-a-large-cluster.rst
-   using-ray-and-docker-on-a-cluster.md
 
 .. toctree::
    :maxdepth: 1

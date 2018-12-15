@@ -271,12 +271,14 @@ class ActorClass(object):
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id, checkpoint_interval, num_cpus,
-                 num_gpus, resources, actor_method_cpus):
+    def __init__(self, modified_class, class_id, checkpoint_interval,
+                 max_reconstructions, num_cpus, num_gpus, resources,
+                 actor_method_cpus):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
         self._checkpoint_interval = checkpoint_interval
+        self._max_reconstructions = max_reconstructions
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
@@ -413,6 +415,7 @@ class ActorClass(object):
                 function_id,
                 creation_args,
                 actor_creation_id=actor_id,
+                max_actor_reconstructions=self._max_reconstructions,
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
@@ -668,6 +671,16 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
+        if (worker.mode == ray.worker.SCRIPT_MODE
+                and self._ray_actor_driver_id.id() != worker.worker_id):
+            # If the worker is a driver and driver id has changed because
+            # Ray was shut down re-initialized, the actor is already cleaned up
+            # and we don't need to send `__ray_terminate__` again.
+            logger.warn(
+                "Actor is garbage collected in the wrong driver." +
+                " Actor id = %s, class name = %s.", self._ray_actor_id,
+                self._ray_class_name)
+            return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
             # dependency here?
@@ -765,12 +778,19 @@ class ActorHandle(object):
 
 
 def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
-               checkpoint_interval):
+               checkpoint_interval, max_reconstructions):
     if checkpoint_interval is None:
         checkpoint_interval = -1
+    if max_reconstructions is None:
+        max_reconstructions = 0
 
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
+    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
+            ray_constants.INFINITE_RECONSTRUCTION):
+        raise Exception("max_reconstructions must be in range [%d, %d]." %
+                        (ray_constants.NO_RECONSTRUCTION,
+                         ray_constants.INFINITE_RECONSTRUCTION))
 
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
@@ -781,7 +801,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # Disconnect the worker from the local scheduler. The point of
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
-                worker.local_scheduler_client.disconnect()
+                worker.raylet_client.disconnect()
                 sys.exit(0)
                 assert False, "This process should have terminated."
 
@@ -822,8 +842,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             # the local scheduler will not be included, and may not be runnable
             # on checkpoint resumption.
             actor_id = ray.ObjectID(worker.actor_id)
-            frontier = worker.local_scheduler_client.get_actor_frontier(
-                actor_id)
+            frontier = worker.raylet_client.get_actor_frontier(actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
             # should not be stored in Redis. Fix this.
             set_actor_checkpoint(worker, worker.actor_id, checkpoint_index,
@@ -853,7 +872,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                 # Set the number of tasks executed so far.
                 worker.actor_task_counter = checkpoint_index
                 # Set the actor frontier in the local scheduler.
-                worker.local_scheduler_client.set_actor_frontier(frontier)
+                worker.raylet_client.set_actor_frontier(frontier)
                 checkpoint_resumed = True
 
             return checkpoint_resumed
@@ -863,8 +882,9 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
 
     class_id = _random_string()
 
-    return ActorClass(Class, class_id, checkpoint_interval, num_cpus, num_gpus,
-                      resources, actor_method_cpus)
+    return ActorClass(Class, class_id, checkpoint_interval,
+                      max_reconstructions, num_cpus, num_gpus, resources,
+                      actor_method_cpus)
 
 
 ray.worker.global_worker.make_actor = make_actor

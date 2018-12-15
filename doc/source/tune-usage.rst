@@ -120,6 +120,35 @@ This function will report status on the command line until all Trials stop:
 An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__.
 
 
+Custom Trial Names
+~~~~~~~~~~~~~~~~~~
+
+To specify custom trial names, you can pass use the ``trial_name_creator`` argument
+in the Experiment object.  This takes a function with the following signature, and
+be sure to wrap it with `tune.function`:
+
+.. code-block:: python
+
+    def trial_name_string(trial):
+        """
+        Args:
+            trial (Trial): A generated trial object.
+
+        Returns:
+            trial_name (str): String representation of Trial.
+        """
+        return str(trial)
+
+    exp = Experiment(
+        name="hyperband_test",
+        run=MyTrainableClass,
+        num_samples=1,
+        trial_name_creator=tune.function(trial_name_string)
+    )
+
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+
+
 Training Features
 -----------------
 
@@ -317,7 +346,6 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-
 Logging and Visualizing Results
 -------------------------------
 
@@ -354,6 +382,54 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
     $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
 
 .. image:: ray-tune-parcoords.png
+
+Custom Loggers
+~~~~~~~~~~~~~~
+
+You can pass in your own logging mechanisms to output logs in custom formats
+via the Experiment object as follows:
+
+.. code-block:: python
+
+    exp = Experiment(
+        name="experiment_name",
+        run=MyTrainableClass,
+        custom_loggers=[CustomLogger1, CustomLogger2]
+    )
+
+These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
+
+You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
+
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+
+Custom Sync/Upload Commands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If an upload directory is provided, Tune will automatically sync results to the given
+directory with standard S3/gsutil commands. You can customize the upload command by
+providing either a function or a string.
+
+If a string is provided, then it must include replacement fields ``{local_dir}`` and
+``{remote_dir}``, like ``"aws s3 sync {local_dir} {remote_dir}"``.
+
+Alternatively, a function can be provided with the following signature (and must
+be wrapped with ``tune.function``):
+
+.. code-block:: python
+
+    def custom_sync_func(local_dir, remote_dir):
+        sync_cmd = "aws s3 sync {local_dir} {remote_dir}".format(
+            local_dir=local_dir,
+            remote_dir=remote_dir)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
+
+    exp = Experiment(
+        name="experiment_name",
+        run=MyTrainableClass,
+        sync_function=tune.function(custom_sync_func)
+    )
 
 
 Client API
