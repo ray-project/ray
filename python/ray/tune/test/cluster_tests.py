@@ -415,6 +415,7 @@ tune.run_experiments(
         {
             "experiment": {
                 "run": "test"
+                "local_dir": dirpath
             }
         },
         resume=True,
