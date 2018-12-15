@@ -411,7 +411,7 @@ tune.run_experiments(
     assert trials[0].status == Trial.PENDING
 
     # Restore properly from checkpoint
-    trials = tune.run_experiments(
+    trials2 = tune.run_experiments(
         {
             "experiment": {
                 "run": "test"
@@ -419,5 +419,6 @@ tune.run_experiments(
         },
         resume=True,
         raise_on_failed_trial=False)
-    assert all(t.status == Trial.ERROR for t in trials)
+    assert all(t.status == Trial.ERROR for t in trials2)
+    assert set(t.trial_id for t in trials2) == set(t.trial_id for t in trials)
     cluster.shutdown()
