@@ -126,10 +126,12 @@ class TrialRunner(object):
                 self.trial_executor.get_checkpoints().values()),
             "runner": self
         }
-        with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
-                  "wb") as f:
+        tmp_file_name = os.path.join(checkpoint_dir, ".tmp_checkpoint")
+        with open(tmp_file_name, "wb") as f:
             pickle.dump(runner_state, f)
 
+        os.rename(tmp_file_name, os.path.join(
+            checkpoint_dir, TrialRunner.CKPT_FILE))
         return checkpoint_dir
 
     @classmethod
