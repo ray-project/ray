@@ -104,7 +104,9 @@ class TrialRunner(object):
         self._checkpoint_dir = checkpoint_dir
 
     def checkpoint(self):
-        """Saves all trial checkpoints to `self._checkpoint_dir.`"""
+        """Saves execution state to `self._checkpoint_dir` if provided."""
+        if not self._checkpoint_dir:
+            return
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
             logger.debug("Checkpoint directory newly created.")
@@ -119,8 +121,8 @@ class TrialRunner(object):
         with open(tmp_file_name, "wb") as f:
             pickle.dump(runner_state, f)
 
-        os.rename(tmp_file_name, os.path.join(
-            checkpoint_dir, TrialRunner.CKPT_FILE))
+        os.rename(tmp_file_name,
+                  os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE))
         return checkpoint_dir
 
     @classmethod

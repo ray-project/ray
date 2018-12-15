@@ -276,8 +276,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     assert cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
-    runner = TrialRunner(
-        BasicVariantGenerator(), checkpoint_dir=dirpath)
+    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -319,7 +318,10 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     dirpath = str(tmpdir)
 
     exp1_args = dict(
-        run="__fake", stop=dict(training_iteration=3), checkpoint_freq=1)
+        run="__fake",
+        stop=dict(training_iteration=3),
+        local_dir=dirpath,
+        checkpoint_freq=1)
     exp2_args = dict(run="__fake", stop=dict(training_iteration=3))
     exp3_args = dict(
         run="__fake",
@@ -330,20 +332,20 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         stop=dict(training_iteration=3),
         config=dict(mock_error=True),
         checkpoint_freq=1)
+    all_experiments = {
+        "exp1": exp1_args,
+        "exp2": exp2_args,
+        "exp3": exp3_args,
+        "exp4": exp4_args
+    }
 
-    tune.run_experiments(
-        dict(exp1=exp1_args, exp2=exp2_args, exp3=exp3_args, exp4=exp4_args),
-        checkpoint_dir=dirpath,
-        raise_on_failed_trial=False)
+    tune.run_experiments(all_experiments, raise_on_failed_trial=False)
 
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
 
-    # Check that last_result.iteration = 1
-    runner = TrialRunner.restore(dirpath)
-    trials = runner.get_trials()
-    trials = tune.run_experiments(checkpoint_dir=dirpath)
+    trials = tune.run_experiments(all_experiments, resume=True)
     assert len(trials) == 2
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     cluster.shutdown()
@@ -370,13 +372,12 @@ ray.init(redis_address="{redis_address}")
 kwargs = dict(
     run="test",
     stop=dict(training_iteration=5),
+    local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
     max_failures=1)
 
-# This will save to disk on step 0 and step 3
 tune.run_experiments(
-    dict(experiment1=kwargs),
-    checkpoint_dir="{checkpoint_dir}",
+    dict(experiment=kwargs),
     raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address,
@@ -411,6 +412,12 @@ tune.run_experiments(
 
     # Restore properly from checkpoint
     trials = tune.run_experiments(
-        checkpoint_dir=dirpath, raise_on_failed_trial=False)
+        {
+            "experiment": {
+                "run": "test"
+            }
+        },
+        resume=True,
+        raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials)
     cluster.shutdown()

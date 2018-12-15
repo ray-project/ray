@@ -1642,8 +1642,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         default_resources = Resources(cpu=1, gpu=0)
 
-        runner = TrialRunner(
-            BasicVariantGenerator(), checkpoint_dir=tmpdir)
+        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -1706,8 +1705,7 @@ class TrialRunnerTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         default_resources = Resources(cpu=1, gpu=0)
 
-        runner = TrialRunner(
-            BasicVariantGenerator(), checkpoint_dir=tmpdir)
+        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",

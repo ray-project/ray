@@ -7,6 +7,7 @@ import os
 import time
 
 from ray.tune.error import TuneError
+from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
@@ -33,13 +34,18 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
+def _find_checkpoint_dir(exp_list):
+    checkpointable_expts = [exp for exp in exp_list if exp.is_checkpointable()]
+    return checkpointable_expts[0].spec["local_dir"]
+
+
 def run_experiments(experiments=None,
                     search_alg=None,
                     scheduler=None,
-                    checkpoint_dir=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
+                    resume=False,
                     queue_trials=False,
                     trial_executor=None,
                     raise_on_failed_trial=True):
@@ -59,6 +65,9 @@ def run_experiments(experiments=None,
             using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (bool): How much output should be printed for each trial.
+        resume (bool): To resume from full experiment checkpoint. Only the
+            first checkpointable experiment local_dir is checked.
+            If checkpoint exists, the experiment will resume from there.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
@@ -87,12 +96,13 @@ def run_experiments(experiments=None,
         List of Trial objects, holding data for each executed trial.
 
     """
+    experiments = convert_to_experiment_list(experiments)
+    checkpoint_dir = _find_checkpoint_dir(experiments)
 
-    if checkpoint_dir and os.path.exists(
+    if resume and os.path.exists(
             os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
-        if experiments:
-            logger.warn("Restoring from previous experiment and "
-                        "ignoring given specification.")
+        logger.warn("Restoring from previous experiment and "
+                    "ignoring any new changes to specification.")
         runner = TrialRunner.restore(checkpoint_dir, trial_executor)
     else:
         if scheduler is None:
