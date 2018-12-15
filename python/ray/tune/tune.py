@@ -36,7 +36,10 @@ def _make_scheduler(args):
 
 def _find_checkpoint_dir(exp_list):
     checkpointable_expts = [exp for exp in exp_list if exp.is_checkpointable()]
-    return checkpointable_expts[0].spec["local_dir"]
+    if checkpointable_expts:
+        return checkpointable_expts[0].spec["local_dir"]
+    else:
+        return None
 
 
 def run_experiments(experiments=None,
@@ -99,7 +102,7 @@ def run_experiments(experiments=None,
     experiments = convert_to_experiment_list(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
 
-    if resume and os.path.exists(
+    if resume and checkpoint_dir and os.path.exists(
             os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
         logger.warn("Restoring from previous experiment and "
                     "ignoring any new changes to specification.")
