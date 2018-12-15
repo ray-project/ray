@@ -112,7 +112,7 @@ class Experiment(object):
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "custom_loggers": custom_loggers,
-            "sync_function": sync_function or "",  # See `upload_dir`.
+            "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "max_failures": max_failures,
