@@ -124,7 +124,8 @@ class Experiment(object):
 
     def is_checkpointable(self):
         """Returns whether any trial in experiment will need to checkpoint."""
-        return bool(self.checkpoint_freq or self.checkpoint_at_end)
+        return bool(self.spec["checkpoint_freq"]
+                    or self.spec["checkpoint_at_end"])
 
     @classmethod
     def from_json(cls, name, spec):
