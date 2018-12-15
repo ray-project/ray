@@ -277,7 +277,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
 
     dirpath = str(tmpdir)
     runner = TrialRunner(
-        BasicVariantGenerator(), checkpoint_freq=2, checkpoint_dir=dirpath)
+        BasicVariantGenerator(), checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -334,7 +334,6 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     tune.run_experiments(
         dict(exp1=exp1_args, exp2=exp2_args, exp3=exp3_args, exp4=exp4_args),
         checkpoint_dir=dirpath,
-        checkpoint_freq=2,
         raise_on_failed_trial=False)
 
     ray.shutdown()
@@ -378,7 +377,6 @@ kwargs = dict(
 tune.run_experiments(
     dict(experiment1=kwargs),
     checkpoint_dir="{checkpoint_dir}",
-    checkpoint_freq=3,
     raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address,

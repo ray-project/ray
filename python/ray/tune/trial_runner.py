@@ -57,7 +57,6 @@ class TrialRunner(object):
                  scheduler=None,
                  launch_web_server=False,
                  checkpoint_dir=None,
-                 checkpoint_freq=0,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -71,8 +70,6 @@ class TrialRunner(object):
             launch_web_server (bool): Flag for starting TuneServer
             checkpoint_dir (str): Path where global checkpoints are stored
                 and restored from.
-            checkpoint_freq (int): How many steps between global
-                checkpoints. A value of 0 (default) disables checkpointing.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -85,8 +82,7 @@ class TrialRunner(object):
         self._search_alg = search_alg
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or \
-            RayTrialExecutor(queue_trials=queue_trials,
-                             checkpoint_mode=checkpoint_freq > 0)
+            RayTrialExecutor(queue_trials=queue_trials)
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -106,13 +102,6 @@ class TrialRunner(object):
         self._stop_queue = []
         self._trial_checkpoints = {}
         self._checkpoint_dir = checkpoint_dir
-        self._checkpoint_freq = checkpoint_freq
-        if self._checkpoint_freq and not self._checkpoint_dir:
-            logger.warning("No checkpoint directory specified - turning "
-                           "off checkpointing.")
-            self._checkpoint_freq = 0
-
-        assert self._checkpoint_freq >= 0, "checkpoint_freq must be positive."
 
     def checkpoint(self):
         """Saves all trial checkpoints to `self._checkpoint_dir.`"""
@@ -164,8 +153,7 @@ class TrialRunner(object):
         runner._scheduler_alg = FIFOScheduler()
 
         runner.trial_executor = trial_executor or \
-            RayTrialExecutor(queue_trials=runner._queue_trials,
-                             checkpoint_mode=runner._checkpoint_freq > 0)
+            RayTrialExecutor(queue_trials=runner._queue_trials)
 
         logger.info("Adding all trials with checkpoint state.")
         for ckpt in runner_state["checkpoints"]:
@@ -218,11 +206,7 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
 
-        if self._checkpoint_freq:
-            if (self._iteration % self._checkpoint_freq == 0
-                    or self.is_finished()):
-                self.checkpoint()
-
+        self.checkpoint()
         self._iteration += 1
 
         if self._server:

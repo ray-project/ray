@@ -1563,7 +1563,7 @@ class TrialRunnerTest(unittest.TestCase):
         default_resources = Resources(cpu=1, gpu=0)
 
         runner = TrialRunner(
-            BasicVariantGenerator(), checkpoint_dir=tmpdir, checkpoint_freq=1)
+            BasicVariantGenerator(), checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -1627,7 +1627,7 @@ class TrialRunnerTest(unittest.TestCase):
         default_resources = Resources(cpu=1, gpu=0)
 
         runner = TrialRunner(
-            BasicVariantGenerator(), checkpoint_dir=tmpdir, checkpoint_freq=1)
+            BasicVariantGenerator(), checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
