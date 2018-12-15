@@ -6,25 +6,25 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
       env:
         - JDK='Oracle JDK 8'
-        - PYTHON=3.5
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -58,7 +58,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -75,7 +75,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -86,7 +86,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -100,6 +100,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
+        - PYTHONWARNINGS=ignore
 
 
 install:
@@ -133,46 +134,46 @@ script:
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
-  - python -m pytest -v python/ray/tune/test/trial_runner_test.py
-  - python -m pytest -v python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest -v python/ray/tune/test/experiment_test.py
-  - python -m pytest -v python/ray/tune/test/tune_server_test.py
-  - python -m pytest -v python/ray/tune/test/ray_trial_executor_test.py
-  - python -m pytest -v python/ray/tune/test/automl_searcher_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/trial_scheduler_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/experiment_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/tune_server_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/ray_trial_executor_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
 
   # ray rllib tests
-  - python -m pytest -v python/ray/rllib/test/test_catalog.py
-  - python -m pytest -v python/ray/rllib/test/test_filters.py
-  - python -m pytest -v python/ray/rllib/test/test_optimizers.py
-  - python -m pytest -v python/ray/rllib/test/test_evaluators.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_catalog.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_filters.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
 
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v python/ray/experimental/test/async_test.py
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
-  - python -m pytest -v python/ray/test/test_global_state.py
-  - python -m pytest -v python/ray/test/test_queue.py
-  - python -m pytest -v python/ray/test/test_ray_init.py
-  - python -m pytest -v test/xray_test.py
+  - python -m pytest -v --durations=10 python/ray/test/test_global_state.py
+  - python -m pytest -v --durations=10 python/ray/test/test_queue.py
+  - python -m pytest -v --durations=10 python/ray/test/test_ray_init.py
+  - python -m pytest -v --durations=10 test/xray_test.py
 
-  - python -m pytest -v test/runtest.py
-  - python -m pytest -v test/array_test.py
-  - python -m pytest -v test/actor_test.py
-  - python -m pytest -v test/autoscaler_test.py
-  - python -m pytest -v test/tensorflow_test.py
-  - python -m pytest -v test/failure_test.py
-  - python -m pytest -v test/microbenchmarks.py
-  - python -m pytest -v test/stress_tests.py
-  - python -m pytest -v test/component_failures_test.py
-  - python -m pytest -v test/multi_node_test.py
-  - python -m pytest -v test/multi_node_test_2.py
-  - python -m pytest -v test/recursion_test.py
-  - python -m pytest -v test/monitor_test.py
-  - python -m pytest -v test/cython_test.py
-  - python -m pytest -v test/credis_test.py
-  - python -m pytest -v test/node_manager_test.py
+  - python -m pytest -v --durations=10 test/runtest.py
+  - python -m pytest -v --durations=10 test/array_test.py
+  - python -m pytest -v --durations=10 test/actor_test.py
+  - python -m pytest -v --durations=10 test/autoscaler_test.py
+  - python -m pytest -v --durations=10 test/tensorflow_test.py
+  - python -m pytest -v --durations=10 test/failure_test.py
+  - python -m pytest -v --durations=10 test/microbenchmarks.py
+  - python -m pytest -v --durations=10 test/stress_tests.py
+  - python -m pytest -v --durations=10 test/component_failures_test.py
+  - python -m pytest -v --durations=10 test/multi_node_test.py
+  - python -m pytest -v --durations=10 test/multi_node_test_2.py
+  - python -m pytest -v --durations=10 test/recursion_test.py
+  - python -m pytest -v --durations=10 test/monitor_test.py
+  - python -m pytest -v --durations=10 test/cython_test.py
+  - python -m pytest -v --durations=10 test/credis_test.py
+  - python -m pytest -v --durations=10 test/node_manager_test.py
 
   # ray temp file tests
-  - python -m pytest -v test/tempfile_test.py
+  - python -m pytest -v --durations=10 test/tempfile_test.py
 
   # modin test files
   - python python/ray/test/test_modin.py

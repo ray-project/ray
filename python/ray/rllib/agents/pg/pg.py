@@ -36,9 +36,11 @@ class PGAgent(Agent):
             self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
             self.env_creator, self._policy_graph, self.config["num_workers"])
-        self.optimizer = SyncSamplesOptimizer(self.local_evaluator,
-                                              self.remote_evaluators,
-                                              self.config["optimizer"])
+        optimizer_config = dict(
+            self.config["optimizer"],
+            **{"train_batch_size": self.config["train_batch_size"]})
+        self.optimizer = SyncSamplesOptimizer(
+            self.local_evaluator, self.remote_evaluators, optimizer_config)
 
     @override(Agent)
     def _train(self):

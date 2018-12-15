@@ -34,6 +34,7 @@ class Cluster(object):
         self.head_node = None
         self.worker_nodes = {}
         self.redis_address = None
+        self.connected = False
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -41,13 +42,18 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                redis_password = head_node_args.get("redis_password")
-                output_info = ray.init(
-                    redis_address=self.redis_address,
-                    redis_password=redis_password)
-                logger.info(output_info)
+                self.connect(head_node_args)
         if shutdown_at_exit:
             atexit.register(self.shutdown)
+
+    def connect(self, head_node_args):
+        assert self.redis_address is not None
+        assert not self.connected
+        redis_password = head_node_args.get("redis_password")
+        output_info = ray.init(
+            redis_address=self.redis_address, redis_password=redis_password)
+        logger.info(output_info)
+        self.connected = True
 
     def add_node(self, **override_kwargs):
         """Adds a node to the local Ray Cluster.
@@ -83,7 +89,7 @@ class Cluster(object):
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
                 services.all_processes[key] = []
-            node = Node(process_dict_copy)
+            node = Node(address_info, process_dict_copy)
             self.head_node = node
         else:
             address_info = services.start_ray_node(
@@ -93,7 +99,7 @@ class Cluster(object):
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
                 services.all_processes[key] = []
-            node = Node(process_dict_copy)
+            node = Node(address_info, process_dict_copy)
             self.worker_nodes[node] = address_info
         logger.info("Starting Node with raylet socket {}".format(
             address_info["raylet_socket_names"]))
@@ -182,8 +188,9 @@ class Cluster(object):
 class Node(object):
     """Abstraction for a Ray node."""
 
-    def __init__(self, process_dict):
+    def __init__(self, address_info, process_dict):
         # TODO(rliaw): Is there a unique identifier for a node?
+        self.address_info = address_info
         self.process_dict = process_dict
 
     def kill_plasma_store(self):
@@ -224,3 +231,11 @@ class Node(object):
 
     def all_processes_alive(self):
         return not any(self.dead_processes())
+
+    def get_plasma_store_name(self):
+        """Return the plasma store name.
+
+        Assuming one plasma store per raylet, this may be used as a unique
+        identifier for a node.
+        """
+        return self.address_info['object_store_addresses'][0]

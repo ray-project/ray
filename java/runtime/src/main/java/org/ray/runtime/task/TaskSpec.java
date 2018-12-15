@@ -28,6 +28,8 @@ public class TaskSpec {
   // Id for createActor a target actor
   public final UniqueId actorCreationId;
 
+  public final int maxActorReconstructions;
+
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
   public final UniqueId actorId;
@@ -62,14 +64,15 @@ public class TaskSpec {
   }
 
   public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
-      UniqueId actorCreationId, UniqueId actorId, UniqueId actorHandleId, int actorCounter,
-      FunctionArg[] args, UniqueId[] returnIds,
+      UniqueId actorCreationId, int maxActorReconstructions, UniqueId actorId,
+      UniqueId actorHandleId, int actorCounter, FunctionArg[] args, UniqueId[] returnIds,
       Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
     this.parentCounter = parentCounter;
     this.actorCreationId = actorCreationId;
+    this.maxActorReconstructions = maxActorReconstructions;
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
