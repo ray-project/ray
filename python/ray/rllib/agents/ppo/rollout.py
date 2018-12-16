@@ -6,13 +6,14 @@ import ray
 from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
-def collect_samples(agents, sample_batch_size, num_envs_per_worker, train_batch_size):
+def collect_samples(agents, sample_batch_size, num_envs_per_worker,
+                    train_batch_size):
     num_timesteps_so_far = 0
     trajectories = []
-
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
+
     agent_dict = {}
 
     for agent in agents:

@@ -114,10 +114,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             if self.remote_evaluators:
                 # TODO(rliaw): remove when refactoring
                 from ray.rllib.agents.ppo.rollout import collect_samples
-                samples = collect_samples(self.remote_evaluators,
-                                          self.sample_batch_size,
-                                          self.num_envs_per_worker,
-                                          self.train_batch_size)
+                samples = collect_samples(
+                    self.remote_evaluators, self.sample_batch_size,
+                    self.num_envs_per_worker, self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
                         "Collected more training samples than expected "
