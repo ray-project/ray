@@ -59,7 +59,7 @@ class PPOCollectTest(unittest.TestCase):
         self.assertEqual(ppo.optimizer.num_steps_sampled, 1000)
         ppo.stop()
 
-        # Check we collect at least the specified amount of samples
+        # Check in vectorized mode
         ppo = PPOAgent(
             env="CartPole-v0",
             config={
