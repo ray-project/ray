@@ -5,6 +5,7 @@ from __future__ import print_function
 import logging
 import numpy as np
 import torch as th
+import torch.nn as nn
 from torch.optim import RMSprop
 from torch.distributions import Categorical
 
@@ -16,6 +17,92 @@ from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
+
+
+class QMixLoss(nn.Module):
+    def __init__(self,
+                 model,
+                 target_model,
+                 mixer,
+                 target_mixer,
+                 double_q=True,
+                 gamma=0.99):
+        nn.Module.__init__(self)
+        self.model = model
+        self.target_model = target_model
+        self.mixer = mixer
+        self.target_mixer = target_mixer
+        self.double_q = double_q
+        self.gamma = gamma
+
+    def forward(self, rewards, actions, terminated, obs, avail_actions):
+        B = obs.size(0)
+        T = obs.size(1)
+
+        # TODO(ekl) support batching
+        # mask = batch["filled"][:, :-1].float()
+        mask = th.ones_like(terminated)
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
+
+        # Calculate estimated Q-Values
+        q_out = []
+        h = self.model.init_hidden().expand([B, -1])  # shape [B, H]
+        for t in range(T):
+            q, h = self.model.forward(obs[:, t], h)
+            q_out.append(q)
+        q_out = th.stack(q_out, dim=1)  # Concat over time
+
+        # Pick the Q-Values for the actions taken by each agent
+        chosen_action_qvals = th.gather(
+            q_out[:, :-1], dim=2, index=actions.unsqueeze(2)).squeeze(2)
+
+        # Calculate the Q-Values necessary for the target
+        target_q_out = []
+        target_h = self.target_model.init_hidden().expand([B, -1])
+        for t in range(T):
+            target_q, target_h = self.target_model.forward(obs[:, t], target_h)
+            target_q_out.append(target_q)
+
+        # We don't need the first timesteps Q-Value estimate for targets
+        target_q_out = th.stack(target_q_out[1:], dim=1)  # Concat across time
+
+        # Mask out unavailable actions
+        target_q_out[avail_actions[:, 1:] == 0] = -9999999
+
+        # Max over target Q-Values
+        if self.double_q:
+            # Get actions that maximise live Q (for double q-learning)
+            q_out[avail_actions == 0] = -9999999
+            cur_max_actions = q_out[:, 1:].max(dim=2, keepdim=True)[1]
+            target_max_qvals = th.gather(target_q_out, 2,
+                                         cur_max_actions).squeeze(2)
+        else:
+            target_max_qvals = target_q_out.max(dim=2)[0]
+
+        # Mix
+        if self.mixer is not None:
+            # TODO(ekl) add support for handling global state. This is just
+            # stacking the agent obs.
+            # Transpose shape from [B, T, state_size] => [T, B, state_size]
+            chosen_action_qvals = self.mixer(chosen_action_qvals,
+                                             th.transpose(obs[:, :-1], 0, 1))
+            target_max_qvals = self.target_mixer(
+                target_max_qvals, th.transpose(obs[:, 1:], 0, 1))
+
+        # Calculate 1-step Q-Learning targets
+        targets = rewards + self.gamma * (1 - terminated) * target_max_qvals
+
+        # Td-error
+        td_error = (chosen_action_qvals - targets.detach())
+
+        mask = mask.expand_as(td_error)
+
+        # 0-out the targets that came from padded data
+        masked_td_error = td_error * mask
+
+        # Normal L2 loss, take mean over actual data
+        loss = (masked_td_error**2).sum() / mask.sum()
+        return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
 class QMixPolicyGraph(PolicyGraph):
@@ -31,16 +118,15 @@ class QMixPolicyGraph(PolicyGraph):
                               action_space.n)
         self.target_model = RNNModel(self.observation_space.shape[0], 64,
                                      action_space.n)
-        # TODO(ekl) don't hardcode this (and support batches of groups)
         self.n_agents = 2
+        self.state_shape = list(self.observation_space.shape) + [self.n_agents]
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
         elif config["mixer"] == "qmix":
-            state_shape = None  # TODO(ekl)
-            self.mixer = QMixer(self.n_agents, state_shape,
+            self.mixer = QMixer(self.n_agents, self.state_shape,
                                 config["mixing_embed_dim"])
-            self.target_mixer = QMixer(self.n_agents, state_shape,
+            self.target_mixer = QMixer(self.n_agents, self.state_shape,
                                        config["mixing_embed_dim"])
         elif config["mixer"] == "vdn":
             self.mixer = VDNMixer()
@@ -51,6 +137,8 @@ class QMixPolicyGraph(PolicyGraph):
         self.update_target()  # initial sync
 
         self.params = list(self.model.parameters())
+        self.loss = QMixLoss(self.model, self.target_model, self.mixer,
+                             self.target_mixer)
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -92,6 +180,8 @@ class QMixPolicyGraph(PolicyGraph):
         B = num_agents
         T = samples.count // B
 
+        # TODO: reshape to [B, T, n_agents, shape]
+
         def add_time_dim(arr):
             new_shape = [B, T] + list(arr.shape[1:])
             return th.from_numpy(np.reshape(arr, new_shape))
@@ -100,80 +190,22 @@ class QMixPolicyGraph(PolicyGraph):
         actions = add_time_dim(samples["actions"])[:, :-1]
         terminated = add_time_dim(samples["dones"].astype(np.float32))[:, :-1]
         obs = add_time_dim(samples["obs"])
-
-        # TODO(ekl) support batching
-        # mask = batch["filled"][:, :-1].float()
-        mask = th.ones_like(terminated)
-        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
         avail_actions = add_time_dim(samples["avail_actions"])
 
-        # Calculate estimated Q-Values
-        q_out = []
-        h = self.model.init_hidden().expand([B, -1])  # shape [B, H]
-        for t in range(T):
-            q, h = self.model.forward(obs[:, t], h)
-            q_out.append(q)
-        q_out = th.stack(q_out, dim=1)  # Concat over time
-
-        # Pick the Q-Values for the actions taken by each agent
-        chosen_action_qvals = th.gather(
-            q_out[:, :-1], dim=2, index=actions.unsqueeze(2)).squeeze(2)
-
-        # Calculate the Q-Values necessary for the target
-        target_q_out = []
-        target_h = self.target_model.init_hidden().expand([B, -1])
-        for t in range(T):
-            target_q, target_h = self.target_model.forward(obs[:, t], target_h)
-            target_q_out.append(target_q)
-
-        # We don't need the first timesteps Q-Value estimate for targets
-        target_q_out = th.stack(target_q_out[1:], dim=1)  # Concat across time
-
-        # Mask out unavailable actions
-        target_q_out[avail_actions[:, 1:] == 0] = -9999999
-
-        # Max over target Q-Values
-        if self.config["double_q"]:
-            # Get actions that maximise live Q (for double q-learning)
-            q_out[avail_actions == 0] = -9999999
-            cur_max_actions = q_out[:, 1:].max(dim=2, keepdim=True)[1]
-            target_max_qvals = th.gather(target_q_out, 2,
-                                         cur_max_actions).squeeze(2)
-        else:
-            target_max_qvals = target_q_out.max(dim=2)[0]
-
-        # Mix
-        if self.mixer is not None:
-            chosen_action_qvals = self.mixer(chosen_action_qvals,
-                                             samples["state"][:, :-1])
-            target_max_qvals = self.target_mixer(target_max_qvals,
-                                                 samples["state"][:, 1:])
-
-        # Calculate 1-step Q-Learning targets
-        targets = rewards + self.config["gamma"] * (
-            1 - terminated) * target_max_qvals
-
-        # Td-error
-        td_error = (chosen_action_qvals - targets.detach())
-
-        mask = mask.expand_as(td_error)
-
-        # 0-out the targets that came from padded data
-        masked_td_error = td_error * mask
-
-        # Normal L2 loss, take mean over actual data
-        loss = (masked_td_error**2).sum() / mask.sum()
+        # Compute loss
+        loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
+            self.loss(rewards, actions, terminated, obs, avail_actions)
 
         # Optimise
         self.optimiser.zero_grad()
-        loss.backward()
+        loss_out.backward()
         grad_norm = th.nn.utils.clip_grad_norm_(
             self.params, self.config["grad_norm_clipping"])
         self.optimiser.step()
 
         mask_elems = mask.sum().item()
         stats = {
-            "loss": loss.item(),
+            "loss": loss_out.item(),
             "grad_norm": grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() /

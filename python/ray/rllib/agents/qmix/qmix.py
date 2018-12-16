@@ -11,11 +11,13 @@ from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
 DEFAULT_CONFIG = with_common_config({
     # === QMix ===
     # Mixing network. Either "qmix", "vdn", or None
-    "mixer": "vdn",
+    "mixer": "qmix",
     # Size of the mixing network embedding
     "mixing_embed_dim": 32,
     # Whether to use Double_Q learning
-    "double_q": False,
+    "double_q": True,
+    # Optimize over complete episodes by default.
+    "batch_mode": "complete_episodes",
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -35,8 +37,6 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer in steps.
     "buffer_size": 1000,
-    # Whether to LZ4 compress observations
-    "compress_observations": True,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -51,11 +51,11 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 32,
+    "sample_batch_size": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 32,
+    "train_batch_size": 4,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -81,6 +81,7 @@ class QMixAgent(DQNAgent):
     _agent_name = "QMIX"
     _default_config = DEFAULT_CONFIG
     _policy_graph = QMixPolicyGraph
+    _optimizer_shared_configs = ["learning_starts", "buffer_size"]
 
 
 if __name__ == "__main__":

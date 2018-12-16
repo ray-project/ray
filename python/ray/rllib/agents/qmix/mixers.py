@@ -9,7 +9,7 @@ class VDNMixer(nn.Module):
         super(VDNMixer, self).__init__()
 
     def forward(self, agent_qs, batch):
-        return th.sum(agent_qs, dim=2, keepdim=True)
+        return th.sum(agent_qs, dim=1, keepdim=True)
 
 
 class QMixer(nn.Module):
@@ -33,7 +33,7 @@ class QMixer(nn.Module):
             nn.Linear(self.embed_dim, 1))
 
     def forward(self, agent_qs, states):
-        bs = agent_qs.size(0)
+        bs = 1  # TODO(ekl) agent_qs.size(0)
         states = states.reshape(-1, self.state_dim)
         agent_qs = agent_qs.view(-1, 1, self.n_agents)
         # First layer
@@ -50,5 +50,6 @@ class QMixer(nn.Module):
         # Compute final output
         y = th.bmm(hidden, w_final) + v
         # Reshape and return
-        q_tot = y.view(bs, -1, 1)
+        # TODO(ekl) q_tot = y.view(bs, -1, 1)
+        q_tot = y.view(bs, -1)
         return q_tot

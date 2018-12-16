@@ -15,7 +15,7 @@ from ray.rllib.utils.timer import TimerStat
 class SyncBatchReplayOptimizer(PolicyOptimizer):
     """Variant of the sync replay optimizer that replays entire batches.
 
-    Does not currently support prioritization."""
+    This enables RNN support. Does not currently support prioritization."""
 
     @override(PolicyOptimizer)
     def _init(self, learning_starts=1000, buffer_size=10000):
