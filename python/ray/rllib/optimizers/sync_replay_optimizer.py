@@ -54,7 +54,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
         self.sample_timer = TimerStat()
         self.replay_timer = TimerStat()
         self.grad_timer = TimerStat()
-        self.throughput = RunningStat()
         self.learner_stats = {}
 
         # Set up replay buffer
