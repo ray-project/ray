@@ -42,7 +42,7 @@ add_dependencies(gen_node_manager_fbs flatbuffers_ep)
 
 include_directories(${GCS_FBS_OUTPUT_DIRECTORY})
 add_library(rayletlib raylet.cc ${NODE_MANAGER_FBS_OUTPUT_FILES})
-target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY})
+target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY})
 
 add_library(raylet_client STATIC raylet_client.cc)
 
