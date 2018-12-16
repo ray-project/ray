@@ -48,6 +48,6 @@ else()
     BUILD_IN_SOURCE 1
     BUILD_BYPRODUCTS ${Boost_BUILD_PRODUCTS}
     CONFIGURE_COMMAND ./bootstrap.sh
-    BUILD_COMMAND bash -c "./b2 cxxflags=-fPIC cflags=-fPIC variant=release link=static --with-filesystem --with-system --with-thread --with-atomic --with-chrono --with-regex -j8 install --prefix=${Boost_INSTALL_PREFIX} > /dev/null"
+    BUILD_COMMAND bash -c "./b2 cxxflags=-fPIC cflags=-fPIC variant=release link=static --with-filesystem --with-system --with-thread --with-atomic --with-chrono --with-date_time --with-regex -j8 install --prefix=${Boost_INSTALL_PREFIX} > /dev/null"
     INSTALL_COMMAND "")
 endif ()
