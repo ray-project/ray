@@ -227,6 +227,27 @@ class QMixPolicyGraph(PolicyGraph):
     def set_weights(self, weights):
         self.model.load_state_dict(weights["model"])
 
+    @override(PolicyGraph)
+    def get_state(self):
+        return {
+            "model": self.model.state_dict(),
+            "target_model": self.target_model.state_dict(),
+            "mixer": self.mixer.state_dict() if self.mixer else None,
+            "target_mixer": self.target_mixer.state_dict()
+            if self.mixer else None,
+            "cur_epsilon": self.cur_epsilon,
+        }
+
+    @override(PolicyGraph)
+    def set_state(self, state):
+        self.model.load_state_dict(state["model"])
+        self.target_model.load_state_dict(state["target_model"])
+        if state["mixer"] is not None:
+            self.mixer.load_state_dict(state["mixer"])
+            self.target_mixer.load_state_dict(state["target_mixer"])
+        self.set_epsilon(state["cur_epsilon"])
+        self.update_target()
+
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
         if self.mixer is not None:
