@@ -582,6 +582,9 @@ def get_agent_class(alg):
     elif alg == "QMIX":
         from ray.rllib.agents import qmix
         return qmix.QMixAgent
+    elif alg == "APEX_QMIX":
+        from ray.rllib.agents import qmix
+        return ddpg.ApexQMixAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
