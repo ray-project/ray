@@ -58,6 +58,7 @@ set(RAY_SRCS
 
 set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
 set(RAY_LIB_DEPENDENCIES
+    Boost::thread
     arrow_ep
     gen_gcs_fbs
     gen_object_manager_fbs
