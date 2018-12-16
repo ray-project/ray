@@ -11,7 +11,8 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
     {
         "optimizer_class": "AsyncReplayOptimizer",
         "optimizer": merge_dicts(
-            QMIX_CONFIG["optimizer"], {
+            QMIX_CONFIG["optimizer"],
+            {
                 "max_weight_sync_delay": 400,
                 "num_replay_buffer_shards": 4,
                 "batch_replay": True,  # required for RNN. Disables prio.
