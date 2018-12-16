@@ -9,13 +9,12 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
 class SyncBatchReplayOptimizer(PolicyOptimizer):
     """Variant of the sync replay optimizer that replays entire batches.
-    
+
     Does not currently support prioritization."""
 
     @override(PolicyOptimizer)

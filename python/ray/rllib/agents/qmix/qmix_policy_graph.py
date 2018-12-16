@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import logging
 import numpy as np
 import torch as th
@@ -13,7 +12,6 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.utils.annotations import override
 
@@ -35,12 +33,15 @@ class QMixPolicyGraph(PolicyGraph):
                                      action_space.n)
         # TODO(ekl) don't hardcode this (and support batches of groups)
         self.n_agents = 2
-        if config["mixer"] == None:
+        if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
         elif config["mixer"] == "qmix":
-            self.mixer = QMixer(n_agents, config["mixing_embed_dim"])
-            self.target_mixer = QMixer(n_agents, config["mixing_embed_dim"])
+            state_shape = None  # TODO(ekl)
+            self.mixer = QMixer(self.n_agents, state_shape,
+                                config["mixing_embed_dim"])
+            self.target_mixer = QMixer(self.n_agents, state_shape,
+                                       config["mixing_embed_dim"])
         elif config["mixer"] == "vdn":
             self.mixer = VDNMixer()
             self.target_mixer = VDNMixer()
@@ -51,7 +52,10 @@ class QMixPolicyGraph(PolicyGraph):
 
         self.params = list(self.model.parameters())
         self.optimiser = RMSprop(
-            params=self.params, lr=config["lr"], alpha=config["optim_alpha"], eps=config["optim_eps"])
+            params=self.params,
+            lr=config["lr"],
+            alpha=config["optim_alpha"],
+            eps=config["optim_eps"])
 
     @override(PolicyGraph)
     def compute_actions(self,
@@ -141,9 +145,9 @@ class QMixPolicyGraph(PolicyGraph):
         # Mix
         if self.mixer is not None:
             chosen_action_qvals = self.mixer(chosen_action_qvals,
-                                             batch["state"][:, :-1])
+                                             samples["state"][:, :-1])
             target_max_qvals = self.target_mixer(target_max_qvals,
-                                                 batch["state"][:, 1:])
+                                                 samples["state"][:, 1:])
 
         # Calculate 1-step Q-Learning targets
         targets = rewards + self.config["gamma"] * (
@@ -163,8 +167,8 @@ class QMixPolicyGraph(PolicyGraph):
         # Optimise
         self.optimiser.zero_grad()
         loss.backward()
-        grad_norm = th.nn.utils.clip_grad_norm_(self.params,
-                                                self.config["grad_norm_clipping"])
+        grad_norm = th.nn.utils.clip_grad_norm_(
+            self.params, self.config["grad_norm_clipping"])
         self.optimiser.step()
 
         mask_elems = mask.sum().item()

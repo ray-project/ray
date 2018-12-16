@@ -5,4 +5,4 @@ from __future__ import print_function
 from ray.rllib.agents.qmix.qmix import QMixAgent, DEFAULT_CONFIG
 from ray.rllib.agents.qmix.apex import ApexQMixAgent
 
-__all__ = ["QMixAgent", "ApexQmixAgent", "DEFAULT_CONFIG"]
+__all__ = ["QMixAgent", "ApexQMixAgent", "DEFAULT_CONFIG"]

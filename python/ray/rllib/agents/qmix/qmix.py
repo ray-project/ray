@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.agent import with_common_config
 from ray.rllib.agents.dqn.dqn import DQNAgent
 from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
 
@@ -13,7 +11,7 @@ from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
 DEFAULT_CONFIG = with_common_config({
     # === QMix ===
     # Mixing network. Either "qmix", "vdn", or None
-    "mixer": "qmix",
+    "mixer": "vdn",
     # Size of the mixing network embedding
     "mixing_embed_dim": 32,
     # Whether to use Double_Q learning
@@ -95,7 +93,6 @@ if __name__ == "__main__":
         "two_step": {
             "run": "QMIX",
             "env": TwoStepGame,
-            "config": {
-            },
+            "config": {},
         }
     })

@@ -7,9 +7,7 @@ from gym.spaces import Discrete
 import ray
 from ray.tune import run_experiments, function
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 
 
 class TwoStepGame(MultiAgentEnv):
@@ -64,12 +62,13 @@ if __name__ == "__main__":
             "config": {
                 "multiagent": {
                     "policy_graphs": {
-                        "agent_1": (PGPolicyGraph, Discrete(3), Discrete(2), {}),
-                        "agent_2": (PGPolicyGraph, Discrete(3), Discrete(2), {}),
+                        "agent_1": (DQNPolicyGraph, Discrete(3), Discrete(2),
+                                    {}),
+                        "agent_2": (DQNPolicyGraph, Discrete(3), Discrete(2),
+                                    {}),
                     },
                     "policy_mapping_fn": function(lambda agent_id: agent_id),
                 },
             },
         }
     })
-
