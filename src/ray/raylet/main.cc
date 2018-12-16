@@ -20,23 +20,25 @@ int main(int argc, char *argv[]) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler();
-  RAY_CHECK(argc >= 14 && argc <= 16);
+  // TODO: Better argument parser.
+  RAY_CHECK(argc >= 15 && argc <= 17);
 
   const std::string raylet_socket_name = std::string(argv[1]);
-  const std::string store_socket_name = std::string(argv[2]);
-  int object_manager_port = std::stoi(argv[3]);
-  int node_manager_port = std::stoi(argv[4]);
-  const std::string node_ip_address = std::string(argv[5]);
-  const std::string redis_address = std::string(argv[6]);
-  int redis_port = std::stoi(argv[7]);
-  int num_initial_workers = std::stoi(argv[8]);
-  int maximum_startup_concurrency = std::stoi(argv[9]);
-  const std::string static_resource_list = std::string(argv[10]);
-  const std::string config_list = std::string(argv[11]);
-  const std::string python_worker_command = std::string(argv[12]);
-  const std::string java_worker_command = std::string(argv[13]);
-  const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
-  const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
+  const std::string event_socket_name = std::string(argv[2]);
+  const std::string store_socket_name = std::string(argv[3]);
+  int object_manager_port = std::stoi(argv[4]);
+  int node_manager_port = std::stoi(argv[5]);
+  const std::string node_ip_address = std::string(argv[6]);
+  const std::string redis_address = std::string(argv[7]);
+  int redis_port = std::stoi(argv[8]);
+  int num_initial_workers = std::stoi(argv[9]);
+  int maximum_startup_concurrency = std::stoi(argv[10]);
+  const std::string static_resource_list = std::string(argv[11]);
+  const std::string config_list = std::string(argv[12]);
+  const std::string python_worker_command = std::string(argv[13]);
+  const std::string java_worker_command = std::string(argv[14]);
+  const std::string redis_password = (argc >= 16 ? std::string(argv[15]) : "");
+  const std::string temp_dir = (argc >= 17 ? std::string(argv[16]) : "/tmp/ray");
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -127,18 +129,19 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
 
-  ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
-                             redis_address, redis_port, redis_password,
+  ray::raylet::Raylet server(main_service, raylet_socket_name, event_socket_name,
+                             node_ip_address, redis_address, redis_port, redis_password,
                              node_manager_config, object_manager_config, gcs_client);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name](
+  auto handler = [&main_service, &raylet_socket_name, &event_socket_name](
       const boost::system::error_code &error, int signal_number) {
     main_service.stop();
     remove(raylet_socket_name.c_str());
+    remove(event_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);
   signals.async_wait(handler);

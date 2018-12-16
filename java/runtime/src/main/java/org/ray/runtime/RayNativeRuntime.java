@@ -78,6 +78,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     rayletClient = new RayletClientImpl(
         rayConfig.rayletSocketName,
+        rayConfig.rayletEventSocketName,
         workerContext.getCurrentWorkerId(),
         rayConfig.workerMode == WorkerMode.WORKER,
         workerContext.getCurrentTask().taskId

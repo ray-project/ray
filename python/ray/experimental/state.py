@@ -70,6 +70,8 @@ def parse_client_table(redis_client):
                 client.ObjectStoreSocketName(), allow_none=True),
             "RayletSocketName": decode(
                 client.RayletSocketName(), allow_none=True),
+            "RayletEventSocketName": decode(
+                client.RayletEventSocketName(), allow_none=True),
             "Resources": resources
         }
     return list(node_info.values())

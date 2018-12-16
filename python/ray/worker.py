@@ -1207,6 +1207,7 @@ def get_address_info_from_redis_helper(redis_address,
         "redis_address": redis_address,
         "object_store_address": relevant_client["ObjectStoreSocketName"],
         "raylet_socket_name": relevant_client["RayletSocketName"],
+        "raylet_event_socket_name": relevant_client["RayletEventSocketName"],
         # Web UI should be running.
         "webui_url": _webui_url_helper(redis_client)
     }
@@ -1334,6 +1335,9 @@ def _init(ray_params, driver_id=None):
         if ray_params.raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+        if ray_params.raylet_event_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "raylet_event_socket_name must not be provided.")
         if ray_params._internal_config is not None:
             raise Exception("When connecting to an existing cluster, "
                             "_internal_config must not be provided.")
@@ -1361,9 +1365,11 @@ def _init(ray_params, driver_id=None):
             "store_socket_name": ray_params.address_info[
                 "object_store_address"],
             "webui_url": ray_params.address_info["webui_url"],
+            "raylet_socket_name": ray_params.address_info[
+                "raylet_socket_name"],
+            "raylet_event_socket_name": ray_params.address_info[
+                "raylet_event_socket_name"],
         }
-        driver_address_info["raylet_socket_name"] = (
-            ray_params.address_info["raylet_socket_name"])
 
     # We only pass `temp_dir` to a worker (WORKER_MODE).
     # It can't be a worker here.
@@ -1402,6 +1408,7 @@ def init(redis_address=None,
          logging_format=ray_constants.LOGGER_FORMAT,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
+         raylet_event_socket_name=None,
          temp_dir=None,
          _internal_config=None,
          use_raylet=None):
@@ -1479,6 +1486,8 @@ def init(redis_address=None,
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
             used by the raylet process.
+        raylet_event_socket_name (str): If provided, it will specify the event
+            socket path used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
         _internal_config (str): JSON configuration for overriding
@@ -1547,6 +1556,7 @@ def init(redis_address=None,
         redis_max_memory=redis_max_memory,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
+        raylet_event_socket_name=raylet_event_socket_name,
         temp_dir=temp_dir,
         _internal_config=_internal_config,
     )
@@ -1963,8 +1973,10 @@ def connect(ray_params,
     # multithreading per worker.
     worker.multithreading_warned = False
 
+    raylet_event_socket_name = info["raylet_event_socket_name"]
     worker.raylet_client = ray.raylet.RayletClient(
-        raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
+        raylet_socket, raylet_event_socket_name, worker.worker_id, is_worker,
+        worker.current_task_id)
 
     # Start the import thread
     import_thread.ImportThread(worker, mode).start()

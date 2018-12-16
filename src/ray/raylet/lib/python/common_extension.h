@@ -57,4 +57,6 @@ PyObject *PyTask_from_string(PyObject *, PyObject *args);
 
 PyObject *PyTask_make(ray::raylet::TaskSpecification *task_spec);
 
+PyObject *random_id(PyObject *self, PyObject *args);
+
 #endif /* COMMON_EXTENSION_H */

@@ -817,8 +817,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
     boost::system::error_code ec;
-    conn.ReadBuffer(buffer, ec);
-    if (ec.value() == boost::system::errc::success) {
+    auto status = conn.ReadBuffer(buffer);
+    if (status.ok()) {
       buffer_pool_.SealChunk(object_id, chunk_index);
     } else {
       buffer_pool_.AbortCreateChunk(object_id, chunk_index);
@@ -834,10 +834,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
     boost::system::error_code ec;
-    conn.ReadBuffer(buffer, ec);
-    if (ec.value() != boost::system::errc::success) {
-      RAY_LOG(ERROR) << boost_to_ray_status(ec).ToString();
-    }
+    auto status = conn.ReadBuffer(buffer);
+    if (!status.ok()) RAY_LOG(ERROR) << status.ToString();
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   conn.ProcessMessages();

@@ -1,13 +1,17 @@
 import asyncio
 import ctypes
-import sys
+import socket
+import struct
 
 import pyarrow.plasma as plasma
 
 import ray
 from ray.services import logger
 
-INT64_SIZE = ctypes.sizeof(ctypes.c_int64)
+from ray.core.generated.ray.protocol.MessageType import MessageType
+from ray.core.generated.ray.protocol.ObjectLocalEvent import ObjectLocalEvent
+
+HEADER_SIZE = ctypes.sizeof(ctypes.c_int64) * 3
 
 
 def _release_waiter(waiter, *_):
@@ -15,199 +19,196 @@ def _release_waiter(waiter, *_):
         waiter.set_result(None)
 
 
-class PlasmaProtocol(asyncio.Protocol):
+class RayletEventProtocol(asyncio.Protocol):
     """Protocol control for the asyncio connection."""
 
     def __init__(self, plasma_client, plasma_event_handler):
         self.plasma_client = plasma_client
         self.plasma_event_handler = plasma_event_handler
         self.transport = None
-        self._buffer = b""
+        self._buffer = bytearray()
 
     def connection_made(self, transport):
         self.transport = transport
 
     def data_received(self, data):
-        self._buffer += data
+        # Header := version (int64_t), type (int64_t), size (int64_t)
+        self._buffer.extend(data)
         messages = []
         i = 0
-        while i + INT64_SIZE <= len(self._buffer):
-            msg_len = int.from_bytes(self._buffer[i:i + INT64_SIZE],
-                                     sys.byteorder)
-            if i + INT64_SIZE + msg_len > len(self._buffer):
+        while i + HEADER_SIZE <= len(self._buffer):
+            version, msg_type, msg_len = struct.unpack(
+                "=qqq", self._buffer[i:i + HEADER_SIZE])
+            # TODO: check version
+            if i + HEADER_SIZE + msg_len > len(self._buffer):
                 break
-            i += INT64_SIZE
-            segment = self._buffer[i:i + msg_len]
+            i += HEADER_SIZE
+            message_body = self._buffer[i:i + msg_len]
             i += msg_len
-            messages.append(self.plasma_client.decode_notification(segment))
+            messages.append((msg_type, message_body))
 
-        self._buffer = self._buffer[i:]
+        del self._buffer[:i]
         self.plasma_event_handler.process_notifications(messages)
 
     def connection_lost(self, exc):
         # The socket has been closed
-        logger.debug("PlasmaProtocol - connection lost.")
+        logger.debug("RayletEventProtocol - connection lost.")
 
     def eof_received(self):
-        logger.debug("PlasmaProtocol - EOF received.")
-        self.transport.close()
+        logger.debug("RayletEventProtocol - EOF received.")
 
 
-class PlasmaObjectFuture(asyncio.Future):
-    """This class manages the lifecycle of a Future contains an object_id.
+class RayletEventTransport:
+    """Event transport for raylet client.
 
-    Note:
-        This Future is an item in an linked list.
-
-    Attributes:
-        object_id: The object_id this Future contains.
+    This event transport only borrows socket file descriptor. When it is
+    closed, the socket file descriptor will be detached instead of being
+    destroyed.
     """
+    max_size = 1024 * 1024  # Buffer size passed to recv().
 
-    def __init__(self, loop, object_id):
-        super().__init__(loop=loop)
-        self.object_id = object_id
-        self.prev = None
-        self.next = None
+    # Attribute used in the destructor: it must be set even if the constructor
+    # is not called (see _SelectorSslTransport which may start by raising an
+    # exception)
+    _sock = None
 
-    @property
-    def ray_object_id(self):
-        return ray.ObjectID(self.object_id.binary())
+    def __init__(self, loop, socket_fd, protocol):
+        self._loop = loop
+        self._sock = socket.socket(
+            fileno=socket_fd, family=socket.AF_UNIX, type=socket.SOCK_STREAM)
+        self._sock_fd = socket_fd
+        self._protocol = protocol
+        self._closing = False  # Set when close() called.
+        loop._transports[self._sock_fd] = self
+        self._loop.call_soon(self._protocol.connection_made, self)
+        # only start reading when connection_made() has been called
+        self._loop.call_soon(self._loop._add_reader, self._sock_fd,
+                             self._read_ready)
 
-    def __repr__(self):
-        return super().__repr__() + "{object_id=%s}" % self.object_id
+    def is_closing(self):
+        return self._closing
 
+    def close(self, exc=None):
+        if self._closing:
+            return
+        self._closing = True
+        self._loop._remove_reader(self._sock_fd)
+        self._loop.call_soon(self._call_connection_lost, exc)
 
-class PlasmaObjectLinkedList(asyncio.Future):
-    """This class is a doubly-linked list.
-    It holds a ObjectID and maintains futures assigned to the ObjectID.
+    # On Python 3.3 and older, objects with a destructor part of a reference
+    # cycle are never destroyed. It"s not more the case on Python 3.4 thanks
+    # to the PEP 442.
+    if asyncio.compat.PY34:
 
-    Args:
-        loop: an event loop.
-        plain_object_id (plasma.ObjectID):
-            The plasma ObjectID this class holds.
-    """
+        def __del__(self):
+            if self._sock is not None:
+                # NOTE: we only detach the socket handle because it is borrowed
+                # from the C++ client.
+                self._sock.detach()
 
-    def __init__(self, loop, plain_object_id):
-        super().__init__(loop=loop)
-        assert isinstance(plain_object_id, plasma.ObjectID)
-        self.object_id = plain_object_id
-        self.head = None
-        self.tail = None
+    def _call_connection_lost(self, exc):
+        try:
+            self._protocol.connection_lost(exc)
+        finally:
+            # NOTE: we only detach the socket handle because it is borrowed
+            # from the C++ client.
+            self._sock.detach()
+            self._sock = None
+            self._protocol = None
+            self._loop = None
 
-    def append(self, future):
-        """Append an object to the linked list.
-
-        Args:
-            future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
-        """
-        future.prev = self.tail
-        if self.tail is None:
-            assert self.head is None
-            self.head = future
+    def _read_ready(self):
+        if self._closing:
+            return
+        try:
+            data = self._sock.recv(self.max_size)
+        except (BlockingIOError, InterruptedError):
+            pass
+        except Exception as exc:
+            self._loop.call_exception_handler({
+                "message": "Fatal read error on socket transport",
+                "exception": exc,
+                "transport": self,
+                "protocol": self._protocol,
+            })
+            self.close(exc)
         else:
-            self.tail.next = future
-        self.tail = future
-        # Once done, it will be removed from the list.
-        future.add_done_callback(self.remove)
-
-    def remove(self, future):
-        """Remove an object from the linked list.
-
-        Args:
-            future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
-        """
-        if self._loop.get_debug():
-            logger.debug("Removing %s from the linked list.", future)
-        if future.prev is None:
-            assert future is self.head
-            self.head = future.next
-            if self.head is None:
-                self.tail = None
-                if not self.cancelled():
-                    self.set_result(None)
+            if data:
+                self._protocol.data_received(data)
             else:
-                self.head.prev = None
-        elif future.next is None:
-            assert future is self.tail
-            self.tail = future.prev
-            if self.tail is None:
-                self.head = None
-                if not self.cancelled():
-                    self.set_result(None)
-            else:
-                self.tail.prev = None
+                self._protocol.eof_received()
+                self.close()
 
-    def cancel(self, *args, **kwargs):
-        """Manually cancel all tasks assigned to this event loop."""
-        # Because remove all futures will trigger `set_result`,
-        # we cancel itself first.
+
+class SubscriptionFuture(asyncio.Future):
+    def __init__(self, event_handler):
+        super().__init__(loop=event_handler.loop)
+        self.event_handler = event_handler
+        # We use C++ random ID because generating from numpy is extremely slow.
+        self.subscription_id = ray.raylet.random_id()
+
+    def cancel(self):
         super().cancel()
-        for future in self.traverse():
-            # All cancelled futures should have callbacks to removed itself
-            # from this linked list. However, these callbacks are scheduled in
-            # an event loop, so we could still find them in our list.
-            if not future.cancelled():
-                future.cancel()
+        self.event_handler.unsubscribe(self.subscription_id)
+
+
+class ObjectLocalFuture(SubscriptionFuture):
+    def __init__(self, event_handler, worker, wait_only):
+        super().__init__(event_handler)
+        self._worker = worker
+        self._wait_only = wait_only
 
     def set_result(self, result):
-        """Complete all tasks. """
-        for future in self.traverse():
-            # All cancelled futures should have callbacks to removed itself
-            # from this linked list. However, these callbacks are scheduled in
-            # an event loop, so we could still find them in our list.
-            future.set_result(result)
-        if not self.done():
+        assert isinstance(result, ray.ObjectID)
+        if self._wait_only:
             super().set_result(result)
-
-    def traverse(self):
-        """Traverse this linked list.
-
-        Yields:
-            PlasmaObjectFuture: PlasmaObjectFuture instances.
-        """
-        current = self.head
-        while current is not None:
-            yield current
-            current = current.next
+        else:
+            object_id = plasma.ObjectID(result.id())
+            obj = self._worker.retrieve_and_deserialize([object_id], 0)[0]
+            super().set_result(obj)
 
 
-class PlasmaEventHandler:
+class RayletEventHandler:
     """This class is an event handler for Plasma."""
 
     def __init__(self, loop, worker):
         super().__init__()
-        self._loop = loop
+        self.loop = loop
         self._worker = worker
-        self._waiting_dict = {}
+        self._subscription_dict = {}
 
     def process_notifications(self, messages):
         """Process notifications."""
-        for object_id, object_size, metadata_size in messages:
-            if object_size > 0 and object_id in self._waiting_dict:
-                linked_list = self._waiting_dict[object_id]
-                self._complete_future(linked_list)
+        for msg_type, msg_body in messages:
+            if msg_type == MessageType.ObjectLocalEvent:
+                body = ObjectLocalEvent.GetRootAsObjectLocalEvent(msg_body, 0)
+                self._process_object_local(body)
+
+    def _process_object_local(self, object_local_event):
+        subscription_id = ray.ObjectID(object_local_event.SubscriptionId())
+        if subscription_id in self._subscription_dict:
+            fut = self._subscription_dict.pop(subscription_id)
+            fut.set_result(ray.ObjectID(object_local_event.ObjectId()))
 
     def close(self):
         """Clean up this handler."""
-        for linked_list in self._waiting_dict.values():
-            linked_list.cancel()
-        # All cancelled linked lists should have callbacks to removed itself
-        # from the waiting dict. However, these callbacks are scheduled in
-        # an event loop, so we don't check them now.
+        for subscription_id in list(self._subscription_dict.keys()):
+            self.unsubscribe(subscription_id)
 
-    def _unregister_callback(self, fut):
-        del self._waiting_dict[fut.object_id]
+    def unsubscribe(self, subscription_id):
+        if subscription_id in self._subscription_dict:
+            fut = self._subscription_dict.pop(subscription_id)
+            self._worker.raylet_client.unsubscribe(subscription_id)
+            if not (fut.cancelled() or fut.done()):
+                fut.cancel()
 
-    def _complete_future(self, fut):
-        obj = self._worker.retrieve_and_deserialize([fut.object_id], 0)[0]
-        fut.set_result(obj)
-
-    def as_future(self, object_id, check_ready=True):
+    def as_future(self, object_id, wait_only=False):
         """Turn an object_id into a Future object.
 
         Args:
-            object_id: A Ray's object_id.
-            check_ready (bool): If true, check if the object_id is ready.
+            object_id (ray.ObjectID): A Ray's object_id.
+            wait_only (bool): If true, the future will not fetch the object,
+                it will return the original ObjectID instead.
 
         Returns:
             PlasmaObjectFuture: A future object that waits the object_id.
@@ -215,23 +216,10 @@ class PlasmaEventHandler:
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
 
-        plain_object_id = plasma.ObjectID(object_id.id())
-        fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
+        fut = ObjectLocalFuture(self, self._worker, wait_only)
+        self._worker.raylet_client.subscribe_object_local(
+            fut.subscription_id, object_id)
 
-        if check_ready:
-            ready, _ = ray.wait([object_id], timeout=0)
-            if ready:
-                if self._loop.get_debug():
-                    logger.debug("%s has been ready.", plain_object_id)
-                self._complete_future(fut)
-                return fut
-
-        if plain_object_id not in self._waiting_dict:
-            linked_list = PlasmaObjectLinkedList(self._loop, plain_object_id)
-            linked_list.add_done_callback(self._unregister_callback)
-            self._waiting_dict[plain_object_id] = linked_list
-        self._waiting_dict[plain_object_id].append(fut)
-        if self._loop.get_debug():
-            logger.debug("%s added to the waiting list.", fut)
+        self._subscription_dict[fut.subscription_id] = fut
 
         return fut

@@ -39,6 +39,11 @@ parser.add_argument(
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
+    "--raylet-event-socket-name",
+    required=False,
+    type=str,
+    help="the raylet event socket name")
+parser.add_argument(
     "--logging-level",
     required=False,
     type=str,
@@ -67,6 +72,7 @@ if __name__ == "__main__":
         "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
         "raylet_socket_name": args.raylet_name,
+        "raylet_event_socket_name": args.raylet_event_socket_name,
     }
 
     logging.basicConfig(

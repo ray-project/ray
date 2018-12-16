@@ -6,16 +6,24 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
+
+#include "ray/common/client_connection.h"
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
 using ray::ActorID;
+using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
+using ray::SubscriptionID;
 using ray::TaskID;
 using ray::UniqueID;
 
-using MessageType = ray::protocol::MessageType;
+using boost::asio::local::stream_protocol;
+
+using ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
@@ -24,32 +32,58 @@ class RayletConnection {
  public:
   /// Connect to the raylet.
   ///
-  /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
+  /// \param client_id A unique ID to represent the client.
+  /// \param raylet_socket The name of the socket for raylet connection.
+  /// \param num_retries The maximum num of retries to connect to the raylet socket.
+  /// \param timeout The timeout used to reconnect to the raylet socket.
   /// \return The connection information.
-  RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
+  RayletConnection(const ClientID &client_id, const std::string &raylet_socket,
+                   int num_retries, int64_t timeout);
 
   ~RayletConnection() { close(conn_); }
+
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
   ray::Status Disconnect();
+
   ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
+
+  /// Send a request get the reply from the server.
+  /// The process is atomic so it will not be interrupted by other read/write operations.
+  ///
+  /// \param request_type The message type of the request.
+  /// \param reply_type The message type of the request.
+  /// \param reply_message The pointer to the reply message.
+  /// \param fbb The flatbuffer builder.
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
                                  std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
+  /// Connect to the the event socket.
+  ///
+  /// \param raylet_events_socket The name of the event socket.
+  /// \return ray::Status.
+  ray::Status ConnectEventSocket(const std::string &raylet_events_socket);
+
+  /// Get the native handler of the event socket.
+  ///
+  /// \return The socket file descriptor.
+  int GetNativeEventSocketHandle() { return event_conn_->GetNativeHandle(); }
+
  private:
+  const ClientID client_id_;
   /// File descriptor of the Unix domain socket that connects to raylet.
   int conn_;
+  /// Boost asio service instance.
+  boost::asio::io_service main_service_;
+  /// Connection to the raylet event socket.
+  std::shared_ptr<ray::LocalSimpleConnection> event_conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
@@ -60,15 +94,21 @@ class RayletClient {
  public:
   /// Connect to the raylet.
   ///
-  /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
+  /// \param raylet_socket The name of the socket for raylet connection.
+  /// \param raylet_socket The name of the events socket for raylet connection.
+  /// \param client_id A unique ID to represent the client.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param language The programming language info.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-               bool is_worker, const JobID &driver_id, const Language &language);
+  RayletClient(const std::string &raylet_socket, const std::string &raylet_events_socket,
+               const ClientID &client_id, bool is_worker, const JobID &driver_id,
+               const Language &language);
 
+  /// Disconnect from this client.
+  ///
+  /// \return ray::Status.
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
   /// Submit a task using the raylet code path.
@@ -143,7 +183,31 @@ class RayletClient {
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+  ray::Status FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Subscribe the object ready event.
+  ///
+  /// \param subscription_id The subscription ID.
+  /// \param object_id The event body (the ObjectID to be subscribed).
+  /// \return ray::Status.
+  ray::Status SubscribeObjectLocalEvent(const SubscriptionID &subscription_id,
+                                        const ObjectID &object_id);
+
+  /// Unsubscribe events.
+  ///
+  /// \param subscription_id The subscription ID.
+  /// \return ray::Status.
+  ray::Status Unsubscribe(const SubscriptionID &subscription_id);
+
+  /// Create the event socket.
+  ///
+  /// \return ray::Status.
+  ray::Status ConnectEventSocket();
+
+  /// Get the native handler of the event socket.
+  ///
+  /// \return The socket file descriptor.
+  int GetNativeEventSocketHandle() { return conn_->GetNativeEventSocketHandle(); }
 
   Language GetLanguage() const { return language_; }
 
@@ -156,9 +220,13 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const UniqueID client_id_;
+  /// The ID for this raylet client.
+  const ClientID client_id_;
+  /// Whether this client belongs to a worker.
   const bool is_worker_;
+  /// The TaskID for the driver.
   const JobID driver_id_;
+  /// The programming language using this C++ client.
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

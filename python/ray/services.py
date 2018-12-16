@@ -24,9 +24,9 @@ import ray.plasma
 
 from ray.tempfile_services import (
     get_ipython_notebook_path, get_logs_dir_path, get_raylet_socket_name,
-    get_temp_root, new_log_monitor_log_file, new_monitor_log_file,
-    new_plasma_store_log_file, new_raylet_log_file, new_redis_log_file,
-    new_webui_log_file, set_temp_root)
+    get_raylet_event_socket_name, get_temp_root, new_log_monitor_log_file,
+    new_monitor_log_file, new_plasma_store_log_file, new_raylet_log_file,
+    new_redis_log_file, new_webui_log_file, set_temp_root)
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -889,6 +889,7 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
 
 def start_raylet(ray_params,
                  raylet_name,
+                 raylet_event_socket_name,
                  plasma_store_name,
                  num_initial_workers=0,
                  use_valgrind=False,
@@ -906,8 +907,10 @@ def start_raylet(ray_params,
             object_manager_port, node_manager_port, redis_password.
             resources, object_manager_port, node_manager_port.
         raylet_name (str): The name of the raylet socket to create.
+        raylet_event_socket_name (str): The name of the raylet event socket to
+            create.
         plasma_store_name (str): The name of the plasma store socket to connect
-             to.
+            to.
         num_initial_workers (int): The number of workers to start initially.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -924,7 +927,7 @@ def start_raylet(ray_params,
             override defaults in RayConfig.
 
     Returns:
-        The raylet socket name.
+        The raylet socket name & raylet event socket name.
     """
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
@@ -951,12 +954,13 @@ def start_raylet(ray_params,
                             "--node-ip-address={} "
                             "--object-store-name={} "
                             "--raylet-name={} "
+                            "--raylet-event-socket-name={} "
                             "--redis-address={} "
                             "--temp-dir={}".format(
                                 sys.executable, ray_params.worker_path,
                                 ray_params.node_ip_address, plasma_store_name,
-                                raylet_name, ray_params.redis_address,
-                                get_temp_root()))
+                                raylet_name, raylet_event_socket_name,
+                                ray_params.redis_address, get_temp_root()))
     if ray_params.redis_password:
         start_worker_command += " --redis-password {}".format(
             ray_params.redis_password)
@@ -973,6 +977,7 @@ def start_raylet(ray_params,
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
+        raylet_event_socket_name,
         plasma_store_name,
         str(ray_params.object_manager_port),
         str(ray_params.node_manager_port),
@@ -1019,7 +1024,7 @@ def start_raylet(ray_params,
         ray_params.node_ip_address, [stdout_file, stderr_file],
         password=ray_params.redis_password)
 
-    return raylet_name
+    return raylet_name, raylet_event_socket_name
 
 
 def determine_plasma_store_config(object_store_memory=None,
@@ -1427,15 +1432,20 @@ def start_ray_processes(ray_params, cleanup=True):
     assert raylet_socket_name is None
     raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
         redirect_output=ray_params.redirect_worker_output)
-    ray_params.address_info["raylet_socket_name"] = start_raylet(
+    raylet_socket_name_, raylet_event_socket_name_ = start_raylet(
         ray_params,
         ray_params.raylet_socket_name or get_raylet_socket_name(),
+        ray_params.raylet_event_socket_name
+        or get_raylet_event_socket_name(),
         ray_params.address_info["object_store_address"],
         num_initial_workers=num_initial_workers,
         stdout_file=raylet_stdout_file,
         stderr_file=raylet_stderr_file,
         cleanup=cleanup,
         config=config)
+    ray_params.address_info["raylet_socket_name"] = raylet_socket_name_
+    ray_params.address_info["raylet_event_socket_name"] = (
+        raylet_event_socket_name_)
 
     # Try to start the web UI.
     if ray_params.include_webui:

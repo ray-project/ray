@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeInit
- * Signature: (Ljava/lang/String;[BZ[B)J
+ * Signature: (Ljava/lang/String;Ljava/lang/String;[BZ[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
-    JNIEnv *, jclass, jstring, jbyteArray, jboolean, jbyteArray);
+    JNIEnv *, jclass, jstring, jstring, jbyteArray, jboolean, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

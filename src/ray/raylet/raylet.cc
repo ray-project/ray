@@ -12,8 +12,9 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
-               const std::string &node_ip_address, const std::string &redis_address,
-               int redis_port, const std::string &redis_password,
+               const std::string &event_socket_name, const std::string &node_ip_address,
+               const std::string &redis_address, int redis_port,
+               const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
@@ -23,7 +24,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
                     object_directory_),
       socket_name_(socket_name),
+      events_socket_name_(event_socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
+      event_socket_acceptor_(
+          main_service, boost::asio::local::stream_protocol::endpoint(event_socket_name)),
       socket_(main_service),
       object_manager_acceptor_(
           main_service,
@@ -35,13 +39,15 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
   // Start listening for clients.
+  DoAcceptEventSocket();
   DoAccept();
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(
-      node_ip_address, socket_name_, object_manager_config.store_socket_name,
-      redis_address, redis_port, redis_password, main_service, node_manager_config));
+  RAY_CHECK_OK(RegisterGcs(node_ip_address, socket_name_, events_socket_name_,
+                           object_manager_config.store_socket_name, redis_address,
+                           redis_port, redis_password, main_service,
+                           node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
@@ -56,6 +62,7 @@ ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
 
 ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                                 const std::string &raylet_socket_name,
+                                const std::string &raylet_event_socket_name,
                                 const std::string &object_store_socket_name,
                                 const std::string &redis_address, int redis_port,
                                 const std::string &redis_password,
@@ -66,6 +73,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
   client_info.node_manager_address = node_ip_address;
   client_info.raylet_socket_name = raylet_socket_name;
+  client_info.raylet_event_socket_name = raylet_event_socket_name;
   client_info.object_store_socket_name = object_store_socket_name;
   client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
   client_info.node_manager_port = node_manager_acceptor_.local_endpoint().port();
@@ -152,6 +160,31 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   }
   // We're ready to accept another client.
   DoAccept();
+}
+
+void Raylet::DoAcceptEventSocket() {
+  event_socket_acceptor_.async_accept(socket_,
+                                      boost::bind(&Raylet::HandleAcceptEventSocket, this,
+                                                  boost::asio::placeholders::error));
+}
+
+void Raylet::HandleAcceptEventSocket(const boost::system::error_code &error) {
+  if (!error) {
+    // TODO: typedef these handlers.
+    ClientHandler<boost::asio::local::stream_protocol> client_handler =
+        [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
+    MessageHandler<boost::asio::local::stream_protocol> message_handler = [this](
+        std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      node_manager_.ProcessEventSocketMessage(client, message_type, message);
+    };
+    // Accept a new local client and dispatch it to the node manager.
+    auto new_connection = LocalClientConnection::Create(
+        client_handler, message_handler, std::move(socket_), "worker",
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+  }
+  // We're ready to accept another client.
+  DoAcceptEventSocket();
 }
 
 }  // namespace raylet

@@ -16,16 +16,18 @@ typedef struct {
 
 static int PyRayletClient_init(PyRayletClient *self, PyObject *args, PyObject *kwds) {
   char *socket_name;
+  char *events_socket_name;
   UniqueID client_id;
   PyObject *is_worker;
   JobID driver_id;
-  if (!PyArg_ParseTuple(args, "sO&OO&", &socket_name, PyStringToUniqueID, &client_id,
-                        &is_worker, &PyObjectToUniqueID, &driver_id)) {
+  if (!PyArg_ParseTuple(args, "ssO&OO&", &socket_name, &events_socket_name,
+                        PyStringToUniqueID, &client_id, &is_worker, &PyObjectToUniqueID,
+                        &driver_id)) {
     self->raylet_client = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
-  self->raylet_client = new RayletClient(socket_name, client_id,
+  self->raylet_client = new RayletClient(socket_name, events_socket_name, client_id,
                                          static_cast<bool>(PyObject_IsTrue(is_worker)),
                                          driver_id, Language::PYTHON);
   return 0;
@@ -338,6 +340,36 @@ static PyObject *PyRayletClient_FreeObjects(PyRayletClient *self, PyObject *args
   Py_RETURN_NONE;
 }
 
+static PyObject *PyRayletClient_SubscribeObjectLocalEvent(PyRayletClient *self,
+                                                          PyObject *args) {
+  SubscriptionID subscription_id;
+  ObjectID object_id;
+  if (!PyArg_ParseTuple(args, "O&O&", &PyObjectToUniqueID, &subscription_id,
+                        &PyObjectToUniqueID, &object_id)) {
+    return NULL;
+  }
+  // Invoke raylet_SubscribeObjectLocalEvent.
+  auto status =
+      self->raylet_client->SubscribeObjectLocalEvent(subscription_id, object_id);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to subscribe object ready events.");
+  Py_RETURN_NONE;
+}
+
+static PyObject *PyRayletClient_Unsubscribe(PyRayletClient *self, PyObject *args) {
+  SubscriptionID subscription_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &subscription_id)) {
+    return NULL;
+  }
+  auto status = self->raylet_client->Unsubscribe(subscription_id);
+  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to unsubscribe.");
+  Py_RETURN_NONE;
+}
+
+static PyObject *PyRayletClient_GetNativeEventSocketHandle(PyRayletClient *self) {
+  int fd = self->raylet_client->GetNativeEventSocketHandle();
+  return Py_BuildValue("i", fd);
+}
+
 static PyMethodDef PyRayletClient_methods[] = {
     {"disconnect", (PyCFunction)PyRayletClient_Disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -361,6 +393,13 @@ static PyMethodDef PyRayletClient_methods[] = {
      "Store some profiling events in the GCS."},
     {"free_objects", (PyCFunction)PyRayletClient_FreeObjects, METH_VARARGS,
      "Free a list of objects from object stores."},
+    {"subscribe_object_local", (PyCFunction)PyRayletClient_SubscribeObjectLocalEvent,
+     METH_VARARGS, "Subscribe the object ready event."},
+    {"unsubscribe", (PyCFunction)PyRayletClient_Unsubscribe, METH_VARARGS,
+     "Unsubscribe by subscription ID."},
+    {"get_native_event_socket_handle",
+     (PyCFunction)PyRayletClient_GetNativeEventSocketHandle, METH_NOARGS,
+     "Get the native handle of the event socket."},
     {NULL} /* Sentinel */
 };
 
@@ -415,6 +454,7 @@ static PyMethodDef raylet_methods[] = {
      "TaskSpec."},
     {"task_to_string", PyTask_to_string, METH_VARARGS,
      "Translates a PyTask python object to a byte string."},
+    {"random_id", random_id, METH_NOARGS, "Get a random ObjectID."},
     {NULL} /* Sentinel */
 };
 

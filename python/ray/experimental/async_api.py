@@ -1,51 +1,42 @@
 # Note: asyncio is only compatible with Python 3
 
 import asyncio
+
 import ray
-from ray.experimental.async_plasma import PlasmaProtocol, PlasmaEventHandler
+from ray.experimental.async_plasma import (
+    RayletEventProtocol, RayletEventHandler, RayletEventTransport)
 
 handler = None
 transport = None
 protocol = None
 
 
-async def _async_init():
+def init():
+    """Initialize the async APIs."""
+
     global handler, transport, protocol
     if handler is None:
         worker = ray.worker.global_worker
         loop = asyncio.get_event_loop()
-        worker.plasma_client.subscribe()
-        rsock = worker.plasma_client.get_notification_socket()
-        handler = PlasmaEventHandler(loop, worker)
-        transport, protocol = await loop.create_connection(
-            lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
+        handler = RayletEventHandler(loop, worker)
+        protocol = RayletEventProtocol(worker.plasma_client, handler)
+        socket_fd = worker.raylet_client.get_native_event_socket_handle()
+        transport = RayletEventTransport(loop, socket_fd, protocol)
 
 
-def init():
-    """
-    Initialize synchronously.
-    """
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        raise Exception("You must initialize the Ray async API by calling "
-                        "async_api.init() or async_api.as_future(obj) before "
-                        "the event loop starts.")
-    else:
-        asyncio.get_event_loop().run_until_complete(_async_init())
-
-
-def as_future(object_id):
+def as_future(object_id, wait_only=False):
     """Turn an object_id into a Future object.
 
     Args:
         object_id: A Ray object_id.
-
+        wait_only (bool): If true, the future will not fetch the object,
+            it will return the original ObjectID instead.
     Returns:
         PlasmaObjectFuture: A future object that waits the object_id.
     """
     if handler is None:
         init()
-    return handler.as_future(object_id)
+    return handler.as_future(object_id, wait_only)
 
 
 def shutdown():

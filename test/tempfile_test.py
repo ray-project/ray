@@ -76,7 +76,7 @@ def test_raylet_tempfiles():
         "redis.err"
     }  # without raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {"plasma_store", "raylet"}
+    assert socket_files == {"plasma_store", "raylet", "raylet_events"}
     ray.shutdown()
 
     ray.init(redirect_worker_output=True, num_cpus=0)
@@ -90,7 +90,7 @@ def test_raylet_tempfiles():
         "redis.err", "raylet.out", "raylet.err"
     }  # with raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {"plasma_store", "raylet"}
+    assert socket_files == {"plasma_store", "raylet", "raylet_events"}
     ray.shutdown()
 
     ray.init(redirect_worker_output=True, num_cpus=2)
@@ -110,5 +110,5 @@ def test_raylet_tempfiles():
         1 for filename in log_files if filename.startswith("worker")) == 4
 
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
-    assert socket_files == {"plasma_store", "raylet"}
+    assert socket_files == {"plasma_store", "raylet", "raylet_events"}
     ray.shutdown()

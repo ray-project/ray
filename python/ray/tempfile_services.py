@@ -124,6 +124,15 @@ def get_raylet_socket_name(suffix=""):
     return raylet_socket_name
 
 
+def get_raylet_event_socket_name(suffix=""):
+    """Get a socket name for raylet."""
+    sockets_dir = get_sockets_dir_path()
+
+    raylet_socket_name = make_inc_temp(
+        prefix="raylet_events", directory_name=sockets_dir, suffix=suffix)
+    return raylet_socket_name
+
+
 def get_object_store_socket_name():
     """Get a socket name for plasma object store."""
     sockets_dir = get_sockets_dir_path()

@@ -18,8 +18,6 @@
 #include "ray/raylet/task_spec.h"
 #include "ray/util/logging.h"
 
-using MessageType = ray::protocol::MessageType;
-
 // TODO(rkn): The io methods below should be removed.
 int connect_ipc_sock(const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
@@ -95,8 +93,10 @@ int write_bytes(int socket_fd, uint8_t *cursor, size_t length) {
   return 0;
 }
 
-RayletConnection::RayletConnection(const std::string &raylet_socket, int num_retries,
-                                   int64_t timeout) {
+RayletConnection::RayletConnection(const ClientID &client_id,
+                                   const std::string &raylet_socket, int num_retries,
+                                   int64_t timeout)
+    : client_id_(client_id), main_service_() {
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
     num_retries = RayConfig::instance().num_connect_attempts();
@@ -201,25 +201,73 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-                           bool is_worker, const JobID &driver_id,
-                           const Language &language)
+ray::Status RayletConnection::ConnectEventSocket(
+    const std::string &raylet_events_socket) {
+  stream_protocol::endpoint endpoint(raylet_events_socket);
+  stream_protocol::socket event_socket(main_service_);
+  event_socket.connect(endpoint);
+  event_conn_ = std::make_shared<ray::LocalSimpleConnection>(std::move(event_socket));
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateActivateEventSocketRequest(fbb, to_flatbuf(fbb, client_id_));
+  fbb.Finish(message);
+  auto status = event_conn_->WriteMessage(MessageType::ActivateEventSocketRequest,
+                                          fbb.GetSize(), fbb.GetBufferPointer());
+  if (!status.ok()) return status;
+
+  std::unique_ptr<uint8_t[]> reply;
+  status = event_conn_->ReadMessage(MessageType::ActivateEventSocketReply, reply);
+  if (!status.ok()) return status;
+
+  auto reply_message =
+      flatbuffers::GetRoot<ray::protocol::ActivateEventSocketReply>(reply.get());
+  if (!reply_message->activated()) {
+    return ray::Status::UnknownError("The event socket failed to be activated.");
+  }
+  return ray::Status::OK();
+}
+
+RayletClient::RayletClient(const std::string &raylet_socket,
+                           const std::string &raylet_events_socket,
+                           const ClientID &client_id, bool is_worker,
+                           const JobID &driver_id, const Language &language)
     : client_id_(client_id),
       is_worker_(is_worker),
       driver_id_(driver_id),
       language_(language) {
   // For C++14, we could use std::make_unique
-  conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
+  conn_ = std::unique_ptr<RayletConnection>(
+      new RayletConnection(client_id_, raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
       language);
   fbb.Finish(message);
+
+  std::unique_ptr<uint8_t[]> reply;
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
+  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
+                                          MessageType::RegisterClientReply, reply, &fbb);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+
+  auto num_retries = RayConfig::instance().num_connect_attempts();
+  auto timeout = RayConfig::instance().connect_timeout_milliseconds();
+  for (int i = 0; i < num_retries; i++) {
+    status = conn_->ConnectEventSocket(raylet_events_socket);
+    if (status.ok()) {
+      break;
+    }
+    usleep(timeout * 1000);
+    if (i > 0) {
+      RAY_LOG(ERROR) << "Retrying to connect to socket for pathname "
+                     << raylet_events_socket << " (num_attempts = " << i
+                     << ", num_retries = " << num_retries << ")";
+    }
+  }
+  RAY_CHECK_OK_PREPEND(status,
+                       "[RayletClient] Unable to connect to raylet events socket.");
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
@@ -348,7 +396,7 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_eve
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
+ray::Status RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
                                       bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,
@@ -357,4 +405,21 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
 
   auto status = conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
   return status;
+}
+
+ray::Status RayletClient::SubscribeObjectLocalEvent(const SubscriptionID &subscription_id,
+                                                    const ObjectID &object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateObjectLocalRequest(
+      fbb, to_flatbuf(fbb, subscription_id), to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribeObjectLocalEvent, &fbb);
+}
+
+ray::Status RayletClient::Unsubscribe(const SubscriptionID &subscription_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateUnsubscribeRequest(fbb, to_flatbuf(fbb, subscription_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::UnsubscribeRequest, &fbb);
 }

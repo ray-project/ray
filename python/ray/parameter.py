@@ -73,6 +73,8 @@ class RayParams(object):
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
             used by the raylet process.
+        raylet_event_socket_name (str) : If provided, it will specify the
+            event socket used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
         include_log_monitor (bool): If True, then start a log monitor to
@@ -114,6 +116,7 @@ class RayParams(object):
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
                  raylet_socket_name=None,
+                 raylet_event_socket_name=None,
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
@@ -146,6 +149,7 @@ class RayParams(object):
         self.include_webui = include_webui
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
+        self.raylet_event_socket_name = raylet_event_socket_name
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config

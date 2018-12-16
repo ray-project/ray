@@ -36,9 +36,9 @@ class Raylet {
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
-         const std::string &node_ip_address, const std::string &redis_address,
-         int redis_port, const std::string &redis_password,
-         const NodeManagerConfig &node_manager_config,
+         const std::string &event_socket_name, const std::string &node_ip_address,
+         const std::string &redis_address, int redis_port,
+         const std::string &redis_password, const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
@@ -49,6 +49,7 @@ class Raylet {
   /// Register GCS client.
   ray::Status RegisterGcs(const std::string &node_ip_address,
                           const std::string &raylet_socket_name,
+                          const std::string &raylet_event_socket_name,
                           const std::string &object_store_socket_name,
                           const std::string &redis_address, int redis_port,
                           const std::string &redis_password,
@@ -59,6 +60,9 @@ class Raylet {
   void DoAccept();
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
+  // Accept a client connection
+  void DoAcceptEventSocket();
+  void HandleAcceptEventSocket(const boost::system::error_code &error);
   /// Accept a tcp client connection.
   void DoAcceptObjectManager();
   /// Handle an accepted tcp client connection.
@@ -79,9 +83,13 @@ class Raylet {
   NodeManager node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
+  /// The name of the socket this raylet pushes events to.
+  std::string events_socket_name_;
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;
+  /// An acceptor for new clients (event socket).
+  boost::asio::local::stream_protocol::acceptor event_socket_acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
   /// An acceptor for new object manager tcp clients.

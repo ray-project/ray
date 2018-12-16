@@ -49,6 +49,7 @@ typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
 typedef UniqueID ConfigID;
 typedef UniqueID ClientID;
+typedef UniqueID SubscriptionID;
 
 // TODO(swang): ObjectID and TaskID should derive from UniqueID. Then, we
 // can make these methods of the derived classes.

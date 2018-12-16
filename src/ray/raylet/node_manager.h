@@ -9,6 +9,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/gcs/format/util.h"
 #include "ray/raylet/actor_registration.h"
+#include "ray/raylet/event/raylet_events.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
@@ -77,6 +78,17 @@ class NodeManager {
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
                             int64_t message_type, const uint8_t *message_data);
+
+  /// Process a message from a client through event socket. This method is responsible
+  /// for explicitly listening for more messages from the client if the client is
+  /// still alive.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_type The message type (e.g., a flatbuffer enum).
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessEventSocketMessage(const std::shared_ptr<LocalClientConnection> &client,
+                                 int64_t message_type, const uint8_t *message_data);
 
   /// Handle a new node manager connection.
   ///
@@ -372,11 +384,33 @@ class NodeManager {
   void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
                                  const uint8_t *message_data);
 
+  /// Process client message of SubscribeObjectLocalEvent
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubscribeObjectLocalEventMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of UnsubscribeRequest
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessUnsubscribeRequestMessage(const uint8_t *message_data);
+
   /// Process client message of PushErrorRequest
   ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
+
+  /// Process client message of ActivateEventSocketRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessActivateEventSocketRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.
@@ -439,6 +473,8 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
+  /// raylet events
+  events::RayletEvents raylet_events_;
 };
 
 }  // namespace raylet

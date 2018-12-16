@@ -48,6 +48,8 @@ MOCK_MODULES = [
     "ray.core.generated.ProfileTableData",
     "ray.core.generated.ObjectTableData",
     "ray.core.generated.ray.protocol.Task",
+    "ray.core.generated.ray.protocol.MessageType",
+    "ray.core.generated.ray.protocol.ObjectLocalEvent",
     "ray.core.generated.TablePrefix",
     "ray.core.generated.TablePubsub",
     "ray.core.generated.Language",

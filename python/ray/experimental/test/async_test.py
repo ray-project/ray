@@ -148,3 +148,57 @@ def test_wait_mixup(init):
     ]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
+
+
+def test_pressure1(init):
+    inputs = {31: [{2, "4342"}, {b"12": 3.4}]}
+    futures = []
+    object_id = ray.put(inputs)
+    for i in range(10000):
+        fut = async_api.as_future(object_id)
+        if i % 100 == 0:
+            futures.append(fut)
+
+    result = asyncio.get_event_loop().run_until_complete(
+        asyncio.gather(*futures))
+    for r in result:
+        assert r == inputs
+
+
+def test_pressure2(init):
+    inputs = {31: [{2, "4342"}, {b"12": 3.4}]}
+
+    @ray.remote
+    def task():
+        time.sleep(0.01)
+        return {31: [{2, "4342"}, {b"12": 3.4}]}
+
+    futures = []
+    for i in range(5000):
+        object_id = ray.put(inputs)
+        fut = async_api.as_future(object_id)
+        if i % 100 == 0:
+            futures.append(fut)
+        fut = async_api.as_future(task.remote())
+        if i % 100 == 0:
+            futures.append(fut)
+
+    result = asyncio.get_event_loop().run_until_complete(
+        asyncio.gather(*futures))
+    for r in result:
+        assert r == inputs
+
+
+def test_pressure3(init):
+    inputs = {31: [{2, "4342"}, {b"12": 3.4}]}
+    futures = []
+    object_id = ray.put(inputs)
+    for i in range(100000):
+        fut = async_api.as_future(object_id, wait_only=True)
+        if i % 100 == 0:
+            futures.append(fut)
+
+    result = asyncio.get_event_loop().run_until_complete(
+        asyncio.gather(*futures))
+    for r in result:
+        assert r == object_id

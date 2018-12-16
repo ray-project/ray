@@ -4,10 +4,66 @@
 #include <boost/bind.hpp>
 
 #include "ray/ray_config.h"
-#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/util.h"
 
 namespace ray {
+
+template <typename T>
+Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
+                  const boost::asio::mutable_buffer &buffer) {
+  boost::system::error_code ec;
+  // Loop until all bytes are read while handling interrupts.
+  uint64_t bytes_remaining = boost::asio::buffer_size(buffer);
+  uint64_t position = 0;
+  while (bytes_remaining != 0) {
+    size_t bytes_read =
+        socket.read_some(boost::asio::buffer(buffer + position, bytes_remaining), ec);
+    position += bytes_read;
+    bytes_remaining -= bytes_read;
+    if (ec.value() == EINTR) {
+      continue;
+    } else if (ec.value() != boost::system::errc::errc_t::success) {
+      return boost_to_ray_status(ec);
+    }
+  }
+  return Status::OK();
+}
+
+template <typename T>
+Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
+                  const std::vector<boost::asio::mutable_buffer> &buffer) {
+  // Loop until all bytes are read while handling interrupts.
+  for (const auto &b : buffer) {
+    auto status = ReadBuffer<T>(socket, b);
+    if (!status.ok()) return status;
+  }
+  return Status::OK();
+}
+
+template <typename T>
+Status WriteBuffer(boost::asio::basic_stream_socket<T> &socket,
+                   const std::vector<boost::asio::const_buffer> &buffer) {
+  boost::system::error_code error;
+  // Loop until all bytes are written while handling interrupts.
+  // When profiling with pprof, unhandled interrupts were being sent by the profiler to
+  // the raylet process, which was causing synchronous reads and writes to fail.
+  for (const auto &b : buffer) {
+    uint64_t bytes_remaining = boost::asio::buffer_size(b);
+    uint64_t position = 0;
+    while (bytes_remaining != 0) {
+      size_t bytes_written =
+          socket.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
+      position += bytes_written;
+      bytes_remaining -= bytes_written;
+      if (error.value() == EINTR) {
+        continue;
+      } else if (error.value() != boost::system::errc::errc_t::success) {
+        return boost_to_ray_status(error);
+      }
+    }
+  }
+  return ray::Status::OK();
+}
 
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address_string, int port) {
@@ -50,48 +106,13 @@ ServerConnection<T>::~ServerConnection() {
 template <class T>
 Status ServerConnection<T>::WriteBuffer(
     const std::vector<boost::asio::const_buffer> &buffer) {
-  boost::system::error_code error;
-  // Loop until all bytes are written while handling interrupts.
-  // When profiling with pprof, unhandled interrupts were being sent by the profiler to
-  // the raylet process, which was causing synchronous reads and writes to fail.
-  for (const auto &b : buffer) {
-    uint64_t bytes_remaining = boost::asio::buffer_size(b);
-    uint64_t position = 0;
-    while (bytes_remaining != 0) {
-      size_t bytes_written =
-          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
-      position += bytes_written;
-      bytes_remaining -= bytes_written;
-      if (error.value() == EINTR) {
-        continue;
-      } else if (error.value() != boost::system::errc::errc_t::success) {
-        return boost_to_ray_status(error);
-      }
-    }
-  }
-  return ray::Status::OK();
+  return ray::WriteBuffer<T>(socket_, buffer);
 }
 
 template <class T>
-void ServerConnection<T>::ReadBuffer(
-    const std::vector<boost::asio::mutable_buffer> &buffer,
-    boost::system::error_code &ec) {
-  // Loop until all bytes are read while handling interrupts.
-  for (const auto &b : buffer) {
-    uint64_t bytes_remaining = boost::asio::buffer_size(b);
-    uint64_t position = 0;
-    while (bytes_remaining != 0) {
-      size_t bytes_read =
-          socket_.read_some(boost::asio::buffer(b + position, bytes_remaining), ec);
-      position += bytes_read;
-      bytes_remaining -= bytes_read;
-      if (ec.value() == EINTR) {
-        continue;
-      } else if (ec.value() != boost::system::errc::errc_t::success) {
-        return;
-      }
-    }
-  }
+Status ServerConnection<T>::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer) {
+  return ray::ReadBuffer<T>(socket_, buffer);
 }
 
 template <class T>
@@ -282,9 +303,46 @@ std::string ServerConnection<T>::DebugString() const {
   return result.str();
 }
 
+template <typename T>
+ray::Status SimpleConnection<T>::ReadMessage(ray::protocol::MessageType type,
+                                             std::unique_ptr<uint8_t[]> &message) {
+  int64_t read_version, read_type, read_length;
+  // Wait for a message header from the client. The message header includes the
+  // protocol version, the message type, and the length of the message.
+  std::vector<boost::asio::mutable_buffer> header{
+      boost::asio::buffer(&read_version, sizeof(read_version)),
+      boost::asio::buffer(&read_type, sizeof(read_type)),
+      boost::asio::buffer(&read_length, sizeof(read_length))};
+
+  auto status = ReadBuffer<T>(socket_, header);
+  if (!status.ok()) return status;
+  // If there was no error, make sure the protocol version matches.
+  RAY_CHECK(read_version == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(static_cast<int64_t>(type) == read_type);
+  // Create read buffer.
+  message = std::unique_ptr<uint8_t[]>(new uint8_t[read_length]);
+  // Wait for the message to be read.
+  return ReadBuffer<T>(socket_, boost::asio::buffer(message.get(), read_length));
+}
+
+template <typename T>
+ray::Status SimpleConnection<T>::WriteMessage(ray::protocol::MessageType type,
+                                              int64_t length, const uint8_t *message) {
+  int64_t write_version = RayConfig::instance().ray_protocol_version();
+  int64_t write_type = static_cast<int64_t>(type);
+  std::vector<boost::asio::const_buffer> message_buffers{
+      boost::asio::const_buffer(&write_version, sizeof(write_version)),
+      boost::asio::const_buffer(&write_type, sizeof(write_type)),
+      boost::asio::const_buffer(&length, sizeof(length)),
+      boost::asio::const_buffer(message, length)};
+  return WriteBuffer<T>(socket_, message_buffers);
+}
+
 template class ServerConnection<boost::asio::local::stream_protocol>;
 template class ServerConnection<boost::asio::ip::tcp>;
 template class ClientConnection<boost::asio::local::stream_protocol>;
 template class ClientConnection<boost::asio::ip::tcp>;
+template class SimpleConnection<boost::asio::local::stream_protocol>;
+template class SimpleConnection<boost::asio::ip::tcp>;
 
 }  // namespace ray

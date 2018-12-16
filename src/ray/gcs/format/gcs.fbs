@@ -252,6 +252,8 @@ table ClientTableData {
   node_manager_address: string;
   // The IPC socket name of the client's raylet.
   raylet_socket_name: string;
+  // The event IPC socket name of the client's raylet.
+  raylet_event_socket_name: string;
   // The IPC socket name of the client's plasma store.
   object_store_socket_name: string;
   // The port at which the client's node manager is listening for TCP

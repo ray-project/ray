@@ -71,6 +71,16 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
+  // Activate the event socket connection.
+  ActivateEventSocketRequest,
+  // Reply to the activation of the event socket connection.
+  ActivateEventSocketReply,
+  // Subscribe Object Ready
+  SubscribeObjectLocalEvent,
+  // Unsubscribe request
+  UnsubscribeRequest,
+  // Object ready event
+  ObjectLocalEvent,
 }
 
 table TaskExecutionSpecification {
@@ -133,8 +143,6 @@ table RegisterClientRequest {
 }
 
 table RegisterClientReply {
-  // The IDs of the GPUs that are reserved for this worker.
-  gpu_ids: [int];
 }
 
 table RegisterNodeManagerRequest {
@@ -203,4 +211,30 @@ table FreeObjectsRequest {
   local_only: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
+}
+
+table ActivateEventSocketRequest {
+  // The ID of the client.
+  client_id: string;
+}
+
+table ActivateEventSocketReply {
+  activated: bool;
+}
+
+table UnsubscribeRequest {
+  // The subscription ID.
+  subscription_id: string;
+}
+
+table ObjectLocalRequest {
+  // The subscription ID.
+  subscription_id: string;
+  // The ID of the Object.
+  object_id: string;
+}
+
+table ObjectLocalEvent {
+  subscription_id: string;
+  object_id: string;
 }

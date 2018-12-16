@@ -29,6 +29,7 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
+                                         std::string raylet_event_socket_name,
                                          std::string store_socket_name) {
     // Configuration for the node manager.
     ray::raylet::NodeManagerConfig node_manager_config;
@@ -43,6 +44,7 @@ class TestObjectManagerBase : public ::testing::Test {
     py_worker_command.push_back("python");
     py_worker_command.push_back("../python/ray/workers/default_worker.py");
     py_worker_command.push_back(raylet_socket_name.c_str());
+    py_worker_command.push_back(raylet_event_socket_name.c_str());
     py_worker_command.push_back(store_socket_name.c_str());
     node_manager_config.worker_commands[Language::PYTHON] = py_worker_command;
     return node_manager_config;
@@ -60,8 +62,9 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
     server1.reset(new ray::raylet::Raylet(
-        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379, "",
-        GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
+        main_service, "raylet_1", "raylet_events", "0.0.0.0", "127.0.0.1", 6379, "",
+        GetNodeManagerConfig("raylet_1", "raylet_events", store_sock_1), om_config_1,
+        gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
@@ -70,8 +73,9 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
     server2.reset(new ray::raylet::Raylet(
-        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379, "",
-        GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
+        main_service, "raylet_2", "raylet_events", "0.0.0.0", "127.0.0.1", 6379, "",
+        GetNodeManagerConfig("raylet_2", "raylet_events", store_sock_2), om_config_2,
+        gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1));

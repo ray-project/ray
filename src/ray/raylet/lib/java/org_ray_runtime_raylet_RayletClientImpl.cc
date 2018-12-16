@@ -34,17 +34,19 @@ class UniqueIdFromJByteArray {
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeInit
- * Signature: (Ljava/lang/String;[BZ[B)J
+ * Signature: (Ljava/lang/String;Ljava/lang/String;[BZ[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
-    JNIEnv *env, jclass, jstring sockName, jbyteArray workerId, jboolean isWorker,
-    jbyteArray driverId) {
+    JNIEnv *env, jclass, jstring sockName, jstring eventSockName, jbyteArray workerId,
+    jboolean isWorker, jbyteArray driverId) {
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto raylet_client = new RayletClient(nativeString, *worker_id.PID, isWorker,
-                                        *driver_id.PID, Language::JAVA);
+  const char *nativeEventSockName = env->GetStringUTFChars(eventSockName, JNI_FALSE);
+  auto raylet_client = new RayletClient(nativeString, nativeEventSockName, *worker_id.PID,
+                                        isWorker, *driver_id.PID, Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
+  env->ReleaseStringUTFChars(eventSockName, nativeEventSockName);
   return reinterpret_cast<jlong>(raylet_client);
 }
 

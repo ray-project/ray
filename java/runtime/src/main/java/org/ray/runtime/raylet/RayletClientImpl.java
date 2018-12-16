@@ -41,9 +41,9 @@ public class RayletClientImpl implements RayletClient {
    */
   private long client = 0;
 
-  public RayletClientImpl(String schedulerSockName, UniqueId clientId,
+  public RayletClientImpl(String schedulerSockName, String eventSockName, UniqueId clientId,
       boolean isWorker, UniqueId driverId) {
-    client = nativeInit(schedulerSockName, clientId.getBytes(),
+    client = nativeInit(schedulerSockName, eventSockName, clientId.getBytes(),
         isWorker, driverId.getBytes());
   }
 
@@ -287,8 +287,8 @@ public class RayletClientImpl implements RayletClient {
   /// 5) vim $Dir/src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
   /// 6) popd
 
-  private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
-      boolean isWorker, byte[] driverTaskId);
+  private static native long nativeInit(String localSchedulerSocket, String rayletEventSocket,
+      byte[] workerId, boolean isWorker, byte[] driverTaskId);
 
   private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
       int pos, int taskSize);

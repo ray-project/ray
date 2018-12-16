@@ -80,7 +80,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                      config.max_lineage_size),
       remote_clients_(),
       remote_server_connections_(),
-      actor_registry_() {
+      actor_registry_(),
+      raylet_events_(object_manager) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -698,6 +699,12 @@ void NodeManager::ProcessClientMessage(
     std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
     object_manager_.FreeObjects(object_ids, message->local_only());
   } break;
+  case protocol::MessageType::SubscribeObjectLocalEvent: {
+    ProcessSubscribeObjectLocalEventMessage(client, message_data);
+  } break;
+  case protocol::MessageType::UnsubscribeRequest: {
+    ProcessUnsubscribeRequestMessage(message_data);
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -707,10 +714,61 @@ void NodeManager::ProcessClientMessage(
   client->ProcessMessages();
 }
 
+void NodeManager::ProcessActivateEventSocketRequestMessage(
+    const std::shared_ptr<LocalClientConnection> &event_client,
+    const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::ActivateEventSocketRequest>(message_data);
+  ClientID client_id = from_flatbuf(*message->client_id());
+  raylet_events_.ActivateEventConnection(event_client, client_id);
+  // Write the data.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto activate_reply = protocol::CreateActivateEventSocketReply(fbb, true);
+  fbb.Finish(activate_reply);
+
+  event_client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::ActivateEventSocketReply),
+      fbb.GetSize(), fbb.GetBufferPointer(), [](const ray::Status &status) {
+        if (!status.ok()) {
+          // We failed to write to the client, so disconnect the client.
+          RAY_LOG(WARNING) << "Failed to send ActivateEventSocketReply to client, so "
+                              "disconnecting client";
+          // We failed to send the reply to the client, so disconnect the worker.
+          // ProcessDisconnectClientMessage(event_client);
+        }
+      });
+}
+
+void NodeManager::ProcessEventSocketMessage(
+    const std::shared_ptr<LocalClientConnection> &event_client, int64_t message_type,
+    const uint8_t *message_data) {
+  RAY_LOG(DEBUG) << "Message of type " << message_type;
+  auto message_type_value = static_cast<protocol::MessageType>(message_type);
+  switch (message_type_value) {
+  case protocol::MessageType::ActivateEventSocketRequest: {
+    ProcessActivateEventSocketRequestMessage(event_client, message_data);
+  } break;
+  case protocol::MessageType::DisconnectClient:
+  case protocol::MessageType::IntentionalDisconnectClient: {
+    // ProcessDisconnectClientMessage(event_client, /* intentional_disconnect = */ true);
+    // We don't need to receive future messages from this client,
+    // because it's already disconnected.
+    return;
+  } break;
+
+  default:
+    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+  }
+
+  // Listen for more messages.
+  event_client->ProcessMessages();
+}
+
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  client->SetClientID(from_flatbuf(*message->client_id()));
+  auto client_id = from_flatbuf(*message->client_id());
+  // Register client in the client mapping.
+  client->SetClientID(client_id);
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), message->language(), client);
   if (message->is_worker()) {
@@ -728,6 +786,22 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
   }
+
+  // Write the data.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto register_reply = protocol::CreateRegisterClientReply(fbb);
+  fbb.Finish(register_reply);
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), [this, &client](const ray::Status &status) {
+        if (!status.ok()) {
+          // We failed to write to the client, so disconnect the client.
+          RAY_LOG(WARNING) << "Failed to send RegisterClientReply to client, so "
+                              "disconnecting client";
+          // We failed to send the reply to the client, so disconnect the worker.
+          ProcessDisconnectClientMessage(client);
+        }
+      });
 }
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
@@ -794,6 +868,10 @@ void NodeManager::ProcessGetTaskMessage(
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
+  // Remove the client from the client mapping.
+  // TODO(Ryans): Check if all dead/disconnected clients will be deactivated.
+  raylet_events_.DeactivateEventConnection(client->GetClientId());
+
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -989,6 +1067,29 @@ void NodeManager::ProcessWaitRequestMessage(
         }
       });
   RAY_CHECK_OK(status);
+}
+
+void NodeManager::ProcessSubscribeObjectLocalEventMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::ObjectLocalRequest>(message_data);
+  const SubscriptionID subscription_id = from_flatbuf(*message->subscription_id());
+  const ObjectID object_id = from_flatbuf(*message->object_id());
+
+  auto status =
+      raylet_events_.SubscribeObjectLocalEvent(subscription_id, client, object_id);
+  if (!status.ok()) {
+    // We failed to write to the client, so disconnect the client.
+    RAY_LOG(WARNING) << status.ToString()
+                     << "Failed to subscribe the event, so disconnecting client";
+    // We failed to send the reply to the client, so disconnect the worker.
+    ProcessDisconnectClientMessage(client);
+  }
+}
+
+void NodeManager::ProcessUnsubscribeRequestMessage(const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::UnsubscribeRequest>(message_data);
+  const SubscriptionID subscription_id = from_flatbuf(*message->subscription_id());
+  raylet_events_.Unsubscribe(subscription_id);
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {

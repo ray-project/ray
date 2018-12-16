@@ -50,6 +50,7 @@ public class RayConfig {
   public final Long objectStoreSize;
 
   public final String rayletSocketName;
+  public final String rayletEventSocketName;
 
   public final String redisServerExecutablePath;
   public final String redisModulePath;
@@ -161,6 +162,12 @@ public class RayConfig {
 
     // raylet socket name
     rayletSocketName = config.getString("ray.raylet.socket-name");
+    // Ensure compatibility with previous versions.
+    if (config.hasPath("ray.raylet.event-socket-name")) {
+      rayletEventSocketName = config.getString("ray.raylet.event-socket-name");
+    } else {
+      rayletEventSocketName = rayletSocketName + "_events";
+    }
 
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(
@@ -230,6 +237,7 @@ public class RayConfig {
         + ", objectStoreSocketName='" + objectStoreSocketName + '\''
         + ", objectStoreSize=" + objectStoreSize
         + ", rayletSocketName='" + rayletSocketName + '\''
+        + ", rayletEventSocketName='" + rayletEventSocketName + '\''
         + ", redisServerExecutablePath='" + redisServerExecutablePath + '\''
         + ", plasmaStoreExecutablePath='" + plasmaStoreExecutablePath + '\''
         + ", rayletExecutablePath='" + rayletExecutablePath + '\''

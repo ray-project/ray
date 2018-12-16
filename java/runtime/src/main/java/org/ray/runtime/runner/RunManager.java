@@ -196,6 +196,7 @@ public class RunManager {
     List<String> command = ImmutableList.of(
         rayConfig.rayletExecutablePath,
         rayConfig.rayletSocketName,
+        rayConfig.rayletEventSocketName,
         rayConfig.objectStoreSocketName,
         "0",  // The object manager port.
         "0",  // The node manager port.

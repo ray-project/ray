@@ -820,3 +820,7 @@ PyObject *compute_task_id(PyObject *self, PyObject *args) {
   TaskID task_id = ray::ComputeTaskId(object_id);
   return PyObjectID_make(task_id);
 }
+
+PyObject *random_id(PyObject *self, PyObject *args) {
+  return PyObjectID_make(ObjectID::from_random());
+}
