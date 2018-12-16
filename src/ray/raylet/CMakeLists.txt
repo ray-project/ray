@@ -52,7 +52,7 @@ add_dependencies(rayletlib gen_gcs_fbs)
 add_dependencies(raylet_client gen_gcs_fbs arrow_ep gen_node_manager_fbs)
 
 add_executable(raylet main.cc)
-target_link_libraries(raylet rayletlib ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} pthread)
+target_link_libraries(raylet rayletlib ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} pthread -lrt)
 
 add_executable(raylet_monitor monitor_main.cc)
 target_link_libraries(raylet_monitor rayletlib ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} pthread)
