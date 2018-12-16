@@ -42,10 +42,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
               num_sgd_iter=10,
               train_batch_size=1024,
               num_gpus=0,
-              standardize_fields=[]):
+              standardize_fields=[],
+              wait_for_stragglers=False):
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
         self.train_batch_size = train_batch_size
+        self.wait_for_stragglers = wait_for_stragglers
         if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
@@ -111,7 +113,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 # TODO(rliaw): remove when refactoring
                 from ray.rllib.agents.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
-                                          self.train_batch_size)
+                                          self.train_batch_size,
+                                          self.wait_for_stragglers)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
                         "Collected more training samples than expected "

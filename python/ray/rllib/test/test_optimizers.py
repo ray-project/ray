@@ -59,6 +59,19 @@ class PPOCollectTest(unittest.TestCase):
         self.assertEqual(ppo.optimizer.num_steps_sampled, 1000)
         ppo.stop()
 
+        # We will wait for all sample requests to complete.
+        ppo = PPOAgent(
+            env="CartPole-v0",
+            config={
+                "sample_batch_size": 200,
+                "train_batch_size": 900,
+                "num_workers": 3,
+                "wait_for_stragglers": True,
+            })
+        ppo.train()
+        self.assertEqual(ppo.optimizer.num_steps_sampled, 1400)
+        ppo.stop()
+
 
 class SampleBatchTest(unittest.TestCase):
     def testConcat(self):
