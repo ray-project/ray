@@ -33,8 +33,19 @@ class QMixPolicyGraph(PolicyGraph):
                               action_space.n)
         self.target_model = RNNModel(self.observation_space.shape[0], 64,
                                      action_space.n)
-        self.mixer = None
-        self.target_mixer = None
+        # TODO(ekl) don't hardcode this (and support batches of groups)
+        self.n_agents = 2
+        if config["mixer"] == None:
+            self.mixer = None
+            self.target_mixer = None
+        elif config["mixer"] == "qmix":
+            self.mixer = QMixer(n_agents, config["mixing_embed_dim"])
+            self.target_mixer = QMixer(n_agents, config["mixing_embed_dim"])
+        elif config["mixer"] == "vdn":
+            self.mixer = VDNMixer()
+            self.target_mixer = VDNMixer()
+        else:
+            raise ValueError("Unknown mixer type {}".format(config["mixer"]))
         self.cur_epsilon = 1.0
         self.update_target()  # initial sync
 
@@ -73,8 +84,7 @@ class QMixPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def compute_apply(self, samples):
-        # TODO(ekl) don't hardcode this (and support batches of groups)
-        num_agents = 2
+        num_agents = self.n_agents
         B = num_agents
         T = samples.count // B
 
@@ -154,7 +164,7 @@ class QMixPolicyGraph(PolicyGraph):
         self.optimiser.zero_grad()
         loss.backward()
         grad_norm = th.nn.utils.clip_grad_norm_(self.params,
-                                                self.config["grad_norm_clip"])
+                                                self.config["grad_norm_clipping"])
         self.optimiser.step()
 
         mask_elems = mask.sum().item()

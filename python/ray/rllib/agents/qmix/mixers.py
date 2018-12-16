@@ -13,14 +13,12 @@ class VDNMixer(nn.Module):
 
 
 class QMixer(nn.Module):
-    def __init__(self, args):
+    def __init__(self, n_agents, mixing_embed_dim):
         super(QMixer, self).__init__()
 
-        self.args = args
-        self.n_agents = args.n_agents
+        self.n_agents = n_agents
+        self.embed_dim = mixing_embed_dim
         self.state_dim = int(np.prod(args.state_shape))
-
-        self.embed_dim = args.mixing_embed_dim
 
         self.hyper_w_1 = nn.Linear(self.state_dim,
                                    self.embed_dim * self.n_agents)
