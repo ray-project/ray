@@ -103,7 +103,7 @@ class PPOLoss(object):
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
 
             # TODO(ev) add a centralized value function loss
-            if self.use_central_vf:
+            if use_central_vf:
                 central_vf_loss1 = tf.square(central_value_fn
                                              - central_value_targets)
                 central_vf_clipped = central_vf_preds + tf.clip_by_value(
