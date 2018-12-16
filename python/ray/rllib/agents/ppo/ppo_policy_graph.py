@@ -162,11 +162,19 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             if self.config["use_centralized_vf"]:
                 # TODO(ev) this assumes all observation spaces are the same
                 # import ipdb; ipdb.set_trace()
-                obs_shape = (self.config["max_vf_agents"],) + (observation_space.shape)
+                obs_shape = self.config["max_vf_agents"] * np.product(observation_space.shape)
                 central_obs_ph = tf.placeholder(
                     tf.float32,
-                    name="obs",
-                    shape=obs_shape)
+                    name="central_obs",
+                    shape=(None, obs_shape))
+                central_vf_preds_ph = tf.placeholder(
+                    tf.float32, name="central_vf_preds", shape=(None,))
+
+                central_value_targets_ph = tf.placeholder(
+                    tf.float32, name="central_value_targets", shape=(None,))
+
+                self.central_observations = central_obs_ph
+
             adv_ph = tf.placeholder(
                 tf.float32, name="advantages", shape=(None,))
             act_ph = ModelCatalog.get_action_placeholder(action_space)
@@ -176,17 +184,13 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None,))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None,))
-            if self.config["use_centralized_vf"]:
-                central_vf_preds_ph = tf.placeholder(
-                    tf.float32, name="central_vf_preds", shape=(None,))
-                central_value_targets_ph = tf.placeholder(
-                    tf.float32, name="central_value_targets", shape=(None,))
             prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
             prev_rewards_ph = tf.placeholder(
                 tf.float32, [None], name="prev_reward")
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
+
 
         self.loss_in = [
             ("obs", obs_ph),
@@ -240,6 +244,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 vf_config["free_log_std"] = False
                 vf_config["use_lstm"] = False
                 with tf.variable_scope("value_function"):
+                    # FIXME(ev, kp) it is trying to evaluate this but can't
                     self.value_function = ModelCatalog.get_model({
                         "obs": obs_ph,
                         "prev_actions": prev_actions_ph,
@@ -258,6 +263,9 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                             "prev_rewards": prev_rewards_ph,
                             "is_training": self._get_is_training_placeholder(),
                         }, observation_space, 1, vf_config).outputs
+                        self.central_value_function = tf.reshape(self.central_value_function,
+                                                         [-1])
+
 
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
@@ -372,24 +380,24 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # if needed, add a centralized value function to the sample batch
         if self.config["use_centralized_vf"]:
-            global_obs_batch = np.vstack(
+            central_obs_batch = np.hstack(
                 [other_agent_batches[agent_id][1]["obs"] for agent_id in other_agent_batches.keys()])
-
+            central_obs_batch = np.hstack(
+                (central_obs_batch, sample_batch["obs"]))
             # TODO(ev) this is almost certainly broken
             # TODO(ev) pad with zeros as needed
             max_vf_agents = self.config["max_vf_agents"]
-            num_agents = len(other_agent_batches)
-
+            num_agents = len(other_agent_batches) + 1
             if num_agents < max_vf_agents:
                 for _ in range(max_vf_agents - num_agents):
-                    np.concatenate((global_obs_batch, np.zeros(self.observation_space.shape)))
-            else:
+                    central_obs_batch = np.hstack((central_obs_batch, np.zeros(self.observation_space.shape)))
+            elif num_agents > max_vf_agents:
                 print("Too many agents!")
 
-            # add the global obs and global critic value
-            sample_batch["global_obs"] = global_obs_batch
-            sample_batch["central_vf"] = self.sess.run(
-                self.central_value_function, feed_dict={"obs": global_obs_batch})
+            # add the central obs and central critic value
+            sample_batch["central_obs"] = central_obs_batch
+            sample_batch["central_vf_preds"] = self.sess.run(
+                self.central_value_function, feed_dict={self.central_observations: central_obs_batch})
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -415,8 +423,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
         fetch_dict = {"vf_preds": self.value_function, "logits": self.logits}
-        if self.config["use_centralized_vf"]:
-            fetch_dict["central_vf_preds"] = self.central_value_function
         return fetch_dict
 
     @override(TFPolicyGraph)
