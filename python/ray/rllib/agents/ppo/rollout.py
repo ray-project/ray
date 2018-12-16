@@ -9,10 +9,10 @@ from ray.rllib.evaluation.sample_batch import SampleBatch
 def collect_samples(agents, train_batch_size, wait_for_stragglers):
     num_timesteps_so_far = 0
     trajectories = []
+
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
-
     agent_dict = {}
 
     for agent in agents:
@@ -26,8 +26,10 @@ def collect_samples(agents, train_batch_size, wait_for_stragglers):
         num_timesteps_so_far += next_sample.count
         trajectories.append(next_sample)
 
-        # Always wait for at least the first wave to finish
-        if num_timesteps_so_far >= train_batch_size and \
+        # Can early exit once we hit train batch size, though we should always
+        # wait for at least the first wave to finish to avoid excessive waste.
+        if not wait_for_stragglers and \
+                num_timesteps_so_far >= train_batch_size and \
                 len(trajectories) >= len(agents):
             break
 
