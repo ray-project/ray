@@ -164,20 +164,6 @@ class AsyncSampler(threading.Thread):
         if isinstance(rollout, BaseException):
             raise rollout
 
-        # We can't auto-concat rollouts in these modes
-        if self.async_vector_env.num_envs > 1 or \
-                isinstance(rollout, MultiAgentBatch):
-            return rollout
-
-        # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
-        while not rollout["dones"][-1]:
-            try:
-                part = self.queue.get_nowait()
-                if isinstance(part, BaseException):
-                    raise rollout
-                rollout = rollout.concat(part)
-            except queue.Empty:
-                break
         return rollout
 
     def get_metrics(self):
