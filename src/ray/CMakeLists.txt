@@ -60,7 +60,7 @@ find_package(Boost COMPONENTS regex system thread filesystem REQUIRED)
 
 set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
 set(RAY_LIB_DEPENDENCIES
-    Boost::thread
+    boost_thread
     arrow_ep
     gen_gcs_fbs
     gen_object_manager_fbs
