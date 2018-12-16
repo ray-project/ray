@@ -72,6 +72,19 @@ class PPOCollectTest(unittest.TestCase):
         self.assertEqual(ppo.optimizer.num_steps_sampled, 1200)
         ppo.stop()
 
+        # Check legacy mode
+        ppo = PPOAgent(
+            env="CartPole-v0",
+            config={
+                "sample_batch_size": 200,
+                "train_batch_size": 128,
+                "num_workers": 3,
+                "straggler_mitigation": True,
+            })
+        ppo.train()
+        self.assertEqual(ppo.optimizer.num_steps_sampled, 200)
+        ppo.stop()
+
 
 class SampleBatchTest(unittest.TestCase):
     def testConcat(self):

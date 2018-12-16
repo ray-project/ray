@@ -53,6 +53,9 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
+    # Revert to the old sampling behavior as of 0.6, which launches extra
+    # sampling tasks for performance but can waste a large portion of samples.
+    "straggler_mitigation": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -88,6 +91,8 @@ class PPOAgent(Agent):
                     "num_envs_per_worker": self.config["num_envs_per_worker"],
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
+                    "straggler_mitigation": (
+                        self.config["straggler_mitigation"]),
                 })
 
     @override(Agent)
