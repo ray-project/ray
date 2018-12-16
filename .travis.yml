@@ -4,235 +4,68 @@ language: generic
 
 matrix:
   include:
-    - os: linux
-      dist: trusty
-      env: PYTHON=2.7 PYTHONWARNINGS=ignore
-
-    - os: linux
-      dist: trusty
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
-
-    - os: osx
-      osx_image: xcode7
-      env: PYTHON=2.7 PYTHONWARNINGS=ignore
-
-    - os: osx
-      osx_image: xcode7
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
-
-    - os: linux
-      dist: trusty
-      env:
-        - JDK='Oracle JDK 8'
-        - PYTHON=3.5 PYTHONWARNINGS=ignore
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-      script:
-      - ./java/test.sh
-
-      # Test Bazel build
-      - rm -rf build
-      - ./.travis/install-bazel.sh
-      - bazel build ...
-
-    - os: linux
-      dist: trusty
-      env: LINT=1 PYTHONWARNINGS=ignore
-      before_install:
-        # In case we ever want to use a different version of clang-format:
-        #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-        #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq clang-format-3.8
-      install: []
-      script:
-        - .travis/check-git-clang-format-output.sh
-        # Try generating Sphinx documentation. To do this, we need to install
-        # Ray first.
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - cd doc
-        - pip install -q -r requirements-doc.txt
-        - pip install yapf==0.23.0
-        - sphinx-build -W -b html -d _build/doctrees source _build/html
-        - cd ..
-        # Run Python linting, ignore dict vs {} (C408), others are defaults
-        - flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-        - .travis/format.sh --all
-        # Make sure that the README is formatted properly.
-        - cd python
-        - python setup.py check --restructuredtext --strict --metadata
-
-    - os: linux
-      dist: trusty
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
-      before_install:
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq valgrind
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./.travis/install-ray.sh
-        - ./.travis/install-with-cache-libs.sh
-
-      script:
-        - cd build
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
-
-        - export RAY_PLASMA_STORE_VALGRIND=1
-        # - export RAY_RAYLET_VALGRIND=1
-        # - export RAY_RAYLET_MONITOR_VALGRIND=1
-        # - export RAY_REDIS_SERVER_VALGRIND=1
-
-        # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
-        - python -m pytest -v --durations=10 test/mini_test.py
-        - python -m pytest -v --durations=10 test/array_test.py
-        - python -m pytest -v --durations=10 test/multi_node_test_2.py
-        - python -m pytest -v --durations=10 test/node_manager_test.py
-
-
-    # Build Linux wheels.
-    - os: linux
-      dist: trusty
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
-      install:
-        - ./.travis/install-dependencies.sh
-        # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
-      script:
-        - ./.travis/test-wheels.sh
-
-    # Build MacOS wheels.
-    - os: osx
-      osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
-      install:
-        - ./.travis/install-dependencies.sh
-        # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - ./python/build-wheel-macos.sh
-      script:
-        - ./.travis/test-wheels.sh
-
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - PYTHONWARNINGS=ignore
-
+  - os: linux
+    dist: trusty
+    env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
 install:
-  - ./.travis/install-dependencies.sh
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  - ./.travis/install-ray.sh
-  - ./.travis/install-cython-examples.sh
-
-  - cd build
-  - bash ../src/ray/test/run_gcs_tests.sh
-  # Raylet tests.
-  - bash ../src/ray/test/run_object_manager_tests.sh
-  - ./src/ray/raylet/task_test
-  - ./src/ray/raylet/worker_pool_test
-  - ./src/ray/raylet/lineage_cache_test
-  - ./src/ray/raylet/task_dependency_manager_test
-  - ./src/ray/raylet/reconstruction_policy_test
-  - ./src/ray/raylet/client_connection_test
-  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
-  - ./src/ray/util/signal_test
-
-  - cd ..
+- ./.travis/install-dependencies.sh
+- sudo apt-get install -y gdb
+# - sudo apt-get install libtcmalloc-minimal4
+- export PATH="$HOME/miniconda/bin:$PATH"
+- ./.travis/install-ray.sh
+- ./.travis/install-cython-examples.sh
 
 script:
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  # The following is needed so cloudpickle can find some of the
-  # class definitions: The main module of tests that are run
-  # with pytest have the same name as the test file -- and this
-  # module is only found if the test directory is in the PYTHONPATH.
-  - export PYTHONPATH="$PYTHONPATH:./test/"
+- export PATH="$HOME/miniconda/bin:$PATH"
+# The following is needed so cloudpickle can find some of the
+# class definitions: The main module of tests that are run
+# with pytest have the same name as the test file -- and this
+# module is only found if the test directory is in the PYTHONPATH.
+- export PYTHONPATH="$PYTHONPATH:./test/"
+# - export LD_PRELOAD="/usr/lib/libtcmalloc_minimal.so.4"
 
-  # ray tune tests
-  - python python/ray/tune/test/dependency_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/experiment_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/tune_server_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/ray_trial_executor_test.py
-  - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stopw
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stopx
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stop0
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stop1
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stopy
+- python -m pytest -svvv python/ray/mem_test.py -k test_start_stopz
+# - sudo gdb -ex run --args /home/travis/miniconda/bin/python -m pytest -svvv python/ray/mem_test.py -k test_start_stopw
 
-  # ray rllib tests
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_catalog.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_filters.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
-  - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
+- python python/ray/mem_test.py
+- sudo gdb -ex run -ex bt --args /home/travis/miniconda/bin/python -vvv python/ray/mem_test.py
 
-  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
-  - python -m pytest -v --durations=10 python/ray/test/test_global_state.py
-  - python -m pytest -v --durations=10 python/ray/test/test_queue.py
-  - python -m pytest -v --durations=10 python/ray/test/test_ray_init.py
-  - python -m pytest -v --durations=10 test/mini_test.py
-
-  - python -m pytest -v --durations=10 test/runtest.py
-  - python -m pytest -v --durations=10 test/array_test.py
-  - python -m pytest -v --durations=10 test/actor_test.py
-  - python -m pytest -v --durations=10 test/autoscaler_test.py
-  - python -m pytest -v --durations=10 test/tensorflow_test.py
-  - python -m pytest -v --durations=10 test/failure_test.py
-  - python -m pytest -v --durations=10 test/microbenchmarks.py
-  - python -m pytest -v --durations=10 test/stress_tests.py
-  - python -m pytest -v --durations=10 test/component_failures_test.py
-  - python -m pytest -v --durations=10 test/multi_node_test.py
-  - python -m pytest -v --durations=10 test/multi_node_test_2.py
-  - python -m pytest -v --durations=10 test/recursion_test.py
-  - python -m pytest -v --durations=10 test/monitor_test.py
-  - python -m pytest -v --durations=10 test/cython_test.py
-  - python -m pytest -v --durations=10 test/credis_test.py
-  - python -m pytest -v --durations=10 test/node_manager_test.py
-  # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
-  # better be put in Jenkins. However, it fails frequently in Jenkins, but
-  # works well in Travis. We should consider moving it back to Jenkins once
-  # we figure out the reason.
-  - python -m pytest -v --durations=10 test/object_manager_test.py
-
-  # ray temp file tests
-  - python -m pytest -v --durations=10 test/tempfile_test.py
-
-  # modin test files
-  - python python/ray/test/test_modin.py
 
 deploy:
-  - provider: s3
-    access_key_id: AKIAJ2L7XDUSZVTXI5QA
-    secret_access_key:
-      secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
-    bucket: ray-wheels
-    acl: public_read
-    region: us-west-2
-    local_dir: .whl
-    upload-dir: $TRAVIS_COMMIT
-    skip_cleanup: true
-    only:
-      - master
-    on:
-      repo: ray-project/ray
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
-  - provider: s3
-    access_key_id: AKIAJ2L7XDUSZVTXI5QA
-    secret_access_key:
-      secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
-    bucket: ray-wheels
-    acl: public_read
-    region: us-west-2
-    local_dir: .whl
-    upload-dir: latest
-    skip_cleanup: true
-    only:
-      - master
-    on:
-      repo: ray-project/ray
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+- provider: s3
+  access_key_id: AKIAJ2L7XDUSZVTXI5QA
+  secret_access_key:
+    secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
+  bucket: ray-wheels
+  acl: public_read
+  region: us-west-2
+  local_dir: .whl
+  upload-dir: $TRAVIS_COMMIT
+  skip_cleanup: true
+  only:
+  - master
+  on:
+    repo: ray-project/ray
+    condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+- provider: s3
+  access_key_id: AKIAJ2L7XDUSZVTXI5QA
+  secret_access_key:
+    secure: OS9V8c/fQ9SIOP+Lg2MIz+PtCSKNQVB3mubscDRHKJcCmOp3cB6AKsC/yepbNZvvjDD/ncW2v6KJVsUEneAeDKrZQWSIpNb34yGAvWb7g4xleLxiadNtx6XEzjWaOcg+Y6409e68XeoHq/5ItopWNQ9p9NHXgsoHbZaOurPyHNskNgwBVaObCy+cCak7ifkITDk6cil0OJYnTbOe3NhcU82Fh5BZzS2+G2qNq8tGNcbfINhq0rruWIBuV5WRB/14CmBR+mou74qFSiiodH/MKbOcplx9+BxoOsTnkl7SeyybcK6DX6jxJCuhSBIjct9uT8Qdovv6mzOMkXvLkLKFkHfkTJSGBRIIZEvkPvzhlEriqTcr4tX/MV8HKs/Acz1NnlD0tNEygOr3VaiSLB0dvpz4iCeI9berqSu/jV1VI1X5iVNfChYbOMQ+OYafJMs5WdO60AMWIHy60U511FjAlbS7IubXBjfhoCItIB1xlVNI7FfKaRbNRwP5qvPenB8FUgZpv3UBg5OZDkeBXSNoLydr0w505p6s8Jqnz750TpVYI11fih5D0N3Ea57OwQr9r/rk+Z8aGeTpWj6hIgQiNkrIf2VZnWTApd+utJPw3X3txUEcnOtcdDnMsPuEIeMvIDrrFMRwzClqMNXq9MewU43wp7cCl67YmDBDKubl7Vs=
+  bucket: ray-wheels
+  acl: public_read
+  region: us-west-2
+  local_dir: .whl
+  upload-dir: latest
+  skip_cleanup: true
+  only:
+  - master
+  on:
+    repo: ray-project/ray
+    condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1

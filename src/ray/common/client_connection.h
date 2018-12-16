@@ -1,15 +1,21 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
+#include <unistd.h>
 #include <deque>
 #include <memory>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/id.h"
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/status.h"
+
+using boost::asio::local::stream_protocol;
+using ray::protocol::MessageType;
 
 namespace ray {
 
@@ -21,6 +27,19 @@ namespace ray {
 /// \return Status.
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address, int port);
+
+/// Connect a Unix domain socket with multiple retries.
+///
+/// \param socket_name The name of the socket to connect.
+/// \param num_retries The retry numbers.
+/// \param main_service Boost asio service instance.
+/// \param socket A shared pointer of a Unix domain socket.
+/// \param timeout_ms The timeout between two retries (in millisecond).
+/// \return ray::Status.
+ray::Status UnixSocketConnect(const std::string &socket_name,
+                              boost::asio::io_service &main_service,
+                              std::unique_ptr<stream_protocol::socket> &socket,
+                              int num_retries = -1, int64_t timeout_ms = -1);
 
 /// \typename ServerConnection
 ///
@@ -47,6 +66,32 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// \return Status.
   ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
 
+  /// Write a message to the client.
+  ///
+  /// \param type The Ray flatbuffer protocol message type.
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message) {
+    return WriteMessage(static_cast<int64_t>(type), length, message);
+  }
+
+  /// Read a message from the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage(int64_t type, std::unique_ptr<uint8_t[]> &message);
+
+  /// Read a message from the client.
+  ///
+  /// \param type The Ray flatbuffer protocol message type.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message) {
+    return ReadMessage(static_cast<int64_t>(type), message);
+  }
+
   /// Write a message to the client asynchronously.
   ///
   /// \param type The message type (e.g., a flatbuffer enum).
@@ -66,14 +111,24 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec);
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+
+  Status ReadBuffer(boost::asio::mutable_buffer &buffer);
+
+  /// The underlying socket is open or not?
+  bool IsOpen() const { return socket_.is_open(); }
+
+  /// Export the socket to other languages.
+  int GetNativeHandle() { return socket_.native_handle(); }
+
+  /// \return The ClientID of the remote client.
+  const ClientID &GetClientId() const;
+
+  /// \param client_id The ClientID of the remote client.
+  void SetClientID(const ClientID &client_id);
 
   /// Shuts down socket for this connection.
-  void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
-  }
+  ray::Status Close();
 
   std::string DebugString() const;
 
@@ -92,6 +147,9 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;
+
+  /// The ClientID of the remote client.
+  ClientID client_id_;
 
   /// Max number of messages to write out at once.
   const int async_write_max_messages_;
@@ -155,12 +213,6 @@ class ClientConnection : public ServerConnection<T> {
     return std::static_pointer_cast<ClientConnection<T>>(shared_from_this());
   }
 
-  /// \return The ClientID of the remote client.
-  const ClientID &GetClientId() const;
-
-  /// \param client_id The ClientID of the remote client.
-  void SetClientID(const ClientID &client_id);
-
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
@@ -177,9 +229,6 @@ class ClientConnection : public ServerConnection<T> {
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
-
-  /// The ClientID of the remote client.
-  ClientID client_id_;
   /// The handler for a message from the client.
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.
@@ -193,9 +242,9 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
-using LocalServerConnection = ServerConnection<boost::asio::local::stream_protocol>;
+using LocalServerConnection = ServerConnection<stream_protocol>;
 using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
-using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
+using LocalClientConnection = ClientConnection<stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
 
 }  // namespace ray
