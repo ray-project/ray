@@ -67,7 +67,7 @@ class PPOLoss(object):
             central_vf_preds (Placeholder): Placeholder for central value function output
                 from previous model evaluation.
             central_value_targets (Placeholder): Placeholder for central value function
-                target values; used for GAE.
+                target values; used for GA
         """
 
         def reduce_mean_valid(t):
@@ -146,8 +146,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             obs_ph, value_targets_ph, adv_ph, act_ph, \
             logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
                 existing_inputs[:8]
-            existing_state_in = existing_inputs[8:-1]
-            existing_seq_lens = existing_inputs[-1]
+            if self.config["use_centralized_vf"]:
+                central_obs_ph, central_value_targets_ph, central_vf_preds_ph = \
+                    existing_inputs[8:11]
+                existing_state_in = existing_inputs[11:-1]
+                existing_seq_lens = existing_inputs[-1]
+            else:
+                existing_state_in = existing_inputs[8:-1]
+                existing_seq_lens = existing_inputs[-1]
         else:
             obs_ph = tf.placeholder(
                 tf.float32,
@@ -155,12 +161,12 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 shape=(None,) + observation_space.shape)
             if self.config["use_centralized_vf"]:
                 # TODO(ev) this assumes all observation spaces are the same
-                flat_obs = np.prod(observation_space.shape) \
-                           * self.config["max_vf_agents"]
+                # import ipdb; ipdb.set_trace()
+                obs_shape = (self.config["max_vf_agents"],) + (observation_space.shape)
                 central_obs_ph = tf.placeholder(
                     tf.float32,
                     name="obs",
-                    shape=(None,) + flat_obs)
+                    shape=obs_shape)
             adv_ph = tf.placeholder(
                 tf.float32, name="advantages", shape=(None,))
             act_ph = ModelCatalog.get_action_placeholder(action_space)
@@ -170,6 +176,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None,))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None,))
+            if self.config["use_centralized_vf"]:
+                central_vf_preds_ph = tf.placeholder(
+                    tf.float32, name="central_vf_preds", shape=(None,))
+                central_value_targets_ph = tf.placeholder(
+                    tf.float32, name="central_value_targets", shape=(None,))
             prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
             prev_rewards_ph = tf.placeholder(
                 tf.float32, [None], name="prev_reward")
@@ -187,8 +198,12 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("prev_actions", prev_actions_ph),
             ("prev_rewards", prev_rewards_ph),
         ]
+
         if self.config["use_centralized_vf"]:
             self.loss_in.append(("central_obs", central_obs_ph))
+            self.loss_in.append(("central_value_targets", central_value_targets_ph))
+            self.loss_in.append(("central_vf_preds",
+                                central_vf_preds_ph))
 
         self.model = ModelCatalog.get_model(
             {
@@ -256,22 +271,46 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             mask = tf.ones_like(adv_ph)
 
-        self.loss_obj = PPOLoss(
-            action_space,
-            value_targets_ph,
-            adv_ph,
-            act_ph,
-            logits_ph,
-            vf_preds_ph,
-            curr_action_dist,
-            self.value_function,
-            self.kl_coeff,
-            mask,
-            entropy_coeff=self.config["entropy_coeff"],
-            clip_param=self.config["clip_param"],
-            vf_clip_param=self.config["vf_clip_param"],
-            vf_loss_coeff=self.config["vf_loss_coeff"],
-            use_gae=self.config["use_gae"])
+        if self.config["use_centralized_vf"]:
+            self.loss_obj = PPOLoss(
+                action_space,
+                value_targets_ph,
+                adv_ph,
+                act_ph,
+                logits_ph,
+                vf_preds_ph,
+                curr_action_dist,
+                self.value_function,
+                self.kl_coeff,
+                mask,
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_param=self.config["clip_param"],
+                vf_clip_param=self.config["vf_clip_param"],
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                use_gae=self.config["use_gae"],
+                use_central_vf=True,
+                central_value_fn=self.central_value_function,
+                central_vf_preds=central_vf_preds_ph,
+                central_value_targets=central_value_targets_ph,
+                )
+        else:
+            self.loss_obj = PPOLoss(
+                action_space,
+                value_targets_ph,
+                adv_ph,
+                act_ph,
+                logits_ph,
+                vf_preds_ph,
+                curr_action_dist,
+                self.value_function,
+                self.kl_coeff,
+                mask,
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_param=self.config["clip_param"],
+                vf_clip_param=self.config["vf_clip_param"],
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                use_gae=self.config["use_gae"],
+            )
 
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
