@@ -46,15 +46,14 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True,
             central_delta_t = traj["rewards"] + gamma * central_vpred_t[1:] - central_vpred_t[:-1]
             central_advantages = discount(central_delta_t, gamma * lambda_)
             traj["advantages"] = central_advantages
+            traj["central_value_targets"] = (
+                    central_advantages + traj["central_vf_preds"]).copy().astype(np.float32)
         else:
             traj["advantages"] = advantages
         # This formula for the advantage comes
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         traj["value_targets"] = (
             advantages + traj["vf_preds"]).copy().astype(np.float32)
-        if use_centralized_vf:
-            traj["central_value_targets"] = (
-                    central_advantages + traj["central_vf_preds"]).copy().astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout["rewards"], np.array([last_r])])
