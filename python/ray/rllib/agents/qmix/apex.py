@@ -14,6 +14,7 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
             QMIX_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
                 "num_replay_buffer_shards": 4,
+                "batch_replay": True,  # required for RNN. Disables prio.
                 "debug": False
             }),
         "num_gpus": 0,
@@ -26,7 +27,6 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,
-        "worker_side_prioritization": True,
         "min_iter_time_s": 30,
     },
 )
@@ -50,3 +50,31 @@ class ApexQMixAgent(QMixAgent):
             self.local_evaluator.for_policy(lambda p: p.update_target())
             self.last_target_update_ts = self.optimizer.num_steps_trained
             self.num_target_updates += 1
+
+
+if __name__ == "__main__":
+    import ray
+    from ray.rllib.agents.qmix.twostep_game import TwoStepGame
+    from ray.tune import run_experiments
+
+    ray.init()
+    run_experiments({
+        "two_step": {
+            "run": "APEX_QMIX",
+            "env": TwoStepGame,
+            "config": {
+                "num_gpus": 0,
+                "num_workers": 2,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
+                "min_iter_time_s": 3,
+                "buffer_size": 1000,
+                "learning_starts": 1000,
+                "train_batch_size": 128,
+                "sample_batch_size": 32,
+                "target_network_update_freq": 500,
+                "timesteps_per_iteration": 1000,
+            },
+        }
+    })

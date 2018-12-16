@@ -36,6 +36,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread,
     remote evaluators (Ape-X actors), and replay buffer actors.
 
+    This has two modes of operation:
+        normal replay: replays independent samples.
+        batch replay: simplified mode where entire sample batches are replayed.
+            This enables RNN support, but does not support prioritization.
+
     This optimizer requires that policy evaluators return an additional
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
@@ -52,9 +57,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
               sample_batch_size=50,
               num_replay_buffer_shards=1,
               max_weight_sync_delay=400,
-              debug=False):
+              debug=False,
+              batch_replay=False):
 
         self.debug = debug
+        self.batch_replay = batch_replay
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -63,7 +70,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
-        self.replay_actors = create_colocated(ReplayActor, [
+        if self.batch_replay:
+            replay_cls = BatchReplayActor
+        else:
+            replay_cls = ReplayActor
+        self.replay_actors = create_colocated(replay_cls, [
             num_replay_buffer_shards,
             learning_starts,
             buffer_size,
@@ -254,6 +265,79 @@ class ReplayActor(object):
                     self.replay_buffers[policy_id].add(
                         row["obs"], row["actions"], row["rewards"],
                         row["new_obs"], row["dones"], row["weights"])
+        self.num_added += batch.count
+
+    def replay(self):
+        if self.num_added < self.replay_starts:
+            return None
+
+        with self.replay_timer:
+            samples = {}
+            for policy_id, replay_buffer in self.replay_buffers.items():
+                (obses_t, actions, rewards, obses_tp1, dones, weights,
+                 batch_indexes) = replay_buffer.sample(
+                     self.train_batch_size, beta=self.prioritized_replay_beta)
+                samples[policy_id] = SampleBatch({
+                    "obs": obses_t,
+                    "actions": actions,
+                    "rewards": rewards,
+                    "new_obs": obses_tp1,
+                    "dones": dones,
+                    "weights": weights,
+                    "batch_indexes": batch_indexes
+                })
+            return MultiAgentBatch(samples, self.train_batch_size)
+
+    def update_priorities(self, prio_dict):
+        with self.update_priorities_timer:
+            for policy_id, (batch_indexes, td_errors) in prio_dict.items():
+                new_priorities = (
+                    np.abs(td_errors) + self.prioritized_replay_eps)
+                self.replay_buffers[policy_id].update_priorities(
+                    batch_indexes, new_priorities)
+
+    def stats(self, debug=False):
+        stat = {
+            "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
+            "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
+            "update_priorities_time_ms": round(
+                1000 * self.update_priorities_timer.mean, 3),
+        }
+        for policy_id, replay_buffer in self.replay_buffers.items():
+            stat.update({
+                "policy_{}".format(policy_id): replay_buffer.stats(debug=debug)
+            })
+        return stat
+
+
+@ray.remote(num_cpus=0)
+class BatchReplayActor(object):
+    """The batch replay version of the replay actor.
+
+    This allows for RNN models, but ignores prioritization params.
+    """
+
+    def __init__(self, num_shards, learning_starts, buffer_size,
+                 train_batch_size, prioritized_replay_alpha,
+                 prioritized_replay_beta, prioritized_replay_eps):
+        self.replay_starts = learning_starts // num_shards
+        self.buffer_size = buffer_size // num_shards
+        self.train_batch_size = train_batch_size
+
+        def new_buffer():
+            return PrioritizedReplayBuffer(
+                self.buffer_size, alpha=prioritized_replay_alpha)
+
+        self.replay_buffers = collections.defaultdict(new_buffer)
+
+        # Metrics
+        self.num_added = 0
+
+    def get_host(self):
+        return os.uname()[1]
+
+    def add_batch(self, batch):
+        self.batches.append(batch)
         self.num_added += batch.count
 
     def replay(self):

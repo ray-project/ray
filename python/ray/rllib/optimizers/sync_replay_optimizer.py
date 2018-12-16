@@ -157,13 +157,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
                      dones) = replay_buffer.sample(self.train_batch_size)
                     weights = np.ones_like(rewards)
                     batch_indexes = -np.ones_like(rewards)
-            samples[policy_id] = SampleBatch({
-                "obs": obses_t,
-                "actions": actions,
-                "rewards": rewards,
-                "new_obs": obses_tp1,
-                "dones": dones,
-                "weights": weights,
-                "batch_indexes": batch_indexes
-            })
+                samples[policy_id] = SampleBatch({
+                    "obs": obses_t,
+                    "actions": actions,
+                    "rewards": rewards,
+                    "new_obs": obses_tp1,
+                    "dones": dones,
+                    "weights": weights,
+                    "batch_indexes": batch_indexes
+                })
         return MultiAgentBatch(samples, self.train_batch_size)
