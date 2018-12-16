@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 import ray
+from ray.rllib.agents.ppo import PPOAgent
 from ray.rllib.test.mock_evaluator import _MockEvaluator
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.evaluation import SampleBatch
@@ -25,6 +26,38 @@ class AsyncOptimizerTest(unittest.TestCase):
                                                  {"grads_per_step": 10})
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
+
+
+class PPOCollectTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testPPOSampleWaste(self):
+        ray.init(num_cpus=4)
+
+        # Check we at least collect the initial wave of samples
+        ppo = PPOAgent(
+            env="CartPole-v0",
+            config={
+                "sample_batch_size": 200,
+                "train_batch_size": 128,
+                "num_workers": 3,
+            })
+        ppo.train()
+        self.assertEqual(ppo.optimizer.num_steps_sampled, 600)
+        ppo.stop()
+
+        # Check we collect at least the specified amount of samples
+        ppo = PPOAgent(
+            env="CartPole-v0",
+            config={
+                "sample_batch_size": 200,
+                "train_batch_size": 900,
+                "num_workers": 3,
+            })
+        ppo.train()
+        self.assertEqual(ppo.optimizer.num_steps_sampled, 1000)
+        ppo.stop()
 
 
 class SampleBatchTest(unittest.TestCase):

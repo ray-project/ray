@@ -112,6 +112,13 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 from ray.rllib.agents.ppo.rollout import collect_samples
                 samples = collect_samples(self.remote_evaluators,
                                           self.train_batch_size)
+                if samples.count > self.train_batch_size * 2:
+                    logger.info(
+                        "Collected more training samples than expected "
+                        "(actual={}, train_batch_size={}). ".format(
+                            samples.count, self.train_batch_size) +
+                        "This may be because you have many workers or "
+                        "long episodes in 'complete_episodes' batch mode.")
             else:
                 samples = self.local_evaluator.sample()
             # Handle everything as if multiagent

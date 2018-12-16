@@ -19,16 +19,19 @@ def collect_samples(agents, train_batch_size):
         fut_sample = agent.sample.remote()
         agent_dict[fut_sample] = agent
 
-    while num_timesteps_so_far < train_batch_size:
-        # TODO(pcm): Make wait support arbitrary iterators and remove the
-        # conversion to list here.
+    while True:
         [fut_sample], _ = ray.wait(list(agent_dict))
         agent = agent_dict.pop(fut_sample)
+        next_sample = ray.get(fut_sample)
+        num_timesteps_so_far += next_sample.count
+        trajectories.append(next_sample)
+
+        if num_timesteps_so_far >= train_batch_size and \
+                len(trajectories) >= len(agents):
+            break
+
         # Start task with next trajectory and record it in the dictionary.
         fut_sample2 = agent.sample.remote()
         agent_dict[fut_sample2] = agent
 
-        next_sample = ray.get(fut_sample)
-        num_timesteps_so_far += next_sample.count
-        trajectories.append(next_sample)
     return SampleBatch.concat_samples(trajectories)
