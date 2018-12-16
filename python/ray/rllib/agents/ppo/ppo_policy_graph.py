@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import reduce
 import numpy as np
 import tensorflow as tf
 
@@ -156,7 +155,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 shape=(None,) + observation_space.shape)
             if self.config["use_centralized_vf"]:
                 # TODO(ev) this assumes all observation spaces are the same
-                flat_obs = reduce(lambda x, y: x * y, observation_space.shape) \
+                flat_obs = np.prod(observation_space.shape) \
                            * self.config["max_vf_agents"]
                 central_obs_ph = tf.placeholder(
                     tf.float32,
@@ -334,13 +333,20 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # if needed, add a centralized value function to the sample batch
         if self.config["use_centralized_vf"]:
-            global_obs_batch = np.stack(
-                [other_agent_batches[agent_id][1]["obs"] for agent_id in other_agent_batches.keys()],
-                axis=1)
+            global_obs_batch = np.vstack(
+                [other_agent_batches[agent_id][1]["obs"] for agent_id in other_agent_batches.keys()])
+
             # TODO(ev) this is almost certainly broken
             # TODO(ev) pad with zeros as needed
             max_vf_agents = self.config["max_vf_agents"]
             num_agents = len(other_agent_batches)
+
+            if num_agents < max_vf_agents:
+                for _ in range(max_vf_agents - num_agents):
+                    np.concatenate((global_obs_batch, np.zeros(self.observation_space.shape)))
+            else:
+                print("Too many agents!")
+
             # add the global obs and global critic value
             sample_batch["global_obs"] = global_obs_batch
             sample_batch["central_vf"] = self.sess.run(
