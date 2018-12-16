@@ -89,7 +89,7 @@ class PPOAgent(Agent):
                     "num_gpus": self.config["num_gpus"],
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
-                    "wait_for_stragglers": self.wait_for_stragglers,
+                    "wait_for_stragglers": self.config["wait_for_stragglers"],
                 })
 
     @override(Agent)
