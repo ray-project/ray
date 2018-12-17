@@ -1857,10 +1857,20 @@ def test_fork_consistency(setup_queue_actor):
     # Fork num_iters times.
     num_forks = 10
     num_items_per_fork = 100
-    ray.get(
-        [fork.remote(queue, i, num_items_per_fork) for i in range(num_forks)])
+
+    # Submit some tasks on new actor handles.
+    forks = [
+        fork.remote(queue, i, num_items_per_fork) for i in range(num_forks)
+    ]
+    # Submit some more tasks on the original actor handle.
+    for item in range(num_items_per_fork):
+        local_fork = queue.enqueue.remote(num_forks, item)
+    forks.append(local_fork)
+    # Wait for tasks from all handles to complete.
+    ray.get(forks)
+    # Check that all tasks from all handles have completed.
     items = ray.get(queue.read.remote())
-    for i in range(num_forks):
+    for i in range(num_forks + 1):
         filtered_items = [item[1] for item in items if item[0] == i]
         assert filtered_items == list(range(num_items_per_fork))
 
