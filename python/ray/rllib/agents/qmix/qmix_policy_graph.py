@@ -44,24 +44,19 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, obs, avail_actions):
+    def forward(self, rewards, actions, terminated, mask, obs, avail_actions):
         """Forward pass of the loss.
 
         Arguments:
             rewards: Tensor of shape [B, T-1]
             actions: Tensor of shape [B, T-1, n_agents]
             terminated: Tensor of shape [B, T-1]
+            mask: Tensor of shape [B, T-1]
             obs: Tensor of shape [B, T, n_agents, obs_size]
             avail_actions: Tensor of shape [B, T, n_agents, n_actions]
         """
 
         B, T = obs.size(0), obs.size(1)
-        state_dim = obs.size(1) * obs.size(2)
-
-        # TODO(ekl) mask out bad seqs
-        # mask = batch["filled"][:, :-1].float()
-        mask = th.ones_like(terminated)
-        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
         # Calculate estimated Q-Values
         mac_out = []
@@ -221,8 +216,8 @@ class QMixPolicyGraph(PolicyGraph):
             q_values, hiddens = self.model.forward(
                 th.from_numpy(obs_flat), th.from_numpy(h_flat))
             masked_q_values = q_values.clone()
-            avail_actions = th.ones_like(q_values)
             # TODO(ekl) support action masks
+            avail_actions = th.ones_like(q_values)
             masked_q_values[avail_actions == 0.0] = -float("inf")
             # epsilon-greedy action selector
             random_numbers = th.rand_like(q_values[:, 0])
@@ -254,8 +249,9 @@ class QMixPolicyGraph(PolicyGraph):
                     samples["rewards"], samples["actions"], samples["dones"],
                     samples["obs"], samples["avail_actions"]
                 ],
-                [samples["state_in_{}".format(k)] for k in range(self.n_agents)],
-                max_seq_len=999999,
+                [samples["state_in_{}".format(k)]
+                 for k in range(self.n_agents)],
+                max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         B, T = len(seq_lens), max(seq_lens)
 
@@ -265,14 +261,18 @@ class QMixPolicyGraph(PolicyGraph):
 
         rewards = to_batches(samples["rewards"])[:, :-1]
         actions = to_batches(samples["actions"])[:, :-1]
-        terminated = to_batches(samples["dones"].astype(np.float32))[:, :-1]
         obs = to_batches(samples["obs"]).reshape(
             [B, T, self.n_agents, self.obs_size])
         avail_actions = to_batches(samples["avail_actions"])
+        terminated = to_batches(samples["dones"].astype(np.float32))[:, :-1]
+        filled = (np.reshape(np.tile(np.arange(T), B), [B, T]) <
+                  np.expand_dims(seq_lens, 1)).astype(np.float32)
+        mask = th.from_numpy(filled)[:, :-1]
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, obs, avail_actions)
+            self.loss(rewards, actions, terminated, mask, obs, avail_actions)
 
         # Optimise
         self.optimiser.zero_grad()

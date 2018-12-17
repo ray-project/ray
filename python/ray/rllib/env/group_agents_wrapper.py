@@ -17,7 +17,7 @@ class _GroupAgentsWrapper(MultiAgentEnv):
         """Wrap an existing multi-agent env to group agents together.
 
         See MultiAgentEnv.with_agent_groups() for usage info.
-        
+
         Arguments:
             env (MultiAgentEnv): env to wrap
             groups (dict): Grouping spec as documented in MultiAgentEnv

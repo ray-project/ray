@@ -70,6 +70,12 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # === Model ===
+    "model": {
+        "lstm_cell_size": 64,
+        "max_seq_len": 999999,
+    },
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -87,22 +93,30 @@ class QMixAgent(DQNAgent):
 if __name__ == "__main__":
     from gym.spaces import Tuple, Discrete
     import ray
-    from ray.tune import register_env, run_experiments
+    from ray.tune import register_env, run_experiments, grid_search
     from ray.rllib.agents.qmix.twostep_game import TwoStepGame
 
-    register_env("grouped_twostep",
-        lambda config: TwoStepGame(config).with_agent_groups({
-            "group_1": ["agent_1", "agent_2"],
-        }, obs_space=Tuple([Discrete(3), Discrete(3)]),
-           act_space=Tuple([Discrete(2), Discrete(2)])))
+    grouping = {
+        "group_1": ["agent_1", "agent_2"],
+    }
+    obs_space = Tuple([Discrete(3), Discrete(3)])
+    act_space = Tuple([Discrete(2), Discrete(2)])
+    register_env(
+        "grouped_twostep",
+        lambda config: TwoStepGame(config).with_agent_groups(
+            grouping, obs_space=obs_space, act_space=act_space))
 
     ray.init()
     run_experiments({
         "two_step": {
             "run": "QMIX",
             "env": "grouped_twostep",
+            "stop": {
+                "timesteps_total": 100000,
+            },
             "config": {
                 "num_workers": 0,
+                "mixer": grid_search([None, "qmix", "vdn"]),
             },
         }
     })
