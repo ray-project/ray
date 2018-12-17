@@ -44,8 +44,7 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     return ray.ObjectID(handle_id)
 
 
-def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
-                                       current_task_id):
+def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
     """Deterministically compute an actor handle ID in the non-forked case.
 
     This code path is used whenever an actor handle is pickled and unpickled
@@ -59,16 +58,13 @@ def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
     to the same actor handle IDs.
 
     Args:
-        actor_id: The actor ID.
         actor_handle_id: The original actor handle ID.
-        num_forks: The number of times the original actor handle has been
-           forked so far.
+        current_task_id: The ID of the task that is unpickling the handle.
 
     Returns:
         An ID for the new actor handle.
     """
     handle_id_hash = hashlib.sha1()
-    handle_id_hash.update(actor_id.id())
     handle_id_hash.update(actor_handle_id.id())
     handle_id_hash.update(current_task_id.id())
     handle_id = handle_id_hash.digest()
@@ -420,14 +416,13 @@ class ActorClass(object):
                 resources=resources,
                 placement_resources=actor_placement_resources)
 
-        # We initialize the actor counter at 1 to account for the actor
-        # creation task.
-        actor_counter = 1
         actor_handle = ActorHandle(
-            actor_id, self._class_name, actor_cursor, actor_counter,
-            self._actor_method_names, self._method_signatures,
-            self._actor_method_num_return_vals, actor_cursor,
-            self._actor_method_cpus, worker.task_driver_id)
+            actor_id, self._class_name, actor_cursor, self._actor_method_names,
+            self._method_signatures, self._actor_method_num_return_vals,
+            actor_cursor, self._actor_method_cpus, worker.task_driver_id)
+        # We increment the actor counter by 1 to account for the actor creation
+        # task.
+        actor_handle._ray_actor_counter += 1
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
@@ -498,27 +493,24 @@ class ActorHandle(object):
                  actor_id,
                  class_name,
                  actor_cursor,
-                 actor_counter,
                  actor_method_names,
                  method_signatures,
                  method_num_return_vals,
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_driver_id,
-                 actor_handle_id=None,
-                 previous_actor_handle_id=None):
+                 actor_handle_id=None):
+        self._ray_actor_id = actor_id
         # False if this actor handle was created by forking or pickling. True
         # if it was created by the _serialization_helper function.
-        self._ray_original_handle = previous_actor_handle_id is None
-
-        self._ray_actor_id = actor_id
+        self._ray_original_handle = actor_handle_id is None
         if self._ray_original_handle:
             self._ray_actor_handle_id = ray.ObjectID(
                 ray.worker.NIL_ACTOR_HANDLE_ID)
         else:
             self._ray_actor_handle_id = actor_handle_id
         self._ray_actor_cursor = actor_cursor
-        self._ray_actor_counter = actor_counter
+        self._ray_actor_counter = 0
         self._ray_actor_method_names = actor_method_names
         self._ray_method_signatures = method_signatures
         self._ray_method_num_return_vals = method_num_return_vals
@@ -528,7 +520,6 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
-        self._ray_previous_actor_handle_id = previous_actor_handle_id
         self._ray_previously_generated_actor_handle_id = None
 
     def _actor_method_call(self,
@@ -583,32 +574,13 @@ class ActorHandle(object):
 
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
-        # Right now, if the actor handle has been pickled, we create a
-        # temporary actor handle id for invocations.
-        # TODO(pcm): This still leads to a lot of actor handles being
-        # created, there should be a better way to handle pickled
-        # actor handles.
-        if self._ray_actor_handle_id is None:
-            actor_handle_id = compute_actor_handle_id_non_forked(
-                self._ray_actor_id, self._ray_previous_actor_handle_id,
-                worker.current_task_id)
-            # Each new task creates a new actor handle id, so we need to
-            # reset the actor counter to 0
-            if (actor_handle_id !=
-                    self._ray_previously_generated_actor_handle_id):
-                self._ray_actor_counter = 0
-                self._ray_previously_generated_actor_handle_id = (
-                    actor_handle_id)
-        else:
-            actor_handle_id = self._ray_actor_handle_id
-
         function_id = FunctionActorManager.compute_actor_method_function_id(
             self._ray_class_name, method_name)
         object_ids = worker.submit_task(
             function_id,
             args,
             actor_id=self._ray_actor_id,
-            actor_handle_id=actor_handle_id,
+            actor_handle_id=self._ray_actor_handle_id,
             actor_counter=self._ray_actor_counter,
             is_actor_checkpoint_method=is_actor_checkpoint_method,
             actor_creation_dummy_object_id=(
@@ -676,10 +648,9 @@ class ActorHandle(object):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
-            logger.warn(
-                "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_class_name)
+            logger.warn("Actor is garbage collected in the wrong driver." +
+                        " Actor id = %s, class name = %s.", self._ray_actor_id,
+                        self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -704,23 +675,25 @@ class ActorHandle(object):
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
+        if ray_forking:
+            actor_handle_id = compute_actor_handle_id(
+                self._ray_actor_handle_id, self._ray_actor_forks)
+        else:
+            actor_handle_id = self._ray_actor_handle_id
+
         state = {
             "actor_id": self._ray_actor_id.id(),
+            "actor_handle_id": actor_handle_id.id(),
             "class_name": self._ray_class_name,
-            "actor_forks": self._ray_actor_forks,
             "actor_cursor": self._ray_actor_cursor.id()
             if self._ray_actor_cursor is not None else None,
-            "actor_counter": 0,  # Reset the actor counter.
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id()
-            if self._ray_actor_creation_dummy_object_id is not None else None,
+            _ray_actor_creation_dummy_object_id.id(),
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
-            "previous_actor_handle_id": self._ray_actor_handle_id.id()
-            if self._ray_actor_handle_id else None,
             "ray_forking": ray_forking
         }
 
@@ -741,11 +714,21 @@ class ActorHandle(object):
         worker.check_connected()
 
         if state["ray_forking"]:
-            actor_handle_id = compute_actor_handle_id(
-                ray.ObjectID(state["previous_actor_handle_id"]),
-                state["actor_forks"])
+            actor_handle_id = ray.ObjectID(state["actor_handle_id"])
         else:
-            actor_handle_id = None
+            # Right now, if the actor handle has been pickled, we create a
+            # temporary actor handle id for invocations.
+            # TODO(pcm): This still leads to a lot of actor handles being
+            # created, there should be a better way to handle pickled
+            # actor handles.
+            # TODO(swang): Accessing the worker's current task ID is not
+            # thread-safe.
+            # TODO(swang): Unpickling the same actor handle twice in the same
+            # task will break the application, and unpickling it twice in the
+            # same actor is likely a performance bug. We should consider
+            # logging a warning in these cases.
+            actor_handle_id = compute_actor_handle_id_non_forked(
+                ray.ObjectID(state["actor_handle_id"]), worker.current_task_id)
 
         # This is the driver ID of the driver that owns the actor, not
         # necessarily the driver that owns this actor handle.
@@ -756,17 +739,13 @@ class ActorHandle(object):
             state["class_name"],
             ray.ObjectID(state["actor_cursor"])
             if state["actor_cursor"] is not None else None,
-            state["actor_counter"],
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.ObjectID(state["actor_creation_dummy_object_id"])
-            if state["actor_creation_dummy_object_id"] is not None else None,
+            ray.ObjectID(state["actor_creation_dummy_object_id"]),
             state["actor_method_cpus"],
             actor_driver_id,
-            actor_handle_id=actor_handle_id,
-            previous_actor_handle_id=ray.ObjectID(
-                state["previous_actor_handle_id"]))
+            actor_handle_id=actor_handle_id)
 
     def __getstate__(self):
         """This code path is used by pickling but not by Ray forking."""
