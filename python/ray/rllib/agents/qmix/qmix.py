@@ -36,7 +36,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     # Size of the replay buffer in steps.
-    "buffer_size": 1000,
+    "buffer_size": 10000,
 
     # === Optimization ===
     # Learning rate for adam optimizer
