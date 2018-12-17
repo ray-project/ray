@@ -526,7 +526,7 @@ class Worker(object):
                     resources=None,
                     placement_resources=None,
                     driver_id=None,
-                    language=ray_constants.LANGUAGE_PYTHON):
+                    language=ray.gcs_utils.Language.PYTHON):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with

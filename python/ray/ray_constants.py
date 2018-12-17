@@ -82,9 +82,3 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
 INFINITE_RECONSTRUCTION = 2**30
-
-# This definition should be the same with gcs.fbs.
-# The other language types could be used in cross-language ray call.
-LANGUAGE_PYTHON = 0
-LANGUAGE_CPP = 1
-LANGUAGE_JAVA = 2
