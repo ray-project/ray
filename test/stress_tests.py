@@ -36,10 +36,11 @@ def ray_start_combination(request):
     num_local_schedulers = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=10)
+    ray.worker._init(ray_params)
     yield num_local_schedulers, num_workers_per_scheduler
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -212,7 +213,7 @@ def ray_start_reconstruction(request):
         "redis_shards": redis_shards,
         "object_store_addresses": plasma_addresses
     }
-    ray.worker._init(
+    ray_params = RayParams(
         address_info=address_info,
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
@@ -221,6 +222,7 @@ def ray_start_reconstruction(request):
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200
         }))
+    ray.worker._init(ray_params)
 
     yield (redis_ip_address, redis_port, plasma_store_memory,
            num_local_schedulers)

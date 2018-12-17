@@ -10,6 +10,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
+from ray.params import RayParams
 
 if sys.version_info >= (3, 0):
     from importlib import reload
@@ -74,8 +75,9 @@ def ray_start_two_nodes():
     ]:
         reload(module)
     # Start the Ray processes.
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True, num_local_schedulers=2, num_cpus=[10, 10])
+    ray.worker._init(ray_params)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()

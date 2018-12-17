@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.params import RayParams
 from ray.test.cluster_utils import Cluster
 from ray.test.test_utils import run_string_as_driver_nonblocking
 
@@ -19,11 +20,9 @@ from ray.test.test_utils import run_string_as_driver_nonblocking
 @pytest.fixture
 def ray_start_workers_separate():
     # Start the Ray processes.
-    ray.worker._init(
-        num_cpus=1,
-        start_workers_from_local_scheduler=False,
-        start_ray_local=True,
-        redirect_output=True)
+    ray_params = RayParams(
+        num_cpus=1, start_ray_local=True, redirect_output=True)
+    ray.worker._init(ray_params)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -239,12 +238,12 @@ def ray_start_workers_separate_multinode(request):
     num_local_schedulers = request.param[0]
     num_initial_workers = request.param[1]
     # Start the Ray processes.
-    ray.worker._init(
+    ray_params = RayParams(
         num_local_schedulers=num_local_schedulers,
-        start_workers_from_local_scheduler=False,
         start_ray_local=True,
         num_cpus=[num_initial_workers] * num_local_schedulers,
         redirect_output=True)
+    ray.worker._init(ray_params)
     yield num_local_schedulers, num_initial_workers
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -282,7 +281,7 @@ def _test_component_failed(component_type):
     # Start with 4 workers and 4 cores.
     num_local_schedulers = 4
     num_workers_per_scheduler = 8
-    ray.worker._init(
+    ray_params = RayParams(
         num_local_schedulers=num_local_schedulers,
         start_ray_local=True,
         num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
@@ -291,6 +290,7 @@ def _test_component_failed(component_type):
             "initial_reconstruction_timeout_milliseconds": 1000,
             "num_heartbeats_timeout": 10,
         }))
+    ray.worker._init(ray_params)
 
     # Submit many tasks with many dependencies.
     @ray.remote
