@@ -61,8 +61,8 @@ TaskSpecification::TaskSpecification(
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID(), ObjectID(),
-                        0, ActorID(), ActorHandleID(), -1, {}, function_id, task_arguments,
-                        num_returns, required_resources,
+                        0, ActorID(), ActorHandleID(), -1, {}, function_id,
+                        task_arguments, num_returns, required_resources,
                         std::unordered_map<std::string, double>(), language) {}
 
 TaskSpecification::TaskSpecification(

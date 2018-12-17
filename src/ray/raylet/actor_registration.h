@@ -104,6 +104,14 @@ class ActorRegistration {
   ObjectID ExtendFrontier(const ActorHandleID &handle_id,
                           const ObjectID &execution_dependency);
 
+  /// Add a new handle to the actor frontier. This does nothing if the actor
+  /// handle already exists.
+  ///
+  /// \param handle_id The ID of the handle to add.
+  /// \param execution_dependency This is the expected execution dependency for
+  /// the first task submitted on the new handle. If the new handle hasn't been
+  /// seen yet, then this dependency will be added to the actor frontier and is
+  /// not safe to release until the first task has been submitted.
   void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
