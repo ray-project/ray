@@ -20,7 +20,6 @@ import redis
 import pyarrow
 # Ray modules
 import ray.ray_constants
-from ray.params import RayParams
 import ray.plasma
 
 from ray.tempfile_services import (
@@ -1312,7 +1311,7 @@ def start_ray_processes(ray_params, cleanup=True):
     if ray_params.include_log_monitor is None:
         ray_params.include_log_monitor = True
     if ray_params.resources is None:
-        resources = {}
+        ray_params.resources = {}
     if ray_params.num_local_schedulers is None:
         ray_params.num_local_schedulers = 1
     if ray_params.node_ip_address is None:
@@ -1416,16 +1415,14 @@ def start_ray_processes(ray_params, cleanup=True):
     # Get the ports to use for the object managers if any are provided.
     if not isinstance(ray_params.object_manager_ports, list):
         assert ray_params.object_manager_ports is None or ray_params.num_local_schedulers == 1
-        ray_params.object_manager_ports = ray_params.num_local_schedulers * [
-            ray_params.object_manager_ports
-        ]
+        ray_params.object_manager_ports = (ray_params.num_local_schedulers *
+                                           [ray_params.object_manager_ports])
     assert len(
         ray_params.object_manager_ports) == ray_params.num_local_schedulers
     if not isinstance(ray_params.node_manager_ports, list):
         assert ray_params.node_manager_ports is None or ray_params.num_local_schedulers == 1
-        ray_params.node_manager_ports = ray_params.num_local_schedulers * [
-            ray_params.node_manager_ports
-        ]
+        ray_params.node_manager_ports = (
+            ray_params.num_local_schedulers * [ray_params.node_manager_ports])
     assert len(
         ray_params.node_manager_ports) == ray_params.num_local_schedulers
 
@@ -1537,5 +1534,6 @@ def start_ray_head(ray_params, cleanup=True):
         A dictionary of the address information for the processes that were
             started.
     """
-    ray_params.num_redis_shards = 1 if ray_params.num_redis_shards is None else ray_params.num_redis_shards
+    if ray_params.num_redis_shards is None:
+        ray_params.num_redis_shards = 1
     return start_ray_processes(ray_params, cleanup=cleanup)

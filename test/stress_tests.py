@@ -9,6 +9,7 @@ import pytest
 import time
 
 import ray
+from ray.params import RayParams
 import ray.tempfile_services
 import ray.ray_constants as ray_constants
 

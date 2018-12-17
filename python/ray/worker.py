@@ -1335,7 +1335,8 @@ def _init(ray_params, driver_id=None):
         if ray_params.num_local_schedulers is None:
             ray_params.num_local_schedulers = 1
         # Use 1 additional redis shard if num_redis_shards is not provided.
-        ray_params.num_redis_shards = 1 if ray_params.num_redis_shards is None else ray_params.num_redis_shards
+        if ray_params.num_redis_shards is None:
+            ray_params.num_redis_shards = 1
 
         # Stick the CPU and GPU resources into the resource dictionary.
         ray_params.resources = _normalize_resource_arguments(
