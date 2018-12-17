@@ -6,7 +6,7 @@ from gym.spaces import Tuple, Discrete
 
 import ray
 from ray.tune import register_env
-from ray.rllib.env.constants import AVAIL_ACTIONS_KEY
+from ray.rllib.env.constants import AVAIL_ACTIONS
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.agents.qmix import QMixAgent
 
@@ -34,7 +34,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
         dones = {"__all__": self.state > 20}
         infos = {
             "agent_1": {
-                AVAIL_ACTIONS_KEY: self.avail_actions
+                AVAIL_ACTIONS: self.avail_actions
             },
         }
         return obs, rewards, dones, infos

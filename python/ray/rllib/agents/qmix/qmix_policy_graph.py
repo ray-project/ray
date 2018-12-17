@@ -19,8 +19,7 @@ from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.preprocessors import get_preprocessor, \
     TupleFlatteningPreprocessor
-from ray.rllib.env.constants import GROUP_REWARDS_KEY, GROUP_INFO_KEY, \
-    AVAIL_ACTIONS_KEY
+from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO, AVAIL_ACTIONS
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
@@ -322,16 +321,16 @@ class QMixPolicyGraph(PolicyGraph):
 
     def _get_multiagent_info(self, info_batch):
         group_rewards = np.array([
-            info.get(GROUP_REWARDS_KEY, [0.0] * self.n_agents)
+            info.get(GROUP_REWARDS, [0.0] * self.n_agents)
             for info in info_batch
         ])
 
         def get_avail_actions(info):
-            group_infos = info.get(GROUP_INFO_KEY)
+            group_infos = info.get(GROUP_INFO)
             all_avail = [1.0] * self.n_actions
             if group_infos:
                 avail_actions = [
-                    m.get(AVAIL_ACTIONS_KEY, all_avail) for m in group_infos
+                    m.get(AVAIL_ACTIONS, all_avail) for m in group_infos
                 ]
             else:
                 avail_actions = [all_avail] * self.n_agents

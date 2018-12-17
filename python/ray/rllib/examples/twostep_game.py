@@ -9,7 +9,7 @@ from gym.spaces import Tuple, Discrete
 
 import ray
 from ray.tune import register_env, run_experiments, grid_search
-from ray.rllib.env.constants import AVAIL_ACTIONS_KEY
+from ray.rllib.env.constants import AVAIL_ACTIONS
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
@@ -56,10 +56,10 @@ class TwoStepGame(MultiAgentEnv):
         dones = {"__all__": done}
         infos = {
             "agent_1": {
-                AVAIL_ACTIONS_KEY: [1, 1]  # all actions avail
+                AVAIL_ACTIONS: [1, 1]  # all actions avail
             },
             "agent_2": {
-                AVAIL_ACTIONS_KEY: [1, 1]
+                AVAIL_ACTIONS: [1, 1]
             },
         }
         return obs, rewards, dones, infos
