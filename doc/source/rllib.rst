@@ -70,7 +70,7 @@ Algorithms
 
 *  Multi-agent / specialized
 
-   -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix>`__
+   -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
 
 Models and Preprocessors
 ------------------------
