@@ -1,4 +1,5 @@
 #include "ray/object_manager/object_manager.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/util/util.h"
 
@@ -8,21 +9,27 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
+void HandleObjectRequestCancelAbort(
+    const std::vector<ray::ClientID> &clients_to_request,
+    const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
+}
+
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory)
-    : config_(config),
+    : client_id_(object_directory->GetLocalClientID()),
+      config_(config),
       object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
+      main_service_(&main_service),
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
+      pull_manager_(*main_service_, client_id_, HandleObjectRequestCancelAbort),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  client_id_ = object_directory_->GetLocalClientID();
-  main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
@@ -115,6 +122,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
     return ray::Status::OK();
   }
+
+  pull_manager_.PullObject(object_id);
+
   if (pull_requests_.find(object_id) != pull_requests_.end()) {
     return ray::Status::OK();
   }
@@ -128,6 +138,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
              bool created) {
+        pull_manager_.NewObjectLocations(object_id, client_ids);
+
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -315,8 +327,10 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
                                           const ClientID &client_id, uint64_t chunk_index,
                                           double start_time, double end_time,
                                           ray::Status status) {
-  if (!status.ok()) {
-    // TODO(rkn): What do we want to do if the send failed?
+  if (status.ok()) {
+    pull_manager_.ChunkReadSucceeded(object_id, client_id, chunk_index);
+  } else {
+    pull_manager_.ChunkReadFailed(object_id, client_id, chunk_index);
   }
 
   ProfileEventT profile_event;
@@ -499,6 +513,8 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
+  pull_manager_.CancelPullObject(object_id);
+
   auto it = pull_requests_.find(object_id);
   if (it == pull_requests_.end()) {
     return;
@@ -800,6 +816,8 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
 
 void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
                                        const uint8_t *message) {
+  const ClientID client_id = conn->GetClientId();
+
   // Serialize.
   auto object_header =
       flatbuffers::GetRoot<object_manager_protocol::PushRequestMessage>(message);
@@ -807,9 +825,13 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
-  receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
+
+  int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
+  pull_manager_.ReceivePushRequest(object_id, client_id, chunk_index, num_chunks);
+
+  receive_service_.post([this, object_id, client_id, data_size, metadata_size, chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
-    const ClientID client_id = conn->GetClientId();
+
     auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
                                        chunk_index, *conn);
     double end_time = current_sys_time_seconds();
@@ -832,6 +854,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
+  ray::Status return_status;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::vector<boost::asio::mutable_buffer> buffer;
@@ -840,8 +863,10 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     conn.ReadBuffer(buffer, ec);
     if (ec.value() == boost::system::errc::success) {
       buffer_pool_.SealChunk(object_id, chunk_index);
+      return_status = ray::Status::OK();
     } else {
       buffer_pool_.AbortCreateChunk(object_id, chunk_index);
+      return_status = ray::Status::IOError("Failed to read chunk.");
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
@@ -857,6 +882,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     if (ec.value() != boost::system::errc::success) {
       RAY_LOG(ERROR) << boost_to_ray_status(ec).ToString();
     }
+    return_status = ray::Status::IOError("Failed to create chunk.");
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   conn.ProcessMessages();
@@ -864,7 +890,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
                  << client_id << " of object " << object_id << " chunk " << chunk_index
                  << " at " << current_sys_time_ms();
 
-  return chunk_status.second;
+  return return_status;
 }
 
 void ObjectManager::ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
@@ -942,6 +968,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n" << object_directory_->DebugString();
+  result << "\n" << pull_manager_.DebugString();
   result << "\n" << store_notification_.DebugString();
   result << "\n" << buffer_pool_.DebugString();
   result << "\n" << connection_pool_.DebugString();

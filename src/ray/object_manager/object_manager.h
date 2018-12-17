@@ -25,6 +25,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/object_manager/pull_manager.h"
 
 namespace ray {
 
@@ -80,7 +81,7 @@ class ObjectManager : public ObjectManagerInterface {
                          const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
-  ~ObjectManager();
+  virtual ~ObjectManager();
 
   /// Register GCS-related functionality.
   void RegisterGcs();
@@ -405,6 +406,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  PullManager pull_manager_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.

@@ -122,6 +122,10 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
       create_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
+// TODO(rkn): There's something weird about the abort logic here. It only aborts if all chunks are
+// in the available state, but maybe it should abort if all chunks are either available or sealed.
+// Also, if we abort a chunk, then a subsequent create might just recreate the object and leave it
+// only partially filled.
 void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
                                         const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);

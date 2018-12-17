@@ -33,6 +33,7 @@ set(RAY_SRCS
   object_manager/object_store_notification_manager.cc
   object_manager/object_directory.cc
   object_manager/object_manager.cc
+  object_manager/pull_manager.cc
   raylet/monitor.cc
   raylet/mock_gcs_client.cc
   raylet/task.cc
