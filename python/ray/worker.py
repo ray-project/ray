@@ -527,6 +527,7 @@ class Worker(object):
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
                     execution_dependencies=None,
+                    new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
@@ -596,6 +597,9 @@ class Worker(object):
             if execution_dependencies is None:
                 execution_dependencies = []
 
+            if new_actor_handles is None:
+                new_actor_handles = []
+
             if driver_id is None:
                 driver_id = self.task_driver_id
 
@@ -627,7 +631,7 @@ class Worker(object):
                 args_for_local_scheduler, num_return_vals,
                 self.current_task_id, task_index, actor_creation_id,
                 actor_creation_dummy_object_id, max_actor_reconstructions,
-                actor_id, actor_handle_id, actor_counter, [],
+                actor_id, actor_handle_id, actor_counter, new_actor_handles,
                 execution_dependencies, resources, placement_resources)
             self.raylet_client.submit_task(task)
 
