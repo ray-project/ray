@@ -76,7 +76,7 @@ For Ubuntu, run the following commands:
   # If you are on Ubuntu 14.04, you need the following.
   pip install cmake
 
-  pip install cython==0.27.3
+  pip install cython==0.29.0
 
 For MacOS, run the following commands:
 
@@ -85,7 +85,7 @@ For MacOS, run the following commands:
   brew update
   brew install cmake pkg-config automake autoconf libtool openssl bison wget
 
-  pip install cython==0.27.3
+  pip install cython==0.29.0
 
 
 If you are using Anaconda, you may also need to run the following.
