@@ -30,9 +30,14 @@ class MultiAgentEnv(object):
         }
         >>> print(dones)
         {
-            "car_0": False,
-            "car_1": True,
-            "__all__": False,
+            "car_0": False,    # car_0 is still running
+            "car_1": True,     # car_1 is done
+            "__all__": False,  # the env is not done
+        }
+        >>> print(infos)
+        {
+            "car_0": {},  # info for car_0
+            "car_1": {},  # info for car_1
         }
     """
 
@@ -57,6 +62,41 @@ class MultiAgentEnv(object):
                 episode is just started, the value will be None.
             dones (dict): Done values for each ready agent. The special key
                 "__all__" (required) is used to indicate env termination.
-            infos (dict): Info values for each ready agent.
+            infos (dict): Optional info values for each agent id.
         """
         raise NotImplementedError
+
+    def with_agent_groups(self, groups, obs_space=None, act_space=None):
+        """Convenience method for grouping together agents in this env.
+
+        An agent group is a list of agent ids that are mapped to a single
+        logical agent. All agents of the group must act at the same time in the
+        environment. The grouped agent exposes Tuple action and observation
+        spaces that are the concatenated action and obs spaces of the
+        individual agents.
+
+        The rewards of all the agents in a group are summed. The individual
+        agent rewards are available under the "individual_rewards" key of the
+        group info return.
+
+        Agent grouping is required to leverage algorithms such as Q-Mix.
+
+        Arguments:
+            groups (dict): Mapping from group id to a list of the agent ids
+                of group members. If an agent id is not present in any group
+                value, it will be left ungrouped.
+            obs_space (Space): Optional observation space for the grouped
+                env. Must be a tuple space.
+            act_space (Space): Optional action space for the grouped env.
+                Must be a tuple space.
+
+        Examples:
+            >>> env = YourMultiAgentEnv(...)
+            >>> grouped_env = env.with_agent_groups(env, {
+            ...   "group1": ["agent1", "agent2", "agent3"],
+            ...   "group2": ["agent4", "agent5"],
+            ... })
+        """
+
+        from ray.rllib.env.group_agents_wrapper import _GroupAgentsWrapper
+        return _GroupAgentsWrapper(self, groups, obs_space, act_space)

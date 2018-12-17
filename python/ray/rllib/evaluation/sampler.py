@@ -382,11 +382,11 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
-            episode._set_last_info(agent_id, infos[env_id][agent_id])
+            episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable
-            if last_observation is not None and \
-                    infos[env_id][agent_id].get("training_enabled", True):
+            if (last_observation is not None and infos[env_id].get(
+                    agent_id, {}).get("training_enabled", True)):
                 episode.batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -399,7 +399,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                     prev_actions=episode.prev_action_for(agent_id),
                     prev_rewards=episode.prev_reward_for(agent_id),
                     dones=agent_done,
-                    infos=infos[env_id][agent_id],
+                    infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
 

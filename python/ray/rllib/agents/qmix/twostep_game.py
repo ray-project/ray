@@ -47,8 +47,7 @@ class TwoStepGame(MultiAgentEnv):
         rewards = {"agent_1": global_rew / 2.0, "agent_2": global_rew / 2.0}
         obs = {"agent_1": self.state, "agent_2": self.state}
         dones = {"__all__": done}
-        infos = {"agent_1": {}, "agent_2": {}}
-        return obs, rewards, dones, infos
+        return obs, rewards, dones, {}
 
 
 if __name__ == "__main__":
