@@ -99,7 +99,7 @@ class QMixLoss(nn.Module):
 
         # Mix
         if self.mixer is not None:
-            # TODO(ekl) add support for handling global state. This is just
+            # TODO(ekl) add support for handling global state? This is just
             # treating the stacked agent obs as the state.
             chosen_action_qvals = self.mixer(chosen_action_qvals, obs[:, :-1])
             target_max_qvals = self.target_mixer(target_max_qvals, obs[:, 1:])
@@ -228,7 +228,10 @@ class QMixPolicyGraph(PolicyGraph):
                 [samples["state_in_{}".format(k)]
                  for k in range(self.n_agents)],
                 max_seq_len=self.config["model"]["max_seq_len"],
-                dynamic_max=True)
+                dynamic_max=True,
+                _extra_padding=1)
+        # TODO(ekl) adding 1 extra unit of padding here, since otherwise we
+        # lose the terminating reward and the Q-values will be unanchored!
         B, T = len(seq_lens), max(seq_lens) + 1
 
         def to_batches(arr):
