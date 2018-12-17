@@ -32,14 +32,6 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 
 
 class SyncSampler(object):
-    """This class interacts with the environment and tells it what to do.
-
-    Note that batch_size is only a unit of measure here. Batches can
-    accumulate and the gradient can be calculated on up to 5 batches.
-
-    This class provides data on invocation, rather than on a separate
-    thread."""
-
     def __init__(self,
                  env,
                  policies,
@@ -96,11 +88,6 @@ class SyncSampler(object):
 
 
 class AsyncSampler(threading.Thread):
-    """This class interacts with the environment and tells it what to do.
-
-    Note that batch_size is only a unit of measure here. Batches can
-    accumulate and the gradient can be calculated on up to 5 batches."""
-
     def __init__(self,
                  env,
                  policies,
