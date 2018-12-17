@@ -185,7 +185,8 @@ class QMixPolicyGraph(PolicyGraph):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
-                        episodes=None):
+                        episodes=None,
+                        **kwargs):
         assert len(state_batches) == self.n_agents, state_batches
         _, avail_actions = self._get_multiagent_info(info_batch)
         state_batches = np.stack(state_batches, axis=1)
@@ -200,11 +201,11 @@ class QMixPolicyGraph(PolicyGraph):
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
-            random_numbers = th.rand_like(q_values[:, 0])
+            random_numbers = th.rand_like(q_values[:, :, 0])
             pick_random = (random_numbers < self.cur_epsilon).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.max(dim=1)[1])
+                       (1 - pick_random) * masked_q_values.max(dim=2)[1])
             actions = var_to_np(actions)
             hiddens = var_to_np(hiddens)
 
@@ -266,9 +267,8 @@ class QMixPolicyGraph(PolicyGraph):
             "grad_norm": grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
-            (mask_elems * self.n_agents),
-            "target_mean": (targets * mask).sum().item() /
-            (mask_elems * self.n_agents),
+            mask_elems,
+            "target_mean": (targets * mask).sum().item() / mask_elems,
         }
         return {"stats": stats}, {}
 

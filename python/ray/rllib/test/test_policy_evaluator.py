@@ -25,7 +25,8 @@ class MockPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        episodes=None,
+                        **kwargs):
         return [0] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self,
@@ -42,7 +43,8 @@ class BadPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        episodes=None,
+                        **kwargs):
         raise Exception("intentional error")
 
     def postprocess_trajectory(self,

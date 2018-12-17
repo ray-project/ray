@@ -1,24 +1,28 @@
+"""The two-step game from QMIX: https://arxiv.org/pdf/1803.11485.pdf"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from gym.spaces import Discrete
+import argparse
+from gym.spaces import Tuple, Discrete
 
 import ray
-from ray.tune import run_experiments, function
+from ray.tune import register_env, run_experiments, grid_search
 from ray.rllib.env.constants import AVAIL_ACTIONS_KEY
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stop", type=int, default=50000)
 
 
 class TwoStepGame(MultiAgentEnv):
-    """The two-step game from https://arxiv.org/pdf/1803.11485.pdf"""
-
     def __init__(self, env_config):
         self.state = None
         self.action_space = Discrete(2)
-        # Each agent gets a separate obs space, to ensure that they can learn
-        # meaningfully different Q values even with a shared Q model.
+        # Each agent gets a separate [3] obs space, to ensure that they can
+        # learn meaningfully different Q values even with a shared Q model.
         self.observation_space = Discrete(6)
 
     def reset(self):
@@ -62,23 +66,32 @@ class TwoStepGame(MultiAgentEnv):
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
+
+    grouping = {
+        "group_1": ["agent_1", "agent_2"],
+    }
+    obs_space = Tuple([Discrete(6), Discrete(6)])
+    act_space = Tuple([Discrete(2), Discrete(2)])
+    register_env(
+        "grouped_twostep",
+        lambda config: TwoStepGame(config).with_agent_groups(
+            grouping, obs_space=obs_space, act_space=act_space))
+
     ray.init()
-    # Naive use of independent policies converges to 7 reward instead of 8.
-    # Actually it will eventually get to 8 reward but only after a long time.
     run_experiments({
         "two_step": {
-            "run": "DQN",
-            "env": TwoStepGame,
-            "config": {
-                "multiagent": {
-                    "policy_graphs": {
-                        "agent_1": (DQNPolicyGraph, Discrete(6), Discrete(2),
-                                    {}),
-                        "agent_2": (DQNPolicyGraph, Discrete(6), Discrete(2),
-                                    {}),
-                    },
-                    "policy_mapping_fn": function(lambda agent_id: agent_id),
-                },
+            "run": "QMIX",
+            "env": "grouped_twostep",
+            "stop": {
+                "timesteps_total": args.stop,
             },
-        }
+            "config": {
+                "sample_batch_size": 4,
+                "train_batch_size": 32,
+                "exploration_final_eps": 0.02,
+                "num_workers": 0,
+                "mixer": grid_search([None, "qmix", "vdn"]),
+            },
+        },
     })

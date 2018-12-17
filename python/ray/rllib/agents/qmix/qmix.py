@@ -90,38 +90,3 @@ class QMixAgent(DQNAgent):
     _optimizer_shared_configs = [
         "learning_starts", "buffer_size", "train_batch_size"
     ]
-
-
-if __name__ == "__main__":
-    from gym.spaces import Tuple, Discrete
-    import ray
-    from ray.tune import register_env, run_experiments, grid_search
-    from ray.rllib.agents.qmix.twostep_game import TwoStepGame
-
-    grouping = {
-        "group_1": ["agent_1", "agent_2"],
-    }
-    obs_space = Tuple([Discrete(6), Discrete(6)])
-    act_space = Tuple([Discrete(2), Discrete(2)])
-    register_env(
-        "grouped_twostep",
-        lambda config: TwoStepGame(config).with_agent_groups(
-            grouping, obs_space=obs_space, act_space=act_space))
-
-    ray.init()
-    run_experiments({
-        "two_step": {
-            "run": "QMIX",
-            "env": "grouped_twostep",
-            "stop": {
-                "timesteps_total": 15000,
-            },
-            "config": {
-                "sample_batch_size": 4,
-                "train_batch_size": 32,
-                "exploration_final_eps": 0.02,
-                "num_workers": 0,
-                "mixer": grid_search([None, "qmix", "vdn"]),
-            },
-        },
-    })
