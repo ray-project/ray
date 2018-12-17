@@ -21,7 +21,3 @@ class RNNAgent(nn.Module):
         h = self.rnn(x, h_in)
         q = self.fc2(h)
         return q, h
-
-
-REGISTRY = {}
-REGISTRY["rnn"] = RNNAgent

@@ -12,6 +12,8 @@ class _GroupAgentsWrapper(MultiAgentEnv):
     """Wraps a MultiAgentEnv environment with agents grouped as specified.
 
     See multi_agent_env.py for the specification of groups.
+
+    This API is experimental.
     """
 
     def __init__(self, env, groups, obs_space=None, act_space=None):

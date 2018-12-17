@@ -47,6 +47,9 @@ class MultiAgentEnv(object):
         Returns:
             obs (dict): New observations for each ready agent.
         """
+        # TODO(ekl) consider allowing an optional info return as well, which
+        # can be used to convey initial metadata such as avail actions (though
+        # this should arguably be part of the observation)
         raise NotImplementedError
 
     def step(self, action_dict):
@@ -80,6 +83,8 @@ class MultiAgentEnv(object):
         group info return.
 
         Agent grouping is required to leverage algorithms such as Q-Mix.
+
+        This API is experimental.
 
         Arguments:
             groups (dict): Mapping from group id to a list of the agent ids

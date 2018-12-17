@@ -112,6 +112,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def step(self):
+        assert self.learner.is_alive()
         assert len(self.remote_evaluators) > 0
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
@@ -323,63 +324,38 @@ class BatchReplayActor(object):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size
-
-        def new_buffer():
-            return PrioritizedReplayBuffer(
-                self.buffer_size, alpha=prioritized_replay_alpha)
-
-        self.replay_buffers = collections.defaultdict(new_buffer)
+        self.buffer = []
 
         # Metrics
         self.num_added = 0
+        self.cur_size = 0
 
     def get_host(self):
         return os.uname()[1]
 
     def add_batch(self, batch):
-        self.batches.append(batch)
+        # Handle everything as if multiagent
+        if isinstance(batch, SampleBatch):
+            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+        self.buffer.append(batch)
+        self.cur_size += batch.count
         self.num_added += batch.count
+        while self.cur_size > self.buffer_size:
+            self.cur_size -= self.buffer.pop(0).count
 
     def replay(self):
         if self.num_added < self.replay_starts:
             return None
-
-        with self.replay_timer:
-            samples = {}
-            for policy_id, replay_buffer in self.replay_buffers.items():
-                (obses_t, actions, rewards, obses_tp1, dones, weights,
-                 batch_indexes) = replay_buffer.sample(
-                     self.train_batch_size, beta=self.prioritized_replay_beta)
-                samples[policy_id] = SampleBatch({
-                    "obs": obses_t,
-                    "actions": actions,
-                    "rewards": rewards,
-                    "new_obs": obses_tp1,
-                    "dones": dones,
-                    "weights": weights,
-                    "batch_indexes": batch_indexes
-                })
-            return MultiAgentBatch(samples, self.train_batch_size)
+        return random.choice(self.buffer)
 
     def update_priorities(self, prio_dict):
-        with self.update_priorities_timer:
-            for policy_id, (batch_indexes, td_errors) in prio_dict.items():
-                new_priorities = (
-                    np.abs(td_errors) + self.prioritized_replay_eps)
-                self.replay_buffers[policy_id].update_priorities(
-                    batch_indexes, new_priorities)
+        pass
 
     def stats(self, debug=False):
         stat = {
-            "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
-            "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
-            "update_priorities_time_ms": round(
-                1000 * self.update_priorities_timer.mean, 3),
+            "cur_size": self.cur_size,
+            "num_added": self.num_added,
         }
-        for policy_id, replay_buffer in self.replay_buffers.items():
-            stat.update({
-                "policy_{}".format(policy_id): replay_buffer.stats(debug=debug)
-            })
         return stat
 
 
@@ -418,8 +394,8 @@ class LearnerThread(threading.Thread):
                 grad_out = self.local_evaluator.compute_apply(replay)
                 for pid, info in grad_out.items():
                     prio_dict[pid] = (
-                        replay.policy_batches[pid]["batch_indexes"],
-                        info["td_error"])
+                        replay.policy_batches[pid].data.get("batch_indexes"),
+                        info.get("td_error"))
                     if "stats" in info:
                         self.stats[pid] = info["stats"]
             self.outqueue.put((ra, prio_dict, replay.count))
