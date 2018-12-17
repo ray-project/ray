@@ -205,7 +205,7 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL, which can have either centralized or decentralized training and execution. RLlib treats agent groups like a single agent with a Tuple action and observation space. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define groups of agents without needing to modify the environment:
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
 .. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
    :language: python

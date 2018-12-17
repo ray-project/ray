@@ -56,7 +56,7 @@ class TwoStepGame(MultiAgentEnv):
         dones = {"__all__": done}
         infos = {
             "agent_1": {
-                AVAIL_ACTIONS_KEY: [1, 1]
+                AVAIL_ACTIONS_KEY: [1, 1]  # all actions avail
             },
             "agent_2": {
                 AVAIL_ACTIONS_KEY: [1, 1]
