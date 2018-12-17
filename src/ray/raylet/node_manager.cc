@@ -1560,8 +1560,36 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(task_id);
 
+  // Release task's resources. The worker's lifetime resources are still held.
+  auto const &task_resources = worker.GetTaskResourceIds();
+  local_available_resources_.Release(task_resources);
+  RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      task_resources.ToResourceSet()));
+  worker.ResetTaskResourceIds();
+
+  // If this was an actor or actor creation task, handle the actor's new state.
+  if (task.GetTaskSpecification().IsActorCreationTask() ||
+      task.GetTaskSpecification().IsActorTask()) {
+    FinishAssignedActorTask(worker, task);
+  }
+
+  // Notify the task dependency manager that this task has finished execution.
+  task_dependency_manager_.TaskCanceled(task_id);
+
+  // Unset the worker's assigned task.
+  worker.AssignTaskId(TaskID());
+  // Unset the worker's assigned driver Id if this is not an actor.
+  if (!task.GetTaskSpecification().IsActorCreationTask() &&
+      !task.GetTaskSpecification().IsActorTask()) {
+    worker.AssignDriverId(DriverID());
+  }
+}
+
+void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+  // If this was an actor creation task, then convert the worker to an actor
+  // and notify the other node managers.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
-    // If this was an actor creation task, then convert the worker to an actor.
+    // Convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
     // Publish the actor creation event to all other nodes so that methods for
@@ -1605,75 +1633,61 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
           // Only one node at a time should succeed at creating the actor.
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });
+  }
+
+  // Update the actor's frontier.
+  ActorID actor_id;
+  ActorHandleID actor_handle_id;
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    actor_id = task.GetTaskSpecification().ActorCreationId();
+    actor_handle_id = ActorHandleID();
   } else {
-    // Release task's resources.
-    local_available_resources_.Release(worker.GetTaskResourceIds());
-    worker.ResetTaskResourceIds();
-
-    RAY_CHECK(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-            task.GetTaskSpecification().GetRequiredResources()));
+    actor_id = task.GetTaskSpecification().ActorId();
+    actor_handle_id = task.GetTaskSpecification().ActorHandleId();
   }
-
-  // If the finished task was an actor task, mark the returned dummy object as
-  // locally available. This is not added to the object table, so the update
-  // will be invisible to both the local object manager and the other nodes.
-  if (task.GetTaskSpecification().IsActorCreationTask() ||
-      task.GetTaskSpecification().IsActorTask()) {
-    ActorID actor_id;
-    ActorHandleID actor_handle_id;
-    if (task.GetTaskSpecification().IsActorCreationTask()) {
-      actor_id = task.GetTaskSpecification().ActorCreationId();
-      actor_handle_id = ActorHandleID();
-    } else {
-      actor_id = task.GetTaskSpecification().ActorId();
-      actor_handle_id = task.GetTaskSpecification().ActorHandleId();
+  auto actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+  // Process any new actor handles that were forked from the current handle.
+  // The first task submitted on a new actor handle will depend on the
+  // finished task's execution dependency, so do not release the dependency
+  // until this first task is submitted.
+  for (auto &new_handle_id : task.GetTaskSpecification().NewActorHandles()) {
+    // An actor creation task is the first task, so it cannot have new handles.
+    RAY_CHECK(task.GetTaskSpecification().IsActorTask());
+    // Get the execution dependency for the finished task.
+    const auto &frontier = actor_entry->second.GetFrontier();
+    auto it = frontier.find(actor_handle_id);
+    RAY_CHECK(it != frontier.end());
+    // If the new actor handle ID matches the current one, then this means
+    // that the actor handle was pickled.
+    if (new_handle_id == actor_handle_id) {
+      // The current execution dependency will never be safe to release, so
+      // generate a handle ID that will never actually appear to hold the
+      // reference.
+      new_handle_id = ActorHandleID::from_random();
     }
-    auto actor_entry = actor_registry_.find(actor_id);
-    RAY_CHECK(actor_entry != actor_registry_.end());
-    // Process any new actor handles that were forked from the current handle.
-    // The first task submitted on a new actor handle will depend on the
-    // finished task's execution dependency, so do not release the dependency
-    // until this first task is submitted.
-    for (const auto &new_handle_id : task.GetTaskSpecification().NewActorHandles()) {
-      // An actor creation task is the first task, so it cannot have new handles.
-      RAY_CHECK(task.GetTaskSpecification().IsActorTask());
-      // Get the execution dependency for the finished task.
-      const auto &frontier = actor_entry->second.GetFrontier();
-      auto it = frontier.find(task.GetTaskSpecification().ActorHandleId());
-      RAY_CHECK(it != frontier.end());
-      // Add the new handle and give it a reference to the finished task's
-      // execution dependency.
-      actor_entry->second.AddHandle(new_handle_id, it->second.execution_dependency);
-    }
-    // Extend the actor's frontier to include the executed task.
-    auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-    ObjectID object_to_release =
-        actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
-    if (!object_to_release.is_nil()) {
-      // If there were no new actor handles created, then no other actor task
-      // will depend on this execution dependency, so it safe to release.
-      HandleObjectMissing(object_to_release);
-    }
-    // Mark the dummy object as locally available to indicate that the actor's
-    // state has changed and the next method can run.
-    // NOTE(swang): The dummy objects must be marked as local whenever
-    // ExtendFrontier is called, and vice versa, so that we can clean up the
-    // dummy objects properly in case the actor fails and needs to be
-    // reconstructed.
-    HandleObjectLocal(dummy_object);
+    // Add the new handle and give it a reference to the finished task's
+    // execution dependency.
+    actor_entry->second.AddHandle(new_handle_id, it->second.execution_dependency);
   }
-
-  // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.TaskCanceled(task_id);
-
-  // Unset the worker's assigned task.
-  worker.AssignTaskId(TaskID());
-  // Unset the worker's assigned driver Id if this is not an actor.
-  if (!task.GetTaskSpecification().IsActorCreationTask() &&
-      !task.GetTaskSpecification().IsActorTask()) {
-    worker.AssignDriverId(DriverID());
+  // Extend the actor's frontier to include the executed task.
+  auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+  ObjectID object_to_release =
+      actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+  if (!object_to_release.is_nil()) {
+    // If there were no new actor handles created, then no other actor task
+    // will depend on this execution dependency, so it safe to release.
+    HandleObjectMissing(object_to_release);
   }
+  // Mark the dummy object as locally available to indicate that the actor's
+  // state has changed and the next method can run. This is not added to the
+  // object table, so the update will be invisible to both the local object
+  // manager and the other nodes.
+  // NOTE(swang): The dummy objects must be marked as local whenever
+  // ExtendFrontier is called, and vice versa, so that we can clean up the
+  // dummy objects properly in case the actor fails and needs to be
+  // reconstructed.
+  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
