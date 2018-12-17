@@ -25,9 +25,10 @@ RolloutMetrics = namedtuple(
     "RolloutMetrics",
     ["episode_length", "episode_reward", "agent_rewards", "custom_metrics"])
 
-PolicyEvalData = namedtuple(
-    "PolicyEvalData",
-    ["env_id", "agent_id", "obs", "rnn_state", "prev_action", "prev_reward"])
+PolicyEvalData = namedtuple("PolicyEvalData", [
+    "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
+    "prev_reward"
+])
 
 
 class SyncSampler(object):
@@ -376,6 +377,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             if not agent_done:
                 to_eval[policy_id].append(
                     PolicyEvalData(env_id, agent_id, filtered_obs,
+                                   infos[env_id].get(agent_id, {}),
                                    episode.rnn_state_for(agent_id),
                                    episode.last_action_for(agent_id),
                                    rewards[env_id][agent_id] or 0.0))
@@ -450,6 +452,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                     to_eval[policy_id].append(
                         PolicyEvalData(
                             env_id, agent_id, filtered_obs,
+                            episode.last_info_for(agent_id) or {},
                             episode.rnn_state_for(agent_id),
                             np.zeros_like(
                                 _flatten_action(policy.action_space.sample())),
@@ -477,6 +480,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicyGraph.compute_actions.__code__):
+            # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder, [t.obs for t in eval_data],
                 rnn_in_cols,
@@ -488,6 +492,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
+                info_batch=[t.info for t in eval_data],
                 episodes=[active_episodes[t.env_id] for t in eval_data])
     if builder:
         for k, v in pending_fetches.items():

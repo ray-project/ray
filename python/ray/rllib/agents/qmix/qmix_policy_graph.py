@@ -19,6 +19,8 @@ from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.preprocessors import get_preprocessor, \
     TupleFlatteningPreprocessor
+from ray.rllib.env.constants import GROUP_REWARDS_KEY, GROUP_INFO_KEY, \
+    AVAIL_ACTIONS_KEY
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
@@ -48,10 +50,10 @@ class QMixLoss(nn.Module):
         """Forward pass of the loss.
 
         Arguments:
-            rewards: Tensor of shape [B, T-1]
+            rewards: Tensor of shape [B, T-1, n_agents]
             actions: Tensor of shape [B, T-1, n_agents]
-            terminated: Tensor of shape [B, T-1]
-            mask: Tensor of shape [B, T-1]
+            terminated: Tensor of shape [B, T-1, n_agents]
+            mask: Tensor of shape [B, T-1, n_agents]
             obs: Tensor of shape [B, T, n_agents, obs_size]
             avail_actions: Tensor of shape [B, T, n_agents, n_actions]
         """
@@ -62,7 +64,7 @@ class QMixLoss(nn.Module):
         mac_out = []
         h = self.model.init_hidden().expand([B, self.n_agents, -1])
         for t in range(T):
-            q, h = self._mac(self.model, obs[:, t], h)
+            q, h = _mac(self.model, obs[:, t], h)
             mac_out.append(q)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
@@ -75,8 +77,7 @@ class QMixLoss(nn.Module):
         target_h = self.target_model.init_hidden().expand(
             [B, self.n_agents, -1])
         for t in range(T):
-            target_q, target_h = self._mac(self.target_model, obs[:, t],
-                                           target_h)
+            target_q, target_h = _mac(self.target_model, obs[:, t], target_h)
             target_mac_out.append(target_q)
 
         # We don't need the first timesteps Q-Value estimate for targets
@@ -118,31 +119,13 @@ class QMixLoss(nn.Module):
         loss = (masked_td_error**2).sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
-    def _mac(self, model, obs, h):
-        """Forward pass of the multi-agent controller.
-
-        Arguments:
-            model: Model that produces q-values for a 1d agent batch
-            obs: Tensor of shape [B, n_agents, obs_size]
-            h: Tensor of shape [B, n_agents, h_size]
-
-        Returns:
-            q_vals: Tensor of shape [B, n_agents, n_actions]
-            h: Tensor of shape [B, n_agents, h_size]
-        """
-        B, n_agents = obs.size(0), obs.size(1)
-        obs_flat = obs.reshape([B * n_agents, -1])
-        h_flat = h.reshape([B * n_agents, -1])
-        q_flat, h_flat = model.forward(obs_flat, h_flat)
-        return q_flat.reshape([B, n_agents, -1]), h_flat
-
 
 class QMixPolicyGraph(PolicyGraph):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents
     together for QMix. This creates the proper Tuple obs/action spaces and
-    populates the 'individual_rewards' info field.
+    populates the '_group_rewards' info field.
     """
 
     def __init__(self, obs_space, action_space, config):
@@ -201,73 +184,69 @@ class QMixPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
+                        info_batch=None,
                         episodes=None):
         assert len(state_batches) == self.n_agents, state_batches
-        B = len(obs_batch)
+        _, avail_actions = self._get_multiagent_info(info_batch)
+        state_batches = np.stack(state_batches, axis=1)
+        obs_batch = np.array(obs_batch).reshape(
+            [len(obs_batch), self.n_agents, self.obs_size])
 
-        h_flat = (
-            np.stack(state_batches)  # shape [n_agents, B, h]
-            .transpose([1, 0, 2])  # shape [B, n_agents, h]
-            .reshape([B * self.n_agents, self.h_size]))
-        obs_flat = np.array(obs_batch).reshape(
-            [B * self.n_agents, self.obs_size])
-
+        # Compute actions
         with th.no_grad():
-            q_values, hiddens = self.model.forward(
-                th.from_numpy(obs_flat), th.from_numpy(h_flat))
+            q_values, hiddens = _mac(self.model, th.from_numpy(obs_batch),
+                                     th.from_numpy(state_batches))
+            avail = th.from_numpy(avail_actions).float()
             masked_q_values = q_values.clone()
-            # TODO(ekl) support action masks
-            avail_actions = th.ones_like(q_values)
-            masked_q_values[avail_actions == 0.0] = -float("inf")
+            masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
             random_numbers = th.rand_like(q_values[:, 0])
             pick_random = (random_numbers < self.cur_epsilon).long()
-            random_actions = Categorical(avail_actions).sample().long()
-            picked_actions = (
-                pick_random * random_actions +
-                (1 - pick_random) * masked_q_values.max(dim=1)[1])
+            random_actions = Categorical(avail).sample().long()
+            actions = (pick_random * random_actions +
+                       (1 - pick_random) * masked_q_values.max(dim=1)[1])
+            actions = var_to_np(actions)
+            hiddens = var_to_np(hiddens)
 
-            actions = var_to_np(picked_actions)
-            h_out = var_to_np(hiddens)
-            avail_actions = var_to_np(avail_actions)
-
-        actions = TupleActions(
-            list(actions.reshape([B, self.n_agents]).transpose([1, 0])))
-        h_out = h_out.reshape([B, self.n_agents,
-                               self.h_size]).transpose([1, 0, 2])
-        avail_actions = (avail_actions.reshape(
-            [B, self.n_agents, self.n_actions]))
-        return actions, h_out, {"avail_actions": avail_actions}
+        return (TupleActions(list(actions.transpose([1, 0]))),
+                hiddens.transpose([1, 0, 2]), {})
 
     @override(PolicyGraph)
     def compute_apply(self, samples):
+        group_rewards, avail_actions = self._get_multiagent_info(
+            samples["infos"])
+
         # These will be padded to shape [B * T, ...]
-        [rew, act, dones, obs, avail_actions], initial_states, seq_lens = \
+        [rew, avail_actions, act, dones, obs], initial_states, seq_lens = \
             chop_into_sequences(
                 samples["eps_id"],
                 samples["agent_index"], [
-                    samples["rewards"], samples["actions"], samples["dones"],
-                    samples["obs"], samples["avail_actions"]
+                    group_rewards, avail_actions, samples["actions"],
+                    samples["dones"], samples["obs"]
                 ],
                 [samples["state_in_{}".format(k)]
                  for k in range(self.n_agents)],
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
-        B, T = len(seq_lens), max(seq_lens)
+        B, T = len(seq_lens), max(seq_lens) + 1
 
         def to_batches(arr):
             new_shape = [B, T] + list(arr.shape[1:])
             return th.from_numpy(np.reshape(arr, new_shape))
 
-        rewards = to_batches(samples["rewards"])[:, :-1]
-        actions = to_batches(samples["actions"])[:, :-1]
-        obs = to_batches(samples["obs"]).reshape(
-            [B, T, self.n_agents, self.obs_size])
-        avail_actions = to_batches(samples["avail_actions"])
-        terminated = to_batches(samples["dones"].astype(np.float32))[:, :-1]
+        rewards = to_batches(rew)[:, :-1].float()
+        actions = to_batches(act)[:, :-1].long()
+        obs = to_batches(obs).reshape([B, T, self.n_agents,
+                                       self.obs_size]).float()
+        avail_actions = to_batches(avail_actions)
+
+        # TODO(ekl) this treats group termination as individual termination
+        terminated = to_batches(dones.astype(np.float32)).unsqueeze(2).expand(
+            B, T, self.n_agents)[:, :-1]
         filled = (np.reshape(np.tile(np.arange(T), B), [B, T]) <
                   np.expand_dims(seq_lens, 1)).astype(np.float32)
-        mask = th.from_numpy(filled)[:, :-1]
+        mask = th.from_numpy(filled).unsqueeze(2).expand(B, T,
+                                                         self.n_agents)[:, :-1]
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
         # Compute loss
@@ -338,6 +317,27 @@ class QMixPolicyGraph(PolicyGraph):
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
+    def _get_multiagent_info(self, info_batch):
+        group_rewards = np.array([
+            info.get(GROUP_REWARDS_KEY, [0.0] * self.n_agents)
+            for info in info_batch
+        ])
+
+        def get_avail_actions(info):
+            group_infos = info.get(GROUP_INFO_KEY)
+            all_avail = [1.0] * self.n_actions
+            if group_infos:
+                avail_actions = [
+                    m.get(AVAIL_ACTIONS_KEY, all_avail) for m in group_infos
+                ]
+            else:
+                avail_actions = [all_avail] * self.n_agents
+            return avail_actions
+
+        avail_actions = np.array(
+            [get_avail_actions(info) for info in info_batch])
+        return group_rewards, avail_actions
+
 
 def _validate(obs_space, action_space):
     if not hasattr(obs_space, "original_space") or \
@@ -371,3 +371,22 @@ def _get_unflattened_shape(obs_space):
     assert isinstance(prep, TupleFlatteningPreprocessor), prep
     spaces = [p.observation_space for p in prep.preprocessors]
     return Tuple(spaces)
+
+
+def _mac(model, obs, h):
+    """Forward pass of the multi-agent controller.
+
+    Arguments:
+        model: Model that produces q-values for a 1d agent batch
+        obs: Tensor of shape [B, n_agents, obs_size]
+        h: Tensor of shape [B, n_agents, h_size]
+
+    Returns:
+        q_vals: Tensor of shape [B, n_agents, n_actions]
+        h: Tensor of shape [B, n_agents, h_size]
+    """
+    B, n_agents = obs.size(0), obs.size(1)
+    obs_flat = obs.reshape([B * n_agents, -1])
+    h_flat = h.reshape([B * n_agents, -1])
+    q_flat, h_flat = model.forward(obs_flat, h_flat)
+    return q_flat.reshape([B, n_agents, -1]), h_flat.reshape([B, n_agents, -1])

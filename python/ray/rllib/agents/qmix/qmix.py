@@ -51,7 +51,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 32,
+    "sample_batch_size": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -87,7 +87,9 @@ class QMixAgent(DQNAgent):
     _agent_name = "QMIX"
     _default_config = DEFAULT_CONFIG
     _policy_graph = QMixPolicyGraph
-    _optimizer_shared_configs = ["learning_starts", "buffer_size"]
+    _optimizer_shared_configs = [
+        "learning_starts", "buffer_size", "train_batch_size"
+    ]
 
 
 if __name__ == "__main__":
@@ -99,7 +101,7 @@ if __name__ == "__main__":
     grouping = {
         "group_1": ["agent_1", "agent_2"],
     }
-    obs_space = Tuple([Discrete(3), Discrete(3)])
+    obs_space = Tuple([Discrete(6), Discrete(6)])
     act_space = Tuple([Discrete(2), Discrete(2)])
     register_env(
         "grouped_twostep",
@@ -112,11 +114,14 @@ if __name__ == "__main__":
             "run": "QMIX",
             "env": "grouped_twostep",
             "stop": {
-                "timesteps_total": 100000,
+                "timesteps_total": 15000,
             },
             "config": {
+                "sample_batch_size": 4,
+                "train_batch_size": 32,
+                "exploration_final_eps": 0.02,
                 "num_workers": 0,
                 "mixer": grid_search([None, "qmix", "vdn"]),
             },
-        }
+        },
     })

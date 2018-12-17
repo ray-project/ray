@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import OrderedDict
 
+from ray.rllib.env.constants import GROUP_REWARDS_KEY, GROUP_INFO_KEY
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -57,7 +58,8 @@ class _GroupAgentsWrapper(MultiAgentEnv):
             rewards, agg_fn=lambda gvals: list(gvals.values()))
         dones = self._group_items(
             dones, agg_fn=lambda gvals: all(gvals.values()))
-        infos = self._group_items(infos, agg_fn=lambda gvals: dict(gvals))
+        infos = self._group_items(
+            infos, agg_fn=lambda gvals: {GROUP_INFO_KEY: list(gvals.values())})
 
         # Aggregate rewards, but preserve the original values in infos
         for agent_id, rew in rewards.items():
@@ -65,7 +67,7 @@ class _GroupAgentsWrapper(MultiAgentEnv):
                 rewards[agent_id] = sum(rew)
                 if agent_id not in infos:
                     infos[agent_id] = {}
-                infos[agent_id]["individual_rewards"] = rew
+                infos[agent_id][GROUP_REWARDS_KEY] = rew
 
         return obs, rewards, dones, infos
 

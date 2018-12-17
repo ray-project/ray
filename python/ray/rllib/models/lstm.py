@@ -177,7 +177,7 @@ def chop_into_sequences(episode_ids,
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
-        max_seq_len = max(seq_lens)
+        max_seq_len = max(seq_lens) + 1
 
     feature_sequences = []
     for f in feature_columns:

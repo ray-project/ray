@@ -6,6 +6,7 @@ from gym.spaces import Discrete
 
 import ray
 from ray.tune import run_experiments, function
+from ray.rllib.env.constants import AVAIL_ACTIONS_KEY
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
 
@@ -16,11 +17,13 @@ class TwoStepGame(MultiAgentEnv):
     def __init__(self, env_config):
         self.state = None
         self.action_space = Discrete(2)
-        self.observation_space = Discrete(3)
+        # Each agent gets a separate obs space, to ensure that they can learn
+        # meaningfully different Q values even with a shared Q model.
+        self.observation_space = Discrete(6)
 
     def reset(self):
         self.state = 0
-        return {"agent_1": self.state, "agent_2": self.state}
+        return {"agent_1": self.state, "agent_2": self.state + 3}
 
     def step(self, action_dict):
         if self.state == 0:
@@ -45,9 +48,17 @@ class TwoStepGame(MultiAgentEnv):
             done = True
 
         rewards = {"agent_1": global_rew / 2.0, "agent_2": global_rew / 2.0}
-        obs = {"agent_1": self.state, "agent_2": self.state}
+        obs = {"agent_1": self.state, "agent_2": self.state + 3}
         dones = {"__all__": done}
-        return obs, rewards, dones, {}
+        infos = {
+            "agent_1": {
+                AVAIL_ACTIONS_KEY: [1, 1]
+            },
+            "agent_2": {
+                AVAIL_ACTIONS_KEY: [1, 1]
+            },
+        }
+        return obs, rewards, dones, infos
 
 
 if __name__ == "__main__":
@@ -61,9 +72,9 @@ if __name__ == "__main__":
             "config": {
                 "multiagent": {
                     "policy_graphs": {
-                        "agent_1": (DQNPolicyGraph, Discrete(3), Discrete(2),
+                        "agent_1": (DQNPolicyGraph, Discrete(6), Discrete(2),
                                     {}),
-                        "agent_2": (DQNPolicyGraph, Discrete(3), Discrete(2),
+                        "agent_2": (DQNPolicyGraph, Discrete(6), Discrete(2),
                                     {}),
                     },
                     "policy_mapping_fn": function(lambda agent_id: agent_id),

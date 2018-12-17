@@ -18,9 +18,13 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
     This enables RNN support. Does not currently support prioritization."""
 
     @override(PolicyOptimizer)
-    def _init(self, learning_starts=1000, buffer_size=10000):
+    def _init(self,
+              learning_starts=1000,
+              buffer_size=10000,
+              train_batch_size=32):
         self.replay_starts = learning_starts
         self.max_buffer_size = buffer_size
+        self.train_batch_size = train_batch_size
         assert self.max_buffer_size >= self.replay_starts
 
         # List of buffered sample batches
@@ -84,7 +88,10 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             })
 
     def _optimize(self):
-        samples = random.choice(self.replay_buffer)
+        samples = [random.choice(self.replay_buffer)]
+        while sum([s.count for s in samples]) < self.train_batch_size:
+            samples.append(random.choice(self.replay_buffer))
+        samples = SampleBatch.concat_samples(samples)
         with self.grad_timer:
             info_dict = self.local_evaluator.compute_apply(samples)
             for policy_id, info in info_dict.items():
