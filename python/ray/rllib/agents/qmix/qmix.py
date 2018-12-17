@@ -85,15 +85,24 @@ class QMixAgent(DQNAgent):
 
 
 if __name__ == "__main__":
+    from gym.spaces import Tuple, Discrete
     import ray
+    from ray.tune import register_env, run_experiments
     from ray.rllib.agents.qmix.twostep_game import TwoStepGame
-    from ray.tune import run_experiments
+
+    register_env("grouped_twostep",
+        lambda config: TwoStepGame(config).with_agent_groups({
+            "group_1": ["agent_1", "agent_2"],
+        }, obs_space=Tuple([Discrete(3), Discrete(3)]),
+           act_space=Tuple([Discrete(2), Discrete(2)])))
 
     ray.init()
     run_experiments({
         "two_step": {
             "run": "QMIX",
-            "env": TwoStepGame,
-            "config": {},
+            "env": "grouped_twostep",
+            "config": {
+                "num_workers": 0,
+            },
         }
     })

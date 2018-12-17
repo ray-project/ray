@@ -33,7 +33,13 @@ class QMixer(nn.Module):
             nn.Linear(self.embed_dim, 1))
 
     def forward(self, agent_qs, states):
-        bs = 1  # TODO(ekl) agent_qs.size(0)
+        """Forward pass for the mixer.
+
+        Arguments:
+            agent_qs: Tensor of shape [B, T, n_agents, n_actions]
+            states: Tensor of shape [B, T, state_dim]
+        """
+        bs = agent_qs.size(0)
         states = states.reshape(-1, self.state_dim)
         agent_qs = agent_qs.view(-1, 1, self.n_agents)
         # First layer
@@ -50,6 +56,5 @@ class QMixer(nn.Module):
         # Compute final output
         y = th.bmm(hidden, w_final) + v
         # Reshape and return
-        # TODO(ekl) q_tot = y.view(bs, -1, 1)
-        q_tot = y.view(bs, -1)
+        q_tot = y.view(bs, -1, 1)
         return q_tot

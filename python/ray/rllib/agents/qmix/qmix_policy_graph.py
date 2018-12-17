@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from gym.spaces import Tuple, Discrete
 import logging
 import numpy as np
 import torch as th
@@ -13,7 +14,11 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel
 from ray.rllib.evaluation.policy_graph import PolicyGraph
+from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.pytorch.misc import var_to_np
+from ray.rllib.models.lstm import chop_into_sequences
+from ray.rllib.models.preprocessors import get_preprocessor, \
+    TupleFlatteningPreprocessor
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
@@ -25,6 +30,8 @@ class QMixLoss(nn.Module):
                  target_model,
                  mixer,
                  target_mixer,
+                 n_agents,
+                 n_actions,
                  double_q=True,
                  gamma=0.99):
         nn.Module.__init__(self)
@@ -32,62 +39,74 @@ class QMixLoss(nn.Module):
         self.target_model = target_model
         self.mixer = mixer
         self.target_mixer = target_mixer
+        self.n_agents = n_agents
+        self.n_actions = n_actions
         self.double_q = double_q
         self.gamma = gamma
 
     def forward(self, rewards, actions, terminated, obs, avail_actions):
-        B = obs.size(0)
-        T = obs.size(1)
+        """Forward pass of the loss.
 
-        # TODO(ekl) support batching
+        Arguments:
+            rewards: Tensor of shape [B, T-1]
+            actions: Tensor of shape [B, T-1, n_agents]
+            terminated: Tensor of shape [B, T-1]
+            obs: Tensor of shape [B, T, n_agents, obs_size]
+            avail_actions: Tensor of shape [B, T, n_agents, n_actions]
+        """
+
+        B, T = obs.size(0), obs.size(1)
+        state_dim = obs.size(1) * obs.size(2)
+
+        # TODO(ekl) mask out bad seqs
         # mask = batch["filled"][:, :-1].float()
         mask = th.ones_like(terminated)
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
         # Calculate estimated Q-Values
-        q_out = []
-        h = self.model.init_hidden().expand([B, -1])  # shape [B, H]
+        mac_out = []
+        h = self.model.init_hidden().expand([B, self.n_agents, -1])
         for t in range(T):
-            q, h = self.model.forward(obs[:, t], h)
-            q_out.append(q)
-        q_out = th.stack(q_out, dim=1)  # Concat over time
+            q, h = self._mac(self.model, obs[:, t], h)
+            mac_out.append(q)
+        mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
-        # Pick the Q-Values for the actions taken by each agent
+        # Pick the Q-Values for the actions taken -> [B * n_agents, T-1]
         chosen_action_qvals = th.gather(
-            q_out[:, :-1], dim=2, index=actions.unsqueeze(2)).squeeze(2)
+            mac_out[:, :-1], dim=3, index=actions.unsqueeze(3)).squeeze(3)
 
         # Calculate the Q-Values necessary for the target
-        target_q_out = []
-        target_h = self.target_model.init_hidden().expand([B, -1])
+        target_mac_out = []
+        target_h = self.target_model.init_hidden().expand(
+            [B, self.n_agents, -1])
         for t in range(T):
-            target_q, target_h = self.target_model.forward(obs[:, t], target_h)
-            target_q_out.append(target_q)
+            target_q, target_h = self._mac(self.target_model, obs[:, t],
+                                           target_h)
+            target_mac_out.append(target_q)
 
         # We don't need the first timesteps Q-Value estimate for targets
-        target_q_out = th.stack(target_q_out[1:], dim=1)  # Concat across time
+        target_mac_out = th.stack(
+            target_mac_out[1:], dim=1)  # Concat across time
 
         # Mask out unavailable actions
-        target_q_out[avail_actions[:, 1:] == 0] = -9999999
+        target_mac_out[avail_actions[:, 1:] == 0] = -9999999
 
         # Max over target Q-Values
         if self.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            q_out[avail_actions == 0] = -9999999
-            cur_max_actions = q_out[:, 1:].max(dim=2, keepdim=True)[1]
-            target_max_qvals = th.gather(target_q_out, 2,
-                                         cur_max_actions).squeeze(2)
+            mac_out[avail_actions == 0] = -9999999
+            cur_max_actions = mac_out[:, 1:].max(dim=3, keepdim=True)[1]
+            target_max_qvals = th.gather(target_mac_out, 3,
+                                         cur_max_actions).squeeze(3)
         else:
-            target_max_qvals = target_q_out.max(dim=2)[0]
+            target_max_qvals = target_mac_out.max(dim=3)[0]
 
         # Mix
         if self.mixer is not None:
             # TODO(ekl) add support for handling global state. This is just
-            # stacking the agent obs.
-            # Transpose shape from [B, T, state_size] => [T, B, state_size]
-            chosen_action_qvals = self.mixer(chosen_action_qvals,
-                                             th.transpose(obs[:, :-1], 0, 1))
-            target_max_qvals = self.target_mixer(
-                target_max_qvals, th.transpose(obs[:, 1:], 0, 1))
+            # treating the stacked agent obs as the state.
+            chosen_action_qvals = self.mixer(chosen_action_qvals, obs[:, :-1])
+            target_max_qvals = self.target_mixer(target_max_qvals, obs[:, 1:])
 
         # Calculate 1-step Q-Learning targets
         targets = rewards + self.gamma * (1 - terminated) * target_max_qvals
@@ -104,22 +123,55 @@ class QMixLoss(nn.Module):
         loss = (masked_td_error**2).sum() / mask.sum()
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
+    def _mac(self, model, obs, h):
+        """Forward pass of the multi-agent controller.
+
+        Arguments:
+            model: Model that produces q-values for a 1d agent batch
+            obs: Tensor of shape [B, n_agents, obs_size]
+            h: Tensor of shape [B, n_agents, h_size]
+
+        Returns:
+            q_vals: Tensor of shape [B, n_agents, n_actions]
+            h: Tensor of shape [B, n_agents, h_size]
+        """
+        B, n_agents = obs.size(0), obs.size(1)
+        obs_flat = obs.reshape([B * n_agents, -1])
+        h_flat = h.reshape([B * n_agents, -1])
+        q_flat, h_flat = model.forward(obs_flat, h_flat)
+        return q_flat.reshape([B, n_agents, -1]), h_flat
+
 
 class QMixPolicyGraph(PolicyGraph):
-    """QMix impl. Assumes homogeneous agents for now."""
+    """QMix impl. Assumes homogeneous agents for now.
+
+    You must use MultiAgentEnv.with_agent_groups() to group agents
+    together for QMix. This creates the proper Tuple obs/action spaces and
+    populates the 'individual_rewards' info field.
+    """
 
     def __init__(self, obs_space, action_space, config):
+        _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
+        self.config = config
         self.observation_space = obs_space
         self.action_space = action_space
-        self.config = config
-        # TODO(ekl) don't hard-code these shapes
-        self.model = RNNModel(self.observation_space.shape[0], 64,
-                              action_space.n)
-        self.target_model = RNNModel(self.observation_space.shape[0], 64,
-                                     action_space.n)
-        self.n_agents = 2
-        self.state_shape = list(self.observation_space.shape) + [self.n_agents]
+
+        # Punt on dealing with complex observations. Instead, we will just
+        # unflatten individual agent observations into flat vectors.
+        self.unflat_obs_space = _get_unflattened_shape(obs_space)
+        self.obs_size = self.unflat_obs_space.spaces[0].shape[0]
+        self.n_agents = len(self.unflat_obs_space.spaces)
+        self.n_actions = action_space.spaces[0].n
+        self.h_size = config["model"]["lstm_cell_size"]
+        self.model = RNNModel(self.obs_size, self.h_size, self.n_actions)
+        self.target_model = RNNModel(self.obs_size, self.h_size,
+                                     self.n_actions)
+
+        # Setup the mixer network.
+        # The global state is just the stacked agent observations for now.
+        self.state_shape = (
+            list(self.unflat_obs_space.spaces[0].shape) + [self.n_agents])
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
@@ -133,12 +185,15 @@ class QMixPolicyGraph(PolicyGraph):
             self.target_mixer = VDNMixer()
         else:
             raise ValueError("Unknown mixer type {}".format(config["mixer"]))
+
         self.cur_epsilon = 1.0
         self.update_target()  # initial sync
 
+        # Setup optimizer
         self.params = list(self.model.parameters())
         self.loss = QMixLoss(self.model, self.target_model, self.mixer,
-                             self.target_mixer)
+                             self.target_mixer, self.n_agents, self.n_actions,
+                             self.config["double_q"], self.config["gamma"])
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -152,45 +207,68 @@ class QMixPolicyGraph(PolicyGraph):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None):
-        assert len(state_batches) == 1
+        assert len(state_batches) == self.n_agents, state_batches
+        B = len(obs_batch)
+
+        h_flat = (
+            np.stack(state_batches)  # shape [n_agents, B, h]
+            .transpose([1, 0, 2])  # shape [B, n_agents, h]
+            .reshape([B * self.n_agents, self.h_size]))
+        obs_flat = np.array(obs_batch).reshape(
+            [B * self.n_agents, self.obs_size])
 
         with th.no_grad():
-            actions, hiddens = self.model.forward(
-                th.from_numpy(np.array(obs_batch)),
-                th.from_numpy(np.array(state_batches[0])))
-            masked_q_values = actions.clone()
+            q_values, hiddens = self.model.forward(
+                th.from_numpy(obs_flat), th.from_numpy(h_flat))
+            masked_q_values = q_values.clone()
+            avail_actions = th.ones_like(q_values)
             # TODO(ekl) support action masks
-            # masked_q_values[avail_actions == 0.0] = -float("inf")
+            masked_q_values[avail_actions == 0.0] = -float("inf")
             # epsilon-greedy action selector
-            random_numbers = th.rand_like(actions[:, 0])
+            random_numbers = th.rand_like(q_values[:, 0])
             pick_random = (random_numbers < self.cur_epsilon).long()
-            avail_actions = th.ones_like(actions)
             random_actions = Categorical(avail_actions).sample().long()
             picked_actions = (
                 pick_random * random_actions +
                 (1 - pick_random) * masked_q_values.max(dim=1)[1])
 
-            return (var_to_np(picked_actions), [var_to_np(hiddens)], {
-                "avail_actions": var_to_np(avail_actions)
-            })
+            actions = var_to_np(picked_actions)
+            h_out = var_to_np(hiddens)
+            avail_actions = var_to_np(avail_actions)
+
+        actions = TupleActions(
+            list(actions.reshape([B, self.n_agents]).transpose([1, 0])))
+        h_out = h_out.reshape([B, self.n_agents,
+                               self.h_size]).transpose([1, 0, 2])
+        avail_actions = (avail_actions.reshape(
+            [B, self.n_agents, self.n_actions]))
+        return actions, h_out, {"avail_actions": avail_actions}
 
     @override(PolicyGraph)
     def compute_apply(self, samples):
-        num_agents = self.n_agents
-        B = num_agents
-        T = samples.count // B
+        # These will be padded to shape [B * T, ...]
+        [rew, act, dones, obs, avail_actions], initial_states, seq_lens = \
+            chop_into_sequences(
+                samples["eps_id"],
+                samples["agent_index"], [
+                    samples["rewards"], samples["actions"], samples["dones"],
+                    samples["obs"], samples["avail_actions"]
+                ],
+                [samples["state_in_{}".format(k)] for k in range(self.n_agents)],
+                max_seq_len=999999,
+                dynamic_max=True)
+        B, T = len(seq_lens), max(seq_lens)
 
-        # TODO: reshape to [B, T, n_agents, shape]
-
-        def add_time_dim(arr):
+        def to_batches(arr):
             new_shape = [B, T] + list(arr.shape[1:])
             return th.from_numpy(np.reshape(arr, new_shape))
 
-        rewards = add_time_dim(samples["rewards"])[:, :-1]
-        actions = add_time_dim(samples["actions"])[:, :-1]
-        terminated = add_time_dim(samples["dones"].astype(np.float32))[:, :-1]
-        obs = add_time_dim(samples["obs"])
-        avail_actions = add_time_dim(samples["avail_actions"])
+        rewards = to_batches(samples["rewards"])[:, :-1]
+        actions = to_batches(samples["actions"])[:, :-1]
+        terminated = to_batches(samples["dones"].astype(np.float32))[:, :-1]
+        obs = to_batches(samples["obs"]).reshape(
+            [B, T, self.n_agents, self.obs_size])
+        avail_actions = to_batches(samples["avail_actions"])
 
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
@@ -209,15 +287,18 @@ class QMixPolicyGraph(PolicyGraph):
             "grad_norm": grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
-            (mask_elems * num_agents),
+            (mask_elems * self.n_agents),
             "target_mean": (targets * mask).sum().item() /
-            (mask_elems * num_agents),
+            (mask_elems * self.n_agents),
         }
         return {"stats": stats}, {}
 
     @override(PolicyGraph)
     def get_initial_state(self):
-        return [self.model.init_hidden().numpy()]
+        return [
+            self.model.init_hidden().numpy().squeeze()
+            for _ in range(self.n_agents)
+        ]
 
     @override(PolicyGraph)
     def get_weights(self):
@@ -256,3 +337,37 @@ class QMixPolicyGraph(PolicyGraph):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
+
+
+def _validate(obs_space, action_space):
+    if not hasattr(obs_space, "original_space") or \
+            not isinstance(obs_space.original_space, Tuple):
+        raise ValueError("Obs space must be a Tuple, got {}. Use ".format(
+            obs_space) + "MultiAgentEnv.with_agent_groups() to group related "
+                         "agents for QMix.")
+    if not isinstance(action_space, Tuple):
+        raise ValueError(
+            "Action space must be a Tuple, got {}. ".format(action_space) +
+            "Use MultiAgentEnv.with_agent_groups() to group related "
+            "agents for QMix.")
+    if not isinstance(action_space.spaces[0], Discrete):
+        raise ValueError(
+            "QMix requires a discrete action space, got {}".format(
+                action_space.spaces[0]))
+    if len(set([str(x) for x in obs_space.original_space.spaces])) > 1:
+        raise ValueError(
+            "Implementation limitation: observations of grouped agents "
+            "must be homogeneous, got {}".format(
+                obs_space.original_space.spaces))
+    if len(set([str(x) for x in action_space.spaces])) > 1:
+        raise ValueError(
+            "Implementation limitation: action space of grouped agents "
+            "must be homogeneous, got {}".format(action_space.spaces))
+
+
+def _get_unflattened_shape(obs_space):
+    space = obs_space.original_space
+    prep = get_preprocessor(space)(space)
+    assert isinstance(prep, TupleFlatteningPreprocessor), prep
+    spaces = [p.observation_space for p in prep.preprocessors]
+    return Tuple(spaces)

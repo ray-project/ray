@@ -50,7 +50,7 @@ class _GroupAgentsWrapper(MultiAgentEnv):
         # Ungroup and send actions
         action_dict = self._ungroup_items(action_dict)
         obs, rewards, dones, infos = self.env.step(action_dict)
-        
+
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
         rewards = self._group_items(
@@ -92,8 +92,6 @@ class _GroupAgentsWrapper(MultiAgentEnv):
                 for a in self.groups[group_id]:
                     if a in items:
                         group_out[a] = items[a]
-                    elif allow_missing:
-                        group_out[a] = None
                     else:
                         raise ValueError(
                             "Missing member of group {}: {}: {}".format(
@@ -102,23 +100,3 @@ class _GroupAgentsWrapper(MultiAgentEnv):
             else:
                 grouped_items[agent_id] = item
         return grouped_items
-
-
-if __name__ == "__main__":
-    from gym.spaces import Tuple, Discrete
-    import ray
-    from ray.tune import register_env, run_experiments
-    from ray.rllib.agents.qmix.twostep_game import TwoStepGame
-
-    ray.init()
-    register_env("grouped_twostep",
-        lambda config: TwoStepGame(config).with_agent_groups({
-            "group_1": ["agent_1", "agent_2"],
-        }, obs_space=Tuple([Discrete(3), Discrete(3)]),
-           act_space=Tuple([Discrete(2), Discrete(2)])))
-    run_experiments({
-        "group_test": {
-            "run": "PG",
-            "env": "grouped_twostep",
-        }
-    })
