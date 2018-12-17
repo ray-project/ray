@@ -73,6 +73,10 @@ table TaskInfo {
   actor_counter: int;
   // True if this task is an actor checkpoint task and false otherwise.
   is_actor_checkpoint_method: bool;
+  // If this is an actor task, then this will be populated with all of the new
+  // actor handles that were forked from this handle since the last task on
+  // this handle was submitted.
+  new_actor_handles: [string];
   // Function ID of the task.
   function_id: string;
   // Task arguments.

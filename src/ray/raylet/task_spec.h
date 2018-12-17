@@ -132,7 +132,7 @@ class TaskSpecification {
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
       int64_t max_actor_reconstructions, const ActorID &actor_id,
       const ActorHandleID &actor_handle_id, int64_t actor_counter,
-      const FunctionID &function_id,
+      const std::vector<ActorHandleID> &new_actor_handles, const FunctionID &function_id,
       const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
@@ -198,6 +198,7 @@ class TaskSpecification {
   ActorHandleID ActorHandleId() const;
   int64_t ActorCounter() const;
   ObjectID ActorDummyObject() const;
+  std::vector<ActorHandleID> NewActorHandles() const;
 
  private:
   /// Assign the specification data from a pointer.

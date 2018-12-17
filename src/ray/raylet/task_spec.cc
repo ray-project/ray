@@ -61,7 +61,7 @@ TaskSpecification::TaskSpecification(
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID(), ObjectID(),
-                        0, ActorID(), ActorHandleID(), -1, function_id, task_arguments,
+                        0, ActorID(), ActorHandleID(), -1, {}, function_id, task_arguments,
                         num_returns, required_resources,
                         std::unordered_map<std::string, double>(), language) {}
 
@@ -70,7 +70,7 @@ TaskSpecification::TaskSpecification(
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
     const int64_t max_actor_reconstructions, const ActorID &actor_id,
     const ActorHandleID &actor_handle_id, int64_t actor_counter,
-    const FunctionID &function_id,
+    const std::vector<ActorHandleID> &new_actor_handles, const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
@@ -99,8 +99,9 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
-      to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
+      to_flatbuf(fbb, new_actor_handles), to_flatbuf(fbb, function_id),
+      fbb.CreateVector(arguments), fbb.CreateVector(returns),
+      map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language);
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
@@ -244,6 +245,11 @@ int64_t TaskSpecification::ActorCounter() const {
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
   return ReturnId(NumReturns() - 1);
+}
+
+std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->new_actor_handles());
 }
 
 }  // namespace raylet

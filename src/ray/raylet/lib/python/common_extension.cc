@@ -380,6 +380,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // Max number of times to reconstruct this actor (only used for actor creation
   // task).
   int32_t max_actor_reconstructions;
+  PyObject *new_actor_handles;
   // Arguments of the task that are execution-dependent. These must be
   // PyObjectIDs).
   PyObject *execution_arguments = nullptr;
@@ -387,14 +388,14 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *resource_map = nullptr;
   // Dictionary of required placement resources for this task.
   PyObject *placement_resource_map = nullptr;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iO&O&iOOO", &PyObjectToUniqueID, &driver_id,
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iO&O&iOOOO", &PyObjectToUniqueID, &driver_id,
                         &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
                         &PyObjectToUniqueID, &parent_task_id, &parent_counter,
                         &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
                         &actor_creation_dummy_object_id, &max_actor_reconstructions,
                         &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
-                        &actor_handle_id, &actor_counter, &execution_arguments,
-                        &resource_map, &placement_resource_map)) {
+                        &actor_handle_id, &actor_counter, &new_actor_handles,
+                        &execution_arguments, &resource_map, &placement_resource_map)) {
     return -1;
   }
 
@@ -421,8 +422,6 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   Py_ssize_t num_args = PyList_Size(arguments);
 
-  self->task_spec = nullptr;
-
   // Create the task spec.
   // Parse the arguments from the list.
   std::vector<std::shared_ptr<ray::raylet::TaskArgument>> task_args;
@@ -441,11 +440,22 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
 
+  std::vector<ActorHandleID> task_new_actor_handles;
+  Py_ssize_t num_new_actor_handles = PyList_Size(new_actor_handles);
+  for (Py_ssize_t i = 0; i < num_new_actor_handles; ++i) {
+    PyObject *new_actor_handle = PyList_GetItem(new_actor_handles, i);
+    if (!PyObject_IsInstance(new_actor_handle, (PyObject *)&PyObjectIDType)) {
+      PyErr_SetString(PyExc_TypeError, "New actor handles must be a ray.ObjectID.");
+      return -1;
+    }
+    task_new_actor_handles.push_back(((PyObjectID *)new_actor_handle)->object_id);
+  }
+
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
       actor_creation_dummy_object_id, max_actor_reconstructions, actor_id,
-      actor_handle_id, actor_counter, function_id, task_args, num_returns,
-      required_resources, required_placement_resources, Language::PYTHON);
+      actor_handle_id, actor_counter, task_new_actor_handles, function_id, task_args,
+      num_returns, required_resources, required_placement_resources, Language::PYTHON);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();
