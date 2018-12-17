@@ -89,7 +89,9 @@ class ActorRegistration {
   const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
-  const std::vector<ObjectID> &GetDummyObjects() const { return dummy_objects_; }
+  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
+    return dummy_objects_;
+  }
 
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
@@ -97,8 +99,12 @@ class ActorRegistration {
   /// \param handle_id The ID of the handle that submitted the task.
   /// \param execution_dependency The object representing the actor's new
   /// state. This is the execution dependency returned by the task.
-  void ExtendFrontier(const ActorHandleID &handle_id,
-                      const ObjectID &execution_dependency);
+  /// \return The dummy object that can be released as a result of the executed
+  /// task. If no dummy object can be released, then this is nil.
+  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
+                          const ObjectID &execution_dependency);
+
+  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
@@ -118,8 +124,10 @@ class ActorRegistration {
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
 
-  /// All of the dummy object IDs from this actor's tasks.
-  std::vector<ObjectID> dummy_objects_;
+  /// A map from all of the dummy object IDs stored for this
+  /// actor to the number of actor handles that have the object
+  /// ID in scope.
+  std::unordered_map<ObjectID, int64_t> dummy_objects_;
 };
 
 }  // namespace raylet

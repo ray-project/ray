@@ -741,8 +741,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   if (was_local) {
     // Clean up the dummy objects from this actor.
     RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
-    for (auto &id : actor_entry->second.GetDummyObjects()) {
-      HandleObjectMissing(id);
+    for (auto &dummy_object_pair : actor_entry->second.GetDummyObjects()) {
+      HandleObjectMissing(dummy_object_pair.first);
     }
   }
   // Update the actor's state.
@@ -1631,9 +1631,30 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     }
     auto actor_entry = actor_registry_.find(actor_id);
     RAY_CHECK(actor_entry != actor_registry_.end());
-    auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+    // Process any new actor handles that were forked from the current handle.
+    // The first task submitted on a new actor handle will depend on the
+    // finished task's execution dependency, so do not release the dependency
+    // until this first task is submitted.
+    for (const auto &new_handle_id : task.GetTaskSpecification().NewActorHandles()) {
+      // An actor creation task is the first task, so it cannot have new handles.
+      RAY_CHECK(task.GetTaskSpecification().IsActorTask());
+      // Get the execution dependency for the finished task.
+      const auto &frontier = actor_entry->second.GetFrontier();
+      auto it = frontier.find(task.GetTaskSpecification().ActorHandleId());
+      RAY_CHECK(it != frontier.end());
+      // Add the new handle and give it a reference to the finished task's
+      // execution dependency.
+      actor_entry->second.AddHandle(new_handle_id, it->second.execution_dependency);
+    }
     // Extend the actor's frontier to include the executed task.
-    actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+    auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+    ObjectID object_to_release =
+        actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+    if (!object_to_release.is_nil()) {
+      // If there were no new actor handles created, then no other actor task
+      // will depend on this execution dependency, so it safe to release.
+      HandleObjectMissing(object_to_release);
+    }
     // Mark the dummy object as locally available to indicate that the actor's
     // state has changed and the next method can run.
     // NOTE(swang): The dummy objects must be marked as local whenever
