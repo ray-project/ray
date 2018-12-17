@@ -69,6 +69,8 @@ class MultiAgentEnv(object):
         """
         raise NotImplementedError
 
+# yapf: disable
+# __grouping_doc_begin__
     def with_agent_groups(self, groups, obs_space=None, act_space=None):
         """Convenience method for grouping together agents in this env.
 
@@ -105,3 +107,5 @@ class MultiAgentEnv(object):
 
         from ray.rllib.env.group_agents_wrapper import _GroupAgentsWrapper
         return _GroupAgentsWrapper(self, groups, obs_space, act_space)
+# __grouping_doc_end__
+# yapf: enable

@@ -112,7 +112,7 @@ Multi-Agent
 
 .. note::
 
-   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://bair.berkeley.edu/blog/2018/12/12/rllib/>`__.
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
@@ -207,44 +207,10 @@ Grouping Agents
 
 It is common to have groups of agents in multi-agent RL, which can have either centralized or decentralized training and execution. RLlib treats agent groups like a single agent with a Tuple action and observation space. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define groups of agents without needing to modify the environment:
 
-.. code-block:: python
-
-    def with_agent_groups(self, groups, obs_space=None, act_space=None):
-        """Convenience method for grouping together agents in this env.
-
-        An agent group is a list of agent ids that are mapped to a single
-        logical agent. All agents of the group must act at the same time in the
-        environment. The grouped agent exposes Tuple action and observation
-        spaces that are the concatenated action and obs spaces of the
-        individual agents.
-
-        The rewards of all the agents in a group are summed. The individual
-        agent rewards are available under the "individual_rewards" key of the
-        group info return.
-
-        Agent grouping is required to leverage algorithms such as Q-Mix.
-
-        This API is experimental.
-
-        Arguments:
-            groups (dict): Mapping from group id to a list of the agent ids
-                of group members. If an agent id is not present in any group
-                value, it will be left ungrouped.
-            obs_space (Space): Optional observation space for the grouped
-                env. Must be a tuple space.
-            act_space (Space): Optional action space for the grouped env.
-                Must be a tuple space.
-
-        Examples:
-            >>> env = YourMultiAgentEnv(...)
-            >>> grouped_env = env.with_agent_groups(env, {
-            ...   "group1": ["agent1", "agent2", "agent3"],
-            ...   "group2": ["agent4", "agent5"],
-            ... })
-        """
-
-        from ray.rllib.env.group_agents_wrapper import _GroupAgentsWrapper
-        return _GroupAgentsWrapper(self, groups, obs_space, act_space)
+.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
