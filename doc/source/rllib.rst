@@ -68,6 +68,10 @@ Algorithms
 
    -  `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 
+*  Multi-agent / specialized
+
+   -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix>`__
+
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__

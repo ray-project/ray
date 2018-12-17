@@ -37,9 +37,9 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     remote evaluators (Ape-X actors), and replay buffer actors.
 
     This has two modes of operation:
-        normal replay: replays independent samples.
-        batch replay: simplified mode where entire sample batches are replayed.
-            This enables RNN support, but does not support prioritization.
+        - normal replay: replays independent samples.
+        - batch replay: simplified mode where entire sample batches are
+            replayed. This supports RNNs, but not prioritization.
 
     This optimizer requires that policy evaluators return an additional
     "td_error" array in the info return of compute_gradients(). This error
