@@ -339,4 +339,4 @@ class Trial(object):
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier
+        return identifier.replace("/", "_")
