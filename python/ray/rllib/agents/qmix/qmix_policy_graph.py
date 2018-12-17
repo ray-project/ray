@@ -266,7 +266,8 @@ class QMixPolicyGraph(PolicyGraph):
         mask_elems = mask.sum().item()
         stats = {
             "loss": loss_out.item(),
-            "grad_norm": grad_norm.item(),
+            "grad_norm": grad_norm
+            if isinstance(grad_norm, float) else grad_norm.item(),
             "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
             mask_elems,
