@@ -93,14 +93,12 @@ int PyListStringToStringVector(PyObject *object,
   function_descriptor->clear();
   std::vector<std::string> string_vector;
   if (PyList_Check(object)) {
-    if (PyList_Size(object) == 0) {
-      return 1;
-    }
     Py_ssize_t size = PyList_Size(object);
     for (Py_ssize_t i = 0; i < size; ++i) {
       PyObject *item = PyList_GetItem(object, i);
       if (PyBytes_Check(item) == 0) {
-        PyErr_SetString(PyExc_TypeError, "PyListStringToStringVector gets bytes failed");
+        PyErr_SetString(PyExc_TypeError,
+                        "PyListStringToStringVector takes a list of byte strings.");
         return 0;
       }
       function_descriptor->emplace_back(PyBytes_AsString(item), PyBytes_Size(item));

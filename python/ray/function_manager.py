@@ -163,35 +163,59 @@ class FunctionDescriptor(object):
 
     @property
     def is_for_driver_task(self):
-        """bool: whether this function descriptor is for driver task."""
-        return (len(self.module_name) == 0  and len(self.class_name) == 0
-                    and len(self.function_name) == 0)
+        """See whether this function descriptor is for a driver or not.
+
+        Returns:
+            True if this function descriptor is for driver tasks.
+        """
+        return (len(self.module_name) == 0 and len(self.class_name) == 0
+                and len(self.function_name) == 0)
 
     @property
     def module_name(self):
-        """str: the module name that the function belongs to."""
+        """Get the module name of current function descriptor.
+
+        Returns:
+            The module name of the function descriptor.
+        """
         return self._module_name
 
     @property
     def class_name(self):
-        """str: the class name that the function belongs to if exists.
-        It could be empty is the function is not a class method.
+        """Get the class name of current function descriptor.
+
+        Returns:
+            The class name of the function descriptor. It could be
+                empty if the function is not a class method.
         """
         return self._class_name
 
     @property
     def function_name(self):
-        """str: the function name of the function."""
+        """Get the function name of current function descriptor.
+
+        Returns:
+            The function name of the function descriptor.
+        """
         return self._function_name
 
     @property
     def function_hash(self):
-        """str: the hash code of the function source code."""
+        """Get the hash code of the function source code.
+
+        Returns:
+            The bytes with length of ray_constants.ID_SIZE if the source
+                code is available. Otherwise, the bytes length will be 0.
+        """
         return self._function_source_hash
 
     @property
     def function_id(self):
-        """ray.ObjectID: the function id calculated from this descriptor."""
+        """Get the function id calculated from this descriptor.
+
+        Returns:
+            The value of ray.ObjectID that represents the function id.
+        """
         return ray.ObjectID(self._function_id)
 
     def get_actor_descriptor(self):

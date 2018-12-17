@@ -120,7 +120,6 @@ class TaskSpecification {
   /// task. If this is not an actor task, then this is nil.
   /// \param actor_counter The number of tasks submitted before this task from
   /// the same actor handle. If this is not an actor task, then this is 0.
-  /// \param function_descriptor The function descriptor.
   /// \param task_arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
@@ -128,6 +127,7 @@ class TaskSpecification {
   /// task on a node. Typically, this should be an empty map in which case it
   /// will default to be equal to the required_resources argument.
   /// \param language The language of the worker that must execute the function.
+  /// \param function_descriptor The function descriptor.
   TaskSpecification(
       const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,

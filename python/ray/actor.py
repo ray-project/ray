@@ -273,7 +273,6 @@ class ActorClass(object):
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
-
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
         self._actor_method_names = [
@@ -281,6 +280,7 @@ class ActorClass(object):
         ]
 
         constructor_name = "__init__"
+
         # Assign an __init__ function will avoid many checks later on.
         def __init__(self):
             pass
