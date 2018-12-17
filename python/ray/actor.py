@@ -483,10 +483,6 @@ class ActorHandle(object):
         _ray_actor_driver_id: The driver ID of the job that created the actor
             (it is possible that this ActorHandle exists on a driver with a
             different driver ID).
-        _ray_previous_actor_handle_id: If this actor handle is not an original
-            handle, (e.g., it was created by forking or pickling), then
-            this is the ID of the handle that this handle was created from.
-            Otherwise, this is None.
     """
 
     def __init__(self,
@@ -520,7 +516,6 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
-        self._ray_previously_generated_actor_handle_id = None
 
     def _actor_method_call(self,
                            method_name,
