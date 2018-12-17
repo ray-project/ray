@@ -10,8 +10,7 @@ import six.moves.queue as queue
 import threading
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
-from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
-    MultiAgentBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
