@@ -100,3 +100,16 @@ class _ParameterTuningAgent(_MockAgent):
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"],
             info={})
+
+
+def _agent_import_failed(e):
+    """Returns dummy agent class for if PyTorch etc. is not installed."""
+
+    class _AgentImportFailed(Agent):
+        _agent_name = "AgentImportFailed"
+        _default_config = with_common_config({})
+
+        def _init(self):
+            raise e
+
+    return _AgentImportFailed

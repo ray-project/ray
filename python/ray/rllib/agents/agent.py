@@ -546,6 +546,14 @@ def _register_if_needed(env_object):
 def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
+    try:
+        return _get_agent_class(alg)
+    except ImportError as e:
+        from ray.rllib.agents.mock import _agent_import_failed
+        return _agent_import_failed(e)
+
+
+def _get_agent_class(alg):
     if alg == "DDPG":
         from ray.rllib.agents import ddpg
         return ddpg.DDPGAgent
