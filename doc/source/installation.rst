@@ -120,7 +120,7 @@ that you've cloned the git repository.
 
 .. code-block:: bash
 
-  python test/runtest.py
+  python -m pytest test/runtest.py
 
 Cleaning the source tree
 ~~~~~~~~~~~~~~~~~~~~~~~~
