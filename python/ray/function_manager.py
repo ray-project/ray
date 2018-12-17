@@ -33,7 +33,6 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
                                    ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
-# Avoid circle import of worker.py.
 logger = logging.getLogger(__name__)
 
 
@@ -55,8 +54,7 @@ class FunctionDescriptor(object):
                  module_name,
                  function_name,
                  class_name="",
-                 function_source_hash=b"",
-                 is_driver_task=False):
+                 function_source_hash=b""):
         self._module_name = module_name
         self._class_name = class_name
         self._function_name = function_name
@@ -102,28 +100,24 @@ class FunctionDescriptor(object):
                 "Invalid input for FunctionDescriptor.from_bytes_list")
 
     @classmethod
-    def from_function(cls, function, function_class=None):
+    def from_function(cls, function):
         """Create a FunctionDescriptor from a function instance.
 
         This function is used to create the function descriptor from
-        a python function.
+        a python function. If a function is a class function, it should
+        not be used by this function.
 
         Args:
             cls: Current class which is required argument for classmethod.
             function: the python function used to create the function
                 descriptor.
-            function_class: The class that the function belongs to, which
-                could be None when this function is not a method of class.
 
         Returns:
             The FunctionDescriptor instance created according to the function.
         """
         module_name = function.__module__
         function_name = function.__name__
-        if function_class is not None:
-            class_name = function_class.__name__
-        else:
-            class_name = ""
+        class_name = ""
 
         function_source_hasher = hashlib.sha1()
         try:
@@ -154,7 +148,7 @@ class FunctionDescriptor(object):
         """
         module_name = target_class.__module__
         class_name = target_class.__name__
-        return cls(module_name, "", class_name)
+        return cls(module_name, "__init__", class_name)
 
     @classmethod
     def for_driver_task(cls):
@@ -168,8 +162,9 @@ class FunctionDescriptor(object):
         Returns:
             True if this function descriptor is for driver tasks.
         """
-        return (len(self.module_name) == 0 and len(self.class_name) == 0
-                and len(self.function_name) == 0)
+        return all(
+            len(x) == 0
+            for x in [self.module_name, self.class_name, self.function_name])
 
     @property
     def module_name(self):
@@ -217,18 +212,6 @@ class FunctionDescriptor(object):
             The value of ray.ObjectID that represents the function id.
         """
         return ray.ObjectID(self._function_id)
-
-    def get_actor_descriptor(self):
-        """Get the function descriptor representing the actor class.
-
-        This function is used in an actor function's function descriptor
-        to return a function descriptor to represent the class that
-        contains this function.
-
-        Returns:
-            The FunctionDescriptor instance representing the class.
-        """
-        return self.__class__(self.module_name, "", self.class_name)
 
     def _get_function_id(self):
         """Calculate the function id of current function descriptor.

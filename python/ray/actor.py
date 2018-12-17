@@ -280,14 +280,14 @@ class ActorClass(object):
         ]
 
         constructor_name = "__init__"
-
-        # Assign an __init__ function will avoid many checks later on.
-        def __init__(self):
-            pass
-
         if constructor_name not in self._actor_method_names:
             # Add __init__ if it does not exist.
             # Actor creation will be executed with __init__ together.
+
+            # Assign an __init__ function will avoid many checks later on.
+            def __init__(self):
+                pass
+
             self._modified_class.__init__ = __init__
             self._actor_method_names.append(constructor_name)
             self._actor_methods.append((constructor_name, __init__))

@@ -881,8 +881,8 @@ class Worker(object):
         if (task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID)):
             assert self.actor_id == NIL_ACTOR_ID
             self.actor_id = task.actor_creation_id().id()
-            self.function_actor_manager.load_actor(
-                driver_id, function_descriptor.get_actor_descriptor())
+            self.function_actor_manager.load_actor(driver_id,
+                                                   function_descriptor)
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
