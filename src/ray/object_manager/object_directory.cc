@@ -78,7 +78,7 @@ void ObjectDirectory::RegisterBackend() {
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      UniqueID(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
@@ -86,27 +86,25 @@ ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Append the addition entry to the object table.
-  JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
   data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Append(job_id, object_id, data, nullptr);
+      gcs_client_->object_table().Append(JobID(), object_id, data, nullptr);
   return status;
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
   // Append the eviction entry to the object table.
-  JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = true;
   data->num_evictions = object_evictions_[object_id];
   ray::Status status =
-      gcs_client_->object_table().Append(job_id, object_id, data, nullptr);
+      gcs_client_->object_table().Append(JobID(), object_id, data, nullptr);
   // Increment the number of times we've evicted this object. NOTE(swang): This
   // is only necessary because the Ray redis module expects unique entries in a
   // log. We track the number of evictions so that the next eviction, if there
@@ -172,7 +170,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -201,7 +199,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID(), object_id, gcs_client_->client_table().GetLocalClientId());
     listeners_.erase(entry);
   }
   return status;
@@ -212,9 +210,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
   ray::Status status;
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    JobID job_id = JobID::nil();
     status = gcs_client_->object_table().Lookup(
-        job_id, object_id,
+        JobID(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_history) {
           // Build the set of current locations based on the entries in the log.

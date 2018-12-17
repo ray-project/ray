@@ -121,7 +121,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
       if (subscribe != nullptr) {
         // Parse the notification.
         auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
-        ID id = UniqueID::nil();
+        ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf(*root->id());
         }
@@ -276,7 +276,7 @@ Status ProfileTable::AddProfileEvent(const std::string &event_type,
   data->node_ip_address = node_ip_address;
   data->profile_events.emplace_back(new ProfileEventT(profile_event));
 
-  return Append(JobID::nil(), component_id, data,
+  return Append(JobID(), component_id, data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
                   RAY_LOG(DEBUG) << "Profile message pushed callback";
@@ -289,7 +289,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(JobID::nil(), from_flatbuf(*profile_events.component_id()), data,
+  return Append(JobID(), from_flatbuf(*profile_events.component_id()), data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
                   RAY_LOG(DEBUG) << "Profile message pushed callback";
@@ -421,13 +421,13 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
     auto subscription_callback = [this](AsyncGcsClient *c) {
-      RAY_CHECK_OK(RequestNotifications(JobID::nil(), client_log_key_, client_id_));
+      RAY_CHECK_OK(RequestNotifications(JobID(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
-    RAY_CHECK_OK(Subscribe(JobID::nil(), client_id_, notification_callback,
-                           subscription_callback));
+    RAY_CHECK_OK(
+        Subscribe(JobID(), client_id_, notification_callback, subscription_callback));
   };
-  return Append(JobID::nil(), client_log_key_, data, add_callback);
+  return Append(JobID(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect() {
@@ -436,9 +436,9 @@ Status ClientTable::Disconnect() {
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
                              const ClientTableDataT &data) {
     HandleConnected(client, data);
-    RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
+    RAY_CHECK_OK(CancelNotifications(JobID(), client_log_key_, id));
   };
-  RAY_RETURN_NOT_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
+  RAY_RETURN_NOT_OK(Append(JobID(), client_log_key_, data, add_callback));
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
@@ -448,7 +448,7 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableDataT>();
   data->client_id = dead_client_id.binary();
   data->is_insertion = false;
-  return Append(JobID::nil(), client_log_key_, data, nullptr);
+  return Append(JobID(), client_log_key_, data, nullptr);
 }
 
 void ClientTable::GetClient(const ClientID &client_id,
@@ -458,7 +458,7 @@ void ClientTable::GetClient(const ClientID &client_id,
   if (entry != client_cache_.end()) {
     client_info = entry->second;
   } else {
-    client_info.client_id = ClientID::nil().binary();
+    client_info.client_id = ClientID().binary();
   }
 }
 

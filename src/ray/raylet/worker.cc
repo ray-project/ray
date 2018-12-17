@@ -15,8 +15,6 @@ Worker::Worker(pid_t pid, const Language &language,
     : pid_(pid),
       language_(language),
       connection_(connection),
-      assigned_task_id_(TaskID::nil()),
-      actor_id_(ActorID::nil()),
       dead_(false),
       blocked_(false) {}
 

@@ -61,11 +61,8 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID::nil(),
-    const Language &language = Language::PYTHON) {
-  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
-                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0,
-                           FunctionID::nil(), {}, 0, {{}}, {{}}, language);
+    const ActorID actor_id = ActorID(), const Language &language = Language::PYTHON) {
+  return TaskSpecification(UniqueID(), UniqueID(), 0, FunctionID(), 0, {{}}, language);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
@@ -148,10 +145,10 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   auto py_worker = CreateWorker(1234, Language::PYTHON);
   worker_pool_.PushWorker(py_worker);
   // Check that no worker will be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
+  const auto java_task_spec = ExampleTaskSpec(ActorID(), Language::JAVA);
   ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
   // Check that the worker can be popped if the given task is a Python task
-  const auto py_task_spec = ExampleTaskSpec(ActorID::nil(), Language::PYTHON);
+  const auto py_task_spec = ExampleTaskSpec(ActorID(), Language::PYTHON);
   ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
 
   // Create a Java Worker, and add it to the pool

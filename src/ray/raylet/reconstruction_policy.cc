@@ -50,8 +50,8 @@ void ReconstructionPolicy::SetTaskTimeout(
             // required by the task are no longer needed soon after.  If the
             // task is still required after this initial period, then we now
             // subscribe to task lease notifications.
-            RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::nil(), task_id,
-                                                                 client_id_));
+            RAY_CHECK_OK(
+                task_lease_pubsub_.RequestNotifications(JobID(), task_id, client_id_));
             it->second.subscribed = true;
           }
         } else {
@@ -113,7 +113,7 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   reconstruction_entry->num_reconstructions = reconstruction_attempt;
   reconstruction_entry->node_manager_id = client_id_.binary();
   RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
-      JobID::nil(), task_id, reconstruction_entry,
+      JobID(), task_id, reconstruction_entry,
       /*success_callback=*/
       [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
              const TaskReconstructionDataT &data) {
@@ -202,8 +202,7 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   if (it->second.created_objects.empty()) {
     // Cancel notifications for the task lease if we were subscribed to them.
     if (it->second.subscribed) {
-      RAY_CHECK_OK(
-          task_lease_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
+      RAY_CHECK_OK(task_lease_pubsub_.CancelNotifications(JobID(), task_id, client_id_));
     }
     listening_tasks_.erase(it);
   }

@@ -43,7 +43,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         gcs_mock_(),
         initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
-                                 io_service_, ClientID::nil(), initial_lease_period_ms_,
+                                 io_service_, ClientID(), initial_lease_period_ms_,
                                  gcs_mock_) {}
 
   void Run(uint64_t timeout_ms) {
@@ -74,7 +74,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     std::vector<ObjectID> references = {argument};
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
-  auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
+  auto spec = TaskSpecification(UniqueID(), UniqueID::from_random(), 0,
                                 UniqueID::from_random(), task_arguments, num_returns,
                                 required_resources, Language::PYTHON);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
