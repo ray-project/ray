@@ -82,7 +82,7 @@ if __name__ == "__main__":
         config = {
             "sample_batch_size": 4,
             "train_batch_size": 32,
-            "exploration_final_eps": 0.02,
+            "exploration_final_eps": 0.0,
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
         }
