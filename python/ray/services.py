@@ -867,41 +867,30 @@ def check_and_update_resources(resources):
     return resources
 
 
-def start_raylet(redis_address,
-                 node_ip_address,
+def start_raylet(ray_params,
+                 index,
                  raylet_name,
                  plasma_store_name,
-                 worker_path,
-                 resources=None,
-                 object_manager_port=None,
-                 node_manager_port=None,
                  num_workers=0,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
                  cleanup=True,
-                 config=None,
-                 redis_password=None,
-                 collect_profiling_data=True):
+                 config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
-        redis_address (str): The address of the Redis instance.
-        node_ip_address (str): The IP address of the node that this local
-            scheduler is running on.
-        plasma_store_name (str): The name of the plasma store socket to connect
-            to.
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: redis_address,
+            node_ip_address, worker_path, resources, object_manager_ports,
+            node_manager_ports, redis_password
+        index (int): the index used in resources, object_manager_ports,
+            node_manager_ports
         raylet_name (str): The name of the raylet socket to create.
-        worker_path (str): The path of the script to use when the local
-            scheduler starts up new workers.
-        resources: The resources that this raylet has.
-        object_manager_port (int): The port to use for the object manager. If
-            this is not provided, we will use 0 and the object manager will
-            choose its own port.
-        node_manager_port (int): The port to use for the node manager. If
-            this is not provided, we will use 0 and the node manager will
-            choose its own port.
+        plasma_store_name (str): The name of the plasma store socket to connect
+             to.
+        num_workers (int): The number of workers to start.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -915,8 +904,6 @@ def start_raylet(redis_address,
             Python process that imported services exits.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        redis_password (str): The password of the redis server.
-        collect_profiling_data: Whether to collect profiling data from workers.
 
     Returns:
         The raylet socket name.
@@ -927,7 +914,7 @@ def start_raylet(redis_address,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    static_resources = check_and_update_resources(resources)
+    static_resources = check_and_update_resources(ray_params.resources[index])
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -938,7 +925,7 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    gcs_ip_address, gcs_port = ray_params.redis_address.split(":")
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -948,29 +935,31 @@ def start_raylet(redis_address,
                             "--redis-address={} "
                             "--collect-profiling-data={} "
                             "--temp-dir={}".format(
-                                sys.executable, worker_path, node_ip_address,
-                                plasma_store_name, raylet_name, redis_address,
-                                "1" if collect_profiling_data else "0",
+                                sys.executable, ray_params.worker_path,
+                                ray_params.node_ip_address, plasma_store_name,
+                                raylet_name, ray_params.redis_address, "1"
+                                if ray_params.collect_profiling_data else "0",
                                 get_temp_root()))
-    if redis_password:
-        start_worker_command += " --redis-password {}".format(redis_password)
+    if ray_params.redis_password:
+        start_worker_command += " --redis-password {}".format(
+            ray_params.redis_password)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
-    if object_manager_port is None:
-        object_manager_port = 0
+    if ray_params.object_manager_ports[index] is None:
+        ray_params.object_manager_ports[index] = 0
     # If the node manager port is None, then use 0 to cause the node manager
     # to choose its own port.
-    if node_manager_port is None:
-        node_manager_port = 0
+    if ray_params.node_manager_ports[index] is None:
+        ray_params.node_manager_ports[index] = 0
 
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
         plasma_store_name,
-        str(object_manager_port),
-        str(node_manager_port),
-        node_ip_address,
+        str(ray_params.object_manager_ports[index]),
+        str(ray_params.node_manager_ports[index]),
+        ray_params.node_ip_address,
         gcs_ip_address,
         gcs_port,
         str(num_workers),
@@ -979,7 +968,7 @@ def start_raylet(redis_address,
         config_str,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
-        redis_password or "",
+        ray_params.redis_password or "",
         get_temp_root(),
     ]
 
@@ -1009,9 +998,9 @@ def start_raylet(redis_address,
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
     record_log_files_in_redis(
-        redis_address,
-        node_ip_address, [stdout_file, stderr_file],
-        password=redis_password)
+        ray_params.redis_address,
+        ray_params.node_ip_address, [stdout_file, stderr_file],
+        password=ray_params.redis_password)
 
     return raylet_name
 
@@ -1325,11 +1314,11 @@ def start_ray_processes(ray_params, cleanup=True):
         raise Exception("The 'num_workers' argument is deprecated. Please use "
                         "'num_cpus' instead.")
     else:
-        ray_params.workers_per_local_scheduler = []
+        workers_per_local_scheduler = []
         for resource_dict in ray_params.resources:
             cpus = resource_dict.get("CPU")
-            ray_params.workers_per_local_scheduler.append(
-                cpus if cpus is not None else multiprocessing.cpu_count())
+            workers_per_local_scheduler.append(cpus if cpus is not None else
+                                               multiprocessing.cpu_count())
 
     if ray_params.address_info is None:
         ray_params.address_info = {}
@@ -1414,13 +1403,15 @@ def start_ray_processes(ray_params, cleanup=True):
 
     # Get the ports to use for the object managers if any are provided.
     if not isinstance(ray_params.object_manager_ports, list):
-        assert ray_params.object_manager_ports is None or ray_params.num_local_schedulers == 1
+        assert (ray_params.object_manager_ports is None
+                or ray_params.num_local_schedulers == 1)
         ray_params.object_manager_ports = (ray_params.num_local_schedulers *
                                            [ray_params.object_manager_ports])
     assert len(
         ray_params.object_manager_ports) == ray_params.num_local_schedulers
     if not isinstance(ray_params.node_manager_ports, list):
-        assert ray_params.node_manager_ports is None or ray_params.num_local_schedulers == 1
+        assert (ray_params.node_manager_ports is None
+                or ray_params.num_local_schedulers == 1)
         ray_params.node_manager_ports = (
             ray_params.num_local_schedulers * [ray_params.node_manager_ports])
     assert len(
@@ -1453,20 +1444,14 @@ def start_ray_processes(ray_params, cleanup=True):
             i, redirect_output=ray_params.redirect_worker_output)
         ray_params.address_info["raylet_socket_names"].append(
             start_raylet(
-                ray_params.redis_address,
-                ray_params.node_ip_address,
+                ray_params,
+                i,
                 ray_params.raylet_socket_name or get_raylet_socket_name(),
                 object_store_addresses[i],
-                ray_params.worker_path,
-                object_manager_port=ray_params.object_manager_ports[i],
-                node_manager_port=ray_params.node_manager_ports[i],
-                resources=ray_params.resources[i],
-                num_workers=ray_params.workers_per_local_scheduler[i],
+                num_workers=workers_per_local_scheduler[i],
                 stdout_file=raylet_stdout_file,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
-                redis_password=ray_params.redis_password,
-                collect_profiling_data=ray_params.collect_profiling_data,
                 config=config))
 
     # Try to start the web UI.
