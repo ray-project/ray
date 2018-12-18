@@ -42,7 +42,9 @@ class PolicyGraph(object):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         """Compute actions for the current policy.
 
         Arguments:
@@ -50,9 +52,11 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state input batches, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
+            info_batch (info): batch of info objects
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -69,7 +73,9 @@ class PolicyGraph(object):
                               state,
                               prev_action_batch=None,
                               prev_reward_batch=None,
-                              episode=None):
+                              info_batch=None,
+                              episode=None,
+                              **kwargs):
         """Unbatched version of compute_actions.
 
         Arguments:
@@ -77,9 +83,11 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state inputs, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
+            info_batch (list): batch of info objects
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (obj): single action
