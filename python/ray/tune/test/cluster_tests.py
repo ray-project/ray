@@ -18,6 +18,7 @@ from ray.rllib import _register_all
 from ray.test.cluster_utils import Cluster
 from ray.test.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
+from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
@@ -416,10 +417,10 @@ from ray import tune
 
 ray.init(redis_address="{redis_address}")
 
-{fail_class}
+{fail_class_code}
 
 kwargs = dict(
-    run="{fail_class_name}",
+    run={fail_class},
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
@@ -431,14 +432,14 @@ tune.run_experiments(
 """.format(
         redis_address=cluster.redis_address,
         checkpoint_dir=dirpath,
-        fail_class=inspect.getsource(_Fail),
-        fail_class_name=_Fail.__name__)
+        fail_class_code=inspect.getsource(_Fail),
+        fail_class=_Fail.__name__)
     run_string_as_driver_nonblocking(script)
 
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
-    for i in range(30):
+    for i in range(50):
         if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
@@ -448,9 +449,13 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
+    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+        raise RuntimeError("Checkpoint file didn't appear.")
+
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
+    Experiment._register_if_needed(_Fail)
 
     # Inspect the internal trialrunner just in case
     runner = TrialRunner.restore(dirpath)
@@ -463,7 +468,8 @@ tune.run_experiments(
         {
             "experiment": {
                 "run": _Fail,
-                "local_dir": dirpath
+                "local_dir": dirpath,
+                "checkpoint_freq": 1
             }
         },
         resume=True,
