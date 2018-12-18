@@ -26,8 +26,7 @@ These are the guidelines for merging new algorithms into RLlib:
     - should support custom models and preprocessors
     - should use RLlib abstractions and support distributed execution
 
-Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
-
+Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests. The main difference between contributed and fully integrated algorithms is that the latter will be maintained by the Ray team to a much greater extent with respect to bugs and integration with RLlib features.
 
 How to add an algorithm to ``contrib``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
