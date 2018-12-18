@@ -18,9 +18,8 @@ from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.model import _unpack_obs
-from ray.rllib.models.preprocessors import get_preprocessor, \
-    TupleFlatteningPreprocessor
-from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO
+from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)

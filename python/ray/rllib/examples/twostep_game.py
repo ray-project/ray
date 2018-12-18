@@ -5,7 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from gym.spaces import Tuple, Discrete, Dict, Box
+from gym.spaces import Tuple, Discrete
 
 import ray
 from ray.tune import register_env, run_experiments, grid_search
