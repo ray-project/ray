@@ -155,6 +155,7 @@ class Trial(object):
 
         # Local trial state that is updated during the run
         self.last_result = None
+        self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
@@ -186,10 +187,15 @@ class Trial(object):
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
-            self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                dir=self.local_dir)
+
+            if not self.logdir:
+                self.logdir = tempfile.mkdtemp(
+                    prefix="{}_{}".format(
+                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                    dir=self.local_dir)
+            elif not os.path.exists(self.logdir):
+                os.makedirs(self.local_dir)
+
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
@@ -249,6 +255,8 @@ class Trial(object):
             return self._status_string()
 
         def location_string(hostname, pid):
+            if self.status == Trial.PENDING:
+                return ""
             if hostname == os.uname()[1]:
                 return 'pid={}'.format(pid)
             else:
@@ -313,6 +321,7 @@ class Trial(object):
                 pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
+        self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
 
     def _get_trainable_cls(self):

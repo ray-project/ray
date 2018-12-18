@@ -158,8 +158,8 @@ class TrialRunner(object):
             RayTrialExecutor(queue_trials=runner._queue_trials)
 
         logger.info("Adding all trials with checkpoint state.")
-        for ckpt in runner_state["checkpoints"]:
-            trial = cloudpickle.loads(ckpt)
+        trials = [cloudpickle.loads(cp) for cp in runner_state["checkpoints"]]
+        for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             runner.add_trial(trial)
         return runner
 
