@@ -52,7 +52,7 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state input batches, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
-            info_batch (np.array): batch of info objects
+            info_batch (info): batch of info objects
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
@@ -83,7 +83,7 @@ class PolicyGraph(object):
             state_batches (list): list of RNN state inputs, if any
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
-            info_batch (np.array): batch of info objects
+            info_batch (list): batch of info objects
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
