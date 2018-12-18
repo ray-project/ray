@@ -55,11 +55,9 @@ UniqueID UniqueID::from_binary(const std::string &binary) {
   return id;
 }
 
-const UniqueID UniqueID::nil() {
-  UniqueID result;
-  uint8_t *data = result.mutable_data();
-  std::fill_n(data, kUniqueIDSize, 255);
-  return result;
+const UniqueID &UniqueID::nil() {
+  static const UniqueID nil_id;
+  return nil_id;
 }
 
 bool UniqueID::is_nil() const {
