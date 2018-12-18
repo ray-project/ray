@@ -162,7 +162,8 @@ script:
   - python -m pytest -v --durations=10 test/tensorflow_test.py
   - python -m pytest -v --durations=10 test/failure_test.py
   - python -m pytest -v --durations=10 test/microbenchmarks.py
-  - python -m pytest -v --durations=10 test/stress_tests.py
+  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
+  - python -m pytest -v --durations=10 test/stress_tests.py -k "not test_multiple_recursive"
   - python -m pytest -v --durations=10 test/component_failures_test.py
   - python -m pytest -v --durations=10 test/multi_node_test.py
   - python -m pytest -v --durations=10 test/multi_node_test_2.py
