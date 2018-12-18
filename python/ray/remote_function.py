@@ -109,7 +109,7 @@ class RemoteFunction(object):
                 num_cpus=None,
                 num_gpus=None,
                 resources=None):
-        logger.warn(
+        logger.warning(
             "WARNING: _submit() is being deprecated. Please use _remote().")
         return self._remote(
             args=args,

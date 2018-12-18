@@ -11,7 +11,7 @@ try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    logger.warn("Couldn't import `requests` library. Be sure to install it on"
+    logger.warning("Couldn't import `requests` library. Be sure to install it on"
                 " the client side.")
 
 

@@ -300,7 +300,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.batch_mode))
 
         if input_evaluation_method == "simulation":
-            logger.warn(
+            logger.warning(
                 "Requested 'simulation' input evaluation method: "
                 "will discard all sampler outputs and keep only metrics.")
             sample_async = True
