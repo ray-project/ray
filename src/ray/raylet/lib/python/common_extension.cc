@@ -358,9 +358,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // ID of the driver that this task originates from.
   UniqueID driver_id;
   // ID of the actor this task should run on.
-  UniqueID actor_id = ActorID::nil();
+  UniqueID actor_id;
   // ID of the actor handle used to submit this task.
-  UniqueID actor_handle_id = ActorHandleID::nil();
+  UniqueID actor_handle_id;
   // How many tasks have been launched on the actor so far?
   int actor_counter = 0;
   // ID of the function this task executes.
@@ -374,9 +374,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // The number of tasks that the parent task has called prior to this one.
   int parent_counter;
   // The actor creation ID.
-  ActorID actor_creation_id = ActorID::nil();
+  ActorID actor_creation_id;
   // The dummy object for the actor creation task (if this is an actor method).
-  ObjectID actor_creation_dummy_object_id = ObjectID::nil();
+  ObjectID actor_creation_dummy_object_id;
   // Max number of times to reconstruct this actor (only used for actor creation
   // task).
   int32_t max_actor_reconstructions;

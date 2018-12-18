@@ -552,7 +552,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
       : Log(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
-        client_log_key_(UniqueID::nil()),
+        client_log_key_(),
         disconnected_(false),
         client_id_(client_id),
         local_client_() {
@@ -621,8 +621,6 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   bool IsRemoved(const ClientID &client_id) const;
 
   /// Get the information of all clients.
-  ///
-  /// Note: The return value contains ClientID::nil() which should be filtered.
   ///
   /// \return The client ID to client information map.
   const std::unordered_map<ClientID, ClientTableDataT> &GetAllClients() const;
