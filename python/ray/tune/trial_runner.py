@@ -159,7 +159,8 @@ class TrialRunner(object):
 
         logger.info("Adding all trials with checkpoint state.")
         trials = [cloudpickle.loads(cp) for cp in runner_state["checkpoints"]]
-        for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
+        for trial in sorted(
+                trials, key=lambda t: t.last_update_time, reverse=True):
             runner.add_trial(trial)
         return runner
 
