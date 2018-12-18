@@ -17,6 +17,7 @@ from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
+from ray.rllib.models.model import _unpack_obs
 from ray.rllib.models.preprocessors import get_preprocessor, \
     TupleFlatteningPreprocessor
 from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO, AVAIL_ACTIONS
@@ -134,11 +135,9 @@ class QMixPolicyGraph(PolicyGraph):
         self.observation_space = obs_space
         self.action_space = action_space
 
-        # Punt on dealing with complex observations. Instead, we will just
-        # unflatten individual agent observations into flat vectors.
-        self.unflat_obs_space = _get_unflattened_shape(obs_space)
-        self.obs_size = self.unflat_obs_space.spaces[0].shape[0]
-        self.n_agents = len(self.unflat_obs_space.spaces)
+        self.obs_size = _get_size(
+            obs_space.original_space.spaces[0].spaces["obs"])
+        self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.model = RNNModel(self.obs_size, self.h_size, self.n_actions)
@@ -148,7 +147,7 @@ class QMixPolicyGraph(PolicyGraph):
         # Setup the mixer network.
         # The global state is just the stacked agent observations for now.
         self.state_shape = (
-            list(self.unflat_obs_space.spaces[0].shape) + [self.n_agents])
+            list(_get_shape(obs_space.original_space.spaces[0])) + [self.n_agents])
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
@@ -186,11 +185,15 @@ class QMixPolicyGraph(PolicyGraph):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
+        unpacked = _unpack_obs(
+            np.array(obs_batch), self.observation_space.original_space,
+            tensorlib=np)
+        obs_batch = np.concatenate([o["obs"] for o in unpacked], axis=1).reshape(
+            [len(obs_batch), self.n_agents, self.obs_size])
+
         assert len(state_batches) == self.n_agents, state_batches
         _, avail_actions = self._get_multiagent_info(info_batch)
         state_batches = np.stack(state_batches, axis=1)
-        obs_batch = np.array(obs_batch).reshape(
-            [len(obs_batch), self.n_agents, self.obs_size])
 
         # Compute actions
         with th.no_grad():
@@ -215,6 +218,11 @@ class QMixPolicyGraph(PolicyGraph):
     def compute_apply(self, samples):
         group_rewards, avail_actions = self._get_multiagent_info(
             samples["infos"])
+        unpacked = _unpack_obs(
+            samples["obs"], self.observation_space.original_space,
+            tensorlib=np)
+        obs_batch = np.concatenate([o["obs"] for o in unpacked], axis=1).reshape(
+            [len(samples["obs"]), self.n_agents, self.obs_size])
 
         # These will be padded to shape [B * T, ...]
         [rew, avail_actions, act, dones, obs], initial_states, seq_lens = \
@@ -222,7 +230,7 @@ class QMixPolicyGraph(PolicyGraph):
                 samples["eps_id"],
                 samples["agent_index"], [
                     group_rewards, avail_actions, samples["actions"],
-                    samples["dones"], samples["obs"]
+                    samples["dones"], obs_batch
                 ],
                 [samples["state_in_{}".format(k)]
                  for k in range(self.n_agents)],
@@ -368,12 +376,12 @@ def _validate(obs_space, action_space):
             "must be homogeneous, got {}".format(action_space.spaces))
 
 
-def _get_unflattened_shape(obs_space):
-    space = obs_space.original_space
-    prep = get_preprocessor(space)(space)
-    assert isinstance(prep, TupleFlatteningPreprocessor), prep
-    spaces = [p.observation_space for p in prep.preprocessors]
-    return Tuple(spaces)
+def _get_shape(obs_space):
+    return get_preprocessor(obs_space)(obs_space).shape
+
+
+def _get_size(obs_space):
+    return get_preprocessor(obs_space)(obs_space).size
 
 
 def _mac(model, obs, h):

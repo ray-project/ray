@@ -304,7 +304,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
                 raise ValueError(
                     "Key set for obs and rewards must be the same: "
                     "{} vs {}".format(obs.keys(), rewards.keys()))
-            if set(infos.keys()).difference(set(obs.keys())):
+            if set(infos).difference(set(obs)):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
             if dones["__all__"]:

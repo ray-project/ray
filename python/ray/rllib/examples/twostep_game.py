@@ -5,11 +5,10 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from gym.spaces import Tuple, Discrete
+from gym.spaces import Tuple, Discrete, Dict, Box
 
 import ray
 from ray.tune import register_env, run_experiments, grid_search
-from ray.rllib.env.constants import AVAIL_ACTIONS
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 parser = argparse.ArgumentParser()
@@ -18,16 +17,27 @@ parser.add_argument("--run", type=str, default="QMIX")
 
 
 class TwoStepGame(MultiAgentEnv):
+    action_space = Discrete(2)
+
+    # Each agent gets a separate [3] obs space, to ensure that they can
+    # learn meaningfully different Q values even with a shared Q model.
+    observation_space = Dict({
+        "obs": Discrete(6),
+        "avail_actions": Box(0, 1, (2,)),
+    })
+
     def __init__(self, env_config):
         self.state = None
-        self.action_space = Discrete(2)
-        # Each agent gets a separate [3] obs space, to ensure that they can
-        # learn meaningfully different Q values even with a shared Q model.
-        self.observation_space = Discrete(6)
+
+    def _encode_obs(self, state):
+        return {"obs": state, "avail_actions": [1, 1]}
 
     def reset(self):
         self.state = 0
-        return {"agent_1": self.state, "agent_2": self.state + 3}
+        return {
+            "agent_1": self._encode_obs(self.state),
+            "agent_2": self._encode_obs(self.state + 3),
+        }
 
     def step(self, action_dict):
         if self.state == 0:
@@ -52,16 +62,12 @@ class TwoStepGame(MultiAgentEnv):
             done = True
 
         rewards = {"agent_1": global_rew / 2.0, "agent_2": global_rew / 2.0}
-        obs = {"agent_1": self.state, "agent_2": self.state + 3}
-        dones = {"__all__": done}
-        infos = {
-            "agent_1": {
-                AVAIL_ACTIONS: [1, 1]  # all actions avail
-            },
-            "agent_2": {
-                AVAIL_ACTIONS: [1, 1]
-            },
+        obs = {
+            "agent_1": self._encode_obs(self.state),
+            "agent_2": self._encode_obs(self.state + 3)
         }
+        dones = {"__all__": done}
+        infos = {}
         return obs, rewards, dones, infos
 
 
@@ -71,8 +77,14 @@ if __name__ == "__main__":
     grouping = {
         "group_1": ["agent_1", "agent_2"],
     }
-    obs_space = Tuple([Discrete(6), Discrete(6)])
-    act_space = Tuple([Discrete(2), Discrete(2)])
+    obs_space = Tuple([
+        TwoStepGame.observation_space,
+        TwoStepGame.observation_space,
+    ])
+    act_space = Tuple([
+        TwoStepGame.action_space,
+        TwoStepGame.action_space,
+    ])
     register_env(
         "grouped_twostep",
         lambda config: TwoStepGame(config).with_agent_groups(
