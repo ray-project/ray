@@ -15,6 +15,7 @@ execution, set the TF_TIMELINE_DIR environment variable.
 import argparse
 import gym
 import random
+import distutils.version
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -33,6 +34,8 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
 
+use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                 distutils.version.LooseVersion("1.5.0"))
 
 class CustomModel1(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
@@ -41,12 +44,19 @@ class CustomModel1(Model):
         # by entering it explicitly with tf.AUTO_REUSE. This creates the
         # variables for the 'fc1' layer in a global scope called 'shared'
         # outside of the policy's normal variable scope.
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
-                auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        if use_tf150_api:
+            with tf.variable_scope(
+                    tf.VariableScope(tf.AUTO_REUSE, "shared"),
+                    reuse=tf.AUTO_REUSE,
+                    auxiliary_name_scope=False):
+                last_layer = slim.fully_connected(
+                    input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        else:
+            with tf.variable_scope(
+                    tf.VariableScope(tf.AUTO_REUSE, "shared"),
+                    reuse=tf.AUTO_REUSE):
+                last_layer = slim.fully_connected(
+                    input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
         last_layer = slim.fully_connected(
             last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
@@ -57,12 +67,19 @@ class CustomModel1(Model):
 class CustomModel2(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         # Weights shared with CustomModel1
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
-                auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        if use_tf150_api:
+            with tf.variable_scope(
+                    tf.VariableScope(tf.AUTO_REUSE, "shared"),
+                    reuse=tf.AUTO_REUSE,
+                    auxiliary_name_scope=False):
+                last_layer = slim.fully_connected(
+                    input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
+        else:
+            with tf.variable_scope(
+                    tf.VariableScope(tf.AUTO_REUSE, "shared"),
+                    reuse=tf.AUTO_REUSE):
+                last_layer = slim.fully_connected(
+                    input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
         last_layer = slim.fully_connected(
             last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
         output = slim.fully_connected(
