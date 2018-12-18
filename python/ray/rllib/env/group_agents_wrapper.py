@@ -7,7 +7,7 @@ from collections import OrderedDict
 from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-
+# TODO(ekl) we should add some unit tests for this
 class _GroupAgentsWrapper(MultiAgentEnv):
     """Wraps a MultiAgentEnv environment with agents grouped as specified.
 
