@@ -255,8 +255,6 @@ class Trial(object):
             return self._status_string()
 
         def location_string(hostname, pid):
-            if self.status == Trial.PENDING:
-                return ""
             if hostname == os.uname()[1]:
                 return 'pid={}'.format(pid)
             else:
