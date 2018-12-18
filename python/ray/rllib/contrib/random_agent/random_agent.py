@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
 import numpy as np
 
 from ray.rllib.agents.agent import Agent, with_common_config
@@ -42,7 +41,8 @@ class RandomAgent(Agent):
             "timesteps_this_iter": steps,
         }
 # __sphinx_doc_end__
-# yapf: enable
+# don't enable yapf after, it's buggy here
+
 
 if __name__ == "__main__":
     agent = RandomAgent(
