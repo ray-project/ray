@@ -78,18 +78,18 @@ Models and Preprocessors
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
-RLlib Concepts
---------------
-* `Policy Graphs <rllib-concepts.html>`__
-* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
-
 RLlib Development
 -----------------
 
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
-* `Guideline for Contributed Algorithms <rllib-dev.html#guideline-for-contributed-algorithms>`__
+* `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
+
+RLlib Concepts
+--------------
+* `Policy Graphs <rllib-concepts.html>`__
+* `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
+* `Policy Optimization <rllib-concepts.html#policy-optimization>`__
 
 Package Reference
 -----------------
