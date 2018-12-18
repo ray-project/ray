@@ -113,14 +113,6 @@ install:
   - bash ../src/ray/test/run_gcs_tests.sh
   # Raylet tests.
   - bash ../src/ray/test/run_object_manager_tests.sh
-  - ./src/ray/raylet/task_test
-  - ./src/ray/raylet/worker_pool_test
-  - ./src/ray/raylet/lineage_cache_test
-  - ./src/ray/raylet/task_dependency_manager_test
-  - ./src/ray/raylet/reconstruction_policy_test
-  - ./src/ray/raylet/client_connection_test
-  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
-  - ./src/ray/util/signal_test
 
   - cd ..
 
@@ -132,15 +124,16 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=20 -s test/stress_tests.py::test_multiple_recursive
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
+  - python -m pytest -v --durations=20 test/stress_tests.py
 
 deploy:
   - provider: s3
