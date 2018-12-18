@@ -16,8 +16,8 @@ try:
     LZ4_ENABLED = True
 except ImportError:
     logger.warning("lz4 not available, disabling sample compression. "
-                "This will significantly impact RLlib performance. "
-                "To install lz4, run `pip install lz4`.")
+                   "This will significantly impact RLlib performance. "
+                   "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 
