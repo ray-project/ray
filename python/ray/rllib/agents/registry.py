@@ -17,9 +17,9 @@ def _import_apex_qmix():
     return qmix.ApexQMixAgent
 
 
-def _import_qmix():
-    from ray.rllib.agents import qmix
-    return qmix.QMIXAgent
+def _import_ddpg():
+    from ray.rllib.agents import ddpg
+    return ddpg.DDPGAgent
 
 
 def _import_apex_ddpg():
@@ -92,6 +92,14 @@ ALGORITHMS = {
 def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
+    try:
+        return _get_agent_class(alg)
+    except ImportError:
+        from ray.rllib.agents.mock import _agent_import_failed
+        return _agent_import_failed(traceback.format_exc())
+
+
+def _get_agent_class(alg):
     if alg in ALGORITHMS:
         return ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:
