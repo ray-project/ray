@@ -23,27 +23,24 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
 
 
-def register_fail_trainable():
-    class _Fail(tune.Trainable):
-        """Fails on the 4th iteration."""
+class _Fail(tune.Trainable):
+    """Fails on the 4th iteration."""
 
-        def _setup(self, config):
-            self.state = {"hi": 0}
+    def _setup(self, config):
+        self.state = {"hi": 0}
 
-        def _train(self):
-            self.state["hi"] += 1
-            time.sleep(0.5)
-            if self.state["hi"] >= 4:
-                assert False
-            return {}
+    def _train(self):
+        self.state["hi"] += 1
+        time.sleep(0.5)
+        if self.state["hi"] >= 4:
+            assert False
+        return {}
 
-        def _save(self, path):
-            return self.state
+    def _save(self, path):
+        return self.state
 
-        def _restore(self, state):
-            self.state = state
-
-    tune.register_trainable("test", _Fail)
+    def _restore(self, state):
+        self.state = state
 
 
 def _start_new_cluster():
@@ -351,6 +348,59 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
 
+def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
+    cluster = start_connected_cluster
+    dirpath = str(tmpdir)
+    script = """
+import time
+import ray
+from ray import tune
+
+ray.init(redis_address="{redis_address}")
+
+kwargs = dict(
+    run="PG",
+    env="CartPole-v1",
+    stop=dict(training_iteration=10),
+    local_dir="{checkpoint_dir}",
+    checkpoint_freq=1,
+    max_failures=1)
+
+tune.run_experiments(
+    dict(experiment=kwargs),
+    raise_on_failed_trial=False)
+""".format(
+        redis_address=cluster.redis_address, checkpoint_dir=dirpath)
+    run_string_as_driver_nonblocking(script)
+    # Wait until the right checkpoint is saved.
+    # The trainable returns every 0.5 seconds, so this should not miss
+    # the checkpoint.
+    for i in range(30):
+        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+            # Inspect the internal trialrunner
+            runner = TrialRunner.restore(dirpath)
+            trials = runner.get_trials()
+            last_res = trials[0].last_result
+            if last_res is not None and last_res["training_iteration"]:
+                break
+        time.sleep(0.2)
+
+    ray.shutdown()
+    cluster.shutdown()
+    cluster = _start_new_cluster()
+
+    # Restore properly from checkpoint
+    trials2 = tune.run_experiments(
+        {
+            "experiment": {
+                "run": "PG",
+                "local_dir": dirpath
+            }
+        }, resume=True)
+    assert all(t.status == Trial.TERMINATED for t in trials2)
+    cluster.shutdown()
+
+
 def test_cluster_interrupt(start_connected_cluster, tmpdir):
     """Tests run_experiment on cluster shutdown even with atypical trial.
 
@@ -366,11 +416,10 @@ from ray import tune
 
 ray.init(redis_address="{redis_address}")
 
-{register_trainable_fn}
-{run_register_trainable_fn}()
+{fail_class}
 
 kwargs = dict(
-    run="test",
+    run="{fail_class_name}",
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
@@ -382,8 +431,8 @@ tune.run_experiments(
 """.format(
         redis_address=cluster.redis_address,
         checkpoint_dir=dirpath,
-        register_trainable_fn=inspect.getsource(register_fail_trainable),
-        run_register_trainable_fn=register_fail_trainable.__name__)
+        fail_class=inspect.getsource(_Fail),
+        fail_class_name=_Fail.__name__)
     run_string_as_driver_nonblocking(script)
 
     # Wait until the right checkpoint is saved.
@@ -402,7 +451,6 @@ tune.run_experiments(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
-    register_fail_trainable()
 
     # Inspect the internal trialrunner just in case
     runner = TrialRunner.restore(dirpath)
@@ -414,7 +462,7 @@ tune.run_experiments(
     trials2 = tune.run_experiments(
         {
             "experiment": {
-                "run": "test"
+                "run": _Fail,
                 "local_dir": dirpath
             }
         },
