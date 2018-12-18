@@ -84,6 +84,32 @@ int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
   }
 }
 
+int PyListStringToStringVector(PyObject *object,
+                               std::vector<std::string> *function_descriptor) {
+  if (function_descriptor == nullptr) {
+    PyErr_SetString(PyExc_TypeError, "function descriptor must be non-empty pointer");
+    return 0;
+  }
+  function_descriptor->clear();
+  std::vector<std::string> string_vector;
+  if (PyList_Check(object)) {
+    Py_ssize_t size = PyList_Size(object);
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject *item = PyList_GetItem(object, i);
+      if (PyBytes_Check(item) == 0) {
+        PyErr_SetString(PyExc_TypeError,
+                        "PyListStringToStringVector takes a list of byte strings.");
+        return 0;
+      }
+      function_descriptor->emplace_back(PyBytes_AsString(item), PyBytes_Size(item));
+    }
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a list of strings");
+    return 0;
+  }
+}
+
 static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
   const char *data;
   int size;
@@ -363,12 +389,12 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   UniqueID actor_handle_id;
   // How many tasks have been launched on the actor so far?
   int actor_counter = 0;
-  // ID of the function this task executes.
-  FunctionID function_id;
   // Arguments of the task (can be PyObjectIDs or Python values).
   PyObject *arguments;
   // Number of return values of this task.
   int num_returns;
+  // Task language type enum number.
+  int language = static_cast<int>(Language::PYTHON);
   // The ID of the task that called this task.
   TaskID parent_task_id;
   // The number of tasks that the parent task has called prior to this one.
@@ -387,14 +413,17 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *resource_map = nullptr;
   // Dictionary of required placement resources for this task.
   PyObject *placement_resource_map = nullptr;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iO&O&iOOO", &PyObjectToUniqueID, &driver_id,
-                        &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
-                        &PyObjectToUniqueID, &parent_task_id, &parent_counter,
-                        &PyObjectToUniqueID, &actor_creation_id, &PyObjectToUniqueID,
-                        &actor_creation_dummy_object_id, &max_actor_reconstructions,
-                        &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
-                        &actor_handle_id, &actor_counter, &execution_arguments,
-                        &resource_map, &placement_resource_map)) {
+
+  // Function descriptor.
+  std::vector<std::string> function_descriptor;
+  if (!PyArg_ParseTuple(
+          args, "O&O&OiO&i|O&O&iO&O&iOOOi", &PyObjectToUniqueID, &driver_id,
+          &PyListStringToStringVector, &function_descriptor, &arguments, &num_returns,
+          &PyObjectToUniqueID, &parent_task_id, &parent_counter, &PyObjectToUniqueID,
+          &actor_creation_id, &PyObjectToUniqueID, &actor_creation_dummy_object_id,
+          &max_actor_reconstructions, &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
+          &actor_handle_id, &actor_counter, &execution_arguments, &resource_map,
+          &placement_resource_map, &language)) {
     return -1;
   }
 
@@ -424,6 +453,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->task_spec = nullptr;
 
   // Create the task spec.
+
   // Parse the arguments from the list.
   std::vector<std::shared_ptr<ray::raylet::TaskArgument>> task_args;
   for (Py_ssize_t i = 0; i < num_args; ++i) {
@@ -444,8 +474,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
       actor_creation_dummy_object_id, max_actor_reconstructions, actor_id,
-      actor_handle_id, actor_counter, function_id, task_args, num_returns,
-      required_resources, required_placement_resources, Language::PYTHON);
+      actor_handle_id, actor_counter, task_args, num_returns, required_resources,
+      required_placement_resources, Language::PYTHON, function_descriptor);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();
@@ -470,9 +500,23 @@ static void PyTask_dealloc(PyTask *self) {
   Py_TYPE(self)->tp_free(reinterpret_cast<PyObject *>(self));
 }
 
-static PyObject *PyTask_function_id(PyTask *self) {
-  FunctionID function_id = self->task_spec->FunctionId();
-  return PyObjectID_make(function_id);
+// Helper function to change a c++ string vector to a Python string list.
+static PyObject *VectorStringToPyBytesList(
+    const std::vector<std::string> &function_descriptor) {
+  size_t size = function_descriptor.size();
+  PyObject *return_list = PyList_New(static_cast<Py_ssize_t>(size));
+  for (size_t i = 0; i < size; ++i) {
+    auto py_bytes = PyBytes_FromStringAndSize(function_descriptor[i].data(),
+                                              function_descriptor[i].size());
+    PyList_SetItem(return_list, i, py_bytes);
+  }
+  return return_list;
+}
+
+static PyObject *PyTask_function_descriptor_vector(PyTask *self) {
+  std::vector<std::string> function_descriptor;
+  function_descriptor = self->task_spec->FunctionDescriptor();
+  return VectorStringToPyBytesList(function_descriptor);
 }
 
 static PyObject *PyTask_actor_id(PyTask *self) {
@@ -597,8 +641,8 @@ static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
-    {"function_id", (PyCFunction)PyTask_function_id, METH_NOARGS,
-     "Return the function ID for this task."},
+    {"function_descriptor_list", (PyCFunction)PyTask_function_descriptor_vector,
+     METH_NOARGS, "Return the function descriptor for this task."},
     {"parent_task_id", (PyCFunction)PyTask_parent_task_id, METH_NOARGS,
      "Return the task ID of the parent task."},
     {"parent_counter", (PyCFunction)PyTask_parent_counter, METH_NOARGS,
