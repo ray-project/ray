@@ -23,6 +23,7 @@ These are the guidelines for merging new algorithms into RLlib:
 
 * Fully integrated algorithms (`rllib/agents <https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents>`__) have the following additional requirements:
     - must fully implement the Agent API
+    - must offer substantial new functionality not possible to add to other algorithms
     - should support custom models and preprocessors
     - should use RLlib abstractions and support distributed execution
 
