@@ -120,6 +120,7 @@ that you've cloned the git repository.
 
 .. code-block:: bash
 
+  export PYTHONPATH="$PYTHONPATH:./test/"
   python -m pytest test/runtest.py
 
 Cleaning the source tree
@@ -131,4 +132,18 @@ The source tree can be cleaned by running
 
   git clean -f -f -x -d
 
-in the ``ray/`` directory.
+in the ``ray/`` directory. Warning: this command will delete all untracked files
+and directories and will reset the repository to its checked out state.
+For a shallower working directory cleanup, you may want to try:
+
+.. code-block:: bash
+
+  rm -rf ./build
+
+under ``ray/``. Incremental builds should work as follows:
+
+.. code-block:: bash
+
+  pushd ./build && make && popd
+
+under ``ray/``.
