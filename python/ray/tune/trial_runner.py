@@ -500,9 +500,8 @@ class TrialRunner(object):
 
         state["trial_executor"] = None
         state["_search_alg"] = None
-        if not isinstance(state["_scheduler_alg"], FIFOScheduler):
-            # TODO(rliaw): Remove this once component FT is implemented
-            state["_scheduler_alg"] = None
+        # TODO(rliaw): Remove this once component FT is implemented
+        state["_scheduler_alg"] = None
 
         if state["_server"]:
             state["_launch_web_server"] = True
