@@ -21,7 +21,7 @@ class RandomAgent(Agent):
 
     @override(Agent)
     def _init(self):
-        self.env = gym.make(self.config["env"])
+        self.env = self.env_creator(self.config["env_config"])
 
     @override(Agent)
     def _train(self):
