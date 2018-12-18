@@ -376,7 +376,7 @@ tune.run_experiments(
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
-    for i in range(30):
+    for i in range(50):
         if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
@@ -385,6 +385,9 @@ tune.run_experiments(
             if last_res is not None and last_res["training_iteration"]:
                 break
         time.sleep(0.2)
+
+    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+        raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
     cluster.shutdown()
@@ -396,6 +399,7 @@ tune.run_experiments(
         {
             "experiment": {
                 "run": "PG",
+                "checkpoint_freq": 1,
                 "local_dir": dirpath
             }
         }, resume=True)
