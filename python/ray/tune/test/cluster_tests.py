@@ -389,6 +389,7 @@ tune.run_experiments(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
+    cluster.wait_for_nodes()
 
     # Restore properly from checkpoint
     trials2 = tune.run_experiments(
