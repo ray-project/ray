@@ -12,6 +12,7 @@ from numbers import Number
 
 import ray
 from ray.tune import TuneError
+from ray.tune.log_sync import validate_sync_function
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -152,6 +153,7 @@ class Trial(object):
         self.trial_name_creator = trial_name_creator
         self.custom_loggers = custom_loggers
         self.sync_function = sync_function
+        validate_sync_function(sync_function)
         self.verbose = True
         self.max_failures = max_failures
 

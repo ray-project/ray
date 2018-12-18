@@ -10,7 +10,7 @@ import os
 import yaml
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.log_sync import get_syncer, validate_sync_function
+from ray.tune.log_sync import get_syncer
 from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
     TIMESTEPS_TOTAL
 
@@ -82,7 +82,6 @@ class UnifiedLogger(Logger):
                  upload_uri=None,
                  custom_loggers=None,
                  sync_function=None):
-        validate_sync_function(sync_function)
         self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
         self._sync_function = sync_function
         if custom_loggers:
