@@ -24,6 +24,11 @@ std::mt19937 RandomlySeededMersenneTwister() {
   return seeded_engine;
 }
 
+UniqueID::UniqueID() {
+  // Set the ID to nil.
+  std::fill_n(id_, kUniqueIDSize, 255);
+}
+
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
 }
@@ -67,17 +72,11 @@ bool UniqueID::is_nil() const {
   return true;
 }
 
-const uint8_t *UniqueID::data() const {
-  return id_;
-}
+const uint8_t *UniqueID::data() const { return id_; }
 
-uint8_t *UniqueID::mutable_data() {
-  return id_;
-}
+uint8_t *UniqueID::mutable_data() { return id_; }
 
-size_t UniqueID::size() const {
-  return kUniqueIDSize;
-}
+size_t UniqueID::size() const { return kUniqueIDSize; }
 
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
