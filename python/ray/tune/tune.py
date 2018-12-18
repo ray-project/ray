@@ -99,6 +99,8 @@ def run_experiments(experiments=None,
         List of Trial objects, holding data for each executed trial.
 
     """
+    # This is important here to schematize the experiments
+    # and also does implicit registration.
     experiments = convert_to_experiment_list(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
 
