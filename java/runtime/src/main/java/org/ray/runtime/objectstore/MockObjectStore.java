@@ -34,8 +34,9 @@ public class MockObjectStore implements ObjectStoreLink {
     }
     UniqueId uniqueId = new UniqueId(objectId);
     data.put(uniqueId, value);
-    metadata.put(uniqueId, metadataValue);
-
+    if (metadataValue != null) {
+      metadata.put(uniqueId, metadataValue);
+    }
     if (scheduler != null) {
       scheduler.onObjectPut(uniqueId);
     }

@@ -28,9 +28,6 @@ PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(PyObje
 PyObject *PyRayConfig_max_num_to_reconstruct(PyObject *self);
 PyObject *PyRayConfig_local_scheduler_fetch_request_size(PyObject *self);
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self);
-PyObject *PyRayConfig_manager_timeout_milliseconds(PyObject *self);
-PyObject *PyRayConfig_buf_size(PyObject *self);
-PyObject *PyRayConfig_max_time_for_handler_milliseconds(PyObject *self);
 PyObject *PyRayConfig_size_limit(PyObject *self);
 PyObject *PyRayConfig_num_elements_limit(PyObject *self);
 PyObject *PyRayConfig_max_time_for_loop(PyObject *self);

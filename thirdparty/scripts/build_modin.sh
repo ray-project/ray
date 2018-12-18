@@ -14,7 +14,7 @@ fi
 PYTHON_VERSION="$($PYTHON_EXECUTABLE -c 'import sys; print(sys.version_info[0])')"
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
-MODIN_VERSION=0.2.4
+MODIN_VERSION=0.2.5
 MODIN_WHEELS_FNAME="modin-$MODIN_VERSION-py$PYTHON_VERSION-none-any.whl"
 MODIN_WHEELS_URL="https://github.com/modin-project/modin/releases/download/v$MODIN_VERSION/"
 

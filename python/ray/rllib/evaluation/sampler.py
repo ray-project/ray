@@ -10,8 +10,7 @@ import six.moves.queue as queue
 import threading
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
-from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
-    MultiAgentBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
@@ -174,20 +173,6 @@ class AsyncSampler(threading.Thread):
         if isinstance(rollout, BaseException):
             raise rollout
 
-        # We can't auto-concat rollouts in these modes
-        if self.async_vector_env.num_envs > 1 or \
-                isinstance(rollout, MultiAgentBatch):
-            return rollout
-
-        # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
-        while not rollout["dones"][-1]:
-            try:
-                part = self.queue.get_nowait()
-                if isinstance(part, BaseException):
-                    raise rollout
-                rollout = rollout.concat(part)
-            except queue.Empty:
-                break
         return rollout
 
     def get_metrics(self):
