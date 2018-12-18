@@ -32,7 +32,7 @@ Example Use
 |  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
 +------------------------------------------------+----------------------------------------------------+
 
-To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.rst>`_.
+To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.html>`_.
 
 View the `codebase on GitHub`_.
 

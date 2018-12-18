@@ -7,9 +7,19 @@ from __future__ import print_function
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
-def _import_ddpg():
-    from ray.rllib.agents import ddpg
-    return ddpg.DDPGAgent
+def _import_qmix():
+    from ray.rllib.agents import qmix
+    return qmix.QMixAgent
+
+
+def _import_apex_qmix():
+    from ray.rllib.agents import qmix
+    return qmix.ApexQMixAgent
+
+
+def _import_qmix():
+    from ray.rllib.agents import qmix
+    return qmix.QMIXAgent
 
 
 def _import_apex_ddpg():
@@ -74,6 +84,8 @@ ALGORITHMS = {
     "A2C": _import_a2c,
     "PG": _import_pg,
     "IMPALA": _import_impala,
+    "QMIX": _import_qmix,
+    "APEX_QMIX": _import_apex_qmix,
 }
 
 

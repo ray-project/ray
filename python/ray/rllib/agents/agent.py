@@ -10,6 +10,7 @@ import pickle
 import six
 import tempfile
 import tensorflow as tf
+import traceback
 from types import FunctionType
 
 import ray
