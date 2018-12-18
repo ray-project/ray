@@ -157,8 +157,9 @@ class Experiment(object):
         run_value = spec.pop("run")
         try:
             exp = cls(name, run_value, **spec)
-        except TypeError:
-            raise TuneError("Improper argument from JSON: {}.".format(spec))
+        except TypeError as exc:
+            logger.exception("Improper argument from JSON.")
+            raise exc
         return exp
 
     def _register_if_needed(self, run_object):
