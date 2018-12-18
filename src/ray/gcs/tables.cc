@@ -121,7 +121,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
       if (subscribe != nullptr) {
         // Parse the notification.
         auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
-        ID id = UniqueID::nil();
+        ID id;
         if (root->id()->size() > 0) {
           id = from_flatbuf(*root->id());
         }
