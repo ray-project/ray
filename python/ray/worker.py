@@ -108,6 +108,7 @@ class RayTaskError(Exception):
         self.host = os.uname()[1]
         self.function_name = function_name
         self.traceback_str = traceback_str
+        assert traceback_str is not None
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -794,8 +795,9 @@ class Worker(object):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except RayTaskError as e:
-            self._handle_process_task_failure(function_id, function_name,
-                                              return_object_ids, e, None)
+            self._handle_process_task_failure(
+                function_id, function_name, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
             return
         except Exception as e:
             self._handle_process_task_failure(
