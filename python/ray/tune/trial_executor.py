@@ -4,8 +4,8 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import pickle
 
+import ray.cloudpickle as cloudpickle
 from ray.tune.trial import Trial, Checkpoint
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class TrialExecutor(object):
                 return
             try:
                 logger.debug("Saving trial metadata.")
-                metadata = pickle.dumps(trial)
+                metadata = cloudpickle.dumps(trial)
                 self._checkpoints[trial.trial_id] = metadata
             except ValueError:
                 logger.exception("Error checkpointing trial metadata.")

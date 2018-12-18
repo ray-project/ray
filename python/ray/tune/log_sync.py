@@ -35,7 +35,7 @@ def validate_sync_function(sync_function):
         return
     elif isinstance(sync_function, str):
         assert "{remote_dir}" in sync_function, (
-            "Sync template missing '{remote_dir}'." )
+            "Sync template missing '{remote_dir}'.")
         assert "{local_dir}" in sync_function, (
             "Sync template missing '{local_dir}'.")
     elif not (isinstance(sync_function, types.FunctionType)

@@ -5,11 +5,11 @@ from __future__ import print_function
 import collections
 import logging
 import os
-import pickle
 import re
 import time
 import traceback
 
+import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
@@ -110,8 +110,8 @@ class TrialRunner(object):
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
             logger.debug("Checkpoint directory newly created.")
+            logger.warning("Search Algorithm and Scheduler not checkpointed.")
             os.makedirs(checkpoint_dir)
-        logger.warning("Search Algorithm and Scheduler not checkpointed.")
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
@@ -119,7 +119,7 @@ class TrialRunner(object):
         }
         tmp_file_name = os.path.join(checkpoint_dir, ".tmp_checkpoint")
         with open(tmp_file_name, "wb") as f:
-            pickle.dump(runner_state, f)
+            cloudpickle.dump(runner_state, f)
 
         os.rename(tmp_file_name,
                   os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE))
@@ -142,7 +142,7 @@ class TrialRunner(object):
         """
         with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
                   "rb") as f:
-            runner_state = pickle.load(f)
+            runner_state = cloudpickle.load(f)
 
         logger.warning(
             "Tune recovery is still experimental. "
@@ -159,7 +159,7 @@ class TrialRunner(object):
 
         logger.info("Adding all trials with checkpoint state.")
         for ckpt in runner_state["checkpoints"]:
-            trial = pickle.loads(ckpt)
+            trial = cloudpickle.loads(ckpt)
             runner.add_trial(trial)
         return runner
 
