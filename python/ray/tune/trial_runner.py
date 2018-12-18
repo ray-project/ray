@@ -110,8 +110,8 @@ class TrialRunner(object):
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
             logger.debug("Checkpoint directory newly created.")
+            logger.warning("Search Algorithm and Scheduler not checkpointed.")
             os.makedirs(checkpoint_dir)
-        logger.warning("Search Algorithm and Scheduler not checkpointed.")
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
