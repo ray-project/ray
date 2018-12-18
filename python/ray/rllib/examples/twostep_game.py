@@ -84,7 +84,7 @@ if __name__ == "__main__":
             "train_batch_size": 32,
             "exploration_final_eps": 0.0,
             "num_workers": 0,
-            #            "mixer": grid_search([None, "qmix", "vdn"]),
+            "mixer": grid_search([None, "qmix", "vdn"]),
         }
     elif args.run == "APEX_QMIX":
         config = {
