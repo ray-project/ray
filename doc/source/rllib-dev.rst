@@ -20,6 +20,7 @@ These are the guidelines for merging new algorithms into RLlib:
     - must subclass Agent and implement the ``_train()`` method
     - should include a lightweight test (<30s to run) to sanity check functionality
     - should include a tuned hyperparameter example / documentation
+    - should offer functionality not present in existing algorithms
 
 * Fully integrated algorithms (`rllib/agents <https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents>`__) have the following additional requirements:
     - must fully implement the Agent API
