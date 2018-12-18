@@ -412,7 +412,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
 
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA python -m pytest /ray/test/object_manager_test.py
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA python -m pytest -v /ray/test/object_manager_test.py
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
