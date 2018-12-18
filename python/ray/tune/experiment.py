@@ -103,7 +103,7 @@ class Experiment(object):
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
         spec = {
-            "run": self._register_if_needed(run),
+            "run": Experiment._register_if_needed(run),
             "stop": stop or {},
             "config": config or {},
             "trial_resources": trial_resources,
@@ -161,7 +161,8 @@ class Experiment(object):
             raise TuneError("Improper argument from JSON: {}.".format(spec))
         return exp
 
-    def _register_if_needed(self, run_object):
+    @classmethod
+    def _register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string. Does not
