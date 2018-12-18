@@ -21,23 +21,14 @@ class TwoStepGame(MultiAgentEnv):
 
     # Each agent gets a separate [3] obs space, to ensure that they can
     # learn meaningfully different Q values even with a shared Q model.
-    observation_space = Dict({
-        "obs": Discrete(6),
-        "avail_actions": Box(0, 1, (2,)),
-    })
+    observation_space = Discrete(6)
 
     def __init__(self, env_config):
         self.state = None
 
-    def _encode_obs(self, state):
-        return {"obs": state, "avail_actions": [1, 1]}
-
     def reset(self):
         self.state = 0
-        return {
-            "agent_1": self._encode_obs(self.state),
-            "agent_2": self._encode_obs(self.state + 3),
-        }
+        return {"agent_1": self.state, "agent_2": self.state + 3}
 
     def step(self, action_dict):
         if self.state == 0:
@@ -62,10 +53,7 @@ class TwoStepGame(MultiAgentEnv):
             done = True
 
         rewards = {"agent_1": global_rew / 2.0, "agent_2": global_rew / 2.0}
-        obs = {
-            "agent_1": self._encode_obs(self.state),
-            "agent_2": self._encode_obs(self.state + 3)
-        }
+        obs = {"agent_1": self.state, "agent_2": self.state + 3}
         dones = {"__all__": done}
         infos = {}
         return obs, rewards, dones, infos
@@ -96,7 +84,7 @@ if __name__ == "__main__":
             "train_batch_size": 32,
             "exploration_final_eps": 0.0,
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
+            #            "mixer": grid_search([None, "qmix", "vdn"]),
         }
     elif args.run == "APEX_QMIX":
         config = {

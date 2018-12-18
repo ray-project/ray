@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from gym.spaces import Tuple, Discrete
+from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
 import torch as th
@@ -20,7 +20,7 @@ from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.model import _unpack_obs
 from ray.rllib.models.preprocessors import get_preprocessor, \
     TupleFlatteningPreprocessor
-from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO, AVAIL_ACTIONS
+from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, mask, obs, avail_actions):
+    def forward(self, rewards, actions, terminated, mask, obs, action_mask):
         """Forward pass of the loss.
 
         Arguments:
@@ -55,7 +55,7 @@ class QMixLoss(nn.Module):
             terminated: Tensor of shape [B, T-1, n_agents]
             mask: Tensor of shape [B, T-1, n_agents]
             obs: Tensor of shape [B, T, n_agents, obs_size]
-            avail_actions: Tensor of shape [B, T, n_agents, n_actions]
+            action_mask: Tensor of shape [B, T, n_agents, n_actions]
         """
 
         B, T = obs.size(0), obs.size(1)
@@ -85,12 +85,12 @@ class QMixLoss(nn.Module):
             target_mac_out[1:], dim=1)  # Concat across time
 
         # Mask out unavailable actions
-        target_mac_out[avail_actions[:, 1:] == 0] = -9999999
+        target_mac_out[action_mask[:, 1:] == 0] = -9999999
 
         # Max over target Q-Values
         if self.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            mac_out[avail_actions == 0] = -9999999
+            mac_out[action_mask == 0] = -9999999
             cur_max_actions = mac_out[:, 1:].max(dim=3, keepdim=True)[1]
             target_max_qvals = th.gather(target_mac_out, 3,
                                          cur_max_actions).squeeze(3)
@@ -126,6 +126,10 @@ class QMixPolicyGraph(PolicyGraph):
     You must use MultiAgentEnv.with_agent_groups() to group agents
     together for QMix. This creates the proper Tuple obs/action spaces and
     populates the '_group_rewards' info field.
+
+    Action masking: to specify an action mask for individual agents, use a
+    dict space with an action_mask key, e.g. {"obs": ob, "action_mask": mask}.
+    The mask space must be `Box(0, 1, (n_actions,))`.
     """
 
     def __init__(self, obs_space, action_space, config):
@@ -134,20 +138,34 @@ class QMixPolicyGraph(PolicyGraph):
         self.config = config
         self.observation_space = obs_space
         self.action_space = action_space
-
-        self.obs_size = _get_size(
-            obs_space.original_space.spaces[0].spaces["obs"])
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
+
+        agent_obs_space = obs_space.original_space.spaces[0]
+        if isinstance(agent_obs_space, Dict):
+            space_keys = set(agent_obs_space.spaces.keys())
+            if space_keys != set(["obs", "action_mask"]):
+                raise ValueError(
+                    "Dict obs space for agent must have keyset "
+                    "['obs', 'action_mask'], got {}".format(space_keys))
+            mask_shape = tuple(agent_obs_space.spaces["action_mask"].shape)
+            if mask_shape != (self.n_actions, ):
+                raise ValueError("Action mask shape must be {}, got {}".format(
+                    (self.n_actions, ), mask_shape))
+            self.has_action_mask = True
+            self.obs_size = _get_size(agent_obs_space.spaces["obs"])
+        else:
+            self.has_action_mask = False
+            self.obs_size = _get_size(agent_obs_space)
+
         self.model = RNNModel(self.obs_size, self.h_size, self.n_actions)
         self.target_model = RNNModel(self.obs_size, self.h_size,
                                      self.n_actions)
 
         # Setup the mixer network.
         # The global state is just the stacked agent observations for now.
-        self.state_shape = (
-            list(_get_shape(obs_space.original_space.spaces[0])) + [self.n_agents])
+        self.state_shape = [self.obs_size, self.n_agents]
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
@@ -185,21 +203,15 @@ class QMixPolicyGraph(PolicyGraph):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        unpacked = _unpack_obs(
-            np.array(obs_batch), self.observation_space.original_space,
-            tensorlib=np)
-        obs_batch = np.concatenate([o["obs"] for o in unpacked], axis=1).reshape(
-            [len(obs_batch), self.n_agents, self.obs_size])
-
+        obs_batch, action_mask = self._unpack_observation(obs_batch)
         assert len(state_batches) == self.n_agents, state_batches
-        _, avail_actions = self._get_multiagent_info(info_batch)
         state_batches = np.stack(state_batches, axis=1)
 
         # Compute actions
         with th.no_grad():
             q_values, hiddens = _mac(self.model, th.from_numpy(obs_batch),
                                      th.from_numpy(state_batches))
-            avail = th.from_numpy(avail_actions).float()
+            avail = th.from_numpy(action_mask).float()
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
@@ -216,20 +228,15 @@ class QMixPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def compute_apply(self, samples):
-        group_rewards, avail_actions = self._get_multiagent_info(
-            samples["infos"])
-        unpacked = _unpack_obs(
-            samples["obs"], self.observation_space.original_space,
-            tensorlib=np)
-        obs_batch = np.concatenate([o["obs"] for o in unpacked], axis=1).reshape(
-            [len(samples["obs"]), self.n_agents, self.obs_size])
+        obs_batch, action_mask = self._unpack_observation(samples["obs"])
+        group_rewards = self._get_group_rewards(samples["infos"])
 
         # These will be padded to shape [B * T, ...]
-        [rew, avail_actions, act, dones, obs], initial_states, seq_lens = \
+        [rew, action_mask, act, dones, obs], initial_states, seq_lens = \
             chop_into_sequences(
                 samples["eps_id"],
                 samples["agent_index"], [
-                    group_rewards, avail_actions, samples["actions"],
+                    group_rewards, action_mask, samples["actions"],
                     samples["dones"], obs_batch
                 ],
                 [samples["state_in_{}".format(k)]
@@ -249,7 +256,7 @@ class QMixPolicyGraph(PolicyGraph):
         actions = to_batches(act)[:, :-1].long()
         obs = to_batches(obs).reshape([B, T, self.n_agents,
                                        self.obs_size]).float()
-        avail_actions = to_batches(avail_actions)
+        action_mask = to_batches(action_mask)
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = to_batches(dones.astype(np.float32)).unsqueeze(2).expand(
@@ -262,7 +269,7 @@ class QMixPolicyGraph(PolicyGraph):
 
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, mask, obs, avail_actions)
+            self.loss(rewards, actions, terminated, mask, obs, action_mask)
 
         # Optimise
         self.optimiser.zero_grad()
@@ -328,26 +335,32 @@ class QMixPolicyGraph(PolicyGraph):
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    def _get_multiagent_info(self, info_batch):
+    def _get_group_rewards(self, info_batch):
         group_rewards = np.array([
             info.get(GROUP_REWARDS, [0.0] * self.n_agents)
             for info in info_batch
         ])
+        return group_rewards
 
-        def get_avail_actions(info):
-            group_infos = info.get(GROUP_INFO)
-            all_avail = [1.0] * self.n_actions
-            if group_infos:
-                avail_actions = [
-                    m.get(AVAIL_ACTIONS, all_avail) for m in group_infos
-                ]
-            else:
-                avail_actions = [all_avail] * self.n_agents
-            return avail_actions
-
-        avail_actions = np.array(
-            [get_avail_actions(info) for info in info_batch])
-        return group_rewards, avail_actions
+    def _unpack_observation(self, obs_batch):
+        unpacked = _unpack_obs(
+            np.array(obs_batch),
+            self.observation_space.original_space,
+            tensorlib=np)
+        if self.has_action_mask:
+            obs = np.concatenate(
+                [o["obs"] for o in unpacked],
+                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
+            action_mask = np.concatenate(
+                [o["action_mask"] for o in unpacked], axis=1).reshape(
+                    [len(obs_batch), self.n_agents, self.n_actions])
+        else:
+            obs = np.concatenate(
+                unpacked,
+                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
+            action_mask = np.ones(
+                [len(obs_batch), self.n_agents, self.n_actions])
+        return obs, action_mask
 
 
 def _validate(obs_space, action_space):
@@ -374,10 +387,6 @@ def _validate(obs_space, action_space):
         raise ValueError(
             "Implementation limitation: action space of grouped agents "
             "must be homogeneous, got {}".format(action_space.spaces))
-
-
-def _get_shape(obs_space):
-    return get_preprocessor(obs_space)(obs_space).shape
 
 
 def _get_size(obs_space):

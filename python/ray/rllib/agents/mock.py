@@ -102,14 +102,14 @@ class _ParameterTuningAgent(_MockAgent):
             info={})
 
 
-def _agent_import_failed(e):
+def _agent_import_failed(trace):
     """Returns dummy agent class for if PyTorch etc. is not installed."""
 
     class _AgentImportFailed(Agent):
         _agent_name = "AgentImportFailed"
         _default_config = with_common_config({})
 
-        def _init(self):
-            raise e
+        def _setup(self, config):
+            raise ImportError(trace)
 
     return _AgentImportFailed

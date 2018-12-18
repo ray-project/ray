@@ -10,6 +10,7 @@ import pickle
 import six
 import tempfile
 import tensorflow as tf
+import traceback
 from types import FunctionType
 
 import ray
@@ -548,9 +549,9 @@ def get_agent_class(alg):
 
     try:
         return _get_agent_class(alg)
-    except ImportError as e:
+    except ImportError:
         from ray.rllib.agents.mock import _agent_import_failed
-        return _agent_import_failed(e)
+        return _agent_import_failed(traceback.format_exc())
 
 
 def _get_agent_class(alg):
