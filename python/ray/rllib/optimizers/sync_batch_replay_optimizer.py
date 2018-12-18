@@ -89,7 +89,7 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
 
     def _optimize(self):
         samples = [random.choice(self.replay_buffer)]
-        while sum([s.count for s in samples]) < self.train_batch_size:
+        while sum(s.count for s in samples) < self.train_batch_size:
             samples.append(random.choice(self.replay_buffer))
         samples = SampleBatch.concat_samples(samples)
         with self.grad_timer:

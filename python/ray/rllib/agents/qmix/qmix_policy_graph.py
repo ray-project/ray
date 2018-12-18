@@ -144,7 +144,7 @@ class QMixPolicyGraph(PolicyGraph):
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
-            if space_keys != set(["obs", "action_mask"]):
+            if space_keys != {"obs", "action_mask"}:
                 raise ValueError(
                     "Dict obs space for agent must have keyset "
                     "['obs', 'action_mask'], got {}".format(space_keys))
@@ -377,12 +377,12 @@ def _validate(obs_space, action_space):
         raise ValueError(
             "QMix requires a discrete action space, got {}".format(
                 action_space.spaces[0]))
-    if len(set([str(x) for x in obs_space.original_space.spaces])) > 1:
+    if len(set(str(x) for x in obs_space.original_space.spaces)) > 1:
         raise ValueError(
             "Implementation limitation: observations of grouped agents "
             "must be homogeneous, got {}".format(
                 obs_space.original_space.spaces))
-    if len(set([str(x) for x in action_space.spaces])) > 1:
+    if len(set(str(x) for x in action_space.spaces)) > 1:
         raise ValueError(
             "Implementation limitation: action space of grouped agents "
             "must be homogeneous, got {}".format(action_space.spaces))
