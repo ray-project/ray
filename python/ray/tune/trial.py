@@ -134,12 +134,8 @@ class Trial(object):
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-        if not has_trainable(trainable_name):
-            # Make sure rllib agents are registered
-            from ray import rllib  # noqa: F401
-            if not has_trainable(trainable_name):
-                raise TuneError("Unknown trainable: " + trainable_name)
 
+        Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
@@ -171,6 +167,14 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
+
+    @classmethod
+    def _registration_check(cls, trainable_name):
+        if not has_trainable(trainable_name):
+            # Make sure rllib agents are registered
+            from ray import rllib  # noqa: F401
+            if not has_trainable(trainable_name):
+                raise TuneError("Unknown trainable: " + trainable_name)
 
     @classmethod
     def generate_id(cls):
@@ -369,5 +373,6 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("_logger_started")
         self.__dict__.update(state)
+        Trial._registration_check(self.__dict__["trainable_name"])
         if logger_started:
             self.init_logger()
