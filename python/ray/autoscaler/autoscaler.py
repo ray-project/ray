@@ -66,6 +66,8 @@ CLUSTER_CONFIG_SCHEMA = {
             "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
+            "module_path": (str,
+                            OPTIONAL),  # module_path, if using external node provider
             "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
