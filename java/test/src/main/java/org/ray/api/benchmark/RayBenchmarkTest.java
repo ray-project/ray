@@ -11,9 +11,10 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.test.BaseTest;
 import org.ray.runtime.util.logger.RayLog;
 
-public abstract class RayBenchmarkTest<T> implements Serializable {
+public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializable {
 
   //not thread safe ,but we only have one thread here
   public static final DecimalFormat df = new DecimalFormat("00.00");
