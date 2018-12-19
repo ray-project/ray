@@ -427,9 +427,9 @@ class ActorClass(object):
 
         actor_handle = ActorHandle(
             actor_id, self._modified_class.__module__, self._class_name,
-            actor_cursor, self._actor_method_names,
-            self._method_signatures, self._actor_method_num_return_vals,
-            actor_cursor, self._actor_method_cpus, worker.task_driver_id)
+            actor_cursor, self._actor_method_names, self._method_signatures,
+            self._actor_method_num_return_vals, actor_cursor,
+            self._actor_method_cpus, worker.task_driver_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
@@ -647,10 +647,9 @@ class ActorHandle(object):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
-            logger.warning(
-                "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_class_name)
+            logger.warning("Actor is garbage collected in the wrong driver." +
+                           " Actor id = %s, class name = %s.",
+                           self._ray_actor_id, self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -691,8 +690,10 @@ class ActorHandle(object):
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
+            # Actors in local mode don't have dummy objects.
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id(),
+            _ray_actor_creation_dummy_object_id.id()
+            if self._ray_actor_creation_dummy_object_id is not None else None,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
             "ray_forking": ray_forking
@@ -744,7 +745,8 @@ class ActorHandle(object):
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.ObjectID(state["actor_creation_dummy_object_id"]),
+            ray.ObjectID(state["actor_creation_dummy_object_id"])
+            if state["actor_creation_dummy_object_id"] is not None else None,
             state["actor_method_cpus"],
             actor_driver_id,
             actor_handle_id=actor_handle_id)
