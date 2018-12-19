@@ -62,7 +62,8 @@ class SC2MultiAgentEnv(MultiAgentEnv):
                                              "3rdparty/StarCraftII")
         sys.path.append(os.path.join(PYMARL_PATH, "src"))
         from envs.starcraft2 import StarCraft2Env
-        with open(os.path.join(os.path.dirpath(__file__), "sc2.yaml")) as f:
+        curpath = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(curpath, "sc2.yaml")) as f:
             pymarl_args = yaml.load(f)
             pymarl_args.update(override_cfg)
             # HACK
@@ -117,7 +118,7 @@ if __name__ == "__main__":
     ray.init()
     ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
 
-    register_env("starcraft", lambda _: SC2MultiAgentEnv())
+    register_env("starcraft", lambda cfg: SC2MultiAgentEnv(cfg))
     agent_cfg = {
         "observation_filter": "NoFilter",
         "model": {
@@ -127,7 +128,7 @@ if __name__ == "__main__":
             "pymarl_path": path_to_pymarl
         }
     }
-    if args.run.lowercase() == "qmix":
+    if args.run.lower() == "qmix":
         agent = QMixAgent(env="starcraft", config=agent_cfg)
     else:
         agent = PGAgent(env="starcraft", config=agent_cfg)
