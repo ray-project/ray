@@ -29,7 +29,6 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 template <typename T>
 class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>> {
  public:
-
   /// ServerConnection destructor.
   virtual ~ServerConnection();
 
