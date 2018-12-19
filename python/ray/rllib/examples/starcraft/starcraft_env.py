@@ -118,7 +118,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         # obs = dict(enumerate(obs_list))
 
         # TODO: check what the reward actually is
-        rews = {i: rew for i in range(len(obs_list))}
+        rews = {i: rew / len(obs_list) for i in range(len(obs_list))}
         dones = {i: done for i in range(len(obs_list))}
         dones["__all__"] = done
         infos = {i: info for i in range(len(obs_list))}
