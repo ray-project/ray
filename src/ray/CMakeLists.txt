@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
-add_subdirectory(util)
-add_subdirectory(gcs)
-add_subdirectory(object_manager)
-add_subdirectory(raylet)
-
 include_directories(thirdparty/ae)
 
 set(HIREDIS_SRCS
@@ -97,6 +92,11 @@ ADD_RAY_LIB(ray
     STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
 
 set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${RAY_SYSTEM_LIBS} gtest gtest_main gmock_main)
+
+add_subdirectory(util)
+add_subdirectory(gcs)
+add_subdirectory(object_manager)
+add_subdirectory(raylet)
 
 add_custom_target(copy_redis ALL)
 foreach(file "redis-cli" "redis-server")
