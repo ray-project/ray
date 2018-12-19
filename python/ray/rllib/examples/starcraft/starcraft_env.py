@@ -7,10 +7,17 @@ from gym.spaces import Discrete, Box, Dict
 import os
 import random
 import sys
+import tensorflow as tf
+import tensorflow.contrib.slim as slim
 import yaml
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.tune.registry import register_env
+
+from ray.rllib.models import Model, ModelCatalog
+from ray.rllib.models.misc import normc_initializer
+from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 
@@ -130,6 +137,7 @@ if __name__ == "__main__":
 
     register_env("starcraft", lambda _: SC2MultiAgentEnv())
     agent = PGAgent(env="starcraft", config={
+        "observation_filter": "NoFilter",
         "model": {
             "custom_model": "pa_model"
         }
