@@ -311,7 +311,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
         if (not _large_batch_warned and
                 episode.batch_builder.total() > max(1000, unroll_length * 10)):
             _large_batch_warned = True
-            logger.warn(
+            logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "

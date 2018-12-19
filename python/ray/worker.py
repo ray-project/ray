@@ -1381,8 +1381,9 @@ def _init(address_info=None,
         driver_mode = SCRIPT_MODE
 
     if redis_max_memory and collect_profiling_data:
-        logger.warn("Profiling data cannot be LRU evicted, so it is disabled "
-                    "when redis_max_memory is set.")
+        logger.warning(
+            "Profiling data cannot be LRU evicted, so it is disabled "
+            "when redis_max_memory is set.")
         collect_profiling_data = False
 
     # Get addresses of existing services.
@@ -1646,8 +1647,8 @@ def init(redis_address=None,
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
         if use_raylet:
-            logger.warn("WARNING: The use_raylet argument has been "
-                        "deprecated. Please remove it.")
+            logger.warning("WARNING: The use_raylet argument has been "
+                           "deprecated. Please remove it.")
         else:
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
