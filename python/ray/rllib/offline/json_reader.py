@@ -42,7 +42,7 @@ class JsonReader(InputReader):
         if isinstance(inputs, six.string_types):
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
-                logger.warn(
+                logger.warning(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
             if urlparse(inputs).scheme:

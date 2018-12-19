@@ -206,7 +206,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "\n";
     ClientTableDataT data;
     gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;

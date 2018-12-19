@@ -227,7 +227,7 @@ def _is_resolved(v):
 
 def _try_resolve(v):
     if isinstance(v, types.FunctionType):
-        logger.warn(
+        logger.warning(
             "Deprecation warning: Function values are ambiguous in Tune "
             "configuations. Either wrap the function with "
             "`tune.function(func)` to specify a function literal, or "

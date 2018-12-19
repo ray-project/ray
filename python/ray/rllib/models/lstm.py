@@ -123,7 +123,8 @@ def chop_into_sequences(episode_ids,
                         feature_columns,
                         state_columns,
                         max_seq_len,
-                        dynamic_max=True):
+                        dynamic_max=True,
+                        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:
@@ -136,6 +137,7 @@ def chop_into_sequences(episode_ids,
         dynamic_max (bool): Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
+        _extra_padding (int): Add extra padding to the end of sequences.
 
     Returns:
         f_pad (list): Padded feature columns. These will be of shape
@@ -177,7 +179,7 @@ def chop_into_sequences(episode_ids,
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
-        max_seq_len = max(seq_lens)
+        max_seq_len = max(seq_lens) + _extra_padding
 
     feature_sequences = []
     for f in feature_columns:
