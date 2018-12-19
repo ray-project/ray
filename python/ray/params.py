@@ -164,8 +164,10 @@ class RayParams(object):
         self._internal_config = _internal_config
         self.autoscaling_config = autoscaling_config
 
-    def apply_settings(self, **kw_args):
-        for arg in kw_args:
+    def apply_settings(self, **kwargs):
+        for arg in kwargs:
             if (hasattr(self, arg)):
-                print("Apply value %s to key %s" % (kw_args[arg], arg))
-                setattr(self, arg, kw_args[arg])
+                setattr(self, arg, kwargs[arg])
+            else:
+                raise Exception("Invalid RayParams parameter in"
+                                " apply_settings: %s" % arg)
