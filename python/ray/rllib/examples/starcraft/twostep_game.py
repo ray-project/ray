@@ -64,8 +64,10 @@ if __name__ == "__main__":
             "config": {
                 "multiagent": {
                     "policy_graphs": {
-                        "agent_1": (PGPolicyGraph, Discrete(3), Discrete(2), {}),
-                        "agent_2": (PGPolicyGraph, Discrete(3), Discrete(2), {}),
+                        "agent_1": (PGPolicyGraph, Discrete(3), Discrete(2),
+                                    {}),
+                        "agent_2": (PGPolicyGraph, Discrete(3), Discrete(2),
+                                    {}),
                     },
                     "policy_mapping_fn": function(lambda agent_id: agent_id),
                 },
