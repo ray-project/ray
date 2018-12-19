@@ -100,7 +100,6 @@ class PolicyEvaluator(EvaluatorInterface):
                  num_envs=1,
                  observation_filter="NoFilter",
                  clip_rewards=None,
-                 clip_actions=True,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -156,8 +155,6 @@ class PolicyEvaluator(EvaluatorInterface):
             clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
                 experience postprocessing. Setting to None means clip for Atari
                 only.
-            clip_actions (bool): Whether to clip action values to the range
-                specified by the policy action space.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -292,8 +289,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                tf_sess=self.tf_sess)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -306,11 +302,11 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
-                tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                tf_sess=self.tf_sess)
 
         logger.debug("Created evaluator with env {} ({}), policies {}".format(
             self.async_env, self.env, self.policy_map))
+
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
@@ -331,6 +327,7 @@ class PolicyEvaluator(EvaluatorInterface):
                         "with TupleFlatteningPreprocessor and set the "
                         "obs space to `preprocessor.observation_space`.")
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+
         return policy_map
 
     def sample(self):
@@ -494,6 +491,7 @@ class PolicyEvaluator(EvaluatorInterface):
                         self.policy_map[pid].build_compute_apply(
                             builder, batch))
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
+
             else:
                 for pid, batch in samples.policy_batches.items():
                     if pid not in self.policies_to_train:

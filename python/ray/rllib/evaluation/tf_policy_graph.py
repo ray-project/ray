@@ -129,7 +129,7 @@ class TFPolicyGraph(PolicyGraph):
             self._apply_op = self._optimizer.apply_gradients(
                 self._grads_and_vars,
                 global_step=tf.train.get_or_create_global_step())
-
+ 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
                 "Number of state input and output tensors must match, got: "

@@ -35,7 +35,7 @@ DEFAULT_CONFIG = with_common_config({
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
-    "num_workers": 2,
+    "num_workers": 10,
     # number of GPUs the learner should use.
     "num_gpus": 1,
     # set >1 to load data into GPUs in parallel. Increases GPU memory usage
@@ -65,6 +65,8 @@ DEFAULT_CONFIG = with_common_config({
     # balancing the three losses
     "vf_loss_coeff": 0.5,
     "entropy_coeff": -0.01,
+    # rnd
+    "rnd": 1
 })
 # __sphinx_doc_end__
 # yapf: enable

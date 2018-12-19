@@ -99,7 +99,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                         pack_if_needed(row["new_obs"]),
                         row["dones"],
                         weight=None)
-
+ 
         if self.num_steps_sampled >= self.replay_starts:
             self._optimize()
 

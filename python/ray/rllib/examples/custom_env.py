@@ -11,6 +11,7 @@ from gym.envs.registration import EnvSpec
 
 import ray
 from ray.tune import run_experiments
+from ray.tune.registry import register_env
 
 
 class SimpleCorridor(gym.Env):
@@ -41,13 +42,13 @@ class SimpleCorridor(gym.Env):
 
 
 if __name__ == "__main__":
-    # Can also register the env creator function explicitly with:
-    # register_env("corridor", lambda config: SimpleCorridor(config))
+    env_creator_name = "corridor"
+    register_env(env_creator_name, lambda config: SimpleCorridor(config))
     ray.init()
     run_experiments({
         "demo": {
             "run": "PPO",
-            "env": SimpleCorridor,  # or "corridor" if registered above
+            "env": "corridor",
             "config": {
                 "env_config": {
                     "corridor_length": 5,

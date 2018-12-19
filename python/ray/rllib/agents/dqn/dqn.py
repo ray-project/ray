@@ -199,7 +199,7 @@ class DQNAgent(Agent):
 
     def _train(self):
         start_timestep = self.global_timestep
-
+ 
         # Update worker explorations
         exp_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.foreach_trainable_policy(

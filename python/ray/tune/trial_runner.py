@@ -12,7 +12,7 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.web_server import TuneServer
 
@@ -279,14 +279,17 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                self._checkpoint_if_needed(trial)
+                if trial.should_checkpoint(result):
+                    # TODO(rliaw): This is a blocking call
+                    self.trial_executor.save(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                self._checkpoint_if_needed(trial)
+                if trial.should_checkpoint(result):
+                    self.trial_executor.save(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -295,61 +298,24 @@ class TrialRunner(object):
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()
             if trial.status == Trial.RUNNING:
-                if trial.should_recover():
+                if trial.should_recover() and \
+                        trial.num_failures < trial.max_failures:
                     self._try_recover(trial, error_msg)
                 else:
                     self._scheduler_alg.on_trial_error(self, trial)
                     self._search_alg.on_trial_complete(
                         trial.trial_id, error=True)
-                    self.trial_executor.stop_trial(
-                        trial, error=True, error_msg=error_msg)
-
-    def _checkpoint_if_needed(self, trial):
-        """Checkpoints trial based off trial.last_result."""
-        if trial.should_checkpoint():
-            # Save trial runtime if possible
-            if hasattr(trial, "runner") and trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.DISK)
+                    self.trial_executor.stop_trial(trial, True, error_msg)
 
     def _try_recover(self, trial, error_msg):
-        """Tries to recover trial.
-
-        Notifies SearchAlgorithm and Scheduler if failure to recover.
-
-        Args:
-            trial (Trial): Trial to recover.
-            error_msg (str): Error message from prior to invoking this method.
-        """
         try:
-            self.trial_executor.stop_trial(
-                trial,
-                error=error_msg is not None,
-                error_msg=error_msg,
-                stop_logger=False)
-            trial.result_logger.flush()
-            if self.trial_executor.has_resources(trial.resources):
-                logger.info("Attempting to recover"
-                            " trial state from last checkpoint.")
-                self.trial_executor.start_trial(trial)
-                if trial.status == Trial.ERROR:
-                    raise RuntimeError("Trial did not start correctly.")
-            else:
-                logger.debug("Notifying Scheduler and requeueing trial.")
-                self._requeue_trial(trial)
+            logger.info("Attempting to recover"
+                        " trial state from last checkpoint.")
+            self.trial_executor.restart_trial(trial, error_msg)
         except Exception:
-            logger.exception("Error recovering trial from checkpoint, abort.")
-            self._scheduler_alg.on_trial_error(self, trial)
-            self._search_alg.on_trial_complete(trial.trial_id, error=True)
-
-    def _requeue_trial(self, trial):
-        """Notification to TrialScheduler and requeue trial.
-
-        This does not notify the SearchAlgorithm because
-        the function evaluation is still in progress.
-        """
-        self._scheduler_alg.on_trial_error(self, trial)
-        trial.status = Trial.PENDING
-        self._scheduler_alg.on_trial_add(self, trial)
+            error_msg = traceback.format_exc()
+            logger.warning("Error recovering trial from checkpoint, abort.")
+            self.trial_executor.stop_trial(trial, True, error_msg=error_msg)
 
     def _update_trial_queue(self, blocking=False, timeout=600):
         """Adds next trials to queue if possible.
