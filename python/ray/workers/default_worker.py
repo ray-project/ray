@@ -8,6 +8,7 @@ import traceback
 
 import ray
 import ray.actor
+from ray.params import RayParams
 import ray.ray_constants as ray_constants
 import ray.tempfile_services as tempfile_services
 
@@ -35,11 +36,6 @@ parser.add_argument(
     required=True,
     type=str,
     help="the object store's name")
-parser.add_argument(
-    "--object-store-manager-name",
-    required=False,
-    type=str,
-    help="the object store manager's name")
 parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
@@ -75,7 +71,6 @@ if __name__ == "__main__":
         "redis_address": args.redis_address,
         "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
-        "manager_socket_name": args.object_store_manager_name,
         "raylet_socket_name": args.raylet_name,
     }
 
@@ -86,11 +81,15 @@ if __name__ == "__main__":
     # Override the temporary directory.
     tempfile_services.set_temp_root(args.temp_dir)
 
-    ray.worker.connect(
-        info,
-        mode=ray.WORKER_MODE,
+    ray_params = RayParams(
+        node_ip_address=args.node_ip_address,
+        redis_address=args.redis_address,
         redis_password=args.redis_password,
-        collect_profiling_data=args.collect_profiling_data)
+        plasma_store_socket_name=args.object_store_name,
+        raylet_socket_name=args.raylet_name,
+        temp_dir=args.temp_dir)
+
+    ray.worker.connect(ray_params, info, mode=ray.WORKER_MODE)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

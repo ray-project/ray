@@ -1424,13 +1424,11 @@ def _init(ray_params, driver_id=None):
     # We only pass `temp_dir` to a worker (WORKER_MODE).
     # It can't be a worker here.
     connect(
+        ray_params,
         driver_address_info,
-        object_id_seed=ray_params.object_id_seed,
         mode=ray_params.driver_mode,
         worker=global_worker,
-        driver_id=driver_id,
-        redis_password=ray_params.redis_password,
-        collect_profiling_data=ray_params.collect_profiling_data)
+        driver_id=driver_id)
     return ray_params.address_info
 
 
@@ -1810,26 +1808,23 @@ def print_error_messages(worker):
         pass
 
 
-def connect(info,
-            object_id_seed=None,
+def connect(ray_params,
+            info,
             mode=WORKER_MODE,
             worker=global_worker,
-            driver_id=None,
-            redis_password=None,
-            collect_profiling_data=True):
+            driver_id=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: object_id_seed,
+            redis_password, collect_profiling_data
         info (dict): A dictionary with address of the Redis server and the
             sockets of the plasma store and raylet.
-        object_id_seed: A seed to use to make the generation of object IDs
-            deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
+        worker: The ray.Worker instance.
         driver_id: The ID of driver. If it's None, then we will generate one.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        collect_profiling_data: Whether to collect profiling data from workers.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1839,7 +1834,7 @@ def connect(info,
     # Enable nice stack traces on SIGSEGV etc.
     faulthandler.enable(all_threads=False)
 
-    if collect_profiling_data:
+    if ray_params.collect_profiling_data:
         worker.profiler = profiling.Profiler(worker)
     else:
         worker.profiler = profiling.NoopProfiler()
@@ -1887,7 +1882,7 @@ def connect(info,
         redis.StrictRedis(
             host=redis_ip_address,
             port=int(redis_port),
-            password=redis_password))
+            password=ray_params.redis_password))
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1925,11 +1920,13 @@ def connect(info,
             services.record_log_files_in_redis(
                 info["redis_address"],
                 info["node_ip_address"], [log_stdout_file, log_stderr_file],
-                password=redis_password)
+                password=ray_params.redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
-        redis_ip_address, int(redis_port), redis_password=redis_password)
+        redis_ip_address,
+        int(redis_port),
+        redis_password=ray_params.redis_password)
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
@@ -1978,8 +1975,8 @@ def connect(info,
         # the user's random number generator). Otherwise, set the current task
         # ID randomly to avoid object ID collisions.
         numpy_state = np.random.get_state()
-        if object_id_seed is not None:
-            np.random.seed(object_id_seed)
+        if ray_params.object_id_seed is not None:
+            np.random.seed(ray_params.object_id_seed)
         else:
             # Try to use true randomness.
             np.random.seed(None)
