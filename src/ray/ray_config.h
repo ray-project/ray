@@ -64,10 +64,6 @@ class RayConfig {
     return kill_worker_timeout_milliseconds_;
   }
 
-  int64_t manager_timeout_milliseconds() const { return manager_timeout_milliseconds_; }
-
-  int64_t buf_size() const { return buf_size_; }
-
   int64_t max_time_for_handler_milliseconds() const {
     return max_time_for_handler_milliseconds_;
   }
@@ -154,10 +150,6 @@ class RayConfig {
         local_scheduler_fetch_request_size_ = pair.second;
       } else if (pair.first == "kill_worker_timeout_milliseconds") {
         kill_worker_timeout_milliseconds_ = pair.second;
-      } else if (pair.first == "manager_timeout_milliseconds") {
-        manager_timeout_milliseconds_ = pair.second;
-      } else if (pair.first == "buf_size") {
-        buf_size_ = pair.second;
       } else if (pair.first == "max_time_for_handler_milliseconds") {
         max_time_for_handler_milliseconds_ = pair.second;
       } else if (pair.first == "size_limit") {
@@ -216,8 +208,6 @@ class RayConfig {
         max_num_to_reconstruct_(10000),
         local_scheduler_fetch_request_size_(10000),
         kill_worker_timeout_milliseconds_(100),
-        manager_timeout_milliseconds_(1000),
-        buf_size_(80 * 1024),
         max_time_for_handler_milliseconds_(1000),
         size_limit_(10000),
         num_elements_limit_(10000),
@@ -245,8 +235,7 @@ class RayConfig {
   /// warning is logged that the handler is taking too long.
   int64_t handler_warning_timeout_ms_;
 
-  /// The duration between heartbeats. These are sent by the plasma manager and
-  /// local scheduler.
+  /// The duration between heartbeats. These are sent by the raylet.
   int64_t heartbeat_timeout_milliseconds_;
   /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
   /// heartbeat intervals, the global scheduler or monitor process will report
@@ -305,10 +294,6 @@ class RayConfig {
   /// The duration that we wait after sending a worker SIGTERM before sending
   /// the worker SIGKILL.
   int64_t kill_worker_timeout_milliseconds_;
-
-  /// These are used by the plasma manager.
-  int64_t manager_timeout_milliseconds_;
-  int64_t buf_size_;
 
   /// This is a timeout used to cause failures in the plasma manager and local
   /// scheduler when certain event loop handlers take too long.

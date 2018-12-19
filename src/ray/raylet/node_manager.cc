@@ -95,7 +95,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str(), "", 0));
+  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
 ray::Status NodeManager::RegisterGcs() {

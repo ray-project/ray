@@ -36,6 +36,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread,
     remote evaluators (Ape-X actors), and replay buffer actors.
 
+    This has two modes of operation:
+        - normal replay: replays independent samples.
+        - batch replay: simplified mode where entire sample batches are
+            replayed. This supports RNNs, but not prioritization.
+
     This optimizer requires that policy evaluators return an additional
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
@@ -52,9 +57,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
               sample_batch_size=50,
               num_replay_buffer_shards=1,
               max_weight_sync_delay=400,
-              debug=False):
+              debug=False,
+              batch_replay=False):
 
         self.debug = debug
+        self.batch_replay = batch_replay
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -63,7 +70,11 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
-        self.replay_actors = create_colocated(ReplayActor, [
+        if self.batch_replay:
+            replay_cls = BatchReplayActor
+        else:
+            replay_cls = ReplayActor
+        self.replay_actors = create_colocated(replay_cls, [
             num_replay_buffer_shards,
             learning_starts,
             buffer_size,
@@ -101,6 +112,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def step(self):
+        assert self.learner.is_alive()
         assert len(self.remote_evaluators) > 0
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
@@ -299,6 +311,54 @@ class ReplayActor(object):
         return stat
 
 
+@ray.remote(num_cpus=0)
+class BatchReplayActor(object):
+    """The batch replay version of the replay actor.
+
+    This allows for RNN models, but ignores prioritization params.
+    """
+
+    def __init__(self, num_shards, learning_starts, buffer_size,
+                 train_batch_size, prioritized_replay_alpha,
+                 prioritized_replay_beta, prioritized_replay_eps):
+        self.replay_starts = learning_starts // num_shards
+        self.buffer_size = buffer_size // num_shards
+        self.train_batch_size = train_batch_size
+        self.buffer = []
+
+        # Metrics
+        self.num_added = 0
+        self.cur_size = 0
+
+    def get_host(self):
+        return os.uname()[1]
+
+    def add_batch(self, batch):
+        # Handle everything as if multiagent
+        if isinstance(batch, SampleBatch):
+            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+        self.buffer.append(batch)
+        self.cur_size += batch.count
+        self.num_added += batch.count
+        while self.cur_size > self.buffer_size:
+            self.cur_size -= self.buffer.pop(0).count
+
+    def replay(self):
+        if self.num_added < self.replay_starts:
+            return None
+        return random.choice(self.buffer)
+
+    def update_priorities(self, prio_dict):
+        pass
+
+    def stats(self, debug=False):
+        stat = {
+            "cur_size": self.cur_size,
+            "num_added": self.num_added,
+        }
+        return stat
+
+
 class LearnerThread(threading.Thread):
     """Background thread that updates the local model from replay data.
 
@@ -334,8 +394,8 @@ class LearnerThread(threading.Thread):
                 grad_out = self.local_evaluator.compute_apply(replay)
                 for pid, info in grad_out.items():
                     prio_dict[pid] = (
-                        replay.policy_batches[pid]["batch_indexes"],
-                        info["td_error"])
+                        replay.policy_batches[pid].data.get("batch_indexes"),
+                        info.get("td_error"))
                     if "stats" in info:
                         self.stats[pid] = info["stats"]
             self.outqueue.put((ra, prio_dict, replay.count))

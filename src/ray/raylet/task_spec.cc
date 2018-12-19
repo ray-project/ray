@@ -56,25 +56,24 @@ TaskSpecification::TaskSpecification(const std::string &string) {
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
-    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const Language &language)
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
                         ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1,
-                        function_id, task_arguments, num_returns, required_resources,
-                        std::unordered_map<std::string, double>(), language) {}
+                        task_arguments, num_returns, required_resources,
+                        std::unordered_map<std::string, double>(), language,
+                        function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
     const int64_t max_actor_reconstructions, const ActorID &actor_id,
     const ActorHandleID &actor_handle_id, int64_t actor_counter,
-    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const Language &language)
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -99,9 +98,10 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
-      to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
-      map_to_flatbuf(fbb, required_placement_resources), language);
+      fbb.CreateVector(arguments), fbb.CreateVector(returns),
+      map_to_flatbuf(fbb, required_resources),
+      map_to_flatbuf(fbb, required_placement_resources), language,
+      string_vec_to_flatbuf(fbb, function_descriptor));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -134,9 +134,9 @@ int64_t TaskSpecification::ParentCounter() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return message->parent_counter();
 }
-FunctionID TaskSpecification::FunctionId() const {
+std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf(*message->function_id());
+  return string_vec_from_flatbuf(*message->function_descriptor());
 }
 
 int64_t TaskSpecification::NumArgs() const {
@@ -197,7 +197,7 @@ const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
 
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
-  return FunctionId().is_nil();
+  return FunctionDescriptor().empty();
 }
 
 Language TaskSpecification::GetLanguage() const {
