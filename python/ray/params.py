@@ -64,8 +64,6 @@ class RayParams(object):
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
-        ignore_reinit_error: True if we should suppress errors from calling
-            ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -80,12 +78,6 @@ class RayParams(object):
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
-        driver_id: The ID of driver.
-        configure_logging: True if allow the logging cofiguration here.
-            Otherwise, the users may want to configure it by their own.
-        logging_level: Logging level, default will be logging.INFO.
-        logging_format: Logging format, default will be "%(message)s"
-            which means only contains the message.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -122,7 +114,6 @@ class RayParams(object):
                  driver_mode=None,
                  redirect_worker_output=False,
                  redirect_output=True,
-                 ignore_reinit_error=False,
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=None,
@@ -130,8 +121,6 @@ class RayParams(object):
                  worker_path=None,
                  huge_pages=False,
                  include_webui=True,
-                 driver_id=None,
-                 configure_logging=True,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -161,7 +150,6 @@ class RayParams(object):
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
-        self.ignore_reinit_error = ignore_reinit_error
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
         self.redis_password = redis_password
@@ -169,10 +157,6 @@ class RayParams(object):
         self.worker_path = worker_path
         self.huge_pages = huge_pages
         self.include_webui = include_webui
-        self.driver_id = driver_id
-        self.configure_logging = configure_logging
-        self.logging_level = logging_level
-        self.logging_format = logging_format
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
