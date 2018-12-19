@@ -35,7 +35,7 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
 
 template <class T>
 ServerConnection<T>::~ServerConnection() {
-  // If there're any pending messages, invoke their callbacks with an IOError status.
+  // If there are any pending messages, invoke their callbacks with an IOError status.
   for (const auto &write_buffer : async_write_queue_) {
     write_buffer->handler(Status::IOError("Connection closed."));
   }
