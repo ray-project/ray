@@ -72,7 +72,6 @@ class Cluster(object):
             Node object of the added Ray node.
         """
         node_kwargs = {
-            "cleanup": True,
             "resources": {
                 "CPU": 1
             },
@@ -85,7 +84,7 @@ class Cluster(object):
 
         if self.head_node is None:
             ray_params.include_webui = False
-            address_info = services.start_ray_head(ray_params)
+            address_info = services.start_ray_head(ray_params, cleanup=True)
             self.redis_address = address_info["redis_address"]
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
@@ -95,7 +94,7 @@ class Cluster(object):
             self.head_node = node
         else:
             ray_params.redis_address = self.redis_address
-            address_info = services.start_ray_node(ray_params)
+            address_info = services.start_ray_node(ray_params, cleanup=True)
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
