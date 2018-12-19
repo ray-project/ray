@@ -131,5 +131,5 @@ if __name__ == "__main__":
         agent = QMixAgent(env="starcraft", config=agent_cfg)
     else:
         agent = PGAgent(env="starcraft", config=agent_cfg)
-    for i in range(100):
+    for i in range(args.num_iters):
         print(pretty_print(agent.train()))
