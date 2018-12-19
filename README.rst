@@ -1,4 +1,4 @@
-.. image:: https://github.com/devin-petersohn/ray/raw/docs/update_readme/doc/source/images/ray_logo.png
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_logo_small.png
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
