@@ -23,7 +23,7 @@ try:
                      distutils.version.LooseVersion("1.5.0"))
 except ImportError:
     tf = None
-    use_tf150_api=True
+    use_tf150_api = True
     logger.warning("Couldn't import TensorFlow - "
                    "disabling TensorBoard logging.")
 
