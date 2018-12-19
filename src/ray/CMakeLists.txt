@@ -91,7 +91,7 @@ ADD_RAY_LIB(ray
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
 
-set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${RAY_SYSTEM_LIBS} gtest gtest_main gmock_main)
+set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main gmock_main ${RAY_SYSTEM_LIBS})
 
 add_subdirectory(util)
 add_subdirectory(gcs)
