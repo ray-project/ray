@@ -172,6 +172,7 @@ script:
   - python -m pytest -v --durations=10 test/cython_test.py
   - python -m pytest -v --durations=10 test/credis_test.py
   - python -m pytest -v --durations=10 test/node_manager_test.py
+  - python -m pytest -v --durations=10 test/object_manager_test.py
 
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py
