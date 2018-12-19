@@ -360,7 +360,6 @@ def test_recursive(ray_start_reconstruction):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
-    start_time = time.time()
     _, _, plasma_store_memory, _ = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
@@ -393,31 +392,22 @@ def test_multiple_recursive(ray_start_reconstruction):
         args.append(arg)
     for i in range(num_objects):
         args.append(multiple_dependency.remote(i, *args[i:i + num_args]))
-    print("Step1 time: %s" % (time.time() - start_time))
-    start_time = time.time()
+
     # Get each value to force each task to finish. After some number of
     # gets, old values should be evicted.
     args = args[num_args:]
     for i in range(num_objects):
         value = ray.get(args[i])
         assert value[0] == i
-    print("Step2 time: %s" % (time.time() - start_time))
-    start_time = time.time()
     # Get each value again to force reconstruction.
     for i in range(num_objects):
         value = ray.get(args[i])
         assert value[0] == i
-    print("Step3 time: %s" % (time.time() - start_time))
-    start_time = time.time()
     # Get 10 values randomly.
     random_indexes = sorted_random_indexes(num_objects, 10)
-    print("10 indexes: %s" % random_indexes)
     for i in random_indexes:
-        loop_start_time = time.time()
         value = ray.get(args[i])
         assert value[0] == i
-        print("Index %s time: %s" % (i, time.time() - loop_start_time))
-    print("Step4 time: %s" % (time.time() - start_time))
 
 
 def wait_for_errors(error_check):
