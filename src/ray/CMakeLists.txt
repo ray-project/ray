@@ -56,7 +56,13 @@ set(RAY_SRCS
   raylet/raylet.cc
 )
 
-set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_THREAD_LIBRARY})
+set(RAY_SYSTEM_LIBS ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} pthread)
+if(UNIX AND NOT APPLE)
+  set(RAY_SYSTEM_LIBS ${RAY_SYSTEM_LIBS} -lrt)
+endif()
+
+set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${RAY_SYSTEM_LIBS})
+
 set(RAY_LIB_DEPENDENCIES
     boost_thread
     arrow_ep
@@ -89,6 +95,8 @@ ADD_RAY_LIB(ray
     DEPENDENCIES ${RAY_LIB_DEPENDENCIES}
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
+
+set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${RAY_SYSTEM_LIBS} gtest gtest_main gmock_main)
 
 add_custom_target(copy_redis ALL)
 foreach(file "redis-cli" "redis-server")
