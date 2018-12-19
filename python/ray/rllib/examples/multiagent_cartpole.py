@@ -33,6 +33,7 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
 
+
 class CustomModel1(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         # Example of (optional) weight sharing between two different policies.
