@@ -19,8 +19,7 @@ EVENT_KEY = "RAY_MULTI_NODE_TEST_KEY"
 def _wait_for_nodes_to_join(num_nodes, timeout=20):
     """Wait until the nodes have joined the cluster.
 
-    This will wait until exactly num_nodes have joined the cluster and each
-    node has a local scheduler and a plasma manager.
+    This will wait until exactly num_nodes have joined the cluster.
 
     Args:
         num_nodes: The number of nodes to wait for.
@@ -35,10 +34,6 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
         client_table = ray.global_state.client_table()
         num_ready_nodes = len(client_table)
         if num_ready_nodes == num_nodes:
-            # Check that for each node, a local scheduler and a plasma manager
-            # are present.
-            # In raylet mode, this is a list of map.
-            # The GCS info will appear as a whole instead of part by part.
             return
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.

@@ -53,7 +53,7 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
     """
 
     if num_dropped > 0:
-        logger.warn("WARNING: {} workers have NOT returned metrics".format(
+        logger.warning("WARNING: {} workers have NOT returned metrics".format(
             num_dropped))
 
     episode_rewards = []

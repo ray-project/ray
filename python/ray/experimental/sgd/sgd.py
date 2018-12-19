@@ -69,7 +69,7 @@ class DistributedSGD(object):
                  all_reduce_alg="simple"):
 
         if num_workers == 1 and strategy == "ps":
-            logger.warn(
+            logger.warning(
                 "The parameter server strategy does not make sense for single "
                 "worker operation, falling back to simple mode.")
             strategy = "simple"

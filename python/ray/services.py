@@ -1585,8 +1585,7 @@ def start_ray_node(node_ip_address,
             this node (typically just one).
         num_workers (int): The number of workers to start.
         num_local_schedulers (int): The number of local schedulers to start.
-            This is also the number of plasma stores and plasma managers to
-            start.
+            This is also the number of plasma stores and raylets to start.
         object_store_memory (int): The maximum amount of memory (in bytes) to
             let the plasma store use.
         redis_password (str): Prevents external clients without the password
