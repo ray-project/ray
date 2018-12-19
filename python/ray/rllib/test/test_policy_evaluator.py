@@ -25,7 +25,8 @@ class MockPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        episodes=None,
+                        **kwargs):
         return [0] * len(obs_batch), [], {}
 
     def postprocess_trajectory(self,
@@ -42,7 +43,8 @@ class BadPolicyGraph(PolicyGraph):
                         state_batches,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        episodes=None,
+                        **kwargs):
         raise Exception("intentional error")
 
     def postprocess_trajectory(self,
@@ -263,18 +265,6 @@ class TestPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
-
-    def testAutoConcat(self):
-        ev = PolicyEvaluator(
-            env_creator=lambda _: MockEnv(episode_length=40),
-            policy_graph=MockPolicyGraph,
-            sample_async=True,
-            batch_steps=10,
-            batch_mode="truncate_episodes",
-            observation_filter="ConcurrentMeanStdFilter")
-        time.sleep(2)
-        batch = ev.sample()
-        self.assertEqual(batch.count, 40)  # auto-concat up to 5 episodes
 
     def testAutoVectorization(self):
         ev = PolicyEvaluator(

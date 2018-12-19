@@ -139,8 +139,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, ""));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, ""));
+    ARROW_CHECK_OK(client1.Connect(store_id_1));
+    ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -451,7 +451,7 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "\n";
     ClientTableDataT data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;

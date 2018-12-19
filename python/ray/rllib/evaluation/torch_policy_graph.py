@@ -63,7 +63,9 @@ class TorchPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         if state_batches:
             raise NotImplementedError("Torch RNN support")
         with self.lock:

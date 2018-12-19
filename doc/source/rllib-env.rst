@@ -112,7 +112,7 @@ Multi-Agent
 
 .. note::
 
-   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://rise.cs.berkeley.edu/blog/scaling-multi-agent-rl-with-rllib/>`__.
+   Learn more about multi-agent reinforcement learning in RLlib by reading the `blog post <https://bair.berkeley.edu/blog/2018/12/12/rllib/>`__.
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
@@ -201,6 +201,16 @@ Here is a simple `example training script <https://github.com/ray-project/ray/bl
         policy_1: 21.798387096774192
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
+
+Grouping Agents
+~~~~~~~~~~~~~~~
+
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+
+.. literalinclude:: ../../python/ray/rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

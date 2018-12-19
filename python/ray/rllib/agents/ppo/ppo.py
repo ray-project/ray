@@ -118,7 +118,7 @@ class PPOAgent(Agent):
             if waste_ratio > 1.5:
                 raise ValueError(msg)
             else:
-                logger.warn(msg)
+                logger.warning(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(
@@ -136,6 +136,6 @@ class PPOAgent(Agent):
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
             # TODO(ekl): consider setting the default to be NoFilter
-            logger.warn(
+            logger.warning(
                 "By default, observations will be normalized with {}".format(
                     self.config["observation_filter"]))

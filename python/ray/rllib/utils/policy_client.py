@@ -11,8 +11,9 @@ try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    logger.warn("Couldn't import `requests` library. Be sure to install it on"
-                " the client side.")
+    logger.warning(
+        "Couldn't import `requests` library. Be sure to install it on"
+        " the client side.")
 
 
 class PolicyClient(object):
