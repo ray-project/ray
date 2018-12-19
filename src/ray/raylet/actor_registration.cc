@@ -9,9 +9,7 @@ namespace ray {
 namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
-    : actor_table_data_(actor_table_data),
-      execution_dependency_(ObjectID::nil()),
-      frontier_() {}
+    : actor_table_data_(actor_table_data) {}
 
 const ClientID ActorRegistration::GetNodeManagerId() const {
   return ClientID::from_binary(actor_table_data_.node_manager_id);
@@ -23,6 +21,18 @@ const ObjectID ActorRegistration::GetActorCreationDependency() const {
 
 const ObjectID ActorRegistration::GetExecutionDependency() const {
   return execution_dependency_;
+}
+
+const DriverID ActorRegistration::GetDriverId() const {
+  return DriverID::from_binary(actor_table_data_.driver_id);
+}
+
+const int64_t ActorRegistration::GetMaxReconstructions() const {
+  return actor_table_data_.max_reconstructions;
+}
+
+const int64_t ActorRegistration::GetRemainingReconstructions() const {
+  return actor_table_data_.remaining_reconstructions;
 }
 
 const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf>
@@ -37,10 +47,6 @@ void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
   dummy_objects_.push_back(execution_dependency);
-}
-
-bool ActorRegistration::IsAlive() const {
-  return actor_table_data_.state == ActorState::ALIVE;
 }
 
 int ActorRegistration::NumHandles() const { return frontier_.size(); }

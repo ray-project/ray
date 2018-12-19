@@ -18,8 +18,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
-      object_manager_(main_service, object_manager_config, gcs_client),
-      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_),
+      object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
+      object_manager_(main_service, object_manager_config, object_directory_),
+      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
+                    object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),

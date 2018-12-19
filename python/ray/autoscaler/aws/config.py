@@ -273,8 +273,11 @@ def _get_role(role_name, config):
     try:
         role.load()
         return role
-    except botocore.errorfactory.NoSuchEntityException:
-        return None
+    except botocore.exceptions.ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
+            return None
+        else:
+            raise exc
 
 
 def _get_instance_profile(profile_name, config):
@@ -283,8 +286,11 @@ def _get_instance_profile(profile_name, config):
     try:
         profile.load()
         return profile
-    except botocore.errorfactory.NoSuchEntityException:
-        return None
+    except botocore.exceptions.ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
+            return None
+        else:
+            raise exc
 
 
 def _get_key(key_name, config):

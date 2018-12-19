@@ -19,6 +19,7 @@ from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
+from ray.rllib.rollout import rollout
 from ray.rllib.test.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 
@@ -214,6 +215,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
                     "use_lstm": test_lstm,
@@ -242,6 +244,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite2",
                 },
@@ -301,6 +304,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "sample_batch_size": 5,
+                "train_batch_size": 5,
                 "multiagent": {
                     "policy_graphs": {
                         "tuple_policy": (
@@ -339,6 +343,21 @@ class NestedSpacesTest(unittest.TestCase):
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             self.assertEqual(seen[2][0].tolist(), task_i)
+
+    def testRolloutDictSpace(self):
+        register_env("nested", lambda _: NestedDictEnv())
+        agent = PGAgent(env="nested")
+        agent.train()
+        path = agent.save()
+        agent.stop()
+
+        # Test train works on restore
+        agent2 = PGAgent(env="nested")
+        agent2.restore(path)
+        agent2.train()
+
+        # Test rollout works on restore
+        rollout(agent2, "nested", 100)
 
 
 if __name__ == "__main__":

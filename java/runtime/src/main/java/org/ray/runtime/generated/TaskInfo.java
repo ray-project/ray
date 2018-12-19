@@ -29,17 +29,15 @@ public final class TaskInfo extends Table {
   public String actorCreationDummyObjectId() { int o = __offset(14); return o != 0 ? __string(o + bb_pos) : null; }
   public ByteBuffer actorCreationDummyObjectIdAsByteBuffer() { return __vector_as_bytebuffer(14, 1); }
   public ByteBuffer actorCreationDummyObjectIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 14, 1); }
-  public String actorId() { int o = __offset(16); return o != 0 ? __string(o + bb_pos) : null; }
-  public ByteBuffer actorIdAsByteBuffer() { return __vector_as_bytebuffer(16, 1); }
-  public ByteBuffer actorIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 16, 1); }
-  public String actorHandleId() { int o = __offset(18); return o != 0 ? __string(o + bb_pos) : null; }
-  public ByteBuffer actorHandleIdAsByteBuffer() { return __vector_as_bytebuffer(18, 1); }
-  public ByteBuffer actorHandleIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 18, 1); }
-  public int actorCounter() { int o = __offset(20); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
-  public boolean isActorCheckpointMethod() { int o = __offset(22); return o != 0 ? 0!=bb.get(o + bb_pos) : false; }
-  public String functionId() { int o = __offset(24); return o != 0 ? __string(o + bb_pos) : null; }
-  public ByteBuffer functionIdAsByteBuffer() { return __vector_as_bytebuffer(24, 1); }
-  public ByteBuffer functionIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 24, 1); }
+  public int maxActorReconstructions() { int o = __offset(16); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
+  public String actorId() { int o = __offset(18); return o != 0 ? __string(o + bb_pos) : null; }
+  public ByteBuffer actorIdAsByteBuffer() { return __vector_as_bytebuffer(18, 1); }
+  public ByteBuffer actorIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 18, 1); }
+  public String actorHandleId() { int o = __offset(20); return o != 0 ? __string(o + bb_pos) : null; }
+  public ByteBuffer actorHandleIdAsByteBuffer() { return __vector_as_bytebuffer(20, 1); }
+  public ByteBuffer actorHandleIdInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 20, 1); }
+  public int actorCounter() { int o = __offset(22); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
+  public boolean isActorCheckpointMethod() { int o = __offset(24); return o != 0 ? 0!=bb.get(o + bb_pos) : false; }
   public Arg args(int j) { return args(new Arg(), j); }
   public Arg args(Arg obj, int j) { int o = __offset(26); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
   public int argsLength() { int o = __offset(26); return o != 0 ? __vector_len(o) : 0; }
@@ -62,11 +60,11 @@ public final class TaskInfo extends Table {
       int parent_counter,
       int actor_creation_idOffset,
       int actor_creation_dummy_object_idOffset,
+      int max_actor_reconstructions,
       int actor_idOffset,
       int actor_handle_idOffset,
       int actor_counter,
       boolean is_actor_checkpoint_method,
-      int function_idOffset,
       int argsOffset,
       int returnsOffset,
       int required_resourcesOffset,
@@ -80,10 +78,10 @@ public final class TaskInfo extends Table {
     TaskInfo.addRequiredResources(builder, required_resourcesOffset);
     TaskInfo.addReturns(builder, returnsOffset);
     TaskInfo.addArgs(builder, argsOffset);
-    TaskInfo.addFunctionId(builder, function_idOffset);
     TaskInfo.addActorCounter(builder, actor_counter);
     TaskInfo.addActorHandleId(builder, actor_handle_idOffset);
     TaskInfo.addActorId(builder, actor_idOffset);
+    TaskInfo.addMaxActorReconstructions(builder, max_actor_reconstructions);
     TaskInfo.addActorCreationDummyObjectId(builder, actor_creation_dummy_object_idOffset);
     TaskInfo.addActorCreationId(builder, actor_creation_idOffset);
     TaskInfo.addParentCounter(builder, parent_counter);
@@ -101,11 +99,11 @@ public final class TaskInfo extends Table {
   public static void addParentCounter(FlatBufferBuilder builder, int parentCounter) { builder.addInt(3, parentCounter, 0); }
   public static void addActorCreationId(FlatBufferBuilder builder, int actorCreationIdOffset) { builder.addOffset(4, actorCreationIdOffset, 0); }
   public static void addActorCreationDummyObjectId(FlatBufferBuilder builder, int actorCreationDummyObjectIdOffset) { builder.addOffset(5, actorCreationDummyObjectIdOffset, 0); }
-  public static void addActorId(FlatBufferBuilder builder, int actorIdOffset) { builder.addOffset(6, actorIdOffset, 0); }
-  public static void addActorHandleId(FlatBufferBuilder builder, int actorHandleIdOffset) { builder.addOffset(7, actorHandleIdOffset, 0); }
-  public static void addActorCounter(FlatBufferBuilder builder, int actorCounter) { builder.addInt(8, actorCounter, 0); }
-  public static void addIsActorCheckpointMethod(FlatBufferBuilder builder, boolean isActorCheckpointMethod) { builder.addBoolean(9, isActorCheckpointMethod, false); }
-  public static void addFunctionId(FlatBufferBuilder builder, int functionIdOffset) { builder.addOffset(10, functionIdOffset, 0); }
+  public static void addMaxActorReconstructions(FlatBufferBuilder builder, int maxActorReconstructions) { builder.addInt(6, maxActorReconstructions, 0); }
+  public static void addActorId(FlatBufferBuilder builder, int actorIdOffset) { builder.addOffset(7, actorIdOffset, 0); }
+  public static void addActorHandleId(FlatBufferBuilder builder, int actorHandleIdOffset) { builder.addOffset(8, actorHandleIdOffset, 0); }
+  public static void addActorCounter(FlatBufferBuilder builder, int actorCounter) { builder.addInt(9, actorCounter, 0); }
+  public static void addIsActorCheckpointMethod(FlatBufferBuilder builder, boolean isActorCheckpointMethod) { builder.addBoolean(10, isActorCheckpointMethod, false); }
   public static void addArgs(FlatBufferBuilder builder, int argsOffset) { builder.addOffset(11, argsOffset, 0); }
   public static int createArgsVector(FlatBufferBuilder builder, int[] data) { builder.startVector(4, data.length, 4); for (int i = data.length - 1; i >= 0; i--) builder.addOffset(data[i]); return builder.endVector(); }
   public static void startArgsVector(FlatBufferBuilder builder, int numElems) { builder.startVector(4, numElems, 4); }
@@ -127,8 +125,12 @@ public final class TaskInfo extends Table {
     return o;
   }
 
-  //this is manually added to avoid encoding/decoding cost as our object
-  //id is a byte array instead of a string
+  /** This is manually added to avoid encoding/decoding cost as our object
+   * id is a byte array instead of a string.
+   * This function is error-prone. If the fields before `returns` changed,
+   * the offset number should be changed accordingly.
+   * TODO(yuhguo): fix this error-prone funciton.
+   */
   public ByteBuffer returnsAsByteBuffer(int j) {
     int o = __offset(28);
     if (o == 0) {

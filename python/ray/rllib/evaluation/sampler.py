@@ -10,8 +10,7 @@ import six.moves.queue as queue
 import threading
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
-from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder, \
-    MultiAgentBatch
+from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
@@ -25,20 +24,13 @@ RolloutMetrics = namedtuple(
     "RolloutMetrics",
     ["episode_length", "episode_reward", "agent_rewards", "custom_metrics"])
 
-PolicyEvalData = namedtuple(
-    "PolicyEvalData",
-    ["env_id", "agent_id", "obs", "rnn_state", "prev_action", "prev_reward"])
+PolicyEvalData = namedtuple("PolicyEvalData", [
+    "env_id", "agent_id", "obs", "info", "rnn_state", "prev_action",
+    "prev_reward"
+])
 
 
 class SyncSampler(object):
-    """This class interacts with the environment and tells it what to do.
-
-    Note that batch_size is only a unit of measure here. Batches can
-    accumulate and the gradient can be calculated on up to 5 batches.
-
-    This class provides data on invocation, rather than on a separate
-    thread."""
-
     def __init__(self,
                  env,
                  policies,
@@ -95,11 +87,6 @@ class SyncSampler(object):
 
 
 class AsyncSampler(threading.Thread):
-    """This class interacts with the environment and tells it what to do.
-
-    Note that batch_size is only a unit of measure here. Batches can
-    accumulate and the gradient can be calculated on up to 5 batches."""
-
     def __init__(self,
                  env,
                  policies,
@@ -112,7 +99,8 @@ class AsyncSampler(threading.Thread):
                  horizon=None,
                  pack=False,
                  tf_sess=None,
-                 clip_actions=True):
+                 clip_actions=True,
+                 blackhole_outputs=False):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -133,6 +121,8 @@ class AsyncSampler(threading.Thread):
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
+        self.blackhole_outputs = blackhole_outputs
+        self.shutdown = False
 
     def run(self):
         try:
@@ -142,12 +132,19 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
+        if self.blackhole_outputs:
+            queue_putter = (lambda x: None)
+            extra_batches_putter = (lambda x: None)
+        else:
+            queue_putter = self.queue.put
+            extra_batches_putter = (
+                lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            self.async_vector_env, self.extra_batches.put, self.policies,
+            self.async_vector_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess)
-        while True:
+        while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
@@ -155,7 +152,7 @@ class AsyncSampler(threading.Thread):
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
-                self.queue.put(item, timeout=600.0)
+                queue_putter(item)
 
     def get_data(self):
         rollout = self.queue.get(timeout=600.0)
@@ -164,20 +161,6 @@ class AsyncSampler(threading.Thread):
         if isinstance(rollout, BaseException):
             raise rollout
 
-        # We can't auto-concat rollouts in these modes
-        if self.async_vector_env.num_envs > 1 or \
-                isinstance(rollout, MultiAgentBatch):
-            return rollout
-
-        # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
-        while not rollout["dones"][-1]:
-            try:
-                part = self.queue.get_nowait()
-                if isinstance(part, BaseException):
-                    raise rollout
-                rollout = rollout.concat(part)
-            except queue.Empty:
-                break
         return rollout
 
     def get_metrics(self):
@@ -246,7 +229,7 @@ def _env_runner(async_vector_env,
             horizon = (
                 async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        logger.warn("no episode horizon specified, assuming inf")
+        logger.debug("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 
@@ -328,16 +311,16 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
         if (not _large_batch_warned and
                 episode.batch_builder.total() > max(1000, unroll_length * 10)):
             _large_batch_warned = True
-            logger.warn(
+            logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is not intentional, check that the "
-                "the `horizon` config is set correctly, or consider setting "
-                "`batch_mode` to 'truncate_episodes'. Note that in "
-                "multi-agent environments, `sample_batch_size` sets the "
-                "batch size based on environment steps, not the steps of "
-                "individual agents.")
+                "the sampler. If this is more than you expected, check that "
+                "that you set a horizon on your environment correctly. Note "
+                "that in multi-agent environments, `sample_batch_size` sets "
+                "the batch size based on environment steps, not the steps of "
+                "individual agents, which can result in unexpectedly large "
+                "batches.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -366,17 +349,18 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             if not agent_done:
                 to_eval[policy_id].append(
                     PolicyEvalData(env_id, agent_id, filtered_obs,
+                                   infos[env_id].get(agent_id, {}),
                                    episode.rnn_state_for(agent_id),
                                    episode.last_action_for(agent_id),
                                    rewards[env_id][agent_id] or 0.0))
 
             last_observation = episode.last_observation_for(agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
-            episode._set_last_info(agent_id, infos[env_id][agent_id])
+            episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable
-            if last_observation is not None and \
-                    infos[env_id][agent_id].get("training_enabled", True):
+            if (last_observation is not None and infos[env_id].get(
+                    agent_id, {}).get("training_enabled", True)):
                 episode.batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -389,7 +373,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                     prev_actions=episode.prev_action_for(agent_id),
                     prev_rewards=episode.prev_reward_for(agent_id),
                     dones=agent_done,
-                    infos=infos[env_id][agent_id],
+                    infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
 
@@ -440,6 +424,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
                     to_eval[policy_id].append(
                         PolicyEvalData(
                             env_id, agent_id, filtered_obs,
+                            episode.last_info_for(agent_id) or {},
                             episode.rnn_state_for(agent_id),
                             np.zeros_like(
                                 _flatten_action(policy.action_space.sample())),
@@ -467,6 +452,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicyGraph.compute_actions.__code__):
+            # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder, [t.obs for t in eval_data],
                 rnn_in_cols,
@@ -478,6 +464,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
+                info_batch=[t.info for t in eval_data],
                 episodes=[active_episodes[t.env_id] for t in eval_data])
     if builder:
         for k, v in pending_fetches.items():

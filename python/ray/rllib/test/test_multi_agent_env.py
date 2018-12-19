@@ -339,7 +339,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                episodes=None):
+                                episodes=None,
+                                **kwargs):
                 return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
             def get_initial_state(self):
@@ -363,7 +364,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 state_batches,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
-                                episodes=None):
+                                episodes=None,
+                                **kwargs):
                 # Pretend we did a model-based rollout and want to return
                 # the extra trajectory.
                 builder = episodes[0].new_batch_builder()

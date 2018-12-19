@@ -24,7 +24,8 @@ class MockServer {
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config,
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -138,8 +139,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client1.Connect(store_id_1));
+    ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -285,8 +286,9 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
-                                           const ray::ObjectID &object_id) {
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool created) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -449,7 +451,7 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "\n";
     ClientTableDataT data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;

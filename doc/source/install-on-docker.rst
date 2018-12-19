@@ -1,7 +1,7 @@
 Installation on Docker
 ======================
 
-You can install Ray on any platform that runs Docker. We do not presently
+You can install Ray from source on any platform that runs Docker. We do not presently
 publish Docker images for Ray, but you can build them yourself using the Ray
 distribution.
 
@@ -24,6 +24,8 @@ the corresponding installation instructions. Linux user may find these
 
 Docker installation on EC2 with Ubuntu
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note:: The Ray `autoscaler <autoscaling.html#common-cluster-configurations>`_ can automatically install Docker on all of the nodes of your cluster.
 
 The instructions below show in detail how to prepare an Amazon EC2 instance
 running Ubuntu 16.04 for use with Docker.
@@ -164,14 +166,6 @@ Launch the examples container.
 .. code-block:: bash
 
   docker run --shm-size=1024m -t -i ray-project/examples
-
-Hyperparameter optimization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-  cd /ray/examples/hyperopt/
-  python /ray/examples/hyperopt/hyperopt_simple.py
 
 Batch L-BFGS
 ~~~~~~~~~~~~

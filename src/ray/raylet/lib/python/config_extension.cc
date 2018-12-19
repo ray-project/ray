@@ -69,18 +69,6 @@ PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().kill_worker_timeout_milliseconds());
 }
 
-PyObject *PyRayConfig_manager_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().manager_timeout_milliseconds());
-}
-
-PyObject *PyRayConfig_buf_size(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().buf_size());
-}
-
-PyObject *PyRayConfig_max_time_for_handler_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().max_time_for_handler_milliseconds());
-}
-
 PyObject *PyRayConfig_size_limit(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().size_limit());
 }
@@ -144,13 +132,6 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"kill_worker_timeout_milliseconds",
      (PyCFunction)PyRayConfig_kill_worker_timeout_milliseconds, METH_NOARGS,
      "Return kill_worker_timeout_milliseconds"},
-    {"manager_timeout_milliseconds",
-     (PyCFunction)PyRayConfig_manager_timeout_milliseconds, METH_NOARGS,
-     "Return manager_timeout_milliseconds"},
-    {"buf_size", (PyCFunction)PyRayConfig_buf_size, METH_NOARGS, "Return buf_size"},
-    {"max_time_for_handler_milliseconds",
-     (PyCFunction)PyRayConfig_max_time_for_handler_milliseconds, METH_NOARGS,
-     "Return max_time_for_handler_milliseconds"},
     {"size_limit", (PyCFunction)PyRayConfig_size_limit, METH_NOARGS, "Return size_limit"},
     {"num_elements_limit", (PyCFunction)PyRayConfig_num_elements_limit, METH_NOARGS,
      "Return num_elements_limit"},
