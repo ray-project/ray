@@ -31,14 +31,16 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self):
+    def __init__(self, merge_configs=False):
         """Constructs a generator given experiment specifications.
 
         Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
+            merge_configs (bool): If True, updates given config with
+                values provided from _suggest. Defaults to False.
         """
         self._parser = make_parser()
         self._trial_generator = []
+        self._merge_configs = merge_configs
         self._counter = 0
         self._finished = False
 
@@ -91,7 +93,10 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 else:
                     break
             spec = copy.deepcopy(experiment_spec)
-            spec["config"] = suggested_config
+            if self._merge_configs:
+                spec["config"].update(suggested_config)
+            else:
+                spec["config"] = suggested_config
             self._counter += 1
             tag = "{0}_{1}".format(
                 str(self._counter), format_vars(spec["config"]))
