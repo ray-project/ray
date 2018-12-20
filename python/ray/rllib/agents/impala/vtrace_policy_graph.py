@@ -75,7 +75,7 @@ class VTraceLoss(object):
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
         with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.from_logits(
+            self.vtrace_r eturns = vtrace.from_logits(
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.cast(actions, tf.int32),
@@ -137,7 +137,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             shape=(),
             trainable=False,
             dtype=tf.float32)
-        print(self.config["grad_clip"])
         # Create input placeholders
         if existing_inputs:
             actions, dones, behaviour_logits, rewards, observations, \
@@ -168,8 +167,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         
         # Modified for AutoEncoder
-        print("AUTOENCODER CHECK")
-        print(self.config["model"]["use_autoencoder"])
         if self.config["model"]["use_autoencoder"]:
             self.model = ModelCatalog.get_model(
                 {
@@ -303,10 +300,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "median_KL": self.median_KL, 
             },
         }
-        print(self.config["use_ppo"])
         if self.config["use_ppo"]:
             self.stats_fetches["kl"] = self.loss.mean_kl
-        print(self.stats_fetches)
 
     def optimizer(self):
         if self.config["opt_type"] == "adam":
