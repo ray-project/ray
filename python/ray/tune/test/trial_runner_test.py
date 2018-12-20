@@ -681,6 +681,20 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testDeprecatedResources(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "trial_resources": {"CPU": 1}
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
     def testCustomLogger(self):
         class CustomLogger(Logger):
             def on_result(self, result):
