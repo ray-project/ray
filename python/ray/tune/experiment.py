@@ -15,11 +15,21 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 logger = logging.getLogger(__name__)
 
 
-def _raise_deprecation_note(deprecated, replacement):
-    raise DeprecationWarning(
-        "`{deprecated}` is deprecated. Please use `{replacement}`. "
-        "`{deprecated}` will be removed in future versions of Ray.".format(
-            deprecated=deprecated, replacement=replacement))
+def _raise_deprecation_note(deprecated, replacement, soft=False):
+    """User notification for deprecated parameter.
+
+    Arguments:
+        deprecated (str): Deprecated parameter.
+        replacement (str): Replacement parameter to use instead.
+        soft (bool): Fatal if True.
+    """
+    error_msg = ("`{deprecated}` is deprecated. Please use `{replacement}`. "
+                 "`{deprecated}` will be removed in future versions of "
+                 "Ray.".format(deprecated=deprecated, replacement=replacement))
+    if soft:
+        logger.warning(error_msg)
+    else:
+        raise DeprecationWarning(error_msg)
 
 
 class Experiment(object):
@@ -117,9 +127,11 @@ class Experiment(object):
             assert upload_dir, "Need `upload_dir` if sync_function given."
 
         if repeat:
-            _raise_deprecation_note("repeat", "num_samples")
+            _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
-            _raise_deprecation_note("trial_resources", "resources_per_trial")
+            _raise_deprecation_note(
+                "trial_resources", "resources_per_trial", soft=True)
+            resources_per_trial = trial_resources
 
         spec = {
             "run": self._register_if_needed(run),
