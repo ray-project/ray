@@ -57,6 +57,7 @@ class TrialRunner(object):
                  scheduler=None,
                  launch_web_server=False,
                  checkpoint_dir=None,
+                 checkpoint_mode=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -70,6 +71,8 @@ class TrialRunner(object):
             launch_web_server (bool): Flag for starting TuneServer
             checkpoint_dir (str): Path where global checkpoints are stored
                 and restored from.
+            checkpoint_mode: Turns on checkpointing for full Tune experiment.
+                Currently defaults to False.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -102,10 +105,11 @@ class TrialRunner(object):
         self._stop_queue = []
         self._trial_checkpoints = {}
         self._checkpoint_dir = checkpoint_dir
+        self._checkpoint_mode = checkpoint_mode
 
     def checkpoint(self):
         """Saves execution state to `self._checkpoint_dir` if provided."""
-        if not self._checkpoint_dir:
+        if not self._checkpoint_mode or not self._checkpoint_dir:
             return
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
@@ -241,7 +245,7 @@ class TrialRunner(object):
         """
         trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
-        self._checkpoint_if_needed(trial)
+        self._checkpoint_trial_if_needed(trial)
         self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
@@ -356,14 +360,14 @@ class TrialRunner(object):
                 result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
-                self._checkpoint_if_needed(trial)
+                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
-                self._checkpoint_if_needed(trial)
+                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:
                 assert False, "Invalid scheduling decision: {}".format(
@@ -381,7 +385,7 @@ class TrialRunner(object):
                     self.trial_executor.stop_trial(
                         trial, error=True, error_msg=error_msg)
 
-    def _checkpoint_if_needed(self, trial):
+    def _checkpoint_trial_if_needed(self, trial):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint():
             # Save trial runtime if possible

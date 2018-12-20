@@ -337,13 +337,15 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         "exp4": exp4_args
     }
 
-    tune.run_experiments(all_experiments, raise_on_failed_trial=False)
+    tune.run_experiments(
+        all_experiments, checkpoint_mode=True, raise_on_failed_trial=False)
 
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
 
-    trials = tune.run_experiments(all_experiments, resume=True)
+    trials = tune.run_experiments(
+        all_experiments, checkpoint_mode=True, resume=True)
     assert len(trials) == 2
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     cluster.shutdown()
@@ -369,6 +371,7 @@ kwargs = dict(
 
 tune.run_experiments(
     dict(experiment=kwargs),
+    checkpoint_mode=True,
     raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address, checkpoint_dir=dirpath)
@@ -402,7 +405,9 @@ tune.run_experiments(
                 "checkpoint_freq": 1,
                 "local_dir": dirpath
             }
-        }, resume=True)
+        },
+        checkpoint_mode=True,
+        resume=True)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     cluster.shutdown()
 
@@ -433,6 +438,7 @@ kwargs = dict(
 
 tune.run_experiments(
     dict(experiment=kwargs),
+    checkpoint_mode=True,
     raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address,
@@ -478,6 +484,7 @@ tune.run_experiments(
             }
         },
         resume=True,
+        checkpoint_mode=True,
         raise_on_failed_trial=False)
     assert all([t.status == Trial.ERROR for t in trials2])
     assert set([t.trial_id for t in trials2]) == set(

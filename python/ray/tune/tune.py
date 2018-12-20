@@ -36,6 +36,7 @@ def _make_scheduler(args):
 
 def _find_checkpoint_dir(exp_list):
     checkpointable_expts = [exp for exp in exp_list if exp.is_checkpointable()]
+    logger.info("Searching checkpointable experiments for checkpoint_dir.")
     if checkpointable_expts:
         return checkpointable_expts[0].spec["local_dir"]
     else:
@@ -49,6 +50,7 @@ def run_experiments(experiments=None,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
                     resume=False,
+                    checkpoint_mode=False,
                     queue_trials=False,
                     trial_executor=None,
                     raise_on_failed_trial=True):
@@ -71,6 +73,9 @@ def run_experiments(experiments=None,
         resume (bool): To resume from full experiment checkpoint. Only the
             first checkpointable experiment local_dir is checked.
             If checkpoint exists, the experiment will resume from there.
+            Requires `checkpoint_mode` to be True (even during resume).
+        checkpoint_mode: Turns on checkpointing for full Tune experiment.
+            Currently defaults to False.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
@@ -99,17 +104,32 @@ def run_experiments(experiments=None,
         List of Trial objects, holding data for each executed trial.
 
     """
-    # This is important here to schematize the experiments
-    # and also does implicit registration.
+    # This is important to do this here
+    # because it schematize the experiments
+    # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
 
-    if resume and checkpoint_dir and os.path.exists(
-            os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
+    runner = None
+
+    if resume:
+        if not checkpoint_mode:
+            raise ValueError("Resuming Tune experiment run "
+                             "requires `checkpoint_mode`.")
+        if not checkpoint_dir:
+            raise ValueError("Did not find a checkpoint_dir. "
+                             "Do any experiments have checkpointing on?")
+        logger.info("Using checkpoint_dir: {}.".format(checkpoint_dir))
+        if not os.path.exists(
+                os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
+            raise ValueError(
+                "Did not find checkpoint file in {}.".format(checkpoint_dir))
+
         logger.warn("Restoring from previous experiment and "
                     "ignoring any new changes to specification.")
         runner = TrialRunner.restore(checkpoint_dir, trial_executor)
-    else:
+
+    if not runner:
         if scheduler is None:
             scheduler = FIFOScheduler()
 
@@ -122,6 +142,7 @@ def run_experiments(experiments=None,
             search_alg,
             scheduler=scheduler,
             checkpoint_dir=checkpoint_dir,
+            checkpoint_mode=checkpoint_mode,
             launch_web_server=with_server,
             server_port=server_port,
             verbose=verbose,
