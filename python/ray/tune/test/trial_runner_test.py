@@ -294,7 +294,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "PPO",
-                    "trial_resources": {
+                    "resources_per_trial": {
                         "asdf": 1
                     }
                 }

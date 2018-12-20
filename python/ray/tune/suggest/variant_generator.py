@@ -100,7 +100,7 @@ _MAX_RESOLUTION_PASSES = 20
 def format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "trial_resources"]:
+        if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True

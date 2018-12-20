@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
     train_spec = {
         "run": Cifar10Model,
-        "trial_resources": {
+        "resources_per_trial": {
             "cpu": 1,
             "gpu": 1
         },
