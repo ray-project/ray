@@ -31,7 +31,7 @@ public class MockObjectStore implements ObjectStoreLink {
   public void put(byte[] objectId, byte[] value, byte[] metadataValue) {
     if (objectId == null || objectId.length == 0 || value == null) {
       LOGGER
-          .error( "{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
+          .error("{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
       System.exit(-1);
     }
     UniqueId uniqueId = new UniqueId(objectId);
