@@ -11,31 +11,24 @@ namespace {
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
-/// A helper function to determine whether a given actor task has already been executed
-/// according to the given actor registry. Returns true if the task is a duplicate.
-bool CheckDuplicateActorTask(
+/// A helper function to return the expected actor counter for a given actor
+/// and actor handle, according to the given actor registry. If a task's
+/// counter is less than the returned value, then the task is a duplicate. If
+/// the task's counter is equal to the returned value, then the task should be
+/// the next to run.
+int64_t GetExpectedTaskCounter(
     const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
         &actor_registry,
-    const ray::raylet::TaskSpecification &spec) {
-  auto actor_entry = actor_registry.find(spec.ActorId());
+    const ray::ActorID &actor_id, const ray::ActorHandleID &actor_handle_id) {
+  auto actor_entry = actor_registry.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry.end());
   const auto &frontier = actor_entry->second.GetFrontier();
   int64_t expected_task_counter = 0;
-  auto frontier_entry = frontier.find(spec.ActorHandleId());
+  auto frontier_entry = frontier.find(actor_handle_id);
   if (frontier_entry != frontier.end()) {
     expected_task_counter = frontier_entry->second.task_counter;
   }
-  if (spec.ActorCounter() < expected_task_counter) {
-    // The assigned task counter is less than expected. The actor has already
-    // executed past this task, so do not assign the task again.
-    RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
-                     << "should only happen during reconstruction.";
-    return true;
-  }
-  RAY_CHECK(spec.ActorCounter() == expected_task_counter)
-      << "Expected actor counter: " << expected_task_counter
-      << ", got: " << spec.ActorCounter();
-  return false;
+  return expected_task_counter;
 };
 
 }  // namespace
@@ -1240,9 +1233,25 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-          // If this actor is local, queue the task for local execution, bypassing
-          // placement.
-          EnqueuePlaceableTask(task);
+          // The actor is local.
+          int64_t expected_task_counter = GetExpectedTaskCounter(
+              actor_registry_, spec.ActorId(), spec.ActorHandleId());
+          if (spec.ActorCounter() < expected_task_counter) {
+            // A task that has already been executed before has been found. The
+            // task will be treated as failed if at least one of the task's
+            // return values have been evicted, to prevent the application from
+            // hanging.
+            // TODO(swang): Clean up the task from the lineage cache? If the
+            // task is not marked as failed, then it may never get marked as
+            // ready to flush to the GCS.
+            RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
+                             << "should only happen during reconstruction.";
+            TreatTaskAsFailedIfLost(task);
+          } else {
+            // The task has not yet been executed. Queue the task for local
+            // execution, bypassing placement.
+            EnqueuePlaceableTask(task);
+          }
         } else {
           // The actor is remote. Forward the task to the node manager that owns
           // the actor.
@@ -1444,14 +1453,13 @@ bool NodeManager::AssignTask(const Task &task) {
 
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
-    if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      // The actor is alive, and a task that has already been executed before
-      // has been found. The task will be treated as failed if at least one of
-      // the task's return values have been evicted, to prevent the application
-      // from hanging.
-      TreatTaskAsFailedIfLost(task);
-      return true;
-    }
+    // An actor task should only be ready to be assigned if it matches the
+    // expected task counter.
+    int64_t expected_task_counter =
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
+    RAY_CHECK(spec.ActorCounter() == expected_task_counter)
+        << "Expected actor counter: " << expected_task_counter
+        << ", got: " << spec.ActorCounter();
   }
 
   // Try to get an idle worker that can execute this task.
