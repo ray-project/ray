@@ -689,7 +689,9 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({
             "foo": {
                 "run": train,
-                "trial_resources": {"CPU": 1}
+                "trial_resources": {
+                    "cpu": 1
+                }
             }
         })
         for trial in trials:
