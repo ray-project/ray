@@ -1499,16 +1499,22 @@ bool NodeManager::AssignTask(const Task &task) {
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
-  // Give the callback a copy of the task so it can modify it.
-  Task assigned_task(task);
   worker->Connection()->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, worker, assigned_task](ray::Status status) mutable {
+      fbb.GetBufferPointer(), [this, worker, task](ray::Status status) {
         if (status.ok()) {
-          auto spec = assigned_task.GetTaskSpecification();
+          auto spec = task.GetTaskSpecification();
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
+
+          // Make a copy of the task to add to the lineage cache and eventually
+          // flush to the GCS.
+          // TODO(swang): We use a copy of the task so that for actor tasks, we
+          // can keep the original execution dependencies in the copy in the
+          // scheduling queue, but ideally the task in the lineage cache would
+          // match the queued task exactly.
+          Task assigned_task(task);
           // If the task was an actor task, then record this execution to guarantee
           // consistency in the case of reconstruction.
           if (spec.IsActorTask()) {
@@ -1536,9 +1542,10 @@ bool NodeManager::AssignTask(const Task &task) {
                                                             "This is most likely due to "
                                                             "reconstruction.";
           }
+
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueRunningTasks(std::vector<Task>({assigned_task}));
+          local_queues_.QueueRunningTasks(std::vector<Task>({task}));
           // Notify the task dependency manager that we no longer need this task's
           // object dependencies.
           RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
@@ -1550,8 +1557,8 @@ bool NodeManager::AssignTask(const Task &task) {
           // DispatchTasks() removed it from the ready queue. The task will be
           // assigned to a worker once one becomes available.
           // (See design_docs/task_states.rst for the state transition diagram.)
-          local_queues_.QueueReadyTasks({assigned_task});
-          DispatchTasks(MakeTasksWithResources({assigned_task}));
+          local_queues_.QueueReadyTasks({task});
+          DispatchTasks(MakeTasksWithResources({task}));
         }
       });
 
@@ -1662,10 +1669,17 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   for (auto &new_handle_id : task.GetTaskSpecification().NewActorHandles()) {
     // An actor creation task is the first task, so it cannot have new handles.
     RAY_CHECK(task.GetTaskSpecification().IsActorTask());
-    // Get the execution dependency for the finished task.
-    const auto &frontier = actor_entry->second.GetFrontier();
-    auto it = frontier.find(actor_handle_id);
-    RAY_CHECK(it != frontier.end());
+    // Get the execution dependency for the first task submitted on the new
+    // actor handle. Since the new actor handle was created after this task
+    // began and before this task finished, it must have the same execution
+    // dependency.
+    const auto &execution_dependencies =
+        task.GetTaskExecutionSpec().ExecutionDependencies();
+    // TODO(swang): We expect this task to have exactly 1 execution dependency,
+    // the dummy object returned by the previous actor task. However, this
+    // leaks information about the TaskExecutionSpecification implementation.
+    RAY_CHECK(execution_dependencies.size() == 1);
+    const ObjectID &execution_dependency = execution_dependencies.front();
     // If the new actor handle ID matches the current one, then this means
     // that the actor handle was pickled.
     if (new_handle_id == actor_handle_id) {
@@ -1676,7 +1690,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     }
     // Add the new handle and give it a reference to the finished task's
     // execution dependency.
-    actor_entry->second.AddHandle(new_handle_id, it->second.execution_dependency);
+    actor_entry->second.AddHandle(new_handle_id, execution_dependency);
   }
   // Extend the actor's frontier to include the executed task.
   auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
