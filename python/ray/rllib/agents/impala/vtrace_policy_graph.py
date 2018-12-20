@@ -212,7 +212,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.rnd_norm_obs = tf.placeholder(tf.float32, [None] + list(observation_space.shape))
             loss_in.append(("norm_obs", self.rnd_norm_obs))
 
-            self.rnd = RND(self.rnd_norm_obs, 10, 10)
+            self.rnd = RND(self.rnd_norm_obs)
             self.rnd_loss = self.rnd.loss
             self.loss.total_loss += self.rnd_loss
             self.rnd_bonus = self.rnd.intr_rew
@@ -259,9 +259,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "median_KL": self.median_KL,
             },
         }
-        if self.config["rnd"]:
-            self.stats_fetches["stats"]["rnd_loss"] = self.rnd_loss
-            self.stats_fetches["stats"]["rnd_bonus"] = self.rnd_bonus
+#        if self.config["rnd"]:
+#            self.stats_fetches["stats"]["rnd_loss"] = self.rnd_loss
+#            self.stats_fetches["stats"]["rnd_bonus"] = self.rnd_bonus
 
     def optimizer(self):
         if self.config["opt_type"] == "adam":

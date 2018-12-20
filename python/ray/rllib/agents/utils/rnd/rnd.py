@@ -5,6 +5,7 @@ Author
 Vishal Satish
 """
 import logging
+from functools import reduce
 
 import tensorflow as tf
 import numpy as np
@@ -32,7 +33,6 @@ def build_conv2d(x,
     # initialize weights
     with tf.variable_scope(name):
         input_channels = x.get_shape().as_list()[-1]
-        ip.embed()
         fan_in = reduce(lambda x, y: x*y, filt_dim) * input_channels
         W = tf.get_variable('weights', shape=filt_dim + (input_channels, num_filts), initializer=kaiming_he_initializer(fan_in))
         b = tf.get_variable('bias', shape=(num_filts,), initializer=kaiming_he_initializer(fan_in))
@@ -105,16 +105,10 @@ class RND(object):
                         }
                        }
 
-    def __init__(self, obs, num_envs, num_timesteps, model=DEFAULT_FC_MODEL, rnd_predictor_update_proportion=1.0):
+    def __init__(self, obs, model=DEFAULT_CONV_MODEL, rnd_predictor_update_proportion=1.0):
         self._rnd_predictor_update_proportion = rnd_predictor_update_proportion
-        self._num_envs = num_envs
-        self._num_timesteps = num_timesteps
         self._model = model
    
-        # build filters
-#        self._obs_filter = get_filter('MeanStdFilter', obs.shape.as_list()[1:])
-#        self._bonus_filter = get_filter('MeanStdFilter', (1,))
-
         # normalize and clip obs to [-5.0, 5.0]
         obs = tf.clip_by_value(obs, -5.0, 5.0)
  
@@ -124,7 +118,6 @@ class RND(object):
 
         # build intr reward (bonus) with normalization
         self._intr_reward = self._build_intr_reward(self._targets, self._preds)
-#        self._intr_reward = tf.py_func(self._bonus_filter, [self._intr_reward], tf.float32)
 
         # build loss for random network
         self._loss = self._build_loss(self._targets, self._preds)
@@ -141,7 +134,6 @@ class RND(object):
         logger.info('Building intrinisic reward...')
         targets = tf.stop_gradient(targets) #TODO: Is this really needed?
         intr_rew = tf.reduce_mean(tf.square(preds - targets), axis=-1, keep_dims=True)
-#        intr_rew = tf.reshape(intr_rew, (self._num_envs, self._num_timesteps-1))
         return intr_rew
 
     def _build_loss(self, targets, preds):
@@ -155,7 +147,7 @@ class RND(object):
 
     def _build_network(self, x, model, name='network'):
         logger.info('Building {}...'.format(name))
-       
+   
         # build network
         out = x
         prev_layer_type = None
