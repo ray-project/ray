@@ -426,6 +426,15 @@ class DQNPolicyGraph(TFPolicyGraph):
             "stats": self.loss.stats,
         }
 
+    @override(TFPolicyGraph)
+    def extra_input_signature_def(self):
+        return {
+            "stochastic":
+                tf.saved_model.utils.build_tensor_info(self.stochastic),
+            "eps":
+                tf.saved_model.utils.build_tensor_info(self.eps)
+        }
+
     @override(PolicyGraph)
     def postprocess_trajectory(self,
                                sample_batch,

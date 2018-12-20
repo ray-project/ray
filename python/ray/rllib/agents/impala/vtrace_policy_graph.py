@@ -273,6 +273,13 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return {"behaviour_logits": self.model.outputs}
 
     @override(TFPolicyGraph)
+    def extra_output_signature_def(self):
+        return {
+            "behaviour_logits":
+                tf.saved_model.utils.build_tensor_info(self.model.outputs)
+            }
+
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 

@@ -16,6 +16,7 @@ import ray
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -426,6 +427,9 @@ class Agent(Trainable):
             self._make_evaluator(cls, env_creator, policy_graph, i + 1,
                                  self.config) for i in range(count)
         ]
+
+    def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+        self.local_evaluator.export_policy_model(export_dir, policy_id)
 
     @classmethod
     def resource_help(cls, config):

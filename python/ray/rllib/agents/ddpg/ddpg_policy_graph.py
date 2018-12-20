@@ -408,6 +408,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
         }
 
     @override(TFPolicyGraph)
+    def extra_input_signature_def(self):
+        return {
+            "stochastic":
+            tf.saved_model.utils.build_tensor_info(self.stochastic),
+            "eps": tf.saved_model.utils.build_tensor_info(self.eps)
+        }
+
+    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
