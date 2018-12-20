@@ -711,6 +711,9 @@ class ActorHandle(object):
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
+        # NOTE(swang): If the new actor handle fails to be used (e.g., due
+        # to a failure to register a named actor), then this may cause a
+        # memory leak in the backend.
         self._ray_new_actor_handles.append(actor_handle_id)
 
         return state

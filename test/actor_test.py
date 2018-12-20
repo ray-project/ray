@@ -1908,6 +1908,42 @@ def test_pickled_handle_consistency(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
+def test_nested_fork(setup_queue_actor):
+    queue = setup_queue_actor
+
+    @ray.remote
+    def fork(queue, key, num_items):
+        x = None
+        for item in range(num_items):
+            x = queue.enqueue.remote(key, item)
+        return ray.get(x)
+
+    @ray.remote
+    def nested_fork(queue, key, num_items):
+        # Pass the actor into a nested task.
+        ray.get(fork.remote(queue, key + 1, num_items))
+        x = None
+        for item in range(num_items):
+            x = queue.enqueue.remote(key, item)
+        return ray.get(x)
+
+    # Fork num_iters times.
+    num_forks = 10
+    num_items_per_fork = 100
+
+    # Submit some tasks on new actor handles.
+    forks = [
+        nested_fork.remote(queue, i, num_items_per_fork)
+        for i in range(0, num_forks, 2)
+    ]
+    ray.get(forks)
+    # Check that all tasks from all handles have completed.
+    items = ray.get(queue.read.remote())
+    for i in range(num_forks):
+        filtered_items = [item[1] for item in items if item[0] == i]
+        assert filtered_items == list(range(num_items_per_fork))
+
+
 @pytest.mark.skip("Garbage collection for distributed actor handles not "
                   "implemented.")
 def test_garbage_collection(setup_queue_actor):
