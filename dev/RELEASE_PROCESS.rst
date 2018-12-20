@@ -26,7 +26,12 @@ This document describes the process for creating new releases.
    step. This should include **release notes**. Copy the style and formatting
    used by previous releases.
 
-5. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+5. The Python wheels will automatically be built on Travis and uploaded to the
+   ``ray-wheels`` S3 bucket. Download these wheels (e.g., using ``wget``) and
+   installing them with ``pip`` and running some simple Ray scripts to verify
+   that they work.
+
+6. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
    need to run a command like
 
@@ -52,7 +57,7 @@ This document describes the process for creating new releases.
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
    3. Also do this for different versions of MacOS.
 
-6. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+7. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release. You can upload the wheels with a command
