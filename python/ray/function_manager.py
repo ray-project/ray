@@ -447,10 +447,10 @@ class FunctionActorManager(object):
         try:
             info = self._function_execution_info[driver_id][function_id]
         except KeyError as e:
-            logger.error("Error occurs in get_execution_info: "
-                         "driver_id: %s, function_descriptor: %s" %
-                         (driver_id, function_descriptor))
-            raise e
+            message = ("Error occurs in get_execution_info: "
+                       "driver_id: %s, function_descriptor: %s. Message: %s" %
+                       (binary_to_hex(driver_id), function_descriptor, e))
+            raise KeyError(message)
         return info
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
