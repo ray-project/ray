@@ -296,6 +296,40 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
         },
     })
 
+Recovering From Failures (Experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A Tune experiment run may crash due to unforeseen circumstances. To avoid losing all progress, set ``checkpoint_mode=True`` in ``run_experiments``. Note that only **checkpointable experiments** (i.e., experiments with ``checkpoint_freq > 0``) will be preserved. With ``checkpoint_mode=True``, Tune frequently save the entire experiment state at the ``local_dir`` of the first checkpointable experiment provided.  E.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable
+            "checkpoint_freq": 10,
+            "local_dir": "~/path/to/results"
+        },
+    }, checkpoint_mode=True)
+
+
+To restore from an experiment, set ``checkpoint_mode=True`` and ``resume=True``, e.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable
+            "checkpoint_freq": 10,
+            "local_dir": "~/path/to/results"
+        },
+    }, checkpoint_mode=True, resume=True)
+
+This will restore the entire experiment state from the ``local_dir`` of the first checkpointable experiment provided. Importantly, note that any changes to the experiment specification
+upon resume will be ignored.
+
+This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+
+
 Handling Large Datasets
 -----------------------
 
