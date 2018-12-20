@@ -5,7 +5,7 @@ from __future__ import print_function
 import random
 import unittest
 import numpy as np
-
+import sys
 import ray
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -16,6 +16,11 @@ from ray.tune.trial_executor import TrialExecutor
 
 from ray.rllib import _register_all
 _register_all()
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import MagicMock
+else:
+    from mock import MagicMock
 
 
 def result(t, rew):
@@ -804,7 +809,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 },
             })
 
-        custom_explore_fn = unittest.mock.MagicMock(side_effect=lambda x: x)
+        custom_explore_fn = MagicMock(side_effect=lambda x: x)
 
         # Nested mutation and spec
         assertNestedProduces(
