@@ -25,7 +25,7 @@ These are the guidelines for merging new algorithms into RLlib:
 * Fully integrated algorithms (`rllib/agents <https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents>`__) have the following additional requirements:
     - must fully implement the Agent API
     - must offer substantial new functionality not possible to add to other algorithms
-    - should support custom models and preprocessors (if TensorFlow)
+    - should support custom models and preprocessors
     - should use RLlib abstractions and support distributed execution
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests. The main difference between contributed and fully integrated algorithms is that the latter will be maintained by the Ray team to a much greater extent with respect to bugs and integration with RLlib features.
