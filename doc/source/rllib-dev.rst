@@ -9,7 +9,7 @@ Feature development and upcoming priorities are tracked on the `RLlib project bo
 Benchmarks
 ----------
 
-Currently we host a number of full training run results in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and maintain a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
+A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 Contributing Algorithms
 -----------------------
