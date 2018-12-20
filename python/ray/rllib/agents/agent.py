@@ -429,6 +429,12 @@ class Agent(Trainable):
         ]
 
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+        """Export policy model with given policy_id to local directory.
+
+        Arguments:
+            export_dir (string): Writable local directory.
+            policy_id (string): Optional policy id to export.
+        """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
     @classmethod

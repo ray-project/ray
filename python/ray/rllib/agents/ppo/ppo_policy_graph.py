@@ -301,15 +301,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return {"vf_preds": self.value_function, "logits": self.logits}
 
     @override(TFPolicyGraph)
-    def extra_output_signature_def(self):
-        return {
-            "vf_preds":
-                tf.saved_model.utils.build_tensor_info(self.value_function),
-            "logits":
-                tf.saved_model.utils.build_tensor_info(self.logits)
-        }
-
-    @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 

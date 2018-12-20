@@ -155,12 +155,6 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def extra_compute_action_fetches(self):
         return {"vf_preds": self.vf}
 
-    @override(TFPolicyGraph)
-    def extra_output_signature_def(self):
-        return {
-            "vf_preds": tf.saved_model.utils.build_tensor_info(self.vf)
-        }
-
     def _value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
         assert len(args) == len(self.model.state_in), \

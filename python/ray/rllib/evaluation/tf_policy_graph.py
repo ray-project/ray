@@ -228,13 +228,21 @@ class TFPolicyGraph(PolicyGraph):
         """Extra values to fetch and return from apply_gradients()."""
         return {}  # e.g., batch norm updates
 
-    def extra_input_signature_def(self):
-        """Extra input signatures to add when exporting tf model."""
-        return {}
+    def _extra_input_signature_def(self):
+        """Extra input signatures to add when exporting tf model.
+        Inferred from extra_compute_action_feed_dict()
+        """
+        feed_dict = self.extra_compute_action_feed_dict()
+        return dict((k.name, tf.saved_model.utils.build_tensor_info(k))
+                    for k in feed_dict.keys())
 
-    def extra_output_signature_def(self):
-        """Extra output signatures to add when exporting tf model."""
-        return {}
+    def _extra_output_signature_def(self):
+        """Extra output signatures to add when exporting tf model.
+        Inferred from extra_compute_action_fetches()
+        """
+        fetches = self.extra_compute_action_fetches()
+        return dict((k, tf.saved_model.utils.build_tensor_info(fetches[k]))
+                    for k in fetches.keys())
 
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
@@ -248,7 +256,7 @@ class TFPolicyGraph(PolicyGraph):
         """Build signature def map for tensorflow SavedModelBuilder.
         """
         # build input signatures
-        input_signature = self.extra_input_signature_def()
+        input_signature = self._extra_input_signature_def()
         input_signature["observations"] = \
             tf.saved_model.utils.build_tensor_info(self._obs_input)
 
@@ -269,7 +277,7 @@ class TFPolicyGraph(PolicyGraph):
                 tf.saved_model.utils.build_tensor_info(state_input)
 
         # build output signatures
-        output_signature = self.extra_output_signature_def()
+        output_signature = self._extra_output_signature_def()
         output_signature["actions"] = \
             tf.saved_model.utils.build_tensor_info(self._sampler)
         for state_output in self._state_outputs:
