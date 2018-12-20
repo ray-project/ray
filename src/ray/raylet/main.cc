@@ -15,11 +15,6 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
 }
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
   RAY_CHECK(argc >= 14 && argc <= 16);
 
   const std::string raylet_socket_name = std::string(argv[1]);
@@ -37,6 +32,12 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = std::string(argv[13]);
   const std::string redis_password = (argc >= 15 ? std::string(argv[14]) : "");
   const std::string temp_dir = (argc >= 16 ? std::string(argv[15]) : "/tmp/ray");
+
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/temp_dir + "/logs");
+  ray::RayLog::InstallFailureSignalHandler();
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;

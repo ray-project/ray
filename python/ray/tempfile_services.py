@@ -169,10 +169,6 @@ def new_log_files(name, redirect_output):
     logs_dir = get_logs_dir_path()
     # Create another directory that will be used by some of the RL algorithms.
 
-    # TODO(suquark): This is done by the old code.
-    # We should be able to control its path later.
-    try_to_create_directory("/tmp/ray")
-
     log_stdout = make_inc_temp(
         suffix=".out", prefix=name, directory_name=logs_dir)
     log_stderr = make_inc_temp(
