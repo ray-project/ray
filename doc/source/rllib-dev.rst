@@ -49,7 +49,7 @@ Second, register the agent with a name in `contrib/registry.py <https://github.c
 
     def _import_random_agent_2():
         from ray.rllib.contrib.random_agent_2.random_agent_2 import RandomAgent2
-        return RandomAgent
+        return RandomAgent2
 
     CONTRIBUTED_ALGORITHMS = {
         "contrib/RandomAgent": _import_random_agent,
