@@ -444,7 +444,14 @@ class FunctionActorManager(object):
         # the function from GCS.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_descriptor, driver_id)
-        return self._function_execution_info[driver_id][function_id]
+        try:
+            info = self._function_execution_info[driver_id][function_id]
+        except KeyError as e:
+            logger.error("Error occurs in get_execution_info: "
+                         "driver_id: %s, function_descriptor: %s" %
+                         (driver_id, function_descriptor))
+            raise e
+        return info
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
