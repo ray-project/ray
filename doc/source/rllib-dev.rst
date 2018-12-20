@@ -47,8 +47,14 @@ Second, register the agent with a name in `contrib/registry.py <https://github.c
         from ray.rllib.contrib.random_agent.random_agent import RandomAgent
         return RandomAgent
 
+    def _import_random_agent_2():
+        from ray.rllib.contrib.random_agent_2.random_agent_2 import RandomAgent2
+        return RandomAgent
+
     CONTRIBUTED_ALGORITHMS = {
         "contrib/RandomAgent": _import_random_agent,
+        "contrib/RandomAgent2": _import_random_agent_2,
+        # ...
     }
 
 After registration, you can run and visualize agent progress using ``rllib train``:
