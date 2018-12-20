@@ -18,7 +18,7 @@ These are the guidelines for merging new algorithms into RLlib:
 
 * Contributed algorithms (`rllib/contrib <https://github.com/ray-project/ray/tree/master/python/ray/rllib/contrib>`__):
     - must subclass Agent and implement the ``_train()`` method
-    - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L38>`__) to ensure the algorithm runs
+    - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
 
