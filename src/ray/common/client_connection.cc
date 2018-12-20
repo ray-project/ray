@@ -154,27 +154,22 @@ void ServerConnection<T>::DoAsyncWrites() {
     }
   }
   auto this_ptr = this->shared_from_this();
-  boost::asio::async_write(
-      ServerConnection<T>::socket_, message_buffers,
-      [this, this_ptr, num_messages](const boost::system::error_code &error,
-                                     size_t bytes_transferred) {
-        ray::Status status = ray::Status::OK();
-        if (error.value() != boost::system::errc::errc_t::success) {
-          status = boost_to_ray_status(error);
-        }
-        // Call the handlers for the written messages.
-        for (int i = 0; i < num_messages; i++) {
-          auto write_buffer = std::move(async_write_queue_.front());
-          write_buffer->handler(status);
-          async_write_queue_.pop_front();
-        }
-        // We finished writing, so mark that we're no longer doing an async write.
-        async_write_in_flight_ = false;
-        // If there is more to write, try to write the rest.
-        if (!async_write_queue_.empty()) {
-          DoAsyncWrites();
-        }
-      });
+  std::weak_ptr<ServerConnection<T>> pointer(this_ptr);
+  boost::asio::async_write(ServerConnection<T>::socket_, message_buffers,
+                           [pointer, num_messages](const boost::system::error_code &error,
+                                                   size_t bytes_transferred) {
+                             ray::Status status = ray::Status::OK();
+                             if (error.value() != boost::system::errc::errc_t::success) {
+                               status = boost_to_ray_status(error);
+                               RAY_LOG(ERROR) << "boost::asio::async_write failed with:"
+                                              << status.message();
+                             }
+                             // Check whether this point is destructed or not.
+                             if (auto shared_ptr = pointer.lock()) {
+                               AsyncWriteCallbackHelper<T>::OnAsyncWriteFinish(
+                                   *shared_ptr, num_messages, status);
+                             }
+                           });
 }
 
 template <class T>

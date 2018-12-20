@@ -22,6 +22,30 @@ namespace ray {
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address, int port);
 
+// Forward declaration for AsyncWriteCallbackHelper
+template <typename T>
+class ServerConnection;
+
+template <class T>
+class AsyncWriteCallbackHelper {
+ public:
+  static void OnAsyncWriteFinish(ServerConnection<T> &connection, int num_messages,
+                                 const ray::Status &status) {
+    // Call the handlers for the written messages.
+    for (int i = 0; i < num_messages; i++) {
+      auto write_buffer = std::move(connection.async_write_queue_.front());
+      write_buffer->handler(status);
+      connection.async_write_queue_.pop_front();
+    }
+    // We finished writing, so mark that we're no longer doing an async write.
+    connection.async_write_in_flight_ = false;
+    // If there is more to write, try to write the rest.
+    if (!connection.async_write_queue_.empty()) {
+      connection.DoAsyncWrites();
+    }
+  }
+};
+
 /// \typename ServerConnection
 ///
 /// A generic type representing a client connection to a server. This typename
@@ -29,6 +53,7 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
 template <typename T>
 class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>> {
  public:
+  friend class AsyncWriteCallbackHelper<T>;
   /// ServerConnection destructor.
   virtual ~ServerConnection();
 
