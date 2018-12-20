@@ -647,9 +647,10 @@ class ActorHandle(object):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
-            logger.warning("Actor is garbage collected in the wrong driver." +
-                           " Actor id = %s, class name = %s.",
-                           self._ray_actor_id, self._ray_class_name)
+            logger.warning(
+                "Actor is garbage collected in the wrong driver." +
+                " Actor id = %s, class name = %s.", self._ray_actor_id,
+                self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
