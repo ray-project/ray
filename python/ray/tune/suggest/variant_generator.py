@@ -33,10 +33,6 @@ def generate_variants(unresolved_spec):
             "cpu": lambda spec: spec.config.num_workers
             "batch_size": lambda spec: random.uniform(1, 1000)
 
-        It is also possible to nest the two, e.g. have a lambda function
-        return a grid search or vice versa, as long as there are no cyclic
-        dependencies between unresolved values.
-
     Finally, to support defining specs in plain JSON / YAML, grid search
     and lambda functions can also be defined alternatively as follows:
 
@@ -150,7 +146,7 @@ def _generate_variants(spec):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
-                        "your variable dependencies.".format(k))
+                        "your configuration.".format(k))
                 resolved_vars[k] = v
             yield resolved_vars, spec
 
