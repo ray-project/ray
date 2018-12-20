@@ -34,6 +34,14 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
       async_write_in_flight_(false) {}
 
 template <class T>
+ServerConnection<T>::~ServerConnection() {
+  // If there are any pending messages, invoke their callbacks with an IOError status.
+  for (const auto &write_buffer : async_write_queue_) {
+    write_buffer->handler(Status::IOError("Connection closed."));
+  }
+}
+
+template <class T>
 Status ServerConnection<T>::WriteBuffer(
     const std::vector<boost::asio::const_buffer> &buffer) {
   boost::system::error_code error;

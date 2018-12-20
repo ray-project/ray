@@ -132,6 +132,6 @@ class PPOAgent(Agent):
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
             # TODO(ekl): consider setting the default to be NoFilter
-            logger.warn(
+            logger.warning(
                 "By default, observations will be normalized with {}".format(
                     self.config["observation_filter"]))

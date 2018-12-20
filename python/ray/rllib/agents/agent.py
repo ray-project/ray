@@ -10,6 +10,7 @@ import pickle
 import six
 import tempfile
 import tensorflow as tf
+import traceback
 from types import FunctionType
 
 import ray
@@ -129,7 +130,7 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Offline Data Input / Output ===
+    # === Offline Data Input / Output (Experimental) ===
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -546,6 +547,14 @@ def _register_if_needed(env_object):
 def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
+    try:
+        return _get_agent_class(alg)
+    except ImportError:
+        from ray.rllib.agents.mock import _agent_import_failed
+        return _agent_import_failed(traceback.format_exc())
+
+
+def _get_agent_class(alg):
     if alg == "DDPG":
         from ray.rllib.agents import ddpg
         return ddpg.DDPGAgent
@@ -579,6 +588,12 @@ def get_agent_class(alg):
     elif alg == "IMPALA":
         from ray.rllib.agents import impala
         return impala.ImpalaAgent
+    elif alg == "QMIX":
+        from ray.rllib.agents import qmix
+        return qmix.QMixAgent
+    elif alg == "APEX_QMIX":
+        from ray.rllib.agents import qmix
+        return qmix.ApexQMixAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

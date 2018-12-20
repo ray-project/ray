@@ -168,7 +168,15 @@ def _restore_original_dimensions(input_dict, obs_space):
     return input_dict
 
 
-def _unpack_obs(obs, space):
+def _unpack_obs(obs, space, tensorlib=tf):
+    """Unpack a flattened Dict or Tuple observation array/tensor.
+
+    Arguments:
+        obs: The flattened observation tensor
+        space: The original space prior to flattening
+        tensorlib: The library used to unflatten (reshape) the array/tensor
+    """
+
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)):
         prep = get_preprocessor(space)(space)
@@ -186,14 +194,18 @@ def _unpack_obs(obs, space):
                 offset += p.size
                 u.append(
                     _unpack_obs(
-                        tf.reshape(obs_slice, [-1] + list(p.shape)), v))
+                        tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                        v,
+                        tensorlib=tensorlib))
         else:
             u = OrderedDict()
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
                 obs_slice = obs[:, offset:offset + p.size]
                 offset += p.size
                 u[k] = _unpack_obs(
-                    tf.reshape(obs_slice, [-1] + list(p.shape)), v)
+                    tensorlib.reshape(obs_slice, [-1] + list(p.shape)),
+                    v,
+                    tensorlib=tensorlib)
         return u
     else:
         return obs
