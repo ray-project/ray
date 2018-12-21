@@ -16,6 +16,7 @@ from ray.tune.registry import register_env
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.rllib.agents.qmix import QMixAgent
+from ray.rllib.agents.pg import PGAgent
 from ray.rllib.agents.ppo import PPOAgent
 from ray.tune.logger import pretty_print
 
@@ -143,7 +144,9 @@ if __name__ == "__main__":
 
         register_env("grouped_starcraft", grouped_sc2)
         agent = QMixAgent(env="grouped_starcraft", config=agent_cfg)
-    else:
+    elif args.run.lower() == "pg":
+        agent = PGAgent(env="starcraft", config=agent_cfg)
+    elif args.run.lower() == "ppo":
         agent = PPOAgent(env="starcraft", config=agent_cfg)
     for i in range(args.num_iters):
         print(pretty_print(agent.train()))
