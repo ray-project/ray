@@ -30,7 +30,7 @@ class ParametricActionsModel(Model):
                 num_outputs, action_mask)
 
         # Standard FC net component.
-        last_layer = input_dict["obs"]["real_obs"]
+        last_layer = input_dict["obs"]["obs"]
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
             label = "fc{}".format(i)
@@ -75,7 +75,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         num_actions = self._starcraft_env.get_total_actions()
         self.observation_space = Dict({
             "action_mask": Box(0, 1, shape=(num_actions, )),
-            "real_obs": Box(-1, 1, shape=(obs_size, ))
+            "obs": Box(-1, 1, shape=(obs_size, ))
         })
         self.action_space = Discrete(self._starcraft_env.get_total_actions())
 
@@ -85,7 +85,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         for i, obs in enumerate(obs_list):
             return_obs[i] = {
                 "action_mask": self._starcraft_env.get_avail_agent_actions(i),
-                "real_obs": obs
+                "obs": obs
             }
         return return_obs
 
@@ -98,7 +98,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         for i, obs in enumerate(obs_list):
             return_obs[i] = {
                 "action_mask": self._starcraft_env.get_avail_agent_actions(i),
-                "real_obs": obs
+                "obs": obs
             }
         rews = {i: rew / len(obs_list) for i in range(len(obs_list))}
         dones = {i: done for i in range(len(obs_list))}
@@ -109,7 +109,7 @@ class SC2MultiAgentEnv(MultiAgentEnv):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num-iters", type=int, default=200)
+    parser.add_argument("--num-iters", type=int, default=100)
     parser.add_argument("--run", type=str, default="qmix")
     args = parser.parse_args()
 
@@ -123,7 +123,6 @@ if __name__ == "__main__":
     agent_cfg = {
         "observation_filter": "NoFilter",
         "num_workers": 4,
-        "vf_share_layers": True,  # don't create duplicate value model
         "model": {
             "custom_model": "pa_model",
         },
@@ -150,6 +149,7 @@ if __name__ == "__main__":
     elif args.run.lower() == "pg":
         agent = PGAgent(env="starcraft", config=agent_cfg)
     elif args.run.lower() == "ppo":
+        agent_cfg.update({"vf_share_layers": True})
         agent = PPOAgent(env="starcraft", config=agent_cfg)
     for i in range(args.num_iters):
         print(pretty_print(agent.train()))
