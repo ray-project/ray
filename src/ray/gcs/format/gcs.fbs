@@ -77,8 +77,6 @@ table TaskInfo {
   // actor handles that were forked from this handle since the last task on
   // this handle was submitted.
   new_actor_handles: [string];
-  // Function ID of the task.
-  function_id: string;
   // Task arguments.
   args: [Arg];
   // Object IDs of return values.

@@ -92,7 +92,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
   ray::Status status =
-      gcs_client_->object_table().Append(JobID(), object_id, data, nullptr);
+      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
   return status;
 }
 
@@ -104,7 +104,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   data->is_eviction = true;
   data->num_evictions = object_evictions_[object_id];
   ray::Status status =
-      gcs_client_->object_table().Append(JobID(), object_id, data, nullptr);
+      gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
   // Increment the number of times we've evicted this object. NOTE(swang): This
   // is only necessary because the Ray redis module expects unique entries in a
   // log. We track the number of evictions so that the next eviction, if there
@@ -211,7 +211,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     status = gcs_client_->object_table().Lookup(
-        JobID(), object_id,
+        JobID::nil(), object_id,
         [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_history) {
           // Build the set of current locations based on the entries in the log.

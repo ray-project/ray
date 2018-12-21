@@ -153,7 +153,9 @@ class TFPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(builder, obs_batch,
                                               state_batches, prev_action_batch,

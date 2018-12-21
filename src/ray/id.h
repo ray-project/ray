@@ -18,6 +18,7 @@ class RAY_EXPORT UniqueID {
   UniqueID(const plasma::UniqueID &from);
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);
+  static const UniqueID &nil();
   size_t hash() const;
   bool is_nil() const;
   bool operator==(const UniqueID &rhs) const;

@@ -61,9 +61,12 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID(), const Language &language = Language::PYTHON) {
-  return TaskSpecification(UniqueID(), UniqueID(), 0, FunctionID(), {}, 0, {{}},
-                           language);
+    const ActorID actor_id = ActorID::nil(),
+    const Language &language = Language::PYTHON) {
+  std::vector<std::string> function_descriptor(3);
+  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0,
+                           {}, 0,
+                           {{}}, language, function_descriptor);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {

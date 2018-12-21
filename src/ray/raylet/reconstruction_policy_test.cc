@@ -29,7 +29,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id, {}, /*created=*/false);
+        callback.second(object_id, std::unordered_set<ray::ClientID>(),
+                        /*created=*/false);
       } else {
         callback.second(object_id, it->second, /*created=*/true);
       }
@@ -254,7 +255,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   ASSERT_EQ(reconstructed_tasks_[task_id], 0);
 
   // Simulate evicting one of the objects.
-  mock_object_directory_->SetObjectLocations(object_id, {});
+  mock_object_directory_->SetObjectLocations(object_id,
+                                             std::unordered_set<ray::ClientID>());
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was

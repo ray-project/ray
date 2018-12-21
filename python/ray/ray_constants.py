@@ -16,6 +16,7 @@ def env_integer(key, default):
 
 ID_SIZE = 20
 NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
+NIL_FUNCTION_ID = NIL_JOB_ID
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
