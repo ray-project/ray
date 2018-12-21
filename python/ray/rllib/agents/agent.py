@@ -434,6 +434,12 @@ class Agent(Trainable):
         Arguments:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
+
+        Example:
+            >>> agent = MyAgent()
+            >>> for _ in range(10):
+            >>>     agent.train()
+            >>> agent.export_policy_model("/tmp/export_dir")
         """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
