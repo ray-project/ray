@@ -26,7 +26,8 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
-from ray.tune.suggest.variant_generator import RecursiveDependencyError
+from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
+                                                resolve_nested_dict)
 
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
@@ -885,6 +886,20 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def test_resolve_dict(self):
+        config = {
+            "a": {
+                "b": 1,
+                "c": 2,
+            },
+            "b": {
+                "a": 3
+            }
+        }
+        resolved = resolve_nested_dict(config)
+        for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
+            self.assertEqual(resolved.get(k), v)
 
     def testRecursiveDep(self):
         try:

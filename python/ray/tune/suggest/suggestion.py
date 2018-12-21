@@ -11,7 +11,7 @@ from ray.tune.util import merge_dicts
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
-from ray.tune.suggest.variant_generator import format_vars
+from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 
 
 class SuggestionAlgorithm(SearchAlgorithm):
@@ -90,9 +90,10 @@ class SuggestionAlgorithm(SearchAlgorithm):
                     break
             spec = copy.deepcopy(experiment_spec)
             spec["config"] = merge_dicts(spec["config"], suggested_config)
+            flattened_config = resolve_nested_dict(spec["config"])
             self._counter += 1
             tag = "{0}_{1}".format(
-                str(self._counter), format_vars(spec["config"]))
+                str(self._counter), format_vars(flattened_config))
             yield create_trial_from_spec(
                 spec,
                 output_path,
