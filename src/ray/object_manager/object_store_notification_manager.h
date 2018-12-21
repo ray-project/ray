@@ -67,9 +67,9 @@ class ObjectStoreNotificationManager {
 
   plasma::PlasmaClient store_client_;
   int c_socket_;
-  int64_t length_;
-  int64_t num_adds_processed_;
-  int64_t num_removes_processed_;
+  int64_t length_ = 0;
+  int64_t num_adds_processed_ = 0;
+  int64_t num_removes_processed_ = 0;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
 };
