@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from gym.spaces import Discrete, Box, Dict
+from gym.spaces import Discrete, Box, Dict, Tuple
 import os
 import sys
 import tensorflow as tf
@@ -16,7 +16,7 @@ from ray.tune.registry import register_env
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.rllib.agents.qmix import QMixAgent
-from ray.rllib.agents.pg import PGAgent
+from ray.rllib.agents.ppo import PPOAgent
 from ray.tune.logger import pretty_print
 
 
@@ -129,8 +129,21 @@ if __name__ == "__main__":
         }
     }
     if args.run.lower() == "qmix":
-        agent = QMixAgent(env="starcraft", config=agent_cfg)
+        def grouped_sc2(cfg):
+            env = SC2MultiAgentEnv(cfg)
+            grouping = {
+                "group_1": list(range(len(env.n_agents))),
+            }
+            obs_space = Tuple([env.observation_space
+                               for i in range(len(env.n_agents))])
+            act_space = Tuple([env.action_space
+                               for i in range(len(env.n_agents))])
+            return env.with_agent_groups(
+                grouping, obs_space=obs_space, act_space=act_space)
+
+        register_env("grouped_starcraft", grouped_sc2)
+        agent = QMixAgent(env="grouped_starcraft", config=agent_cfg)
     else:
-        agent = PGAgent(env="starcraft", config=agent_cfg)
+        agent = PPOAgent(env="starcraft", config=agent_cfg)
     for i in range(args.num_iters):
         print(pretty_print(agent.train()))
