@@ -292,9 +292,7 @@ class TFPolicyGraph(PolicyGraph):
                 tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
         signature_def_key = \
             tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # noqa: E501
-        signature_def_map = {
-            signature_def_key: signature_def
-        }
+        signature_def_map = {signature_def_key: signature_def}
         return signature_def_map
 
     def _build_compute_actions(self,
