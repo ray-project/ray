@@ -31,11 +31,11 @@ else()
   set(Boost_FILESYSTEM_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_filesystem${CMAKE_STATIC_LIBRARY_SUFFIX})
 
   #set(boost_URL https://github.com/boostorg/boost.git)
-  #set(boost_TAG boost-1.69.0)
+  #set(boost_TAG boost-1.68.0)
 
-  set(Boost_TAR_GZ_URL http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.gz)
+  set(Boost_TAR_GZ_URL http://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz)
   set(Boost_BUILD_PRODUCTS ${Boost_SYSTEM_LIBRARY} ${Boost_FILESYSTEM_LIBRARY})
-  set(Boost_URL_MD5 "b50944c0c13f81ce2c006802a1186f5a")
+  set(Boost_URL_MD5 "5d8b4503582fffa9eefdb9045359c239")
 
   set(Boost_USE_STATIC_LIBS ON)
 
