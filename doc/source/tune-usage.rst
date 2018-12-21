@@ -87,7 +87,7 @@ dictionary. Tune will convert the dict into an ``ray.tune.Experiment`` object.
                 "alpha": tune.grid_search([0.2, 0.4, 0.6]),
                 "beta": tune.grid_search([1, 2]),
             },
-            "trial_resources": { "cpu": 1, "gpu": 0 },
+            "resources_per_trial": { "cpu": 1, "gpu": 0 },
             "num_samples": 10,
             "local_dir": "~/ray_results",
             "upload_dir": "s3://your_bucket/path",
@@ -215,7 +215,7 @@ E.g. in the above, ``"num_samples": 10`` repeats the 3x3 grid search 10 times, f
 Using GPUs (Resource Allocation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune will allocate the specified GPU and CPU ``trial_resources`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Tune will allocate the specified GPU and CPU ``resources_per_trial`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 Fractional values are also supported, (i.e., ``"gpu": 0.2``). You can find an example of this in the `Keras MNIST example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_keras.py>`__.
 
@@ -231,7 +231,7 @@ If your trainable function / class creates further Ray actors or tasks that also
     run_experiments({
         "my_experiment_name": {
             "run": my_trainable,
-            "trial_resources": {
+            "resources_per_trial": {
                 "cpu": 1,
                 "gpu": 1,
                 "extra_gpu": 4
