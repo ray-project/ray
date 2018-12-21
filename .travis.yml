@@ -71,9 +71,11 @@ matrix:
         - ./.travis/install-ray.sh
 
       script:
+        - export RAYLET_VALGRIND=1
         - cd build
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
+        - python -m pytest -v --durations=10 test/actor_test.py
 
     # Build Linux wheels.
     - os: linux

@@ -983,7 +983,7 @@ def start_raylet(redis_address,
         get_temp_root(),
     ]
 
-    if use_valgrind:
+    if use_valgrind or "RAYLET_VALGRIND" in os.environ:
         pid = subprocess.Popen(
             [
                 "valgrind", "--track-origins=yes", "--leak-check=full",
