@@ -81,8 +81,6 @@ void RedisAsioClient::del_write() { write_requested_ = false; }
 void RedisAsioClient::cleanup() {}
 
 RedisAsioClient::~RedisAsioClient() {
-  socket_.close();
-
   // Deactivate handles from async context
   async_context_->ev.addRead = nullptr;
   async_context_->ev.delRead = nullptr;
