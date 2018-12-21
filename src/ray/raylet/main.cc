@@ -118,14 +118,14 @@ int main(int argc, char *argv[]) {
                  << "max_receives = " << object_manager_config.max_receives << "\n"
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
+  // Initialize the node manager.
+  boost::asio::io_service main_service;
+
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
                                                                redis_password);
   RAY_LOG(DEBUG) << "Initializing GCS client "
                  << gcs_client->client_table().GetLocalClientId();
-
-  // Initialize the node manager.
-  boost::asio::io_service main_service;
 
   ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
                              redis_address, redis_port, redis_password,
