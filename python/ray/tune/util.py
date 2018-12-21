@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import base64
+import copy
 import numpy as np
 
 import ray

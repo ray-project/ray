@@ -49,7 +49,7 @@ if __name__ == '__main__':
             "num_samples": 10 if args.smoke_test else 1000,
             "config": {
                 "iterations": 100,
-            }
+            },
             "stop": {
                 "timesteps_total": 100
             },
