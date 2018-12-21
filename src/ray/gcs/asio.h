@@ -36,6 +36,8 @@ class RedisAsioClient {
  public:
   RedisAsioClient(boost::asio::io_service &io_service, redisAsyncContext *ac);
 
+  ~RedisAsioClient();
+
   void operate();
 
   void handle_read(boost::system::error_code ec);

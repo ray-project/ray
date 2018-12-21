@@ -80,6 +80,18 @@ void RedisAsioClient::del_write() { write_requested_ = false; }
 
 void RedisAsioClient::cleanup() {}
 
+RedisAsioClient::~RedisAsioClient() {
+  socket_.close();
+
+  // Deactivate handles from async context
+  async_context_->ev.addRead = nullptr;
+  async_context_->ev.delRead = nullptr;
+  async_context_->ev.addWrite = nullptr;
+  async_context_->ev.delWrite = nullptr;
+  async_context_->ev.cleanup = nullptr;
+  async_context_->ev.data = nullptr;
+}
+
 static inline RedisAsioClient *cast_to_client(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   return static_cast<RedisAsioClient *>(private_data);
