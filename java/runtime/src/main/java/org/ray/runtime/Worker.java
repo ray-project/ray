@@ -5,7 +5,6 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,9 +62,9 @@ public class Worker {
       } else {
         runtime.localActors.put(returnId, result);
       }
-      RayLog.core.info("Finished executing task {}", spec.taskId);
+      LOGGER.info("Finished executing task {}", spec.taskId);
     } catch (Exception e) {
-      RayLog.core.error("Error executing task " + spec, e);
+      LOGGER.error("Error executing task " + spec, e);
       runtime.put(returnId, new RayException("Error executing task " + spec, e));
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);

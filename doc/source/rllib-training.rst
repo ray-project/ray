@@ -308,7 +308,7 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                 "num_gpus": 0,
                 "num_workers": 2,
             },
-            "trial_resources": {
+            "resources_per_trial": {
                 "cpu": 1,
                 "gpu": lambda spec: spec.config.num_gpus,
                 "extra_cpu": lambda spec: spec.config.num_workers,
