@@ -422,8 +422,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
           &PyObjectToUniqueID, &parent_task_id, &parent_counter, &PyObjectToUniqueID,
           &actor_creation_id, &PyObjectToUniqueID, &actor_creation_dummy_object_id,
           &max_actor_reconstructions, &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
-          &actor_handle_id, &actor_counter, &new_actor_handles, &execution_arguments, &resource_map,
-          &placement_resource_map, &language)) {
+          &actor_handle_id, &actor_counter, &new_actor_handles, &execution_arguments,
+          &resource_map, &placement_resource_map, &language)) {
     return -1;
   }
 
@@ -483,8 +483,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
       actor_creation_dummy_object_id, max_actor_reconstructions, actor_id,
-      actor_handle_id, actor_counter, task_new_actor_handles, task_args, num_returns, required_resources,
-      required_placement_resources, Language::PYTHON, function_descriptor);
+      actor_handle_id, actor_counter, task_new_actor_handles, task_args, num_returns,
+      required_resources, required_placement_resources, Language::PYTHON,
+      function_descriptor);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();

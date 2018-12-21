@@ -59,10 +59,10 @@ TaskSpecification::TaskSpecification(
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language, const std::vector<std::string> &function_descriptor)
-    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID(), ObjectID(),
-                        0, ActorID(), ActorHandleID(), -1, {},
-                        task_arguments, num_returns, required_resources,
-                        std::unordered_map<std::string, double>(), language, function_descriptor) {}
+    : TaskSpecification(
+          driver_id, parent_task_id, parent_counter, ActorID(), ObjectID(), 0, ActorID(),
+          ActorHandleID(), -1, {}, task_arguments, num_returns, required_resources,
+          std::unordered_map<std::string, double>(), language, function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
@@ -98,9 +98,8 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
-      to_flatbuf(fbb, new_actor_handles),
-      fbb.CreateVector(arguments), fbb.CreateVector(returns),
-      map_to_flatbuf(fbb, required_resources),
+      to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments),
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
       string_vec_to_flatbuf(fbb, function_descriptor));
   fbb.Finish(spec);

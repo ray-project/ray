@@ -626,12 +626,12 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             task = ray.raylet.Task(
-                driver_id, function_descriptor_list,
-                args_for_local_scheduler, num_return_vals,
-                self.current_task_id, task_index, actor_creation_id,
-                actor_creation_dummy_object_id, max_actor_reconstructions,
-                actor_id, actor_handle_id, actor_counter, new_actor_handles,
-                execution_dependencies, resources, placement_resources)
+                driver_id, function_descriptor_list, args_for_local_scheduler,
+                num_return_vals, self.current_task_id, task_index,
+                actor_creation_id, actor_creation_dummy_object_id,
+                max_actor_reconstructions, actor_id, actor_handle_id,
+                actor_counter, new_actor_handles, execution_dependencies,
+                resources, placement_resources)
             self.raylet_client.submit_task(task)
 
             return task.returns()
