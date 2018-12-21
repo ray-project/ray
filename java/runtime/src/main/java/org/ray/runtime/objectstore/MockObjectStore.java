@@ -9,13 +9,15 @@ import org.apache.arrow.plasma.ObjectStoreLink;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.raylet.MockRayletClient;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A mock implementation of {@code org.ray.spi.ObjectStoreLink}, which use Map to store data.
  */
 public class MockObjectStore implements ObjectStoreLink {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectStore.class);
   private final RayDevRuntime runtime;
   private final Map<UniqueId, byte[]> data = new ConcurrentHashMap<>();
   private final Map<UniqueId, byte[]> metadata = new ConcurrentHashMap<>();
@@ -28,8 +30,8 @@ public class MockObjectStore implements ObjectStoreLink {
   @Override
   public void put(byte[] objectId, byte[] value, byte[] metadataValue) {
     if (objectId == null || objectId.length == 0 || value == null) {
-      RayLog.core
-          .error(logPrefix() + "cannot put null: " + objectId + "," + Arrays.toString(value));
+      LOGGER
+          .error("{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
       System.exit(-1);
     }
     UniqueId uniqueId = new UniqueId(objectId);
@@ -48,7 +50,7 @@ public class MockObjectStore implements ObjectStoreLink {
     ArrayList<byte[]> rets = new ArrayList<>(objectIds.length);
     for (byte[] objId : objectIds) {
       UniqueId uniqueId = new UniqueId(objId);
-      RayLog.core.info(logPrefix() + " is notified for objectid " + uniqueId);
+      LOGGER.info("{} is notified for objectid {}",logPrefix(), uniqueId);
       rets.add(dataMap.get(uniqueId));
     }
     return rets;
