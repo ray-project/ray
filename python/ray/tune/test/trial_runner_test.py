@@ -1650,5 +1650,18 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertRaises(TuneError, runner.step)
 
 
+class SearchAlgorithmTest(unittest.TestCase):
+    def testNestedSuggestion(self):
+        class TestSuggestion(SuggestionAlgorithm):
+            def _suggest(self, trial_id):
+                return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
+
+        alg = TestSuggestion()
+        alg.add_configurations({"test": {"run": "__fake"}})
+        trial = alg.next_trials()[0]
+        self.assertTrue("e=5" in trial.experiment_tag)
+        self.assertTrue("d=4" in trial.experiment_tag)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
