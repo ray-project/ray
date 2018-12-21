@@ -122,8 +122,10 @@ if __name__ == "__main__":
     register_env("starcraft", lambda cfg: SC2MultiAgentEnv(cfg))
     agent_cfg = {
         "observation_filter": "NoFilter",
+        "num_workers": 4,
+        "vf_share_layers": True,  # don't create duplicate value model
         "model": {
-            "custom_model": "pa_model"
+            "custom_model": "pa_model",
         },
         "env_config": {
             "pymarl_path": path_to_pymarl
@@ -132,13 +134,14 @@ if __name__ == "__main__":
     if args.run.lower() == "qmix":
         def grouped_sc2(cfg):
             env = SC2MultiAgentEnv(cfg)
+            agent_list = list(range(env._starcraft_env.n_agents))
             grouping = {
-                "group_1": list(range(len(env.n_agents))),
+                "group_1": agent_list,
             }
             obs_space = Tuple([env.observation_space
-                               for i in range(len(env.n_agents))])
+                               for i in agent_list])
             act_space = Tuple([env.action_space
-                               for i in range(len(env.n_agents))])
+                               for i in agent_list])
             return env.with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space)
 
