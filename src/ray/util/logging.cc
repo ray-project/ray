@@ -138,11 +138,16 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       }
     }
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::DEBUG), dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::INFO), dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::WARNING), dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::ERROR), dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::FATAL), dir_ends_with_slash.c_str());
+    google::SetLogDestination(GetMappedSeverity(RayLogLevel::DEBUG),
+                              dir_ends_with_slash.c_str());
+    google::SetLogDestination(GetMappedSeverity(RayLogLevel::INFO),
+                              dir_ends_with_slash.c_str());
+    google::SetLogDestination(GetMappedSeverity(RayLogLevel::WARNING),
+                              dir_ends_with_slash.c_str());
+    google::SetLogDestination(GetMappedSeverity(RayLogLevel::ERROR),
+                              dir_ends_with_slash.c_str());
+    google::SetLogDestination(GetMappedSeverity(RayLogLevel::FATAL),
+                              dir_ends_with_slash.c_str());
   }
 #endif
 }
