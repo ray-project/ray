@@ -175,7 +175,7 @@ if __name__ == '__main__':
                     "mean_accuracy": 0.98,
                     "training_iteration": 1 if args.smoke_test else 20
                 },
-                "trial_resources": {
+                "resources_per_trial": {
                     "cpu": 3
                 },
                 "run": "train_mnist",
