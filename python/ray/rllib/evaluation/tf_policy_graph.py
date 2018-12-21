@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import logging
 import tensorflow as tf
+from tensorflow.saved_model.signature_constants import \
+    DEFAULT_SERVING_SIGNATURE_DEF_KEY
 import numpy as np
 
 import ray
@@ -193,8 +195,7 @@ class TFPolicyGraph(PolicyGraph):
             builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
-                self._sess,
-                [tf.saved_model.tag_constants.SERVING],
+                self._sess, [tf.saved_model.tag_constants.SERVING],
                 signature_def_map=signature_def_map)
             builder.save()
 
@@ -233,16 +234,16 @@ class TFPolicyGraph(PolicyGraph):
         Inferred from extra_compute_action_feed_dict()
         """
         feed_dict = self.extra_compute_action_feed_dict()
-        return dict((k.name, tf.saved_model.utils.build_tensor_info(k))
-                    for k in feed_dict.keys())
+        return {k.name: tf.saved_model.utils.build_tensor_info(k)
+                for k in feed_dict.keys()}
 
     def _extra_output_signature_def(self):
         """Extra output signatures to add when exporting tf model.
         Inferred from extra_compute_action_fetches()
         """
         fetches = self.extra_compute_action_fetches()
-        return dict((k, tf.saved_model.utils.build_tensor_info(fetches[k]))
-                    for k in fetches.keys())
+        return {k: tf.saved_model.utils.build_tensor_info(fetches[k])
+                for k in fetches.keys()}
 
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
@@ -287,9 +288,7 @@ class TFPolicyGraph(PolicyGraph):
             tf.saved_model.signature_def_utils.build_signature_def(
                 input_signature, output_signature,
                 tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
-        signature_def_map = {
-            tf.saved_model.signature_constants.
-            DEFAULT_SERVING_SIGNATURE_DEF_KEY: signature_def}
+        signature_def_map = {DEFAULT_SERVING_SIGNATURE_DEF_KEY: signature_def}
         return signature_def_map
 
     def _build_compute_actions(self,
