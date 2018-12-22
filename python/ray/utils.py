@@ -328,7 +328,8 @@ def get_system_memory():
         The total amount of system memory in bytes.
     """
     # Try to accurately figure out the memory limit if we are in a docker
-    # container.
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
     docker_limit = None
     memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(memory_limit_filename):
