@@ -54,8 +54,8 @@ ADD_THIRDPARTY_LIB(boost_system
   STATIC_LIB ${Boost_SYSTEM_LIBRARY})
 ADD_THIRDPARTY_LIB(boost_filesystem
   STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
-  ADD_THIRDPARTY_LIB(boost_thread
-    STATIC_LIB ${Boost_THREAD_LIBRARY})
+ADD_THIRDPARTY_LIB(boost_thread
+  STATIC_LIB ${Boost_THREAD_LIBRARY})
 
 add_dependencies(boost_system boost_ep)
 add_dependencies(boost_filesystem boost_ep)

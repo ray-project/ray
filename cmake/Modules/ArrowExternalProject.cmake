@@ -15,10 +15,13 @@
 #  - PLASMA_SHARED_LIB
 
 set(arrow_URL https://github.com/ray-project/arrow.git)
-# The PR for this commit is https://github.com/apache/arrow/pull/XXXX. We
+# This commit is based on https://github.com/apache/arrow/pull/3197. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
-set(arrow_TAG 02f26c8ec98fe5de8460cc4e41355c5695247138)
+# It has been patched to fix an upstream symbol clash with TensorFlow
+# https://github.com/ray-project/arrow/commit/c347cd571e51723fc8512922f1b3a8e45e45b169
+# see the discussion in https://github.com/apache/arrow/pull/3177
+set(arrow_TAG c347cd571e51723fc8512922f1b3a8e45e45b169)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
