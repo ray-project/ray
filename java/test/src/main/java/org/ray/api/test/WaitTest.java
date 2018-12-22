@@ -4,14 +4,12 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 
-@RunWith(MyRunner.class)
-public class WaitTest {
+public class WaitTest extends BaseTest {
 
   @RayRemote
   private static String hi() {

@@ -38,6 +38,8 @@ public class RunManager {
 
   private List<Process> processes;
 
+  private static final int KILL_PROCESS_WAIT_TIMEOUT_SECONDS = 1;
+
   public RunManager(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     processes = new ArrayList<>();
@@ -45,8 +47,24 @@ public class RunManager {
   }
 
   public void cleanup() {
-    for (Process p : processes) {
+    // Terminate the processes in the reversed order of creating them.
+    // Because raylet needs to exit before object store, otherwise it
+    // cannot exit gracefully.
+
+    for (int i = processes.size() - 1; i >= 0; --i) {
+      Process p = processes.get(i);
       p.destroy();
+
+      try {
+        p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Got InterruptedException while waiting for process {}" +
+            " to be terminated.",  processes.get(i));
+      }
+
+      if (p.isAlive()) {
+        p.destroyForcibly();
+      }
     }
   }
 

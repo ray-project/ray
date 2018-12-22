@@ -11,10 +11,12 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.test.BaseTest;
+import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class RayBenchmarkTest<T> implements Serializable {
+public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayBenchmarkTest.class);
   //not thread safe ,but we only have one thread here
