@@ -200,3 +200,11 @@ class PolicyGraph(object):
             global_vars (dict): Global variables broadcast from the driver.
         """
         pass
+
+    def export_model(self, export_dir):
+        """Export PolicyGraph to local directory for serving.
+
+        Arguments:
+            export_dir (str): Local writable directory
+        """
+        raise NotImplementedError

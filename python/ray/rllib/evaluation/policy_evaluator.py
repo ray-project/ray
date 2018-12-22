@@ -553,6 +553,9 @@ class PolicyEvaluator(EvaluatorInterface):
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
 
+    def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+        self.policy_map[policy_id].export_model(export_dir)
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         preprocessors = {}
