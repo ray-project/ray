@@ -409,9 +409,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=1 --devices-per-worker=1 --strategy=ps
 
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
-        --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
+#docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+#    python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+#        --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -432,6 +432,8 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA pytho
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
+    --mem-size=20G \
+    --shm-size=20G \
     --num-redis-shards=10 \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/test_0.py
 
