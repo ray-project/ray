@@ -11,6 +11,7 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.agents.utils.rnd import RND
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
@@ -196,7 +197,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.max_KL = tf.reduce_max(self.KLs)
         self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
 
-        # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
             ("dones", dones),
@@ -206,8 +206,24 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
         ]
+
+        # Initialize RND network and loss
+        if self.config["rnd"]:
+            self.rnd_norm_obs = tf.placeholder(tf.float32, [None] + list(observation_space.shape))
+            loss_in.append(("norm_obs", self.rnd_norm_obs))
+
+            self.rnd = RND(self.rnd_norm_obs)
+            self.rnd_loss = self.rnd.loss
+            self.loss.total_loss += self.rnd_loss
+            self.rnd_bonus = self.rnd.intr_rew
+
+            self.rnd_bonus_filter = get_filter("MeanStdFilter", (1,))
+            self.rnd_obs_filter = get_filter("MeanStdFilter", observation_space.shape)
+
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
+
+        # Initialize TFPolicyGraph
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -282,6 +298,13 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                other_agent_batches=None,
                                episode=None):
         del sample_batch.data["new_obs"]  # not used, so save some bandwidth
+        if self.config["rnd"]:
+            # augment batch with normalized observations for training rnd network
+            sample_batch["norm_obs"] = self.rnd_obs_filter(sample_batch["obs"])
+
+            # add rnd bonus
+            bonus = self.sess.run(self.rnd_bonus, feed_dict={self.rnd_norm_obs: self.rnd_obs_filter(sample_batch["obs"], update=False)})
+            sample_batch["rewards"] += np.squeeze(self.rnd_bonus_filter(bonus))
         return sample_batch
 
     @override(PolicyGraph)
