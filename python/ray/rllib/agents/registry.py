@@ -9,6 +9,10 @@ import traceback
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
+def _import_appo():
+    from ray.rllib.agents import ppo
+    return ppo.APPOAgent
+
 def _import_qmix():
     from ray.rllib.agents import qmix
     return qmix.QMixAgent
@@ -88,6 +92,7 @@ ALGORITHMS = {
     "IMPALA": _import_impala,
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
+    "APPO": _import_appo,
 }
 
 

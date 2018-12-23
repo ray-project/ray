@@ -226,6 +226,8 @@ class ModelCatalog(object):
         obs_rank = len(input_dict["obs"].shape) - 1
 
         if obs_rank > 1:
+            if options["use_autoencoder"]:
+                return AutoEncoder(input_dict, obs_space, num_outputs, options)
             return VisionNetwork(input_dict, obs_space, num_outputs, options)
 
         return FullyConnectedNetwork(input_dict, obs_space, num_outputs,
