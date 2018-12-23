@@ -50,18 +50,18 @@ logger.info("Finished after {} seconds.".format(time.time() - start_time))
 
 # Launch a bunch of tasks, each with a bunch of dependencies. TODO(rkn): This
 # test starts to fail if we increase the number of tasks in the inner loop from
-# 500 to 1000. (approximately 660 seconds)
+# 500 to 1000. (approximately 615 seconds)
 start_time = time.time()
 logger.info("Submitting tasks with many dependencies.")
 x_ids = []
-for i in range(100):
-    logger.info("Iteration {}. Cumulative time {} seconds".format(
-        i,
-        time.time() - start_time))
-    logger.info("Iteration {}".format(i))
-    x_ids = [f.remote(0, *x_ids) for _ in range(500)]
-ray.get(x_ids)
-logger.info("Finished after {} seconds.".format(time.time() - start_time))
+for _ in range(5):
+    for i in range(20):
+        logger.info("Iteration {}. Cumulative time {} seconds".format(
+            i,
+            time.time() - start_time))
+        x_ids = [f.remote(0, *x_ids) for _ in range(500)]
+    ray.get(x_ids)
+    logger.info("Finished after {} seconds.".format(time.time() - start_time))
 
 # Create a bunch of actors.
 start_time = time.time()
