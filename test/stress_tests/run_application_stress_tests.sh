@@ -15,9 +15,10 @@ RLLIB_DIR=$ROOT_DIR/../../python/ray/rllib/
 ray up -y $CLUSTER
 
 ray rsync_up $CLUSTER $RLLIB_DIR/tuned_examples/ tuned_examples/
-ray exec $CLUSTER 'rllib train -f tuned_examples/atari-impala.yaml'
-                    ' --redis-address="localhost:6379"'
-                    ' '
+sleep 1
+# TODO(rliaw): For some reason, command doesn't run without this prefix
+# Also, CUDA path raised a couple issues.
+ray exec $CLUSTER 'source activate tensorflow_p36 && rllib train -f tuned_examples/atari-impala.yaml  --redis-address="localhost:6379" '
 
 ray down -y $CLUSTER
 
