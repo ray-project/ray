@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import gym
+import numpy as np
 
 import ray
 from ray.rllib.agents.impala import vtrace
@@ -19,6 +20,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.models.action_dist import Categorical
 
 
