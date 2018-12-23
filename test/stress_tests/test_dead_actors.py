@@ -59,6 +59,7 @@ death_probability = 0.95
 parents = [
     Parent.remote(num_children, death_probability) for _ in range(num_parents)
 ]
+
 for i in range(100):
     ray.get([parent.ping.remote(10) for parent in parents])
 
