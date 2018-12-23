@@ -14,7 +14,8 @@ namespace ray {
 
 ObjectStoreNotificationManager::ObjectStoreNotificationManager(
     boost::asio::io_service &io_service, const std::string &store_socket_name)
-    : store_client_(), socket_(io_service) {
+    : store_client_(), length_(0), num_adds_processed_(0),
+      num_removes_processed_(0), socket_(io_service) {
   ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str()));
 
   ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
