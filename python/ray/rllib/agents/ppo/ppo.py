@@ -33,6 +33,12 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
+    # Stepsize of SGD for value function 
+    # (only applicable if vf_share_layers is False)
+    "vf_lr": 5e-5,
+    # Learning rate schedule for value function 
+    # (only applicable if vf_share_layers is False)
+    "vf_lr_schedule": None,
     # Share layers for value function
     "vf_share_layers": False,
     # Coefficient of the value function loss

@@ -188,6 +188,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 # Do not split the last layer of the value function into
                 # mean parameters and standard deviation parameters and
                 # do not make the standard deviations free variables.
+
+                # Use value function specific hyper-parameters
+                vf_config["lr"] = vf_config["vf_lr"]
+                vf_config["lr_schedule"] = vf_config["vf_lr_schedule"]
+
                 vf_config["free_log_std"] = False
                 vf_config["use_lstm"] = False
                 with tf.variable_scope("value_function"):
