@@ -131,10 +131,11 @@ class DockerRunner(object):
 
     def _start_head_node(self, docker_image, mem_size, shm_size,
                          num_redis_shards, num_cpus, num_gpus,
-                         development_mode):
+                         development_mode, object_store_memory):
         """Start the Ray head node inside a docker container."""
         mem_arg = ["--memory=" + mem_size] if mem_size else []
         shm_arg = ["--shm-size=" + shm_size] if shm_size else []
+        object_store_arg = "--object-store-memory={}".format(object_store_memory) if object_store_memory else ""
         volume_arg = ([
             "-v", "{}:{}".format(
                 os.path.dirname(os.path.realpath(__file__)),
@@ -146,6 +147,7 @@ class DockerRunner(object):
             "--redis-port=6379",
             "--num-redis-shards={}".format(num_redis_shards),
             "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus),
+            object_store_arg,
             "--no-ui"
         ])
         print("Starting head node with command:{}".format(command))
@@ -160,10 +162,11 @@ class DockerRunner(object):
         self.head_container_ip = self._get_container_ip(container_id)
 
     def _start_worker_node(self, docker_image, mem_size, shm_size, num_cpus,
-                           num_gpus, development_mode):
+                           num_gpus, development_mode, object_store_memory):
         """Start a Ray worker node inside a docker container."""
         mem_arg = ["--memory=" + mem_size] if mem_size else []
         shm_arg = ["--shm-size=" + shm_size] if shm_size else []
+        object_store_arg = "--object-store-memory={}".format(object_store_memory) if object_store_memory else ""
         volume_arg = ([
             "-v", "{}:{}".format(
                 os.path.dirname(os.path.realpath(__file__)),
@@ -172,7 +175,7 @@ class DockerRunner(object):
         command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg + [
             "--shm-size=" + shm_size, docker_image, "ray", "start", "--block",
             "--redis-address={:s}:6379".format(self.head_container_ip),
-            "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus)
+            "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus), object_store_arg
         ])
         print("Starting worker node with command:{}".format(command))
         proc = subprocess.Popen(
@@ -191,7 +194,8 @@ class DockerRunner(object):
                   num_redis_shards=1,
                   num_cpus=None,
                   num_gpus=None,
-                  development_mode=None):
+                  development_mode=None,
+                  object_store_memory=None):
         """Start a Ray cluster within docker.
 
         This starts one docker container running the head node and
@@ -221,12 +225,12 @@ class DockerRunner(object):
         # Launch the head node.
         self._start_head_node(docker_image, mem_size, shm_size,
                               num_redis_shards, num_cpus[0], num_gpus[0],
-                              development_mode)
+                              development_mode, object_store_memory)
         # Start the worker nodes.
         for i in range(num_nodes - 1):
             self._start_worker_node(docker_image, mem_size, shm_size,
                                     num_cpus[1 + i], num_gpus[1 + i],
-                                    development_mode)
+                                    development_mode, object_store_memory)
 
     def _stop_node(self, container_id):
         """Stop a node in the Ray cluster."""
@@ -415,7 +419,8 @@ if __name__ == "__main__":
         num_redis_shards=args.num_redis_shards,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
-        development_mode=args.development_mode)
+        development_mode=args.development_mode,
+        object_store_memory=500*(2**20))
     try:
         run_results = d.run_test(
             args.test_script,
