@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """This script allows you to develop RLlib without needing to compile Ray."""
 
 from __future__ import absolute_import
@@ -19,8 +18,7 @@ except (ImportError, AttributeError):
 
 if __name__ == "__main__":
     rllib_home = os.path.abspath(os.path.join(ray.__file__, "../rllib"))
-    local_home = os.path.abspath(
-        os.path.join(__file__, "../../python/ray/rllib"))
+    local_home = os.path.abspath(os.path.dirname(__file__))
     assert os.path.isdir(rllib_home), rllib_home
     assert os.path.isdir(local_home), local_home
     print(
