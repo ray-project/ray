@@ -1274,8 +1274,8 @@ def _init(address_info=None,
           object_id_seed=None,
           num_workers=None,
           num_local_schedulers=None,
-          object_store_memory=None,
-          redis_max_memory=None,
+          object_store_memory_bytes=None,
+          redis_max_memory_bytes=None,
           collect_profiling_data=True,
           local_mode=False,
           driver_mode=None,
@@ -1319,11 +1319,11 @@ def _init(address_info=None,
             manner. However, the same ID should not be used for different jobs.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
-        object_store_memory: The maximum amount of memory (in bytes) to
+        object_store_memory_bytes: The maximum amount of memory (in bytes) to
             allow the object store to use.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
         collect_profiling_data: Whether to collect profiling data from workers.
         local_mode (bool): True if the code should be executed serially
@@ -1380,10 +1380,10 @@ def _init(address_info=None,
     else:
         driver_mode = SCRIPT_MODE
 
-    if redis_max_memory and collect_profiling_data:
+    if redis_max_memory_bytes and collect_profiling_data:
         logger.warning(
             "Profiling data cannot be LRU evicted, so it is disabled "
-            "when redis_max_memory is set.")
+            "when redis_max_memory_bytes is set.")
         collect_profiling_data = False
 
     # Get addresses of existing services.
@@ -1424,8 +1424,8 @@ def _init(address_info=None,
             node_ip_address=node_ip_address,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
-            object_store_memory=object_store_memory,
-            redis_max_memory=redis_max_memory,
+            object_store_memory_bytes=object_store_memory_bytes,
+            redis_max_memory_bytes=redis_max_memory_bytes,
             collect_profiling_data=collect_profiling_data,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
@@ -1464,12 +1464,12 @@ def _init(address_info=None,
         if redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
-        if object_store_memory is not None:
+        if object_store_memory_bytes is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory must not be provided.")
-        if redis_max_memory is not None:
+                            "object_store_memory_bytes must not be provided.")
+        if redis_max_memory_bytes is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory must not be provided.")
+                            "redis_max_memory_bytes must not be provided.")
         if plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
@@ -1529,8 +1529,8 @@ def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
-         object_store_memory=None,
-         redis_max_memory=None,
+         object_store_memory_bytes=None,
+         redis_max_memory_bytes=None,
          collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
@@ -1586,11 +1586,11 @@ def init(redis_address=None,
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory: The amount of memory (in bytes) to start the
+        object_store_memory_bytes: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
         collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
@@ -1692,8 +1692,8 @@ def init(redis_address=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         include_webui=include_webui,
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
+        object_store_memory_bytes=object_store_memory_bytes,
+        redis_max_memory_bytes=redis_max_memory_bytes,
         collect_profiling_data=collect_profiling_data,
         driver_id=driver_id,
         plasma_store_socket_name=plasma_store_socket_name,

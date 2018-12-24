@@ -1074,7 +1074,8 @@ def test_object_transfer_dump(ray_start_cluster):
 
     num_nodes = 3
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+        cluster.add_node(
+            resources={str(i): 1}, object_store_memory_bytes=10**9)
 
     ray.init(redis_address=cluster.redis_address)
 
@@ -2407,7 +2408,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=10**8)
+    ray.init(num_cpus=1, object_store_memory_bytes=10**8)
 
     @ray.remote
     def f():
