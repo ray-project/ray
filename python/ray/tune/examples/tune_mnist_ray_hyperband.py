@@ -31,8 +31,8 @@ import time
 
 import ray
 from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable, TrainingResult
-from ray.tune.hyperband import HyperBandScheduler
+    Trainable, sample_from
+from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
@@ -128,7 +128,7 @@ def bias_variable(shape):
 class TrainMNIST(Trainable):
     """Example MNIST trainable."""
 
-    def _setup(self):
+    def _setup(self, config):
         global activation_fn
 
         self.timestep = 0
@@ -148,7 +148,7 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, self.config['activation'])
+        activation_fn = getattr(tf.nn, config['activation'])
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
@@ -160,7 +160,7 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope('adam_optimizer'):
             train_step = tf.train.AdamOptimizer(
-                self.config['learning_rate']).minimize(cross_entropy)
+                config['learning_rate']).minimize(cross_entropy)
 
         self.train_step = train_step
 
@@ -196,8 +196,7 @@ class TrainMNIST(Trainable):
             })
 
         self.iterations += 1
-        return TrainingResult(
-            timesteps_this_iter=10, mean_accuracy=train_accuracy)
+        return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
         return self.saver.save(
@@ -222,18 +221,19 @@ if __name__ == '__main__':
             'time_total_s': 600,
         },
         'config': {
-            'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
+            'learning_rate': sample_from(
+                lambda spec: 10**np.random.uniform(-5, -3)),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
-        "repeat": 10,
+        "num_samples": 10,
     }
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
-        mnist_spec['repeat'] = 2
+        mnist_spec['num_samples'] = 2
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100)
+        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
 
     run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)

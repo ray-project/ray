@@ -6,12 +6,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "format/common_generated.h"
+#include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
 
 extern "C" {
-#include "sha256.h"
+#include "ray/thirdparty/sha256.h"
 }
 
 namespace ray {
@@ -83,31 +83,67 @@ class TaskSpecification {
   TaskSpecification(const flatbuffers::String &string);
 
   // TODO(swang): Define an actor task constructor.
+  /// Create a task specification from the raw fields. This constructor omits
+  /// some values and sets them to sensible defaults.
+  ///
+  /// \param driver_id The driver ID, representing the job that this task is a
+  /// part of.
+  /// \param parent_task_id The task ID of the task that spawned this task.
+  /// \param parent_counter The number of tasks that this task's parent spawned
+  /// before this task.
+  /// \param function_descriptor The function descriptor.
+  /// \param task_arguments The list of task arguments.
+  /// \param num_returns The number of values returned by the task.
+  /// \param required_resources The task's resource demands.
+  /// \param language The language of the worker that must execute the function.
+  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
+                    int64_t parent_counter,
+                    const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
+                    int64_t num_returns,
+                    const std::unordered_map<std::string, double> &required_resources,
+                    const Language &language,
+                    const std::vector<std::string> &function_descriptor);
+
+  // TODO(swang): Define an actor task constructor.
   /// Create a task specification from the raw fields.
   ///
   /// \param driver_id The driver ID, representing the job that this task is a
-  ///        part of.
+  /// part of.
   /// \param parent_task_id The task ID of the task that spawned this task.
   /// \param parent_counter The number of tasks that this task's parent spawned
-  ///        before this task.
-  /// \param function_id The ID of the function this task should execute.
-  /// \param arguments The list of task arguments.
+  /// before this task.
+  /// \param actor_creation_id If this is an actor task, then this is the ID of
+  /// the corresponding actor creation task. Otherwise, this is nil.
+  /// \param actor_id The ID of the actor for the task. If this is not an actor
+  /// task, then this is nil.
+  /// \param actor_handle_id The ID of the actor handle that submitted this
+  /// task. If this is not an actor task, then this is nil.
+  /// \param actor_counter The number of tasks submitted before this task from
+  /// the same actor handle. If this is not an actor task, then this is 0.
+  /// \param task_arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
-  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
-                    int64_t parent_counter, const FunctionID &function_id,
-                    const std::vector<std::shared_ptr<TaskArgument>> &arguments,
-                    int64_t num_returns,
-                    const std::unordered_map<std::string, double> &required_resources);
+  /// \param required_placement_resources The resources required to place this
+  /// task on a node. Typically, this should be an empty map in which case it
+  /// will default to be equal to the required_resources argument.
+  /// \param language The language of the worker that must execute the function.
+  /// \param function_descriptor The function descriptor.
+  TaskSpecification(
+      const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+      const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+      int64_t max_actor_reconstructions, const ActorID &actor_id,
+      const ActorHandleID &actor_handle_id, int64_t actor_counter,
+      const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
+      int64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const Language &language, const std::vector<std::string> &function_descriptor);
 
-  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
-                    int64_t parent_counter, const ActorID &actor_creation_id,
-                    const ObjectID &actor_creation_dummy_object_id,
-                    const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-                    int64_t actor_counter, const FunctionID &function_id,
-                    const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
-                    int64_t num_returns,
-                    const std::unordered_map<std::string, double> &required_resources);
+  /// Deserialize a task specification from a flatbuffer's string data.
+  ///
+  /// \param string The string data for a serialized task specification
+  /// flatbuffer.
+  TaskSpecification(const std::string &string);
 
   ~TaskSpecification() {}
 
@@ -123,7 +159,7 @@ class TaskSpecification {
   UniqueID DriverId() const;
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
-  FunctionID FunctionId() const;
+  std::vector<std::string> FunctionDescriptor() const;
   int64_t NumArgs() const;
   int64_t NumReturns() const;
   bool ArgByRef(int64_t arg_index) const;
@@ -133,13 +169,31 @@ class TaskSpecification {
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
+  /// Return the resources that are to be acquired during the execution of this
+  /// task.
+  ///
+  /// \return The resources that will be acquired during the execution of this
+  /// task.
   const ResourceSet GetRequiredResources() const;
+  /// Return the resources that are required for a task to be placed on a node.
+  /// This will typically be the same as the resources acquired during execution
+  /// and will always be a superset of those resources. However, they may
+  /// differ, e.g., actor creation tasks may require more resources to be
+  /// scheduled on a machine because the actor creation task may require no
+  /// resources itself, but subsequent actor methods may require resources, and
+  /// so the placement of the actor should take this into account.
+  ///
+  /// \return The resources that are required to place a task on a node.
+  const ResourceSet GetRequiredPlacementResources() const;
+  bool IsDriverTask() const;
+  Language GetLanguage() const;
 
   // Methods specific to actor tasks.
   bool IsActorCreationTask() const;
   bool IsActorTask() const;
   ActorID ActorCreationId() const;
   ObjectID ActorCreationDummyObjectId() const;
+  int64_t MaxActorReconstructions() const;
   ActorID ActorId() const;
   ActorHandleID ActorHandleId() const;
   int64_t ActorCounter() const;
@@ -152,7 +206,10 @@ class TaskSpecification {
   const uint8_t *data() const;
   /// Get the size in bytes of the task specification.
   size_t size() const;
-
+  /// Field storing required resources. Initalized in constructor.
+  ResourceSet required_resources_;
+  /// Field storing required placement resources. Initalized in constructor.
+  ResourceSet required_placement_resources_;
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };

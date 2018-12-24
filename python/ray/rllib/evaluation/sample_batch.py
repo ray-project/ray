@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import collections
 import numpy as np
 
@@ -61,14 +62,16 @@ class MultiAgentSampleBatchBuilder(object):
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map):
+    def __init__(self, policy_map, clip_rewards):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Arguments:
             policy_map (dict): Maps policy ids to policy graph instances.
+            clip_rewards (bool): Whether to clip rewards before postprocessing.
         """
 
         self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
         self.policy_builders = {
             k: SampleBatchBuilder()
             for k in policy_map.keys()
@@ -76,6 +79,11 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_builders = {}
         self.agent_to_policy = {}
         self.count = 0  # increment this manually
+
+    def total(self):
+        """Returns summed number of steps across all agent buffers."""
+
+        return sum(p.count for p in self.policy_builders.values())
 
     def has_pending_data(self):
         """Returns whether there is pending unprocessed data."""
@@ -97,11 +105,14 @@ class MultiAgentSampleBatchBuilder(object):
         builder = self.agent_builders[agent_id]
         builder.add_values(**values)
 
-    def postprocess_batch_so_far(self):
+    def postprocess_batch_so_far(self, episode):
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
+
+        Arguments:
+            episode: current MultiAgentEpisode object or None
         """
 
         # Materialize the batches so far
@@ -113,12 +124,20 @@ class MultiAgentSampleBatchBuilder(object):
 
         # Apply postprocessor
         post_batches = {}
+        if self.clip_rewards:
+            for _, (_, pre_batch) in pre_batches.items():
+                pre_batch["rewards"] = np.sign(pre_batch["rewards"])
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
+            if any(pre_batch["dones"][:-1]) or len(set(
+                    pre_batch["eps_id"])) > 1:
+                raise ValueError(
+                    "Batches sent to postprocessing must only contain steps "
+                    "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
-                pre_batch, other_batches)
+                pre_batch, other_batches, episode)
 
         # Append into policy batches and reset
         for agent_id, post_batch in sorted(post_batches.items()):
@@ -127,14 +146,17 @@ class MultiAgentSampleBatchBuilder(object):
         self.agent_builders.clear()
         self.agent_to_policy.clear()
 
-    def build_and_reset(self):
+    def build_and_reset(self, episode):
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
+
+        Arguments:
+            episode: current MultiAgentEpisode object or None
         """
 
-        self.postprocess_batch_so_far()
+        self.postprocess_batch_so_far(episode)
         policy_batches = {}
         for policy_id, builder in self.policy_builders.items():
             if builder.count > 0:
@@ -179,6 +201,11 @@ class MultiAgentBatch(object):
             out[policy_id] = SampleBatch.concat_samples(batches)
         return MultiAgentBatch(out, total_count)
 
+    def copy(self):
+        return MultiAgentBatch(
+            {k: v.copy()
+             for (k, v) in self.policy_batches.items()}, self.count)
+
     def total(self):
         ct = 0
         for batch in self.policy_batches.values():
@@ -207,8 +234,9 @@ class SampleBatch(object):
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert type(k) == str, self
+            assert isinstance(k, six.string_types), self
             lengths.append(len(v))
+            self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, "data columns must be same length"
@@ -239,6 +267,11 @@ class SampleBatch(object):
         for k in self.keys():
             out[k] = np.concatenate([self[k], other[k]])
         return SampleBatch(out)
+
+    def copy(self):
+        return SampleBatch(
+            {k: np.array(v, copy=True)
+             for (k, v) in self.data.items()})
 
     def rows(self):
         """Returns an iterator over data rows, i.e. dicts with column values.

@@ -6,25 +6,25 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=2.7
+      env: PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
       dist: trusty
       env:
         - JDK='Oracle JDK 8'
-        - PYTHON=3.5
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -33,7 +33,7 @@ matrix:
 
     - os: linux
       dist: trusty
-      env: LINT=1
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         # In case we ever want to use a different version of clang-format:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -49,16 +49,19 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
-        - pip install yapf
+        - pip install yapf==0.23.0
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
-        # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
-        - .travis/yapf.sh --all
+        # Run Python linting, ignore dict vs {} (C408), others are defaults
+        - flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+        - .travis/format.sh --all
+        # Make sure that the README is formatted properly.
+        - cd python
+        - python setup.py check --restructuredtext --strict --metadata
 
     - os: linux
       dist: trusty
-      env: VALGRIND=1 PYTHON=2.7
+      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
         - sudo apt-get install -qq valgrind
@@ -69,20 +72,13 @@ matrix:
 
       script:
         - cd build
-        - bash ../src/common/test/run_valgrind.sh
-        - bash ../src/plasma/test/run_valgrind.sh
-        - bash ../src/local_scheduler/test/run_valgrind.sh
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
-
-        - python ./python/ray/plasma/test/test.py valgrind
-        - python ./python/ray/local_scheduler/test/test.py valgrind
-        - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
     - os: linux
       dist: trusty
-      env: LINUX_WHEELS=1
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -93,7 +89,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -107,54 +103,7 @@ matrix:
       env:
         - PYTHON=3.5
         - RAY_USE_NEW_GCS=on
-        - RAY_USE_XRAY=1
-
-    - os: linux
-      dist: trusty
-      env: PYTHON=3.5 RAY_USE_XRAY=1
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./.travis/install-ray.sh
-        - ./.travis/install-cython-examples.sh
-      script:
-        - export PATH="$HOME/miniconda/bin:$PATH"
-
-        - python python/ray/common/test/test.py
-        - python python/ray/common/redis_module/runtest.py
-        - python python/ray/plasma/test/test.py
-        # - python python/ray/local_scheduler/test/test.py
-        # - python python/ray/global_scheduler/test/test.py
-
-        - python -m pytest python/ray/test/test_queue.py
-        - python -m pytest test/xray_test.py
-
-        - python test/runtest.py
-        - python test/array_test.py
-        - python test/actor_test.py
-        - python test/autoscaler_test.py
-        - python test/tensorflow_test.py
-        - python test/failure_test.py
-        - python test/microbenchmarks.py
-        - python -m pytest test/stress_tests.py
-        # - python test/component_failures_test.py
-        - python test/multi_node_test.py
-        - python test/recursion_test.py
-        # - python test/monitor_test.py
-        - python test/cython_test.py
-        - python test/credis_test.py
-
-        # ray tune tests
-        - python python/ray/tune/test/dependency_test.py
-        - python -m pytest python/ray/tune/test/trial_runner_test.py
-        - python -m pytest python/ray/tune/test/trial_scheduler_test.py
-        - python -m pytest python/ray/tune/test/tune_server_test.py
-
-        # ray rllib tests
-        - python -m pytest python/ray/rllib/test/test_catalog.py
-        - python -m pytest python/ray/rllib/test/test_filters.py
-        - python -m pytest python/ray/rllib/test/test_optimizers.py
-        - python -m pytest python/ray/rllib/test/test_evaluators.py
+        - PYTHONWARNINGS=ignore
 
 
 install:
@@ -171,50 +120,66 @@ install:
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
+  - ./src/ray/raylet/reconstruction_policy_test
+  - ./src/ray/raylet/client_connection_test
+  - ./src/ray/util/logging_test --gtest_filter=PrintLogTest*
+  - ./src/ray/util/signal_test
 
-  - bash ../src/common/test/run_tests.sh
-  - bash ../src/plasma/test/run_tests.sh
-  - bash ../src/local_scheduler/test/run_tests.sh
   - cd ..
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
-
-  - python python/ray/common/test/test.py
-  - python python/ray/common/redis_module/runtest.py
-  - python python/ray/plasma/test/test.py
-  - python python/ray/local_scheduler/test/test.py
-  - python python/ray/global_scheduler/test/test.py
-
-  - python -m pytest python/ray/test/test_queue.py
-  - python -m pytest test/xray_test.py
-
-  - python test/runtest.py
-  - python test/array_test.py
-  - python test/actor_test.py
-  - python test/autoscaler_test.py
-  - python test/tensorflow_test.py
-  - python test/failure_test.py
-  - python test/microbenchmarks.py
-  - python -m pytest test/stress_tests.py
-  - python test/component_failures_test.py
-  - python test/multi_node_test.py
-  - python test/recursion_test.py
-  - python test/monitor_test.py
-  - python test/cython_test.py
-  - python test/credis_test.py
+  # The following is needed so cloudpickle can find some of the
+  # class definitions: The main module of tests that are run
+  # with pytest have the same name as the test file -- and this
+  # module is only found if the test directory is in the PYTHONPATH.
+  - export PYTHONPATH="$PYTHONPATH:./test/"
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
-  - python -m pytest python/ray/tune/test/trial_runner_test.py
-  - python -m pytest python/ray/tune/test/trial_scheduler_test.py
-  - python -m pytest python/ray/tune/test/tune_server_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/trial_scheduler_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/experiment_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/tune_server_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/ray_trial_executor_test.py
+  - python -m pytest -v --durations=10 python/ray/tune/test/automl_searcher_test.py
 
   # ray rllib tests
-  - python -m pytest python/ray/rllib/test/test_catalog.py
-  - python -m pytest python/ray/rllib/test/test_filters.py
-  - python -m pytest python/ray/rllib/test/test_optimizers.py
-  - python -m pytest python/ray/rllib/test/test_evaluators.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_catalog.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_filters.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
+  - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
+
+  # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+  - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
+
+  - python -m pytest -v --durations=10 python/ray/test/test_global_state.py
+  - python -m pytest -v --durations=10 python/ray/test/test_queue.py
+  - python -m pytest -v --durations=10 python/ray/test/test_ray_init.py
+  - python -m pytest -v --durations=10 test/xray_test.py
+
+  - python -m pytest -v --durations=10 test/runtest.py
+  - python -m pytest -v --durations=10 test/array_test.py
+  - python -m pytest -v --durations=10 test/actor_test.py
+  - python -m pytest -v --durations=10 test/autoscaler_test.py
+  - python -m pytest -v --durations=10 test/tensorflow_test.py
+  - python -m pytest -v --durations=10 test/failure_test.py
+  - python -m pytest -v --durations=10 test/microbenchmarks.py
+  - python -m pytest -v --durations=10 test/stress_tests.py
+  - python -m pytest -v --durations=10 test/component_failures_test.py
+  - python -m pytest -v --durations=10 test/multi_node_test.py
+  - python -m pytest -v --durations=10 test/multi_node_test_2.py
+  - python -m pytest -v --durations=10 test/recursion_test.py
+  - python -m pytest -v --durations=10 test/monitor_test.py
+  - python -m pytest -v --durations=10 test/cython_test.py
+  - python -m pytest -v --durations=10 test/credis_test.py
+  - python -m pytest -v --durations=10 test/node_manager_test.py
+
+  # ray temp file tests
+  - python -m pytest -v --durations=10 test/tempfile_test.py
+
+  # modin test files
+  - python python/ray/test/test_modin.py
 
 deploy:
   - provider: s3

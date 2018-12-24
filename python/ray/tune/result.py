@@ -2,101 +2,63 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import os
-"""
-When using ray.tune with custom training scripts, you must periodically report
-training status back to Ray by calling reporter(result).
 
-Most of the fields are optional, the only required one is timesteps_total.
+# yapf: disable
+# __sphinx_doc_begin__
+# (Optional/Auto-filled) training is terminated. Filled only if not provided.
+DONE = "done"
 
-In RLlib, the supplied algorithms fill in TrainingResult for you.
-"""
+# (Auto-filled) The hostname of the machine hosting the training process.
+HOSTNAME = "hostname"
 
-# Where ray.tune writes result files by default
-DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
+# (Auto-filled) The node ip of the machine hosting the training process.
+NODE_IP = "node_ip"
 
-TrainingResult = namedtuple(
-    "TrainingResult",
-    [
-        # (Required) Accumulated timesteps for this entire experiment.
-        "timesteps_total",
+# (Auto-filled) The pid of the training process.
+PID = "pid"
 
-        # (Optional) If training is terminated.
-        "done",
+# Number of episodes in this iteration.
+EPISODES_THIS_ITER = "episodes_this_iter"
 
-        # (Optional) Custom metadata to report for this iteration.
-        "info",
+# (Optional/Auto-filled) Accumulated number of episodes for this experiment.
+EPISODES_TOTAL = "episodes_total"
 
-        # (Optional) The mean episode reward if applicable.
-        "episode_reward_mean",
+# Number of timesteps in this iteration.
+TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
-        # (Optional) The min episode reward if applicable.
-        "episode_reward_min",
+# (Auto-filled) Accumulated number of timesteps for this entire experiment.
+TIMESTEPS_TOTAL = "timesteps_total"
 
-        # (Optional) The max episode reward if applicable.
-        "episode_reward_max",
+# (Auto-filled) Time in seconds this iteration took to run.
+# This may be overriden to override the system-computed time difference.
+TIME_THIS_ITER_S = "time_this_iter_s"
 
-        # (Optional) The mean episode length if applicable.
-        "episode_len_mean",
+# (Auto-filled) Accumulated time in seconds for this entire experiment.
+TIME_TOTAL_S = "time_total_s"
 
-        # (Optional) The number of episodes total.
-        "episodes_total",
+# (Auto-filled) The index of this training iteration.
+TRAINING_ITERATION = "training_iteration"
+# __sphinx_doc_end__
+# yapf: enable
 
-        # (Optional) Per-policy reward information in multi-agent RL.
-        "policy_reward_mean",
+# Where Tune writes result files by default
+DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_RESULT_DIR")
+                       or os.path.expanduser("~/ray_results"))
 
-        # (Optional) The current training accuracy if applicable.
-        "mean_accuracy",
+# Meta file about status under each experiment directory, can be
+# parsed by automlboard if exists.
+JOB_META_FILE = "job_status.json"
 
-        # (Optional) The current validation accuracy if applicable.
-        "mean_validation_accuracy",
+# Meta file about status under each trial directory, can be parsed
+# by automlboard if exists.
+EXPR_META_FILE = "trial_status.json"
 
-        # (Optional) The current training loss if applicable.
-        "mean_loss",
+# File that stores parameters of the trial.
+EXPR_PARARM_FILE = "params.json"
 
-        # (Auto-filled) The negated current training loss.
-        "neg_mean_loss",
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
 
-        # (Auto-filled) Unique string identifier for this experiment.
-        # This id is preserved across checkpoint / restore calls.
-        "experiment_id",
-
-        # (Auto-filled) The index of this training iteration,
-        # e.g. call to train().
-        "training_iteration",
-
-        # (Auto-filled) Number of timesteps in the simulator
-        # in this iteration.
-        "timesteps_this_iter",
-
-        # (Auto-filled) Time in seconds this iteration took to run. This may
-        # be overriden in order to override the system-computed
-        # time difference.
-        "time_this_iter_s",
-
-        # (Auto-filled) Accumulated time in seconds for this entire experiment.
-        "time_total_s",
-
-        # (Auto-filled) The pid of the training process.
-        "pid",
-
-        # (Auto-filled) A formatted date of when the result was processed.
-        "date",
-
-        # (Auto-filled) A UNIX timestamp of when the result was processed.
-        "timestamp",
-
-        # (Auto-filled) The hostname of the machine hosting the
-        # training process.
-        "hostname",
-
-        # (Auto-filled) The node ip of the machine hosting the
-        # training process.
-        "node_ip",
-
-        # (Auto=filled) The current hyperparameter configuration.
-        "config",
-    ])
-
-TrainingResult.__new__.__defaults__ = (None, ) * len(TrainingResult._fields)
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"

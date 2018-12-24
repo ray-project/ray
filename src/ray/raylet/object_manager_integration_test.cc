@@ -39,11 +39,12 @@ class TestObjectManagerBase : public ::testing::Test {
     node_manager_config.num_initial_workers = 0;
     node_manager_config.num_workers_per_process = 1;
     // Use a default worker that can execute empty tasks with dependencies.
-    node_manager_config.worker_command.push_back("python");
-    node_manager_config.worker_command.push_back(
-        "../python/ray/workers/default_worker.py");
-    node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
-    node_manager_config.worker_command.push_back(store_socket_name.c_str());
+    std::vector<std::string> py_worker_command;
+    py_worker_command.push_back("python");
+    py_worker_command.push_back("../python/ray/workers/default_worker.py");
+    py_worker_command.push_back(raylet_socket_name.c_str());
+    py_worker_command.push_back(store_socket_name.c_str());
+    node_manager_config.worker_commands[Language::PYTHON] = py_worker_command;
     return node_manager_config;
   };
 
@@ -53,26 +54,28 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
     server1.reset(new ray::raylet::Raylet(
-        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379,
+        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
+        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
     server2.reset(new ray::raylet::Raylet(
-        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379,
+        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", plasma::kPlasmaDefaultReleaseDelay));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client1.Connect(store_sock_1));
+    ARROW_CHECK_OK(client2.Connect(store_sock_2));
   }
 
   void TearDown() {
@@ -83,7 +86,7 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
+    int s = system("killall plasma_store_server &");
     ASSERT_TRUE(!s);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
@@ -152,7 +155,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           v1.push_back(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
@@ -160,7 +163,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           v2.push_back(ObjectID::from_binary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
@@ -174,7 +177,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
     num_expected_objects = (uint)1;
     ObjectID oid1 = WriteDataToClient(client1, data_size);
-    status = server1->object_manager_.Push(oid1, client_id_2);
+    server1->object_manager_.Push(oid1, client_id_2);
   }
 
   void TestPushComplete() {
@@ -201,12 +204,14 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    const ClientTableDataT &data = gcs_client_2->client_table().GetClient(client_id_1);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    ClientTableDataT data;
+    gcs_client_2->client_table().GetClient(client_id_1, data);
+    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
-    const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+    ClientTableDataT data2;
+    gcs_client_1->client_table().GetClient(client_id_2, data2);
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;

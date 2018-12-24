@@ -40,7 +40,7 @@ class RedisCallbackManager {
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
-  ~RedisCallbackManager() { printf("shut down callback manager\n"); }
+  ~RedisCallbackManager() {}
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, RedisCallback> callbacks_;
@@ -51,13 +51,14 @@ class RedisContext {
   RedisContext()
       : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
   ~RedisContext();
-  Status Connect(const std::string &address, int port, bool sharding);
+  Status Connect(const std::string &address, int port, bool sharding,
+                 const std::string &password);
   Status AttachToEventLoop(aeEventLoop *loop);
 
   /// Run an operation on some table key.
   ///
   /// \param command The command to run. This must match a registered Ray Redis
-  ///        command. These are strings of the format "RAY.TABLE_*".
+  /// command. These are strings of the format "RAY.TABLE_*".
   /// \param id The table key to run the operation at.
   /// \param data The data to add to the table key, if any.
   /// \param length The length of the data to be added, if data is provided.
@@ -65,15 +66,30 @@ class RedisContext {
   /// \param pubsub_channel
   /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
-  ///        at which the data must be appended. For all other commands, set to
-  ///        -1 for unused. If set, then data must be provided.
+  /// at which the data must be appended. For all other commands, set to
+  /// -1 for unused. If set, then data must be provided.
+  /// \return Status.
   Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
+  /// Run an arbitrary Redis command without a callback.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return Status.
+  Status RunArgvAsync(const std::vector<std::string> &args);
+
+  /// Subscribe to a specific Pub-Sub channel.
+  ///
+  /// \param client_id The client ID that subscribe this message.
+  /// \param pubsub_channel The Pub-Sub channel to subscribe to.
+  /// \param redisCallback The callback function that the notification calls.
+  /// \param out_callback_index The output pointer to callback index.
+  /// \return Status.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
-                        const RedisCallback &redisCallback);
+                        const RedisCallback &redisCallback, int64_t *out_callback_index);
+  redisContext *sync_context() { return context_; }
   redisAsyncContext *async_context() { return async_context_; }
   redisAsyncContext *subscribe_context() { return subscribe_context_; };
 

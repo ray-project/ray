@@ -9,6 +9,10 @@ the LSTM cell, we reshape the input to add the expected time dimension. During
 postprocessing, we dynamically pad the experience batches so that this
 reshaping is possible.
 
+Note that this padding strategy only works out if we assume zero inputs don't
+meaningfully affect the loss function. This happens to be true for all the
+current algorithms: https://github.com/ray-project/ray/issues/2992
+
 See the add_time_dimension() and chop_into_sequences() functions below for
 more info.
 """
@@ -16,10 +20,75 @@ more info.
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
-import distutils.version
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
+from ray.rllib.utils.annotations import override
+
+
+class LSTM(Model):
+    """Adds a LSTM cell on top of some other model output.
+
+    Uses a linear layer at the end for output.
+
+    Important: we assume inputs is a padded batch of sequences denoted by
+        self.seq_lens. See add_time_dimension() for more information.
+    """
+
+    @override(Model)
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        cell_size = options.get("lstm_cell_size")
+        if options.get("lstm_use_prev_action_reward"):
+            action_dim = int(
+                np.product(
+                    input_dict["prev_actions"].get_shape().as_list()[1:]))
+            features = tf.concat(
+                [
+                    input_dict["obs"],
+                    tf.reshape(
+                        tf.cast(input_dict["prev_actions"], tf.float32),
+                        [-1, action_dim]),
+                    tf.reshape(input_dict["prev_rewards"], [-1, 1]),
+                ],
+                axis=1)
+        else:
+            features = input_dict["obs"]
+        last_layer = add_time_dimension(features, self.seq_lens)
+
+        # Setup the LSTM cell
+        lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
+        self.state_init = [
+            np.zeros(lstm.state_size.c, np.float32),
+            np.zeros(lstm.state_size.h, np.float32)
+        ]
+
+        # Setup LSTM inputs
+        if self.state_in:
+            c_in, h_in = self.state_in
+        else:
+            c_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.c], name="c")
+            h_in = tf.placeholder(
+                tf.float32, [None, lstm.state_size.h], name="h")
+            self.state_in = [c_in, h_in]
+
+        # Setup LSTM outputs
+        state_in = rnn.LSTMStateTuple(c_in, h_in)
+        lstm_out, lstm_state = tf.nn.dynamic_rnn(
+            lstm,
+            last_layer,
+            initial_state=state_in,
+            sequence_length=self.seq_lens,
+            time_major=False,
+            dtype=tf.float32)
+
+        self.state_out = list(lstm_state)
+
+        # Compute outputs
+        last_layer = tf.reshape(lstm_out, [-1, cell_size])
+        logits = linear(last_layer, num_outputs, "action",
+                        normc_initializer(0.01))
+        return logits, last_layer
 
 
 def add_time_dimension(padded_inputs, seq_lens):
@@ -49,17 +118,26 @@ def add_time_dimension(padded_inputs, seq_lens):
     return tf.reshape(padded_inputs, new_shape)
 
 
-def chop_into_sequences(time_column, feature_columns, state_columns,
-                        max_seq_len):
+def chop_into_sequences(episode_ids,
+                        agent_indices,
+                        feature_columns,
+                        state_columns,
+                        max_seq_len,
+                        dynamic_max=True,
+                        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Arguments:
-        time_column (list): Timesteps per feature / state. This contains
-            sequences of monotonically increasing step values, e.g.,
-            [0, 1, 2, 0, 1, 2, 3, 4, 5, 0, 1, 2].
+        episode_ids (list): List of episode ids for each step.
+        agent_indices (list): List of agent ids for each step. Note that this
+            has to be combined with episode_ids for uniqueness.
         feature_columns (list): List of arrays containing features.
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.
+        dynamic_max (bool): Whether to dynamically shrink the max seq len.
+            For example, if max len is 20 and the actual max seq len in the
+            data is 7, it will be shrunk to 7.
+        _extra_padding (int): Add extra padding to the end of sequences.
 
     Returns:
         f_pad (list): Padded feature columns. These will be of shape
@@ -70,7 +148,7 @@ def chop_into_sequences(time_column, feature_columns, state_columns,
 
     Examples:
         >>> f_pad, s_init, seq_lens = chop_into_sequences(
-                time_column=[0, 1, 0, 1, 2, 3],
+                episode_id=[1, 1, 5, 5, 5, 5],
                 feature_columns=[[4, 4, 8, 8, 8, 8],
                                  [1, 1, 0, 1, 1, 0]],
                 state_columns=[[4, 5, 4, 5, 5, 5]],
@@ -84,21 +162,24 @@ def chop_into_sequences(time_column, feature_columns, state_columns,
         [2, 3, 1]
     """
 
-    prev_t = -1
+    prev_id = None
     seq_lens = []
     seq_len = 0
-    for t in time_column:
-        if t <= prev_t or seq_len >= max_seq_len:
+    unique_ids = np.add(episode_ids, agent_indices)
+    for uid in unique_ids:
+        if (prev_id is not None and uid != prev_id) or \
+                seq_len >= max_seq_len:
             seq_lens.append(seq_len)
             seq_len = 0
         seq_len += 1
-        prev_t = t
+        prev_id = uid
     if seq_len:
         seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(time_column)
+    assert sum(seq_lens) == len(unique_ids)
 
     # Dynamically shrink max len as needed to optimize memory usage
-    max_seq_len = max(seq_lens)
+    if dynamic_max:
+        max_seq_len = max(seq_lens) + _extra_padding
 
     feature_sequences = []
     for f in feature_columns:
@@ -111,7 +192,7 @@ def chop_into_sequences(time_column, feature_columns, state_columns,
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(time_column), f
+        assert i == len(unique_ids), f
         feature_sequences.append(f_pad)
 
     initial_states = []
@@ -125,58 +206,3 @@ def chop_into_sequences(time_column, feature_columns, state_columns,
         initial_states.append(np.array(s_init))
 
     return feature_sequences, initial_states, np.array(seq_lens)
-
-
-class LSTM(Model):
-    """Adds a LSTM cell on top of some other model output.
-
-    Uses a linear layer at the end for output.
-
-    Important: we assume inputs is a padded batch of sequences denoted by
-        self.seq_lens. See add_time_dimension() for more information.
-    """
-
-    def _build_layers(self, inputs, num_outputs, options):
-        cell_size = options.get("lstm_cell_size", 256)
-        use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                         distutils.version.LooseVersion("1.0.0"))
-        last_layer = add_time_dimension(inputs, self.seq_lens)
-
-        # Setup the LSTM cell
-        if use_tf100_api:
-            lstm = rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
-        else:
-            lstm = rnn.rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        self.state_init = [
-            np.zeros(lstm.state_size.c, np.float32),
-            np.zeros(lstm.state_size.h, np.float32)
-        ]
-
-        # Setup LSTM inputs
-        if self.state_in:
-            c_in, h_in = self.state_in
-        else:
-            c_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.c], name="c")
-            h_in = tf.placeholder(
-                tf.float32, [None, lstm.state_size.h], name="h")
-            self.state_in = [c_in, h_in]
-
-        # Setup LSTM outputs
-        if use_tf100_api:
-            state_in = rnn.LSTMStateTuple(c_in, h_in)
-        else:
-            state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(
-            lstm,
-            last_layer,
-            initial_state=state_in,
-            sequence_length=self.seq_lens,
-            time_major=False)
-        self.state_out = list(lstm_state)
-
-        # Compute outputs
-        last_layer = tf.reshape(lstm_out, [-1, cell_size])
-        logits = linear(last_layer, num_outputs, "action",
-                        normc_initializer(0.01))
-        return logits, last_layer

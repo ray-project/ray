@@ -2,20 +2,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import os
 import pytest
 import time
 
 import ray
+import ray.tempfile_services
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture
-def ray_start_regular():
+@pytest.fixture(params=[1, 20])
+def ray_start_sharded(request):
+    num_redis_shards = request.param
+
+    if os.environ.get("RAY_USE_NEW_GCS") == "on":
+        num_redis_shards = 1
+        # For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports
+        # 1-node chain for that shard only.
+
     # Start the Ray processes.
-    ray.init(num_cpus=10)
+    ray.init(num_cpus=10, num_redis_shards=num_redis_shards)
+
     yield None
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
@@ -27,7 +38,6 @@ def ray_start_combination(request):
     # Start the Ray processes.
     ray.worker._init(
         start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
         num_local_schedulers=num_local_schedulers,
         num_cpus=10)
     yield num_local_schedulers, num_workers_per_scheduler
@@ -55,9 +65,6 @@ def test_submitting_tasks(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
 def test_dependencies(ray_start_combination):
     @ray.remote
     def f(x):
@@ -81,10 +88,7 @@ def test_dependencies(ray_start_combination):
     assert ray.services.all_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-def test_submitting_many_tasks(ray_start_regular):
+def test_submitting_many_tasks(ray_start_sharded):
     @ray.remote
     def f(x):
         return 1
@@ -99,7 +103,31 @@ def test_submitting_many_tasks(ray_start_regular):
     assert ray.services.all_processes_alive()
 
 
-def test_getting_and_putting(ray_start_regular):
+def test_submitting_many_actors_to_one(ray_start_sharded):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Worker(object):
+        def __init__(self, actor):
+            self.actor = actor
+
+        def ping(self):
+            return ray.get(self.actor.ping.remote())
+
+    a = Actor.remote()
+    workers = [Worker.remote(a) for _ in range(100)]
+    for _ in range(10):
+        out = ray.get([w.ping.remote() for w in workers])
+        assert out == [None for _ in workers]
+
+
+def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
 
@@ -113,7 +141,7 @@ def test_getting_and_putting(ray_start_regular):
     assert ray.services.all_processes_alive()
 
 
-def test_getting_many_objects(ray_start_regular):
+def test_getting_many_objects(ray_start_sharded):
     @ray.remote
     def f():
         return 1
@@ -166,21 +194,17 @@ def ray_start_reconstruction(request):
     # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
     plasma_addresses = []
-    objstore_memory = plasma_store_memory // num_local_schedulers
+    object_store_memory = plasma_store_memory // num_local_schedulers
     for i in range(num_local_schedulers):
-        store_stdout_file, store_stderr_file = ray.services.new_log_files(
-            "plasma_store_{}".format(i), True)
-        manager_stdout_file, manager_stderr_file = (ray.services.new_log_files(
-            "plasma_manager_{}".format(i), True))
+        store_stdout_file, store_stderr_file = (
+            ray.tempfile_services.new_plasma_store_log_file(i, True))
         plasma_addresses.append(
-            ray.services.start_objstore(
+            ray.services.start_plasma_store(
                 node_ip_address,
                 redis_address,
-                objstore_memory=objstore_memory,
+                object_store_memory=object_store_memory,
                 store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
+                store_stderr_file=store_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {
@@ -191,10 +215,12 @@ def ray_start_reconstruction(request):
     ray.worker._init(
         address_info=address_info,
         start_ray_local=True,
-        num_workers=1,
         num_local_schedulers=num_local_schedulers,
         num_cpus=[1] * num_local_schedulers,
-        redirect_output=True)
+        redirect_output=True,
+        _internal_config=json.dumps({
+            "initial_reconstruction_timeout_milliseconds": 200
+        }))
 
     yield (redis_ip_address, redis_port, plasma_store_memory,
            num_local_schedulers)
@@ -228,9 +254,6 @@ def ray_start_reconstruction(request):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
@@ -238,7 +261,7 @@ def test_simple(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = int(plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a remote task with no dependencies, which returns a numpy
@@ -271,9 +294,12 @@ def test_simple(ray_start_reconstruction):
         del values
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+def sorted_random_indexes(total, output_num):
+    random_indexes = [np.random.randint(total) for _ in range(output_num)]
+    random_indexes.sort()
+    return random_indexes
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -282,7 +308,7 @@ def test_recursive(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = int(plasma_store_memory * 1.5 / (num_objects * 8))
 
     # Define a root task with no dependencies, which returns a numpy array
@@ -318,8 +344,8 @@ def test_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
@@ -331,9 +357,6 @@ def test_recursive(ray_start_reconstruction):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
-@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
@@ -341,7 +364,7 @@ def test_multiple_recursive(ray_start_reconstruction):
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a root task with no dependencies, which returns a numpy array
@@ -381,8 +404,8 @@ def test_multiple_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
 
@@ -403,9 +426,7 @@ def wait_for_errors(error_check):
     return errors
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -472,18 +493,25 @@ def test_nondeterministic_task(ray_start_reconstruction):
                for error in errors)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.fixture
+def ray_start_driver_put_errors():
+    plasma_store_memory = 10**9
+    # Start the Ray processes.
+    ray.init(num_cpus=1, object_store_memory=plasma_store_memory)
+    yield plasma_store_memory
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
-def test_driver_put_errors(ray_start_reconstruction):
-    _, _, plasma_store_memory, _ = ray_start_reconstruction
+def test_driver_put_errors(ray_start_driver_put_errors):
+    plasma_store_memory = ray_start_driver_put_errors
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
-    num_objects = 1000
+    num_objects = 100
     size = plasma_store_memory * 2 // (num_objects * 8)
 
     # Define a task with a single dependency, a numpy array, that returns
@@ -513,8 +541,8 @@ def test_driver_put_errors(ray_start_reconstruction):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.local_scheduler_client.reconstruct_objects(
-        [args[0]], False)
+    ray.worker.global_worker.raylet_client.fetch_or_reconstruct([args[0]],
+                                                                False)
 
     def error_check(errors):
         return len(errors) > 1

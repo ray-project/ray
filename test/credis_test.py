@@ -13,11 +13,11 @@ def parse_client(addr_port_str):
     return redis.StrictRedis(host=redis_address, port=redis_port)
 
 
-@unittest.skipIf(not os.environ.get('RAY_USE_NEW_GCS', False),
+@unittest.skipIf(not os.environ.get("RAY_USE_NEW_GCS", False),
                  "Tests functionality of the new GCS.")
 class CredisTest(unittest.TestCase):
     def setUp(self):
-        self.config = ray.init(num_workers=0)
+        self.config = ray.init(num_cpus=0)
 
     def tearDown(self):
         ray.shutdown()

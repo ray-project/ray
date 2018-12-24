@@ -13,16 +13,16 @@ from __future__ import print_function
 import random
 
 import ray
-from ray.tune import run_experiments
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune import run_experiments, sample_from
+from ray.tune.schedulers import PopulationBasedTraining
 
 if __name__ == "__main__":
 
     # Postprocess the perturbed config to ensure it's still valid
     def explore(config):
         # ensure we collect enough timesteps to do sgd
-        if config["timesteps_per_batch"] < config["sgd_batchsize"] * 2:
-            config["timesteps_per_batch"] = config["sgd_batchsize"] * 2
+        if config["train_batch_size"] < config["sgd_minibatch_size"] * 2:
+            config["train_batch_size"] = config["sgd_minibatch_size"] * 2
         # ensure we run at least one sgd iter
         if config["num_sgd_iter"] < 1:
             config["num_sgd_iter"] = 1
@@ -37,10 +37,10 @@ if __name__ == "__main__":
         hyperparam_mutations={
             "lambda": lambda: random.uniform(0.9, 1.0),
             "clip_param": lambda: random.uniform(0.01, 0.5),
-            "sgd_stepsize": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
+            "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
             "num_sgd_iter": lambda: random.randint(1, 30),
-            "sgd_batchsize": lambda: random.randint(128, 16384),
-            "timesteps_per_batch": lambda: random.randint(2000, 160000),
+            "sgd_minibatch_size": lambda: random.randint(128, 16384),
+            "train_batch_size": lambda: random.randint(2000, 160000),
         },
         custom_explore_fn=explore)
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             "pbt_humanoid_test": {
                 "run": "PPO",
                 "env": "Humanoid-v1",
-                "repeat": 8,
+                "num_samples": 8,
                 "config": {
                     "kl_coeff": 1.0,
                     "num_workers": 8,
@@ -61,14 +61,14 @@ if __name__ == "__main__":
                     # These params are tuned from a fixed starting value.
                     "lambda": 0.95,
                     "clip_param": 0.2,
-                    "sgd_stepsize": 1e-4,
+                    "lr": 1e-4,
                     # These params start off randomly drawn from a set.
-                    "num_sgd_iter":
-                        lambda spec: random.choice([10, 20, 30]),
-                    "sgd_batchsize":
-                        lambda spec: random.choice([128, 512, 2048]),
-                    "timesteps_per_batch":
-                        lambda spec: random.choice([10000, 20000, 40000])
+                    "num_sgd_iter": sample_from(
+                        lambda spec: random.choice([10, 20, 30])),
+                    "sgd_minibatch_size": sample_from(
+                        lambda spec: random.choice([128, 512, 2048])),
+                    "train_batch_size": sample_from(
+                        lambda spec: random.choice([10000, 20000, 40000]))
                 },
             },
         },

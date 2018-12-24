@@ -1,20 +1,17 @@
 package org.ray.api.benchmark;
 
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.api.test.MyRunner;
+import org.ray.api.annotation.RayRemote;
 
-@RunWith(MyRunner.class)
 public class ActorPressTest extends RayBenchmarkTest {
 
   @Test
   public void singleLatencyTest() {
     int times = 10;
-    RayActor<ActorPressTest.Adder> adder = Ray.create(ActorPressTest.Adder.class);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     super.singleLatencyTest(times, adder);
   }
 
@@ -22,7 +19,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   public void maxTest() {
     int clientNum = 2;
     int totalNum = 20;
-    RayActor<ActorPressTest.Adder> adder = Ray.create(ActorPressTest.Adder.class);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalNum(totalNum);
@@ -36,7 +33,7 @@ public class ActorPressTest extends RayBenchmarkTest {
     int clientNum = 2;
     int totalQps = 2;
     int duration = 3;
-    RayActor<ActorPressTest.Adder> adder = Ray.create(ActorPressTest.Adder.class);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalQps(totalQps);

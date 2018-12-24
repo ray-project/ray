@@ -1,10 +1,11 @@
 #ifndef RAY_RAYLET_LINEAGE_CACHE_H
 #define RAY_RAYLET_LINEAGE_CACHE_H
 
+#include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
 // clang-format off
-#include "common_protocol.h"
+#include "ray/common/common_protocol.h"
 #include "ray/raylet/task.h"
 #include "ray/gcs/tables.h"
 #include "ray/id.h"
@@ -64,6 +65,17 @@ class LineageEntry {
   /// \param new_status This must be lower than the current status.
   void ResetStatus(GcsStatus new_status);
 
+  /// Mark this entry as having been explicitly forwarded to a remote node manager.
+  ///
+  /// \param node_id The ID of the remote node manager.
+  void MarkExplicitlyForwarded(const ClientID &node_id);
+
+  /// Gets whether this entry was explicitly forwarded to a remote node.
+  ///
+  /// \param node_id The ID of the remote node manager.
+  /// \return Whether this entry was explicitly forwarded to the remote node.
+  bool WasExplicitlyForwarded(const ClientID &node_id) const;
+
   /// Get this entry's ID.
   ///
   /// \return The entry's ID.
@@ -73,14 +85,28 @@ class LineageEntry {
   /// that created its arguments.
   ///
   /// \return The IDs of the parent entries.
-  const std::unordered_set<TaskID> GetParentTaskIds() const;
+  const std::unordered_set<TaskID> &GetParentTaskIds() const;
 
   /// Get the task data.
   ///
   /// \return The task data.
   const Task &TaskData() const;
 
+  /// Get a mutable version of the task data.
+  ///
+  /// \return The task data.
+  /// TODO(swang): This is pretty ugly.
   Task &TaskDataMutable();
+
+  /// Update the task data with a new task.
+  ///
+  /// \return Void.
+  void UpdateTaskData(const Task &task);
+
+ private:
+  /// Compute cached parent task IDs. This task is dependent on values returned
+  /// by these tasks.
+  void ComputeParentTaskIds();
 
   /// The current state of this entry according to its status in the GCS.
   GcsStatus status_;
@@ -88,6 +114,11 @@ class LineageEntry {
   /// an object.
   //  const Task task_;
   Task task_;
+  /// A cached copy of the parent task IDs. This task is dependent on values
+  /// returned by these tasks.
+  std::unordered_set<TaskID> parent_task_ids_;
+  /// IDs of node managers that this task has been explicitly forwarded to.
+  std::unordered_set<ClientID> forwarded_to_;
 };
 
 /// \class Lineage
@@ -113,17 +144,17 @@ class Lineage {
   /// \return An optional reference to the entry. If this is empty, then the
   /// entry ID is not in the lineage.
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
-  boost::optional<LineageEntry &> GetEntryMutable(const UniqueID &task_id);
+  boost::optional<LineageEntry &> GetEntryMutable(const TaskID &task_id);
 
   /// Set an entry in the lineage. If an entry with this ID already exists,
   /// then the entry is overwritten if and only if the new entry has a higher
   /// GCS status than the current. The current entry's object or task data will
   /// also be overwritten.
   ///
-  /// \param entry The new entry to set in the lineage, if its GCS status is
-  /// greater than the current entry.
+  /// \param task The task data to set, if status is greater than the current entry.
+  /// \param status The GCS status.
   /// \return Whether the entry was set.
-  bool SetEntry(LineageEntry &&entry);
+  bool SetEntry(const Task &task, GcsStatus status);
 
   /// Delete and return an entry from the lineage.
   ///
@@ -146,15 +177,41 @@ class Lineage {
   flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
+  /// Return the IDs of tasks in the lineage that are dependent on the given
+  /// task.
+  ///
+  /// \param The ID of the task whose children to get.
+  /// \return The list of IDs for tasks that are in the lineage and dependent
+  /// on the given task.
+  const std::unordered_set<TaskID> &GetChildren(const TaskID &task_id) const;
+
+  /// Return the size of the children_ map. This is used for debugging purposes
+  /// only.
+  size_t GetChildrenSize() const { return children_.size(); }
+
  private:
   /// The lineage entries.
   std::unordered_map<const TaskID, LineageEntry> entries_;
+  /// A mapping from each task in the lineage to its children.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> children_;
+
+  /// Record the fact that the child task depends on the parent task.
+  void AddChild(const TaskID &parent_id, const TaskID &child_id);
+  /// Erase the fact that the child task depends on the parent task.
+  void RemoveChild(const TaskID &parent_id, const TaskID &child_id);
 };
 
 /// \class LineageCache
 ///
 /// A cache of the task table. This consists of all tasks that this node owns,
-/// as well as their lineage, that have not yet been added durably to the GCS.
+/// as well as their lineage, that have not yet been added durably
+/// ("committed") to the GCS.
+///
+/// The current policy is to flush each task as soon as it enters the
+/// UNCOMMITTED_READY state. For safety, we only evict tasks if they have been
+/// committed and if their parents have been all evicted. Thus, the invariant
+/// is that if g depends on f, and g has been evicted, then f must have been
+/// committed.
 class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
@@ -170,58 +227,94 @@ class LineageCache {
   /// \param uncommitted_lineage The task's uncommitted lineage. These are the
   /// tasks that the given task is data-dependent on, but that have not
   /// been made durable in the GCS, as far the task's submitter knows.
-  void AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
+  /// \return Whether the task was successfully marked as waiting to be
+  /// committed. This will return false if the task is already waiting to be
+  /// committed (UNCOMMITTED_WAITING), ready to be committed
+  /// (UNCOMMITTED_READY), or committing (COMMITTING).
+  bool AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
 
   /// Add a task that is ready for GCS writeback. This overwrites the task’s
   /// mutable fields in the execution specification.
   ///
   /// \param task The task to set as ready.
-  void AddReadyTask(const Task &task);
+  /// \return Whether the task was successfully marked as ready to be
+  /// committed. This will return false if the task is already ready to be
+  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
+  bool AddReadyTask(const Task &task);
 
   /// Remove a task that was waiting for execution. Its uncommitted lineage
   /// will remain unchanged.
   ///
   /// \param task_id The ID of the waiting task to remove.
-  void RemoveWaitingTask(const TaskID &task_id);
+  /// \return Whether the task was successfully removed. This will return false
+  /// if the task is not waiting to be committed. Then, the waiting task has
+  /// already been removed (UNCOMMITTED_REMOTE), or if it's ready to be
+  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
+  bool RemoveWaitingTask(const TaskID &task_id);
 
-  /// Get the uncommitted lineage of a task. The uncommitted lineage consists
-  /// of all tasks in the given task's lineage that have not been committed in
-  /// the GCS, as far as we know.
+  /// Mark a task as having been explicitly forwarded to a node.
+  /// The lineage of the task is implicitly assumed to have also been forwarded.
   ///
-  /// \param entry_id The ID of the task to get the uncommitted lineage for.
-  /// \return The uncommitted lineage of the task. The returned lineage
+  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param node_id The ID of the node to get the uncommitted lineage for.
+  void MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id);
+
+  /// Get the uncommitted lineage of a task that hasn't been forwarded to a node yet.
+  /// The uncommitted lineage consists of all tasks in the given task's lineage
+  /// that have not been committed in the GCS, as far as we know.
+  ///
+  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param node_id The ID of the receiving node.
+  /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineage(const TaskID &entry_id) const;
+  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
 
-  /// Asynchronously write any tasks that are in the UNCOMMITTED_READY state
-  /// and for which all parents have been committed to the GCS. These tasks
-  /// will be transitioned in this method to state COMMITTING. Once the write
-  /// is acknowledged, the task's state will be transitioned to state
-  /// COMMITTED.
-  void Flush();
-
-  /// Handle the commit of a task entry in the GCS. This sets the task to
-  /// COMMITTED and cleans up any ancestor tasks that are in the cache.
+  /// Handle the commit of a task entry in the GCS. This attempts to evict the
+  /// task if possible.
   ///
   /// \param task_id The ID of the task entry that was committed.
   void HandleEntryCommitted(const TaskID &task_id);
 
+  /// Get a task. The task must be in the lineage cache.
+  ///
+  /// \param task_id The ID of the task to get.
+  /// \return A const reference to the task data.
+  const Task &GetTask(const TaskID &task_id) const;
+
+  /// Get whether the lineage cache contains the task.
+  ///
+  /// \param task_id The ID of the task to get.
+  /// \return Whether the task is in the lineage cache.
+  bool ContainsTask(const TaskID &task_id) const;
+
+  /// Get all lineage in the lineage cache.
+  ///
+  /// \return A const reference to the lineage.
+  const Lineage &GetLineage() const;
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
-  /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
-  /// parents that are not committed yet, then the child will be flushed once
-  /// the parents have been committed.
-  bool FlushTask(const TaskID &task_id);
-  /// Evict a remote task and its lineage. This should only be called if we
-  /// are sure that the remote task and its lineage are committed.
-  void EvictRemoteLineage(const UniqueID &task_id);
+  FRIEND_TEST(LineageCacheTest, BarReturnsZeroOnNull);
+  /// Flush a task that is in UNCOMMITTED_READY state.
+  void FlushTask(const TaskID &task_id);
+  /// Evict a single task. This should only be called if we are sure that the
+  /// task has been committed. The task will only be evicted if all of its
+  /// parents have also been evicted. If successful, then we will also attempt
+  /// to evict the task's children.
+  void EvictTask(const TaskID &task_id);
   /// Subscribe to notifications for a task. Returns whether the operation
   /// was successful (whether we were not already subscribed).
-  bool SubscribeTask(const UniqueID &task_id);
+  bool SubscribeTask(const TaskID &task_id);
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
-  bool UnsubscribeTask(const UniqueID &task_id);
-  /// Count the size of unsubscribed and uncommitted lineage
-  uint64_t CountUnsubscribedLineage(const UniqueID &task_id) const;
+  bool UnsubscribeTask(const TaskID &task_id);
+  /// Add a task and its uncommitted lineage to the local stash.
+  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
+                             std::unordered_set<TaskID> &subscribe_tasks);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
@@ -231,23 +324,8 @@ class LineageCache {
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;
-  /// The maximum size that a remote task's uncommitted lineage can get to. If
-  /// a remote task's uncommitted lineage exceeds this size, then a
-  /// notification will be requested from the pubsub storage system so that
-  /// the task and its lineage can be evicted from the stash.
-  uint64_t max_lineage_size_;
-  /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
-  /// the tasks that may be flushable.
-  // TODO(swang): As an optimization, we may also want to further distinguish
-  // which tasks are flushable, to avoid iterating over tasks that are in
-  // UNCOMMITTED_READY, but that have dependencies that have not been committed
-  // yet.
-  std::unordered_set<TaskID> uncommitted_ready_tasks_;
-  /// A mapping from each task that hasn't been committed yet, to all dependent
-  /// children tasks that are in UNCOMMITTED_READY state. This is used when the
-  /// parent task is committed, for fast lookup of children that may now be
-  /// flushed.
-  std::unordered_map<TaskID, std::unordered_set<TaskID>> uncommitted_ready_children_;
+  /// The set of tasks that have been committed but not evicted.
+  std::unordered_set<TaskID> committed_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

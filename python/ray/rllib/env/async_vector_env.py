@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.env.serving_env import ServingEnv
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.annotations import override
 
 
 class AsyncVectorEnv(object):
@@ -20,7 +21,13 @@ class AsyncVectorEnv(object):
 
         gym.Env => rllib.VectorEnv => rllib.AsyncVectorEnv
         rllib.MultiAgentEnv => rllib.AsyncVectorEnv
-        rllib.ServingEnv => rllib.AsyncVectorEnv
+        rllib.ExternalEnv => rllib.AsyncVectorEnv
+
+    Attributes:
+        action_space (gym.Space): Action space. This must be defined for
+            single-agent envs. Multi-agent envs can set this to None.
+        observation_space (gym.Space): Observation space. This must be defined
+            for single-agent envs. Multi-agent envs can set this to None.
 
     Examples:
         >>> env = MyAsyncVectorEnv()
@@ -64,11 +71,11 @@ class AsyncVectorEnv(object):
             if isinstance(env, MultiAgentEnv):
                 env = _MultiAgentEnvToAsync(
                     make_env=make_env, existing_envs=[env], num_envs=num_envs)
-            elif isinstance(env, ServingEnv):
+            elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
-                        "ServingEnv does not currently support num_envs > 1.")
-                env = _ServingEnvToAsync(env)
+                        "ExternalEnv does not currently support num_envs > 1.")
+                env = _ExternalEnvToAsync(env)
             elif isinstance(env, VectorEnv):
                 env = _VectorEnvToAsync(env)
             else:
@@ -123,12 +130,12 @@ class AsyncVectorEnv(object):
         return None
 
     def get_unwrapped(self):
-        """Return a reference to some underlying gym env, if any.
+        """Return a reference to the underlying gym envs, if any.
 
         Returns:
-            env (gym.Env|None): Underlying gym env or None.
+            envs (list): Underlying gym envs or [].
         """
-        return None
+        return []
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -139,36 +146,52 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
-class _ServingEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of ServingEnv to AsyncVectorEnv."""
+class _ExternalEnvToAsync(AsyncVectorEnv):
+    """Internal adapter of ExternalEnv to AsyncVectorEnv."""
 
-    def __init__(self, serving_env):
-        self.serving_env = serving_env
-        serving_env.start()
+    def __init__(self, external_env, preprocessor=None):
+        self.external_env = external_env
+        self.prep = preprocessor
+        self.action_space = external_env.action_space
+        if preprocessor:
+            self.observation_space = preprocessor.observation_space
+        else:
+            self.observation_space = external_env.observation_space
+        external_env.start()
 
+    @override(AsyncVectorEnv)
     def poll(self):
-        with self.serving_env._results_avail_condition:
+        with self.external_env._results_avail_condition:
             results = self._poll()
             while len(results[0]) == 0:
-                self.serving_env._results_avail_condition.wait()
+                self.external_env._results_avail_condition.wait()
                 results = self._poll()
-                if not self.serving_env.isAlive():
+                if not self.external_env.isAlive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.serving_env._max_concurrent_episodes
+        limit = self.external_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This ServingEnv "
-             "was created with max_concurrent={}".format(limit))
+            ("Too many concurrent episodes, were some leaked? This "
+             "ExternalEnv was created with max_concurrent={}".format(limit))
         return results
+
+    @override(AsyncVectorEnv)
+    def send_actions(self, action_dict):
+        for eid, action in action_dict.items():
+            self.external_env._episodes[eid].action_queue.put(
+                action[_DUMMY_AGENT_ID])
 
     def _poll(self):
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
         off_policy_actions = {}
-        for eid, episode in self.serving_env._episodes.copy().items():
+        for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
             if episode.cur_done:
-                del self.serving_env._episodes[eid]
+                del self.external_env._episodes[eid]
             if data:
-                all_obs[eid] = data["obs"]
+                if self.prep:
+                    all_obs[eid] = self.prep.transform(data["obs"])
+                else:
+                    all_obs[eid] = data["obs"]
                 all_rewards[eid] = data["reward"]
                 all_dones[eid] = data["done"]
                 all_infos[eid] = data["info"]
@@ -179,11 +202,6 @@ class _ServingEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(all_dones, "__all__"), \
             _with_dummy_agent_id(all_infos), \
             _with_dummy_agent_id(off_policy_actions)
-
-    def send_actions(self, action_dict):
-        for eid, action in action_dict.items():
-            self.serving_env._episodes[eid].action_queue.put(
-                action[_DUMMY_AGENT_ID])
 
 
 class _VectorEnvToAsync(AsyncVectorEnv):
@@ -196,13 +214,18 @@ class _VectorEnvToAsync(AsyncVectorEnv):
 
     def __init__(self, vector_env):
         self.vector_env = vector_env
+        self.action_space = vector_env.action_space
+        self.observation_space = vector_env.observation_space
         self.num_envs = vector_env.num_envs
-        self.new_obs = self.vector_env.vector_reset()
+        self.new_obs = None  # lazily initialized
         self.cur_rewards = [None for _ in range(self.num_envs)]
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
 
+    @override(AsyncVectorEnv)
     def poll(self):
+        if self.new_obs is None:
+            self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
         dones = dict(enumerate(self.cur_dones))
@@ -216,6 +239,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(dones, "__all__"), \
             _with_dummy_agent_id(infos), {}
 
+    @override(AsyncVectorEnv)
     def send_actions(self, action_dict):
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
@@ -223,9 +247,11 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
             self.vector_env.vector_step(action_vector)
 
+    @override(AsyncVectorEnv)
     def try_reset(self, env_id):
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
+    @override(AsyncVectorEnv)
     def get_unwrapped(self):
         return self.vector_env.get_unwrapped()
 
@@ -251,30 +277,45 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
         self.num_envs = num_envs
         self.dones = set()
         while len(self.envs) < self.num_envs:
-            self.envs.append(self.make_env())
+            self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
 
+    @override(AsyncVectorEnv)
     def poll(self):
         obs, rewards, dones, infos = {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
             obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
         return obs, rewards, dones, infos, {}
 
+    @override(AsyncVectorEnv)
     def send_actions(self, action_dict):
         for env_id, agent_dict in action_dict.items():
             if env_id in self.dones:
                 raise ValueError("Env {} is already done".format(env_id))
             env = self.envs[env_id]
             obs, rewards, dones, infos = env.step(agent_dict)
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            assert isinstance(rewards, dict), "Not a multi-agent reward"
+            assert isinstance(dones, dict), "Not a multi-agent return"
+            assert isinstance(infos, dict), "Not a multi-agent info"
+            if set(obs.keys()) != set(rewards.keys()):
+                raise ValueError(
+                    "Key set for obs and rewards must be the same: "
+                    "{} vs {}".format(obs.keys(), rewards.keys()))
+            if set(infos).difference(set(obs)):
+                raise ValueError("Key set for infos must be a subset of obs: "
+                                 "{} vs {}".format(infos.keys(), obs.keys()))
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
+    @override(AsyncVectorEnv)
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
-        if obs is not None:
+        assert isinstance(obs, dict), "Not a multi-agent obs"
+        if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
         return obs
 

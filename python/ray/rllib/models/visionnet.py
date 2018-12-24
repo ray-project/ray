@@ -7,17 +7,20 @@ import tensorflow.contrib.slim as slim
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.misc import get_activation_fn, flatten
+from ray.rllib.utils.annotations import override
 
 
 class VisionNetwork(Model):
     """Generic vision network."""
 
-    def _build_layers(self, inputs, num_outputs, options):
+    @override(Model)
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
-            filters = get_filter_config(options)
+            filters = _get_filter_config(inputs)
 
-        activation = get_activation_fn(options.get("conv_activation", "relu"))
+        activation = get_activation_fn(options.get("conv_activation"))
 
         with tf.name_scope("vision_net"):
             for i, (out_size, kernel, stride) in enumerate(filters[:-1], 1):
@@ -46,23 +49,26 @@ class VisionNetwork(Model):
             return flatten(fc2), flatten(fc1)
 
 
-def get_filter_config(options):
-    filters_80x80 = [
+def _get_filter_config(inputs):
+    filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],
-        [512, [10, 10], 1],
+        [256, [11, 11], 1],
     ]
     filters_42x42 = [
         [16, [4, 4], 2],
         [32, [4, 4], 2],
-        [512, [11, 11], 1],
+        [256, [11, 11], 1],
     ]
-    dim = options.get("dim", 80)
-    if dim == 80:
-        return filters_80x80
-    elif dim == 42:
+    shape = inputs.shape.as_list()[1:]
+    if len(shape) == 3 and shape[:2] == [84, 84]:
+        return filters_84x84
+    elif len(shape) == 3 and shape[:2] == [42, 42]:
         return filters_42x42
     else:
         raise ValueError(
-            "No default configuration for image size={}".format(dim) +
-            ", you must specify `conv_filters` manually as a model option.")
+            "No default configuration for obs input {}".format(inputs) +
+            ", you must specify `conv_filters` manually as a model option. "
+            "Default configurations are only available for inputs of size "
+            "[?, 42, 42, K] and [?, 84, 84, K]. You may alternatively want "
+            "to use a custom model or preprocessor.")

@@ -21,8 +21,9 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 CORE_DIR="$RAY_ROOT/build"
-REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
-REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
+PYTHON_CORE_DIR="$RAY_ROOT/python/ray/core"
+REDIS_MODULE="$PYTHON_CORE_DIR/src/ray/gcs/redis_module/libray_redis_module.so"
+REDIS_DIR="$CORE_DIR/src/ray/thirdparty/redis/src"
 
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     REDIS_SERVER="$CORE_DIR/src/credis/redis/src/redis-server"
@@ -34,7 +35,7 @@ else
     LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 fi
 
-STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"
+STORE_EXEC="$PYTHON_CORE_DIR/src/plasma/plasma_store_server"
 
 # Allow cleanup commands to fail.
 $REDIS_DIR/redis-cli -p 6379 shutdown || true

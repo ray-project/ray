@@ -4,25 +4,41 @@ from __future__ import print_function
 
 import csv
 import json
+import logging
 import numpy as np
 import os
 import yaml
+import distutils.version
 
-from ray.tune.result import TrainingResult
+import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
+from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
+    TIMESTEPS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 try:
     import tensorflow as tf
+    use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                     distutils.version.LooseVersion("1.5.0"))
 except ImportError:
     tf = None
-    print("Couldn't import TensorFlow - this disables TensorBoard logging.")
+    use_tf150_api = True
+    logger.warning("Couldn't import TensorFlow - "
+                   "disabling TensorBoard logging.")
 
 
 class Logger(object):
-    """Logging interface for ray.tune; specialized implementations follow.
+    """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in
-    multiple formats (TensorBoard, rllab/viskit, plain json) at once.
+    multiple formats (TensorBoard, rllab/viskit, plain json, custom loggers)
+    at once.
+
+    Arguments:
+        config: Configuration passed to all logger creators.
+        logdir: Directory for all logger creators to log to.
+        upload_uri (str): Optional URI where the logdir is sync'ed to.
     """
 
     def __init__(self, config, logdir, upload_uri=None):
@@ -53,21 +69,46 @@ class Logger(object):
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
-    This class also periodically syncs output to the given upload uri."""
+    This class also periodically syncs output to the given upload uri.
+
+    Arguments:
+        config: Configuration passed to all logger creators.
+        logdir: Directory for all logger creators to log to.
+        upload_uri (str): Optional URI where the logdir is sync'ed to.
+        custom_loggers (list): List of custom logger creators.
+        sync_function (func|str): Optional function for syncer to run.
+            See ray/python/ray/tune/log_sync.py
+    """
+
+    def __init__(self,
+                 config,
+                 logdir,
+                 upload_uri=None,
+                 custom_loggers=None,
+                 sync_function=None):
+        self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
+        self._sync_function = sync_function
+        if custom_loggers:
+            assert isinstance(custom_loggers, list), "Improper custom loggers."
+            self._logger_list += custom_loggers
+
+        Logger.__init__(self, config, logdir, upload_uri)
 
     def _init(self):
         self._loggers = []
-        for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
-            if cls is _TFLogger and tf is None:
-                print("TF not installed - cannot log with {}...".format(cls))
-                continue
-            self._loggers.append(cls(self.config, self.logdir, self.uri))
-        self._log_syncer = get_syncer(self.logdir, self.uri)
+        for cls in self._logger_list:
+            try:
+                self._loggers.append(cls(self.config, self.logdir, self.uri))
+            except Exception:
+                logger.exception("Could not instantiate {} - skipping.".format(
+                    str(cls)))
+        self._log_syncer = get_syncer(
+            self.logdir, self.uri, sync_function=self._sync_function)
 
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.node_ip)
+        self._log_syncer.set_worker_ip(result.get(NODE_IP))
         self._log_syncer.sync_if_needed()
 
     def close(self):
@@ -76,6 +117,8 @@ class UnifiedLogger(Logger):
         self._log_syncer.sync_now(force=True)
 
     def flush(self):
+        for logger in self._loggers:
+            logger.flush()
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
 
@@ -89,12 +132,20 @@ class _JsonLogger(Logger):
     def _init(self):
         config_out = os.path.join(self.logdir, "params.json")
         with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=_SafeFallbackEncoder)
+            json.dump(
+                self.config,
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=_SafeFallbackEncoder)
+        config_pkl = os.path.join(self.logdir, "params.pkl")
+        with open(config_pkl, "wb") as f:
+            cloudpickle.dump(self.config, f)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
 
     def on_result(self, result):
-        json.dump(result._asdict(), self, cls=_SafeFallbackEncoder)
+        json.dump(result, self, cls=_SafeFallbackEncoder)
         self.write("\n")
 
     def write(self, b):
@@ -109,7 +160,11 @@ def to_tf_values(result, path):
     values = []
     for attr, value in result.items():
         if value is not None:
-            if type(value) in [int, float]:
+            if use_tf150_api:
+                type_list = [int, float, np.float32, np.float64, np.int32]
+            else:
+                type_list = [int, float]
+            if type(value) in type_list:
                 values.append(
                     tf.Summary.Value(
                         tag="/".join(path + [attr]), simple_value=value))
@@ -123,14 +178,24 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        tmp = result._asdict()
+        tmp = result.copy()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", "timesteps_total"
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.timesteps_total)
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        self._file_writer.add_summary(train_stats, t)
+        iteration_value = to_tf_values({
+            "training_iteration": result[TRAINING_ITERATION]
+        }, ["ray", "tune"])
+        iteration_stats = tf.Summary(value=iteration_value)
+        self._file_writer.add_summary(iteration_stats, t)
+        self._file_writer.flush()
+
+    def flush(self):
+        self._file_writer.flush()
 
     def close(self):
         self._file_writer.close()
@@ -138,13 +203,16 @@ class _TFLogger(Logger):
 
 class _VisKitLogger(Logger):
     def _init(self):
+        """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
         self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
-        self._csv_out = csv.DictWriter(self._file, TrainingResult._fields)
-        self._csv_out.writeheader()
+        self._csv_out = None
 
     def on_result(self, result):
-        self._csv_out.writerow(result._asdict())
+        if self._csv_out is None:
+            self._csv_out = csv.DictWriter(self._file, result.keys())
+            self._csv_out.writeheader()
+        self._csv_out.writerow(result.copy())
 
     def close(self):
         self._file.close()
@@ -154,21 +222,6 @@ class _SafeFallbackEncoder(json.JSONEncoder):
     def __init__(self, nan_str="null", **kwargs):
         super(_SafeFallbackEncoder, self).__init__(**kwargs)
         self.nan_str = nan_str
-
-    def iterencode(self, o, _one_shot=False):
-        if self.ensure_ascii:
-            _encoder = json.encoder.encode_basestring_ascii
-        else:
-            _encoder = json.encoder.encode_basestring
-
-        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
-            return repr(o) if not np.isnan(o) else nan_str
-
-        _iterencode = json.encoder._make_iterencode(
-            None, self.default, _encoder, self.indent, floatstr,
-            self.key_separator, self.item_separator, self.sort_keys,
-            self.skipkeys, _one_shot)
-        return _iterencode(o, 0)
 
     def default(self, value):
         try:
@@ -183,9 +236,10 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 
 
 def pretty_print(result):
-    result = result._replace(config=None)  # drop config from pretty print
+    result = result.copy()
+    result.update(config=None)  # drop config from pretty print
     out = {}
-    for k, v in result._asdict().items():
+    for k, v in result.items():
         if v is not None:
             out[k] = v
 

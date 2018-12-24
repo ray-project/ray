@@ -6,6 +6,7 @@
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
+#include "ray/util/util.h"
 // clang-format on
 
 namespace ray {
@@ -27,7 +28,11 @@ class ReconstructionPolicy;
 class TaskDependencyManager {
  public:
   /// Create a task dependency manager.
-  TaskDependencyManager(ObjectManagerInterface &object_manager);
+  TaskDependencyManager(ObjectManagerInterface &object_manager,
+                        ReconstructionPolicyInterface &reconstruction_policy,
+                        boost::asio::io_service &io_service, const ClientID &client_id,
+                        int64_t initial_lease_period_ms,
+                        gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
 
   /// Check whether an object is locally available.
   ///
@@ -56,7 +61,8 @@ class TaskDependencyManager {
   /// then they will be canceled.
   ///
   /// \param task_id The ID of the task whose dependencies to unsubscribe from.
-  void UnsubscribeDependencies(const TaskID &task_id);
+  /// \return Whether the task was subscribed before.
+  bool UnsubscribeDependencies(const TaskID &task_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed
@@ -94,6 +100,23 @@ class TaskDependencyManager {
   /// this object dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
 
+  /// Get a list of all Tasks currently marked as pending object dependencies in the task
+  /// dependency manager.
+  ///
+  /// \return Return a vector of TaskIDs for tasks registered as pending.
+  std::vector<TaskID> GetPendingTasks() const;
+
+  /// Remove all of the tasks specified, and all the objects created by
+  /// these tasks from task dependency manager.
+  ///
+  /// \param task_ids The collection of task IDs.
+  void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
 
@@ -105,6 +128,21 @@ class TaskDependencyManager {
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
     int64_t num_missing_dependencies;
+  };
+
+  struct PendingTask {
+    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
+        : lease_period(initial_lease_period_ms),
+          expires_at(INT64_MAX),
+          lease_timer(new boost::asio::deadline_timer(io_service)) {}
+
+    /// The timeout within which the lease should be renewed.
+    int64_t lease_period;
+    /// The time at which the current lease will expire, according to this
+    /// node's steady clock.
+    int64_t expires_at;
+    /// A timer used to determine when to next renew the lease.
+    std::unique_ptr<boost::asio::deadline_timer> lease_timer;
   };
 
   /// Check whether the given object needs to be made available through object
@@ -119,8 +157,29 @@ class TaskDependencyManager {
   /// operations to make the object available through object transfer or
   /// reconstruction.
   void HandleRemoteDependencyCanceled(const ObjectID &object_id);
+  /// Acquire the task lease in the GCS for the given task. This is used to
+  /// indicate to other nodes that the task is currently pending on this node.
+  /// The task lease has an expiration time. If we do not renew the lease
+  /// before that time, then other nodes may choose to execute the task.
+  void AcquireTaskLease(const TaskID &task_id);
 
+  /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
+  /// The reconstruction policy, used to reconstruct required objects that no
+  /// longer exist on any live nodes.
+  ReconstructionPolicyInterface &reconstruction_policy_;
+  /// The event loop, used to set timers for renewing task leases. The task
+  /// leases are used to indicate which tasks are pending execution on this
+  /// node and must be periodically renewed.
+  boost::asio::io_service &io_service_;
+  /// This node's GCS client ID, used in the task lease information.
+  const ClientID client_id_;
+  /// For a given task, the expiration period of the initial task lease that is
+  /// added to the GCS. The lease expiration period is doubled every time the
+  /// lease is renewed.
+  const int64_t initial_lease_period_ms_;
+  /// The storage system for the task lease table.
+  gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
@@ -137,7 +196,7 @@ class TaskDependencyManager {
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these
   /// tasks that are not already local are pending creation.
-  std::unordered_set<ray::TaskID> pending_tasks_;
+  std::unordered_map<ray::TaskID, PendingTask> pending_tasks_;
 };
 
 }  // namespace raylet

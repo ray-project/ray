@@ -10,6 +10,7 @@ import time
 
 import boto3
 from botocore.config import Config
+import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
@@ -33,6 +34,7 @@ def key_pair(i, region):
 
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 def bootstrap_aws(config):
@@ -60,7 +62,7 @@ def _configure_iam_role(config):
     profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
 
     if profile is None:
-        print("Creating new instance profile {}".format(
+        logger.info("Creating new instance profile {}".format(
             DEFAULT_RAY_INSTANCE_PROFILE))
         client = _client("iam", config)
         client.create_instance_profile(
@@ -73,7 +75,7 @@ def _configure_iam_role(config):
     if not profile.roles:
         role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
         if role is None:
-            print("Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
+            logger.info("Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -97,7 +99,8 @@ def _configure_iam_role(config):
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 
-    print("Role not specified for head node, using {}".format(profile.arn))
+    logger.info("Role not specified for head node, using {}".format(
+        profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
@@ -112,7 +115,8 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    for i in range(10):
+    MAX_NUM_KEYS = 20
+    for i in range(MAX_NUM_KEYS):
         key_name, key_path = key_pair(i, config["provider"]["region"])
         key = _get_key(key_name, config)
 
@@ -122,18 +126,23 @@ def _configure_key_pair(config):
 
         # We can safely create a new key.
         if not key and not os.path.exists(key_path):
-            print("Creating new key pair {}".format(key_name))
+            logger.info("Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
             with open(key_path, "w") as f:
                 f.write(key.key_material)
             os.chmod(key_path, 0o600)
             break
 
-    assert key, "AWS keypair {} not found for {}".format(key_name, key_path)
+    if not key:
+        raise ValueError(
+            "No matching local key file for any of the key pairs in this "
+            "account with ids from 0..{}. ".format(key_name) +
+            "Consider deleting some unused keys pairs from your account.")
+
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
-    print("KeyName not specified for nodes, using {}".format(key_name))
+    logger.info("KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
@@ -144,9 +153,10 @@ def _configure_key_pair(config):
 
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
+    use_internal_ips = config["provider"].get("use_internal_ips", False)
     subnets = sorted(
-        (s for s in ec2.subnets.all()
-         if s.state == "available" and s.map_public_ip_on_launch),
+        (s for s in ec2.subnets.all() if s.state == "available" and (
+            use_internal_ips or s.map_public_ip_on_launch)),
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
     if not subnets:
@@ -154,7 +164,8 @@ def _configure_subnet(config):
             "No usable subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch.")
+            "on instance launch unless you set 'use_internal_ips': True in "
+            "the 'provider' config.")
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(',')
         subnets = [s for s in subnets if s.availability_zone in azs]
@@ -170,11 +181,13 @@ def _configure_subnet(config):
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
-        print("SubnetIds not specified for head node, using ", subnet_descr)
+        logger.info("SubnetIds not specified for head node,"
+                    " using {}".format(subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        print("SubnetId not specified for workers, using ", subnet_descr)
+        logger.info("SubnetId not specified for workers,"
+                    " using {}".format(subnet_descr))
 
     return config
 
@@ -189,7 +202,7 @@ def _configure_security_group(config):
     security_group = _get_security_group(config, vpc_id, group_name)
 
     if security_group is None:
-        print("Creating new security group {}".format(group_name))
+        logger.info("Creating new security group {}".format(group_name))
         client = _client("ec2", config)
         client.create_security_group(
             Description="Auto-created security group for Ray workers",
@@ -216,13 +229,15 @@ def _configure_security_group(config):
         }])
 
     if "SecurityGroupIds" not in config["head_node"]:
-        print("SecurityGroupIds not specified for head node, using {}".format(
-            security_group.group_name))
+        logger.info(
+            "SecurityGroupIds not specified for head node, using {}".format(
+                security_group.group_name))
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        print("SecurityGroupIds not specified for workers, using {}".format(
-            security_group.group_name))
+        logger.info(
+            "SecurityGroupIds not specified for workers, using {}".format(
+                security_group.group_name))
         config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
 
     return config
@@ -258,8 +273,11 @@ def _get_role(role_name, config):
     try:
         role.load()
         return role
-    except Exception:
-        return None
+    except botocore.exceptions.ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
+            return None
+        else:
+            raise exc
 
 
 def _get_instance_profile(profile_name, config):
@@ -268,8 +286,11 @@ def _get_instance_profile(profile_name, config):
     try:
         profile.load()
         return profile
-    except Exception:
-        return None
+    except botocore.exceptions.ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
+            return None
+        else:
+            raise exc
 
 
 def _get_key(key_name, config):

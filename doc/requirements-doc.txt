@@ -1,5 +1,6 @@
 colorama
 click
+filelock
 flatbuffers
 funcsigs
 mock
@@ -7,9 +8,9 @@ numpy
 opencv-python
 pyarrow
 pyyaml
-psutil
 recommonmark
 redis
+setproctitle
 sphinx
 sphinx-click
 sphinx_rtd_theme

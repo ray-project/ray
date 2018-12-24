@@ -12,7 +12,6 @@
 
 #include "plasma/client.h"
 #include "plasma/events.h"
-#include "plasma/plasma.h"
 
 #include "ray/id.h"
 #include "ray/status.h"
@@ -41,10 +40,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  /// \param release_delay The number of release calls before objects are released
-  /// from the store client (FIFO).
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size,
-                   int max_chunks, const int release_delay);
+  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -124,10 +120,18 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
- private:
-  /// Gets the chunk size based on data size.
-  uint64_t GetChunkSize(uint64_t data_size);
+  /// Free a list of objects from object store.
+  ///
+  /// \param object_ids the The list of ObjectIDs to be deleted.
+  /// \return Void.
+  void FreeObjects(const std::vector<ObjectID> &object_ids);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
+ private:
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
   void AbortCreate(const ObjectID &object_id);
@@ -181,8 +185,6 @@ class ObjectBufferPool {
   std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
-  /// The maximum number of chunks allowed.
-  const uint64_t max_chunks_;
   /// The state of a buffer that's currently being used.
   std::unordered_map<ray::ObjectID, GetBufferState> get_buffer_state_;
   /// The state of a buffer that's currently being used.

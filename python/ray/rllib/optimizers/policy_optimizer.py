@@ -2,9 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 import ray
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyOptimizer(object):
@@ -44,6 +48,7 @@ class PolicyOptimizer(object):
         """
         self.local_evaluator = local_evaluator
         self.remote_evaluators = remote_evaluators or []
+        self.episode_history = []
         self.config = config or {}
         self._init(**self.config)
 
@@ -51,10 +56,13 @@ class PolicyOptimizer(object):
         self.num_steps_trained = 0
         self.num_steps_sampled = 0
 
+        logger.debug("Created policy optimizer with {}: {}".format(
+            config, self))
+
     def _init(self):
         """Subclasses should prefer overriding this instead of __init__."""
 
-        pass
+        raise NotImplementedError
 
     def step(self):
         """Takes a logical optimization step.
@@ -88,6 +96,42 @@ class PolicyOptimizer(object):
         self.num_steps_trained = data[0]
         self.num_steps_sampled = data[1]
 
+    def stop(self):
+        """Release any resources used by this optimizer."""
+        pass
+
+    def collect_metrics(self,
+                        timeout_seconds,
+                        min_history=100,
+                        selected_evaluators=None):
+        """Returns evaluator and optimizer stats.
+
+        Arguments:
+            timeout_seconds (int): Max wait time for a evaluator before
+                dropping its results. This usually indicates a hung evaluator.
+            min_history (int): Min history length to smooth results over.
+            selected_evaluators (list): Override the list of remote evaluators
+                to collect metrics from.
+
+        Returns:
+            res (dict): A training result dict from evaluator metrics with
+                `info` replaced with stats from self.
+        """
+        episodes, num_dropped = collect_episodes(
+            self.local_evaluator,
+            selected_evaluators or self.remote_evaluators,
+            timeout_seconds=timeout_seconds)
+        orig_episodes = list(episodes)
+        missing = min_history - len(episodes)
+        if missing > 0:
+            episodes.extend(self.episode_history[-missing:])
+            assert len(episodes) <= min_history
+        self.episode_history.extend(orig_episodes)
+        self.episode_history = self.episode_history[-min_history:]
+        res = summarize_episodes(episodes, orig_episodes, num_dropped)
+        res.update(info=self.stats())
+        return res
+
     def foreach_evaluator(self, func):
         """Apply the given function to each evaluator instance."""
 
@@ -109,11 +153,59 @@ class PolicyOptimizer(object):
         ])
         return local_result + remote_results
 
-    def collect_metrics(self):
-        res = collect_metrics(self.local_evaluator, self.remote_evaluators)
-        return res._replace(info=self.stats())
+    @classmethod
+    def make(cls,
+             env_creator,
+             policy_graph,
+             optimizer_batch_size=None,
+             num_workers=0,
+             num_envs_per_worker=None,
+             optimizer_config=None,
+             remote_num_cpus=None,
+             remote_num_gpus=None,
+             **eval_kwargs):
+        """Creates an Optimizer with local and remote evaluators.
 
-    def _check_not_multiagent(self, sample_batch):
-        if isinstance(sample_batch, MultiAgentBatch):
-            raise NotImplementedError(
-                "This optimizer does not support multi-agent yet.")
+        Args:
+            env_creator(func): Function that returns a gym.Env given an
+                EnvContext wrapped configuration.
+            policy_graph (class|dict): Either a class implementing
+                PolicyGraph, or a dictionary of policy id strings to
+                (PolicyGraph, obs_space, action_space, config) tuples.
+                See PolicyEvaluator documentation.
+            optimizer_batch_size (int): Batch size summed across all workers.
+                Will override worker `batch_steps`.
+            num_workers (int): Number of remote evaluators
+            num_envs_per_worker (int): (Optional) Sets the number
+                environments per evaluator for vectorization.
+                If set, overrides `num_envs` in kwargs
+                for PolicyEvaluator.__init__.
+            optimizer_config (dict): Config passed to the optimizer.
+            remote_num_cpus (int): CPU specification for remote evaluator.
+            remote_num_gpus (int): GPU specification for remote evaluator.
+            **eval_kwargs: PolicyEvaluator Class non-positional args.
+
+        Returns:
+            (Optimizer) Instance of `cls` with evaluators configured
+                accordingly.
+        """
+        optimizer_config = optimizer_config or {}
+        if num_envs_per_worker:
+            assert num_envs_per_worker > 0, "Improper num_envs_per_worker!"
+            eval_kwargs["num_envs"] = int(num_envs_per_worker)
+        if optimizer_batch_size:
+            assert optimizer_batch_size > 0
+            if num_workers > 1:
+                eval_kwargs["batch_steps"] = \
+                    optimizer_batch_size // num_workers
+            else:
+                eval_kwargs["batch_steps"] = optimizer_batch_size
+        evaluator = PolicyEvaluator(env_creator, policy_graph, **eval_kwargs)
+        remote_cls = PolicyEvaluator.as_remote(remote_num_cpus,
+                                               remote_num_gpus)
+        remote_evaluators = [
+            remote_cls.remote(env_creator, policy_graph, **eval_kwargs)
+            for i in range(num_workers)
+        ]
+
+        return cls(evaluator, remote_evaluators, optimizer_config)

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,12 +20,10 @@ import setuptools.command.build_ext as _build_ext
 # NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
 
 ray_files = [
-    "ray/core/src/common/thirdparty/redis/src/redis-server",
-    "ray/core/src/common/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store", "ray/core/src/plasma/plasma_manager",
-    "ray/core/src/local_scheduler/local_scheduler",
-    "ray/core/src/local_scheduler/liblocal_scheduler_library_python.so",
-    "ray/core/src/global_scheduler/global_scheduler",
+    "ray/core/src/ray/thirdparty/redis/src/redis-server",
+    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
+    "ray/core/src/plasma/plasma_store_server",
+    "ray/core/src/ray/raylet/libraylet_library_python.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
@@ -46,6 +45,7 @@ ray_ui_files = [
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
+    "ray/autoscaler/local/example-full.yaml",
 ]
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
@@ -64,7 +64,10 @@ else:
 
 optional_ray_files += ray_autoscaler_files
 
-extras = {"rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"]}
+extras = {
+    "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
+    "debug": ["psutil", "setproctitle", "py-spy"],
+}
 
 
 class build_ext(_build_ext.build_ext):
@@ -77,12 +80,10 @@ class build_ext(_build_ext.build_ext):
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
-        pyarrow_files = [
-            os.path.join("ray/pyarrow_files/pyarrow", filename)
-            for filename in os.listdir("./ray/pyarrow_files/pyarrow")
-            if not os.path.isdir(
-                os.path.join("ray/pyarrow_files/pyarrow", filename))
-        ]
+        pyarrow_files = []
+        for (root, dirs, filenames) in os.walk("./ray/pyarrow_files/pyarrow"):
+            for name in filenames:
+                pyarrow_files.append(os.path.join(root, name))
 
         files_to_include = ray_files + pyarrow_files
 
@@ -99,7 +100,7 @@ class build_ext(_build_ext.build_ext):
         for filename in optional_ray_files:
             try:
                 self.move_file(filename)
-            except Exception as e:
+            except Exception:
                 print("Failed to copy optional file {}. This is ok."
                       .format(filename))
 
@@ -122,28 +123,51 @@ class BinaryDistribution(Distribution):
         return True
 
 
+def find_version(*filepath):
+    # Extract version information from filepath
+    here = os.path.abspath(os.path.dirname(__file__))
+    with open(os.path.join(here, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
+requires = [
+    "numpy >= 1.10.4",
+    "filelock",
+    "funcsigs",
+    "click",
+    "colorama",
+    "pytest",
+    "pyyaml",
+    "redis",
+    # The six module is required by pyarrow.
+    "six >= 1.0.0",
+    "flatbuffers",
+]
+
+if sys.version_info < (3, 0):
+    requires.append("faulthandler")
+
 setup(
     name="ray",
-    # The version string is also in __init__.py. TODO(pcm): Fix this.
-    version="0.5.0",
+    version=find_version("ray", "__init__.py"),
+    author="Ray Team",
+    author_email="ray-dev@googlegroups.com",
+    description=("A system for parallel and distributed Python that unifies "
+                 "the ML ecosystem."),
+    long_description=open("../README.rst").read(),
+    url="https://github.com/ray-project/ray",
+    keywords=("ray distributed parallel machine-learning "
+              "reinforcement-learning deep-learning python"),
     packages=find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
-    install_requires=[
-        "numpy >= 1.10.4",
-        "funcsigs",
-        "click",
-        "colorama",
-        "psutil",
-        "pytest",
-        "pyyaml",
-        "redis",
-        # The six module is required by pyarrow.
-        "six >= 1.0.0",
-        "flatbuffers"
-    ],
-    setup_requires=["cython >= 0.27, < 0.28"],
+    install_requires=requires,
+    setup_requires=["cython >= 0.29"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

@@ -10,7 +10,9 @@ import ray
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
+from ray.rllib.utils.annotations import override
 
 
 class A3CLoss(nn.Module):
@@ -56,13 +58,19 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
             loss,
             loss_inputs=["obs", "actions", "advantages", "value_targets"])
 
+    @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
         return {"vf_preds": var_to_np(model_out[1])}
 
+    @override(TorchPolicyGraph)
     def optimizer(self):
         return torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0

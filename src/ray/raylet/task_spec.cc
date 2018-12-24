@@ -1,7 +1,8 @@
 #include "task_spec.h"
 
-#include "common.h"
-#include "common_protocol.h"
+#include "ray/common/common_protocol.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -31,45 +32,53 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
 
 void TaskSpecification::AssignSpecification(const uint8_t *spec, size_t spec_size) {
   spec_.assign(spec, spec + spec_size);
+  // Initialize required_resources_ and required_placement_resources_
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  auto required_placement_resources =
+      map_from_flatbuf(*message->required_placement_resources());
+  // If the required_placement_resources field is empty, then the placement
+  // resources default to the required resources.
+  if (required_placement_resources.size() == 0) {
+    required_placement_resources = required_resources;
+  }
+  required_resources_ = ResourceSet(required_resources);
+  required_placement_resources_ = ResourceSet(required_placement_resources);
 }
 
 TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
   AssignSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size());
 }
 
+TaskSpecification::TaskSpecification(const std::string &string) {
+  AssignSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size());
+}
+
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
-    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
-                        ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
-                        function_id, task_arguments, num_returns, required_resources) {}
+                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1,
+                        task_arguments, num_returns, required_resources,
+                        std::unordered_map<std::string, double>(), language,
+                        function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
-    const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
-    const FunctionID &function_id,
+    const int64_t max_actor_reconstructions, const ActorID &actor_id,
+    const ActorHandleID &actor_handle_id, int64_t actor_counter,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources)
+    const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
+  TaskID task_id = GenerateTaskId(driver_id, parent_task_id, parent_counter);
 
-  // Compute the final task ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  TaskID task_id;
-  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
-  memcpy(&task_id, buff, sizeof(task_id));
-  task_id = FinishTaskId(task_id);
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
@@ -87,10 +96,12 @@ TaskSpecification::TaskSpecification(
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
-      to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
-      to_flatbuf(fbb, actor_handle_id), actor_counter, false,
-      to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources));
+      to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
+      to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
+      fbb.CreateVector(arguments), fbb.CreateVector(returns),
+      map_to_flatbuf(fbb, required_resources),
+      map_to_flatbuf(fbb, required_placement_resources), language,
+      string_vec_to_flatbuf(fbb, function_descriptor));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -116,13 +127,16 @@ UniqueID TaskSpecification::DriverId() const {
   return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->parent_counter();
 }
-FunctionID TaskSpecification::FunctionId() const {
-  throw std::runtime_error("Method not implemented");
+std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return string_vec_from_flatbuf(*message->function_descriptor());
 }
 
 int64_t TaskSpecification::NumArgs() const {
@@ -154,19 +168,41 @@ ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
+
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
-}
-size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
-}
-double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  throw std::runtime_error("Method not implemented");
-}
-const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_resources = map_from_flatbuf(*message->required_resources());
-  return ResourceSet(required_resources);
+  return reinterpret_cast<const uint8_t *>(
+      message->args()->Get(arg_index)->data()->c_str());
+}
+
+size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->Get(arg_index)->data()->size();
+}
+
+double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
+  RAY_CHECK(required_resources_.GetResourceMap().empty() == false);
+  auto it = required_resources_.GetResourceMap().find(resource_name);
+  RAY_CHECK(it != required_resources_.GetResourceMap().end());
+  return it->second;
+}
+
+const ResourceSet TaskSpecification::GetRequiredResources() const {
+  return required_resources_;
+}
+
+const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
+  return required_placement_resources_;
+}
+
+bool TaskSpecification::IsDriverTask() const {
+  // Driver tasks are empty tasks that have no function ID set.
+  return FunctionDescriptor().empty();
+}
+
+Language TaskSpecification::GetLanguage() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->language();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {
@@ -183,6 +219,11 @@ ActorID TaskSpecification::ActorCreationId() const {
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->actor_creation_dummy_object_id());
+}
+
+int64_t TaskSpecification::MaxActorReconstructions() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->max_actor_reconstructions();
 }
 
 ActorID TaskSpecification::ActorId() const {

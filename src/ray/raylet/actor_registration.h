@@ -14,7 +14,8 @@ namespace raylet {
 ///
 /// Information about an actor registered in the system. This includes the
 /// actor's current node manager location, and if local, information about its
-/// current execution state, used for reconstruction purposes.
+/// current execution state, used for reconstruction purposes, and whether the
+/// actor is currently alive or not.
 class ActorRegistration {
  public:
   /// Create an actor registration.
@@ -35,6 +36,19 @@ class ActorRegistration {
     ObjectID execution_dependency;
   };
 
+  /// Get the actor table data.
+  ///
+  /// \return The actor table data.
+  const ActorTableDataT &GetTableData() const { return actor_table_data_; }
+
+  /// Get the actor's current state (ALIVE or DEAD).
+  ///
+  /// \return The actor's current state.
+  const ActorState &GetState() const { return actor_table_data_.state; }
+
+  /// Update actor's state.
+  void SetState(const ActorState &state) { actor_table_data_.state = state; }
+
   /// Get the actor's node manager location.
   ///
   /// \return The actor's node manager location. All tasks for the actor should
@@ -47,6 +61,15 @@ class ActorRegistration {
   ///
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
+
+  /// Get actor's driver ID.
+  const DriverID GetDriverId() const;
+
+  /// Get the max number of times this actor should be reconstructed.
+  const int64_t GetMaxReconstructions() const;
+
+  /// Get the remaining number of times this actor should be reconstructed.
+  const int64_t GetRemainingReconstructions() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
@@ -65,6 +88,9 @@ class ActorRegistration {
   /// that handle.
   const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
+  /// Get all the dummy objects of this actor's tasks.
+  const std::vector<ObjectID> &GetDummyObjects() const { return dummy_objects_; }
+
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
   ///
@@ -73,6 +99,11 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   void ExtendFrontier(const ActorHandleID &handle_id,
                       const ObjectID &execution_dependency);
+
+  /// Returns num handles to this actor entry.
+  ///
+  /// \return int.
+  int NumHandles() const;
 
  private:
   /// Information from the global actor table about this actor, including the
@@ -86,6 +117,9 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+
+  /// All of the dummy object IDs from this actor's tasks.
+  std::vector<ObjectID> dummy_objects_;
 };
 
 }  // namespace raylet

@@ -13,7 +13,7 @@ from keras import backend as K
 
 import ray
 from ray import tune
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 class TuneCallback(keras.callbacks.Callback):
@@ -106,6 +106,8 @@ def create_parser():
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
+        "--use-gpu", action="store_true", help="Use GPU in training.")
+    parser.add_argument(
         '--jobs',
         type=int,
         default=1,
@@ -113,8 +115,8 @@ def create_parser():
     parser.add_argument(
         '--threads',
         type=int,
-        default=None,
-        help='threads used in operations (default: all)')
+        default=2,
+        help='threads used in operations (default: 2)')
     parser.add_argument(
         '--steps',
         type=float,
@@ -184,12 +186,20 @@ if __name__ == '__main__':
                     "timesteps_total": 10 if args.smoke_test else 300
                 },
                 "run": "train_mnist",
-                "repeat": 1 if args.smoke_test else 10,
+                "num_samples": 1 if args.smoke_test else 10,
+                "resources_per_trial": {
+                    "cpu": args.threads,
+                    "gpu": 0.5 if args.use_gpu else 0
+                },
                 "config": {
-                    "lr": lambda spec: np.random.uniform(0.001, 0.1),
-                    "momentum": lambda spec: np.random.uniform(0.1, 0.9),
-                    "hidden": lambda spec: np.random.randint(32, 512),
-                    "dropout1": lambda spec: np.random.uniform(0.2, 0.8),
+                    "lr": tune.sample_from(
+                        lambda spec: np.random.uniform(0.001, 0.1)),
+                    "momentum": tune.sample_from(
+                        lambda spec: np.random.uniform(0.1, 0.9)),
+                    "hidden": tune.sample_from(
+                        lambda spec: np.random.randint(32, 512)),
+                    "dropout1": tune.sample_from(
+                        lambda spec: np.random.uniform(0.2, 0.8)),
                 }
             }
         },

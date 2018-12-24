@@ -3,8 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import numpy as np
+import datetime
 import os
+import random
 import re
 import signal
 import subprocess
@@ -32,7 +33,15 @@ def wait_for_output(proc):
     Returns:
         A tuple of the stdout and stderr of the process as strings.
     """
-    stdout_data, stderr_data = proc.communicate()
+    try:
+        # NOTE: This test must be run with Python 3.
+        stdout_data, stderr_data = proc.communicate(timeout=200)
+    except subprocess.TimeoutExpired:
+        # Timeout: kill the process.
+        # Get the remaining message from PIPE for debugging purpose.
+        print("Killing process because it timed out.")
+        proc.kill()
+        stdout_data, stderr_data = proc.communicate()
 
     if stdout_data is not None:
         try:
@@ -289,13 +298,16 @@ class DockerRunner(object):
         Raises:
             Exception: An exception is raised if the timeout expires.
         """
+        print("Multi-node docker test started at: {}".format(
+            datetime.datetime.now()))
         all_container_ids = (
             [self.head_container_id] + self.worker_container_ids)
         if driver_locations is None:
             driver_locations = [
-                np.random.randint(0, len(all_container_ids))
-                for _ in range(num_drivers)
+                random.randrange(0, len(all_container_ids))
+                for i in range(num_drivers)
             ]
+        print("driver_locations: {}".format(driver_locations))
 
         # Define a signal handler and set an alarm to go off in
         # timeout_seconds.
@@ -313,8 +325,8 @@ class DockerRunner(object):
             container_id = all_container_ids[driver_locations[i]]
             command = [
                 "docker", "exec", container_id, "/bin/bash", "-c",
-                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} python "
-                 "{}".format(self.head_container_ip, i, test_script))
+                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
+                 "python {}".format(self.head_container_ip, i, test_script))
             ]
             print("Starting driver with command {}.".format(test_script))
             # Start the driver.
@@ -322,7 +334,6 @@ class DockerRunner(object):
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             driver_processes.append(p)
 
-        # Wait for the drivers to finish.
         results = []
         for p in driver_processes:
             stdout_data, stderr_data = wait_for_output(p)
@@ -337,7 +348,8 @@ class DockerRunner(object):
 
         # Disable the alarm.
         signal.alarm(0)
-
+        print("Multi-node docker test ended at: {}".format(
+            datetime.datetime.now()))
         return results
 
 

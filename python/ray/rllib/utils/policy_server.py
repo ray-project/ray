@@ -18,17 +18,21 @@ elif sys.version_info[0] == 3:
 
 
 class PolicyServer(ThreadingMixIn, HTTPServer):
-    """REST server than can be launched from a ServingEnv.
+    """REST server than can be launched from a ExternalEnv.
 
     This launches a multi-threaded server that listens on the specified host
     and port to serve policy requests and forward experiences to RLlib.
 
     Examples:
-        >>> class CartpoleServing(ServingEnv):
+        >>> class CartpoleServing(ExternalEnv):
                def __init__(self):
-                   ServingEnv.__init__(
+                   ExternalEnv.__init__(
                        self, spaces.Discrete(2),
-                       spaces.Box(low=-10, high=10, shape=(4,)))
+                       spaces.Box(
+                           low=-10,
+                           high=10,
+                           shape=(4,),
+                           dtype=np.float32))
                def run(self):
                    server = PolicyServer(self, "localhost", 8900)
                    server.serve_forever()
@@ -46,12 +50,12 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
         >>> client.log_returns(eps_id, reward)
     """
 
-    def __init__(self, serving_env, address, port):
-        handler = _make_handler(serving_env)
+    def __init__(self, external_env, address, port):
+        handler = _make_handler(external_env)
         HTTPServer.__init__(self, (address, port), handler)
 
 
-def _make_handler(serving_env):
+def _make_handler(external_env):
     class Handler(SimpleHTTPRequestHandler):
         def do_POST(self):
             content_len = int(self.headers.get('Content-Length'), 0)
@@ -69,20 +73,20 @@ def _make_handler(serving_env):
             command = args["command"]
             response = {}
             if command == PolicyClient.START_EPISODE:
-                response["episode_id"] = serving_env.start_episode(
+                response["episode_id"] = external_env.start_episode(
                     args["episode_id"], args["training_enabled"])
             elif command == PolicyClient.GET_ACTION:
-                response["action"] = serving_env.get_action(
+                response["action"] = external_env.get_action(
                     args["episode_id"], args["observation"])
             elif command == PolicyClient.LOG_ACTION:
-                serving_env.log_action(args["episode_id"], args["observation"],
-                                       args["action"])
+                external_env.log_action(args["episode_id"],
+                                        args["observation"], args["action"])
             elif command == PolicyClient.LOG_RETURNS:
-                serving_env.log_returns(args["episode_id"], args["reward"],
-                                        args["info"])
+                external_env.log_returns(args["episode_id"], args["reward"],
+                                         args["info"])
             elif command == PolicyClient.END_EPISODE:
-                serving_env.end_episode(args["episode_id"],
-                                        args["observation"])
+                external_env.end_episode(args["episode_id"],
+                                         args["observation"])
             else:
                 raise Exception("Unknown command: {}".format(command))
             return response

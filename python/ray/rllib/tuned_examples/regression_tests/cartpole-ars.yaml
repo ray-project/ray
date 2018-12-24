@@ -1,0 +1,16 @@
+cartpole-ars:
+    env: CartPole-v0
+    run: ARS
+    stop:
+        episode_reward_mean: 50
+        timesteps_total: 500000
+    config:
+        noise_stdev: 0.02
+        num_rollouts: 50
+        rollouts_used: 25
+        num_workers: 2
+        sgd_stepsize: 0.01
+        noise_size: 25000000
+        eval_prob: 0.5
+        model:
+            fcnet_hiddens: []  # a linear policy

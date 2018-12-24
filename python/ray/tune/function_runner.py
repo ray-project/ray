@@ -2,18 +2,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 import threading
-import traceback
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TrainingResult
-from ray.tune.util import _serve_get_pin_requests
+from ray.tune.result import TIMESTEPS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 
 class StatusReporter(object):
-    """Object passed into your main() that you can report status through."""
+    """Object passed into your function that you can report status through.
+
+    Example:
+        >>> def trainable_function(config, reporter):
+        >>>     assert isinstance(reporter, StatusReporter)
+        >>>     reporter(timesteps_total=1)
+    """
 
     def __init__(self):
         self._latest_result = None
@@ -26,13 +33,14 @@ class StatusReporter(object):
         """Report updated training status.
 
         Args:
-            kwargs (TrainingResult): Latest training result status. You must
-                at least define `timesteps_total`, but probably want to report
-                some of the other metrics as well.
+            kwargs: Latest training result status.
+
+        Example:
+            >>> reporter(mean_accuracy=1, training_iteration=4)
         """
 
         with self._lock:
-            self._latest_result = self._last_result = TrainingResult(**kwargs)
+            self._latest_result = self._last_result = kwargs.copy()
 
     def _get_and_clear_status(self):
         if self._error:
@@ -40,7 +48,8 @@ class StatusReporter(object):
         if self._done and not self._latest_result:
             if not self._last_result:
                 raise TuneError("Trial finished without reporting result!")
-            return self._last_result._replace(done=True)
+            self._last_result.update(done=True)
+            return self._last_result
         with self._lock:
             res = self._latest_result
             self._latest_result = None
@@ -71,7 +80,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter._error = e
-            print("Runner thread raised: {}".format(traceback.format_exc()))
+            logger.exception("Runner Thread raised error.")
             raise e
         finally:
             self._status_reporter._done = True
@@ -85,10 +94,10 @@ class FunctionRunner(Trainable):
     _name = "func"
     _default_config = DEFAULT_CONFIG
 
-    def _setup(self):
+    def _setup(self, config):
         entrypoint = self._trainable_func()
         self._status_reporter = StatusReporter()
-        scrubbed_config = self.config.copy()
+        scrubbed_config = config.copy()
         for k in self._default_config:
             if k in scrubbed_config:
                 del scrubbed_config[k]
@@ -109,16 +118,15 @@ class FunctionRunner(Trainable):
                             self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
-            _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
-        if result.timesteps_total is None:
-            raise TuneError("Must specify timesteps_total in result", result)
 
-        result = result._replace(
-            timesteps_this_iter=(
-                result.timesteps_total - self._last_reported_timestep))
-        self._last_reported_timestep = result.timesteps_total
+        curr_ts_total = result.get(TIMESTEPS_TOTAL)
+        if curr_ts_total is not None:
+            result.update(
+                timesteps_this_iter=(
+                    curr_ts_total - self._last_reported_timestep))
+            self._last_reported_timestep = curr_ts_total
 
         return result
 

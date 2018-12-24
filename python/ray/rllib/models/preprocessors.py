@@ -1,12 +1,19 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from collections import OrderedDict
 import cv2
+import logging
 import numpy as np
 import gym
 
+from ray.rllib.utils.annotations import override
+
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
+
+logger = logging.getLogger(__name__)
 
 
 class Preprocessor(object):
@@ -16,40 +23,64 @@ class Preprocessor(object):
         shape (obj): Shape of the preprocessed output.
     """
 
-    def __init__(self, obs_space, options):
+    def __init__(self, obs_space, options=None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
-        self._options = options
-        self._init()
+        self._options = options or {}
+        self.shape = self._init_shape(obs_space, options)
 
-    def _init(self):
-        pass
+    def _init_shape(self, obs_space, options):
+        """Returns the shape after preprocessing."""
+        raise NotImplementedError
 
     def transform(self, observation):
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
+    @property
+    def size(self):
+        return int(np.product(self.shape))
 
-class AtariPixelPreprocessor(Preprocessor):
-    def _init(self):
-        self._grayscale = self._options.get("grayscale", False)
-        self._zero_mean = self._options.get("zero_mean", True)
-        self._dim = self._options.get("dim", 80)
-        self._channel_major = self._options.get("channel_major", False)
+    @property
+    def observation_space(self):
+        obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
+        # Stash the unwrapped space so that we can unwrap dict and tuple spaces
+        # automatically in model.py
+        if (isinstance(self, TupleFlatteningPreprocessor)
+                or isinstance(self, DictFlatteningPreprocessor)):
+            obs_space.original_space = self._obs_space
+        return obs_space
+
+
+class GenericPixelPreprocessor(Preprocessor):
+    """Generic image preprocessor.
+
+    Note: for Atari games, use config {"preprocessor_pref": "deepmind"}
+    instead for deepmind-style Atari preprocessing.
+    """
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        self._grayscale = options.get("grayscale")
+        self._zero_mean = options.get("zero_mean")
+        self._dim = options.get("dim")
+        self._channel_major = options.get("channel_major")
         if self._grayscale:
-            self.shape = (self._dim, self._dim, 1)
+            shape = (self._dim, self._dim, 1)
         else:
-            self.shape = (self._dim, self._dim, 3)
+            shape = (self._dim, self._dim, 3)
 
         # channel_major requires (# in-channels, row dim, col dim)
         if self._channel_major:
-            self.shape = self.shape[-1:] + self.shape[:-1]
+            shape = shape[-1:] + shape[:-1]
+        return shape
 
+    @override(Preprocessor)
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
         scaled = observation[25:-25, :, :]
-        if self._dim < 80:
-            scaled = cv2.resize(scaled, (80, 80))
+        if self._dim < 84:
+            scaled = cv2.resize(scaled, (84, 84))
         # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
         # If we resize directly we lose pixels that, when mapped to 42x42,
         # aren't close enough to the pixel boundary.
@@ -69,27 +100,36 @@ class AtariPixelPreprocessor(Preprocessor):
 
 
 class AtariRamPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = (128, )
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        return (128, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         return (observation - 128) / 128
 
 
 class OneHotPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = (self._obs_space.n, )
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        return (self._obs_space.n, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
+        if not self._obs_space.contains(observation):
+            raise ValueError("Observation outside expected value range",
+                             self._obs_space, observation)
         arr[observation] = 1
         return arr
 
 
 class NoPreprocessor(Preprocessor):
-    def _init(self):
-        self.shape = self._obs_space.shape
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        return self._obs_space.shape
 
+    @override(Preprocessor)
     def transform(self, observation):
         return observation
 
@@ -97,27 +137,58 @@ class NoPreprocessor(Preprocessor):
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
 
-    If desired, the vector output can be unpacked via tf.reshape() within a
-    custom model to handle each component separately.
+    RLlib models will unpack the flattened output before _build_layers_v2().
     """
 
-    def _init(self):
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
         assert isinstance(self._obs_space, gym.spaces.Tuple)
         size = 0
         self.preprocessors = []
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
-            print("Creating sub-preprocessor for", space)
+            logger.debug("Creating sub-preprocessor for {}".format(space))
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
-            size += np.product(preprocessor.shape)
-        self.shape = (size, )
+            size += preprocessor.size
+        return (size, )
 
+    @override(Preprocessor)
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), observation
         return np.concatenate([
-            np.reshape(p.transform(o), [np.product(p.shape)])
+            np.reshape(p.transform(o), [p.size])
             for (o, p) in zip(observation, self.preprocessors)
+        ])
+
+
+class DictFlatteningPreprocessor(Preprocessor):
+    """Preprocesses each dict value, then flattens it all into a vector.
+
+    RLlib models will unpack the flattened output before _build_layers_v2().
+    """
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        assert isinstance(self._obs_space, gym.spaces.Dict)
+        size = 0
+        self.preprocessors = []
+        for space in self._obs_space.spaces.values():
+            logger.debug("Creating sub-preprocessor for {}".format(space))
+            preprocessor = get_preprocessor(space)(space, self._options)
+            self.preprocessors.append(preprocessor)
+            size += preprocessor.size
+        return (size, )
+
+    @override(Preprocessor)
+    def transform(self, observation):
+        if not isinstance(observation, OrderedDict):
+            observation = OrderedDict(sorted(list(observation.items())))
+        assert len(observation) == len(self.preprocessors), \
+            (len(observation), len(self.preprocessors))
+        return np.concatenate([
+            np.reshape(p.transform(o), [p.size])
+            for (o, p) in zip(observation.values(), self.preprocessors)
         ])
 
 
@@ -130,11 +201,13 @@ def get_preprocessor(space):
     if isinstance(space, gym.spaces.Discrete):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
-        preprocessor = AtariPixelPreprocessor
+        preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor
+    elif isinstance(space, gym.spaces.Dict):
+        preprocessor = DictFlatteningPreprocessor
     else:
         preprocessor = NoPreprocessor
 

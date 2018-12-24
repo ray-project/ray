@@ -37,13 +37,26 @@ class PolicyGraph(object):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self,
+                        obs_batch,
+                        state_batches,
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
-            is_training (bool): whether we are training the policy
+            prev_action_batch (np.ndarray): batch of previous action values
+            prev_reward_batch (np.ndarray): batch of previous rewards
+            info_batch (info): batch of info objects
+            episodes (list): MultiAgentEpisode for each obs in obs_batch.
+                This provides access to all of the internal episode state,
+                which may be useful for model-based or multiagent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -55,13 +68,26 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
-    def compute_single_action(self, obs, state, is_training=False):
+    def compute_single_action(self,
+                              obs,
+                              state,
+                              prev_action_batch=None,
+                              prev_reward_batch=None,
+                              info_batch=None,
+                              episode=None,
+                              **kwargs):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
-            is_training (bool): whether we are training the policy
+            prev_action_batch (np.ndarray): batch of previous action values
+            prev_reward_batch (np.ndarray): batch of previous rewards
+            info_batch (list): batch of info objects
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multi-agent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (obj): single action
@@ -70,12 +96,18 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training)
+            [obs], [[s] for s in state], episodes=[episode])
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         """Implements algorithm-specific trajectory postprocessing.
+
+        This will be called on each trajectory fragment computed during policy
+        evaluation. Each fragment is guaranteed to be only from one episode.
 
         Arguments:
             sample_batch (SampleBatch): batch of experiences for the policy,
@@ -83,6 +115,9 @@ class PolicyGraph(object):
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy_graph, agent_batch) tuples
                 containing the policy graph and experiences of the other agent.
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multi-agent algorithms.
 
         Returns:
             SampleBatch: postprocessed sample batch.
@@ -157,3 +192,19 @@ class PolicyGraph(object):
             state (obj): Serialized local state.
         """
         self.set_weights(state)
+
+    def on_global_var_update(self, global_vars):
+        """Called on an update to global vars.
+
+        Arguments:
+            global_vars (dict): Global variables broadcast from the driver.
+        """
+        pass
+
+    def export_model(self, export_dir):
+        """Export PolicyGraph to local directory for serving.
+
+        Arguments:
+            export_dir (str): Local writable directory
+        """
+        raise NotImplementedError

@@ -57,6 +57,11 @@ class ConnectionPool {
   void RegisterSender(ConnectionType type, const ClientID &client_id,
                       std::shared_ptr<SenderConnection> &conn);
 
+  /// Remove a sender connection.
+  ///
+  /// \param conn The actual connection.
+  void RemoveSender(const std::shared_ptr<SenderConnection> &conn);
+
   /// Get a sender connection from the connection pool.
   /// The connection must be released or removed when the operation for which the
   /// connection was obtained is completed. If the connection pool is empty, the
@@ -65,16 +70,16 @@ class ConnectionPool {
   /// \param[in] type The type of connection.
   /// \param[in] client_id The ClientID of the remote object manager.
   /// \param[out] conn An empty pointer to a shared pointer.
-  /// \return Status of invoking this method.
-  ray::Status GetSender(ConnectionType type, const ClientID &client_id,
-                        std::shared_ptr<SenderConnection> *conn);
+  /// \return Void.
+  void GetSender(ConnectionType type, const ClientID &client_id,
+                 std::shared_ptr<SenderConnection> *conn);
 
   /// Releases a sender connection, allowing it to be used by another operation.
   ///
   /// \param type The type of connection.
   /// \param conn The actual connection.
-  /// \return Status of invoking this method.
-  ray::Status ReleaseSender(ConnectionType type, std::shared_ptr<SenderConnection> &conn);
+  /// \return Void.
+  void ReleaseSender(ConnectionType type, std::shared_ptr<SenderConnection> &conn);
 
   // TODO(hme): Implement with error handling.
   /// Remove a sender connection. This is invoked if the connection is no longer
@@ -84,6 +89,11 @@ class ConnectionPool {
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
   ray::Status RemoveSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
+
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
 
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
@@ -107,6 +117,10 @@ class ConnectionPool {
   /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
               std::shared_ptr<TcpClientConnection> &conn);
+
+  /// Removes the given sender for ClientID from the given map.
+  void Remove(SenderMapType &conn_map, const ClientID &client_id,
+              const std::shared_ptr<SenderConnection> &conn);
 
   /// Returns the count of sender connections to ClientID.
   uint64_t Count(SenderMapType &conn_map, const ClientID &client_id);

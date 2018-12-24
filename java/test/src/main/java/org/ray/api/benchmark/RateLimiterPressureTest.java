@@ -1,14 +1,11 @@
 package org.ray.api.benchmark;
 
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.api.test.MyRunner;
+import org.ray.api.annotation.RayRemote;
 
-@RunWith(MyRunner.class)
 public class RateLimiterPressureTest extends RayBenchmarkTest {
 
   public static final int clientNum = 2;

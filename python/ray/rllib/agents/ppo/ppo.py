@@ -2,16 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import pickle
+import logging
 
-import ray
 from ray.rllib.agents import Agent, with_common_config
 from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.utils import FilterManager
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
-from ray.tune.trial import Resources
+from ray.rllib.utils.annotations import override
 
+logger = logging.getLogger(__name__)
+
+# yapf: disable
+# __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
@@ -20,42 +21,44 @@ DEFAULT_CONFIG = with_common_config({
     "lambda": 1.0,
     # Initial coefficient for KL divergence
     "kl_coeff": 0.2,
+    # Size of batches collected from each worker
+    "sample_batch_size": 200,
     # Number of timesteps collected for each SGD round
-    "timesteps_per_batch": 4000,
+    "train_batch_size": 4000,
+    # Total SGD batch size across all devices for SGD
+    "sgd_minibatch_size": 128,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
-    "sgd_stepsize": 5e-5,
-    # Total SGD batch size across all devices for SGD (multi-gpu only)
-    "sgd_batchsize": 128,
+    "lr": 5e-5,
+    # Learning rate schedule
+    "lr_schedule": None,
+    # Share layers for value function
+    "vf_share_layers": False,
     # Coefficient of the value function loss
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
     "clip_param": 0.3,
+    # Clip param for the value function. Note that this is sensitive to the
+    # scale of the rewards. If your expected V is large, increase this.
+    "vf_clip_param": 10.0,
     # Target value for KL divergence
     "kl_target": 0.01,
-    # Number of GPUs to use for SGD
-    "num_gpus": 0,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
-    "batch_mode": "complete_episodes",
+    "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
-    # Use the sync samples optimizer instead of the multi-gpu one
+    # Uses the sync samples optimizer instead of the multi-gpu one. This does
+    # not support minibatches.
     "simple_optimizer": False,
-    # Override model config
-    "model": {
-        # Whether to use LSTM model
-        "use_lstm": False,
-        # Max seq length for LSTM training.
-        "max_seq_len": 20,
-    },
+    # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
+    # sampling tasks for performance but can waste a large portion of samples.
+    "straggler_mitigation": False,
 })
+# __sphinx_doc_end__
+# yapf: enable
 
 
 class PPOAgent(Agent):
@@ -63,38 +66,36 @@ class PPOAgent(Agent):
 
     _agent_name = "PPO"
     _default_config = DEFAULT_CONFIG
+    _policy_graph = PPOPolicyGraph
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1,
-            gpu=cf["num_gpus"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
-
+    @override(Agent)
     def _init(self):
+        self._validate_config()
         self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, PPOPolicyGraph)
+            self.env_creator, self._policy_graph)
         self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, PPOPolicyGraph, self.config["num_workers"], {
-                "num_cpus": self.config["num_cpus_per_worker"],
-                "num_gpus": self.config["num_gpus_per_worker"]
-            })
+            self.env_creator, self._policy_graph, self.config["num_workers"])
         if self.config["simple_optimizer"]:
             self.optimizer = SyncSamplesOptimizer(
-                self.local_evaluator, self.remote_evaluators,
-                {"num_sgd_iter": self.config["num_sgd_iter"]})
+                self.local_evaluator, self.remote_evaluators, {
+                    "num_sgd_iter": self.config["num_sgd_iter"],
+                    "train_batch_size": self.config["train_batch_size"],
+                })
         else:
             self.optimizer = LocalMultiGPUOptimizer(
                 self.local_evaluator, self.remote_evaluators, {
-                    "sgd_batch_size": self.config["sgd_batchsize"],
-                    "sgd_stepsize": self.config["sgd_stepsize"],
+                    "sgd_batch_size": self.config["sgd_minibatch_size"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
-                    "timesteps_per_batch": self.config["timesteps_per_batch"],
-                    "standardize_fields": ["advantages"]
+                    "num_gpus": self.config["num_gpus"],
+                    "sample_batch_size": self.config["sample_batch_size"],
+                    "num_envs_per_worker": self.config["num_envs_per_worker"],
+                    "train_batch_size": self.config["train_batch_size"],
+                    "standardize_fields": ["advantages"],
+                    "straggler_mitigation": (
+                        self.config["straggler_mitigation"]),
                 })
 
+    @override(Agent)
     def _train(self):
         prev_steps = self.optimizer.num_steps_sampled
         fetches = self.optimizer.step()
@@ -106,32 +107,31 @@ class PPOAgent(Agent):
             # multi-agent
             self.local_evaluator.foreach_trainable_policy(
                 lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
-        FilterManager.synchronize(self.local_evaluator.filters,
-                                  self.remote_evaluators)
-        res = self.optimizer.collect_metrics()
-        res = res._replace(
+        res = self.optimizer.collect_metrics(
+            self.config["collect_metrics_timeout"])
+        res.update(
             timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps,
-            info=dict(fetches, **res.info))
+            info=dict(fetches, **res.get("info", {})))
         return res
 
-    def _stop(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
-        extra_data = [self.local_evaluator.save(), agent_state]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            a.restore.remote(o)
-            for (a, o) in zip(self.remote_evaluators, extra_data[1])
-        ])
+    def _validate_config(self):
+        if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
+            raise ValueError(
+                "Minibatch size {} must be <= train batch size {}.".format(
+                    self.config["sgd_minibatch_size"],
+                    self.config["train_batch_size"]))
+        if (self.config["batch_mode"] == "truncate_episodes"
+                and not self.config["use_gae"]):
+            raise ValueError(
+                "Episode truncation is not supported without a value function")
+        if (self.config["multiagent"]["policy_graphs"]
+                and not self.config["simple_optimizer"]):
+            logger.info(
+                "In multi-agent mode, policies will be optimized sequentially "
+                "by the multi-GPU optimizer. Consider setting "
+                "simple_optimizer=True if this doesn't work for you.")
+        if self.config["observation_filter"] != "NoFilter":
+            # TODO(ekl): consider setting the default to be NoFilter
+            logger.warning(
+                "By default, observations will be normalized with {}".format(
+                    self.config["observation_filter"]))

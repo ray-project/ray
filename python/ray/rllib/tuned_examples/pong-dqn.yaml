@@ -6,6 +6,7 @@ pong-deterministic-dqn:
         episode_reward_mean: 20
         time_total_s: 7200
     config:
+        num_gpus: 1
         gamma: 0.99
         lr: .0001
         learning_starts: 10000
