@@ -5,27 +5,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import click
 import os
 import subprocess
 
 import ray
-
-try:
-    import __builtin__
-    input = getattr(__builtin__, 'raw_input')
-except (ImportError, AttributeError):
-    pass
 
 if __name__ == "__main__":
     rllib_home = os.path.abspath(os.path.join(ray.__file__, "../rllib"))
     local_home = os.path.abspath(os.path.dirname(__file__))
     assert os.path.isdir(rllib_home), rllib_home
     assert os.path.isdir(local_home), local_home
-    print(
+    click.confirm(
         "This will replace:\n  {}\nwith a symlink to:\n  {}".format(
-            rllib_home, local_home) + "\nHit <Enter> to continue: ",
-        end="")
-    input()
+            rllib_home, local_home),
+        abort=True)
     if os.access(os.path.dirname(rllib_home), os.W_OK):
         subprocess.check_call(["rm", "-rf", rllib_home])
         subprocess.check_call(["ln", "-s", local_home, rllib_home])
