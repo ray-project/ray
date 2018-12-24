@@ -17,10 +17,6 @@ Trying snapshots from master
 
 Here are links to the latest wheels (which are built off of master). To install these wheels, run the following command:
 
-.. danger::
-
-    These versions will have newer features but are subject to more bugs. If you encounter crashes or other instabilities, please revert to the latest stable version.
-
 .. code-block:: bash
 
   pip install -U [link to wheel]
