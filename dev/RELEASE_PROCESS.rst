@@ -27,8 +27,8 @@ This document describes the process for creating new releases.
 
 6. **Python wheels:** The Python wheels will automatically be built on Travis
    and uploaded to the ``ray-wheels`` S3 bucket. Download these wheels (e.g.,
-   using ``wget``) and installing them with ``pip`` and running some simple Ray
-   scripts to verify that they work.
+   using ``wget``) and install them with ``pip`` and run some simple Ray scripts
+   to verify that they work.
 
 7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
