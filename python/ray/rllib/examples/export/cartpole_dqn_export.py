@@ -7,7 +7,7 @@ from __future__ import print_function
 import ray
 import tensorflow as tf
 
-from ray.rllib.agents.agent import get_agent_class
+from ray.rllib.agents.registry import get_agent_class
 
 ray.init(num_cpus=10)
 
