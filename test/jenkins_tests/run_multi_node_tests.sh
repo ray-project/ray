@@ -14,6 +14,57 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=5 \
+    --num-gpus=0,1,2,3,4 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=2 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=5 \
+    --num-gpus=0,1,2,3,4 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=2 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=5 \
+    --num-gpus=0,1,2,3,4 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=5 \
+    --num-redis-shards=2 \
+    --num-gpus=0,0,5,6,50 \
+    --num-drivers=100 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/many_drivers_test.py
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v0 \
