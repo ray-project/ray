@@ -119,7 +119,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   app_name_ = app_name;
 #ifdef RAY_USE_GLOG
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::InitGoogleLogging(app_name_.c_str());
   google::SetStderrLogging(mapped_severity_threshold);
   // Enble log file if log_dir is not empty.
   if (!log_dir.empty()) {
@@ -137,17 +136,13 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_name.substr(pos + 1);
       }
     }
+    google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::DEBUG),
-                              dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::INFO),
-                              dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::WARNING),
-                              dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::ERROR),
-                              dir_ends_with_slash.c_str());
-    google::SetLogDestination(GetMappedSeverity(RayLogLevel::FATAL),
-                              dir_ends_with_slash.c_str());
+    for (enum RayLogLevel level = severity_threshold_; level <= RayLogLevel::FATAL;
+         level=(enum RayLogLevel)((int)level+1)) {
+      google::SetLogDestination(GetMappedSeverity(level),
+                                dir_ends_with_slash.c_str());
+    }
   }
 #endif
 }
