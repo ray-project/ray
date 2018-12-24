@@ -191,6 +191,10 @@ class Trial(object):
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
 
+    def update_resources(self, cpu, gpu, extra_cpu=0, extra_gpu=0):
+        assert self.status is not Trial.RUNNING
+        self.resources = Resources(cpu, gpu, extra_cpu=0, extra_gpu=0)
+
     def close_logger(self):
         """Close logger."""
 
