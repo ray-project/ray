@@ -516,13 +516,8 @@ class FunctionActorManager(object):
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        print("export_actor_class: function_descriptor: %s" %
-              function_descriptor)
-        print("export_actor_class: function_id: %s" %
-              function_descriptor.function_id)
         key = (b"ActorClass:" + self._worker.task_driver_id.id() + b":" +
                function_descriptor.function_id.id())
-        print("export_actor_class key: %s" % key)
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
@@ -552,11 +547,8 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        print("Load Actor: function_descriptor: %s" % function_descriptor)
-        print("Load Actor: function_id: %s" % function_descriptor.function_id)
         key = (b"ActorClass:" + driver_id + b":" +
                function_descriptor.function_id.id())
-        print("load_actor key: %s" % key)
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
@@ -618,10 +610,6 @@ class FunctionActorManager(object):
             function_descriptor = FunctionDescriptor(module, actor_method_name,
                                                      class_name)
             function_id = function_descriptor.function_id.id()
-            print("fetch_and_register_actor: function_descriptor: %s" %
-                  function_descriptor)
-            print("fetch_and_register_actor: function_id: %s" %
-                  function_descriptor.function_id)
             temporary_executor = self._make_actor_method_executor(
                 actor_method_name,
                 temporary_actor_method,
