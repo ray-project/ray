@@ -21,7 +21,7 @@ from ray.rllib.agents.ppo import PPOAgent
 from ray.tune.logger import pretty_print
 
 
-class ParametricActionsModel(Model):
+class MaskedActionsModel(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         action_mask = input_dict["obs"]["action_mask"]
         if num_outputs != action_mask.shape[1].value:
@@ -55,7 +55,7 @@ class ParametricActionsModel(Model):
 
 
 class SC2MultiAgentEnv(MultiAgentEnv):
-    """RLlib Wrapper around StarCraft"""
+    """RLlib Wrapper around StarCraft2."""
 
     def __init__(self, override_cfg):
         PYMARL_PATH = override_cfg.pop("pymarl_path")
@@ -67,7 +67,6 @@ class SC2MultiAgentEnv(MultiAgentEnv):
         with open(os.path.join(curpath, "sc2.yaml")) as f:
             pymarl_args = yaml.load(f)
             pymarl_args.update(override_cfg)
-            # HACK
             pymarl_args["env_args"].setdefault("seed", 0)
 
         self._starcraft_env = StarCraft2Env(**pymarl_args)
@@ -117,14 +116,14 @@ if __name__ == "__main__":
                                     os.path.expanduser("~/pymarl/"))
 
     ray.init()
-    ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
+    ModelCatalog.register_custom_model("mask_model", MaskedActionsModel)
 
     register_env("starcraft", lambda cfg: SC2MultiAgentEnv(cfg))
     agent_cfg = {
         "observation_filter": "NoFilter",
         "num_workers": 4,
         "model": {
-            "custom_model": "pa_model",
+            "custom_model": "mask_model",
         },
         "env_config": {
             "pymarl_path": path_to_pymarl
