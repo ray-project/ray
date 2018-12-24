@@ -520,7 +520,9 @@ class FunctionActorManager(object):
               function_descriptor)
         print("export_actor_class: function_id: %s" %
               function_descriptor.function_id)
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        key = (b"ActorClass:" + self._worker.task_driver_id.id() + b":" +
+               function_descriptor.function_id.id())
+        print("export_actor_class key: %s" % key)
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
@@ -552,7 +554,9 @@ class FunctionActorManager(object):
     def load_actor(self, driver_id, function_descriptor):
         print("Load Actor: function_descriptor: %s" % function_descriptor)
         print("Load Actor: function_id: %s" % function_descriptor.function_id)
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        key = (b"ActorClass:" + driver_id + b":" +
+               function_descriptor.function_id.id())
+        print("load_actor key: %s" % key)
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
