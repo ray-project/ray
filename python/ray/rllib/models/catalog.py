@@ -232,9 +232,8 @@ class ModelCatalog(object):
                                      options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options=None):
-        """Returns a PyTorch suitable model. This is currently only supported
-        in A3C.
+    def get_torch_model(obs_space, num_outputs, options=None):
+        """Returns a custom model for PyTorch algorithms.
 
         Args:
             input_shape (tuple): The input shape to the model.
@@ -249,12 +248,14 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
+        assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
+
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.info("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL, model)(
-                input_shape, num_outputs, options)
+                obs_space, num_outputs, options)
 
         # TODO(alok): fix to handle Discrete(n) state spaces
         obs_rank = len(input_shape) - 1

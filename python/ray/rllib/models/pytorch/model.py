@@ -5,28 +5,40 @@ from __future__ import print_function
 import torch.nn as nn
 
 
-class Model(nn.Module):
-    def __init__(self, obs_space, ac_space, options):
-        super(Model, self).__init__()
-        self._build_layers(obs_space, ac_space, options)
+class PyTorchModel(nn.Module):
+    def __init__(self, obs_space, num_outputs, options):
+        """All custom RLlib torch models must support this constructor.
 
-    def _build_layers(self, inputs, num_outputs, options):
-        raise NotImplementedError
+        Arguments:
+            obs_space (gym.Space): Input observation space.
+            num_outputs (int): Output tensor must be of size
+                [BATCH_SIZE, num_outputs].
+            options (dict): Dictionary of model options.
+        """
+        nn.Module.__init__(self)
+        self.obs_space = obs_space
+        self.num_outputs = num_outputs
+        self.options = options
 
-    def forward(self, obs):
-        """Forward pass for the model. Internal method - should only
-        be passed PyTorch Tensors.
+    def forward(self, input_dict, hidden_state):
+        """Forward pass for the model.
 
-        PyTorch automatically overloads the given model
-        with this function. Recommended that model(obs)
-        is used instead of model.forward(obs). See
-        https://discuss.pytorch.org/t/any-different-between-model
-        -input-and-model-forward-input/3690
+        Arguments:
+            input_dict (dict): Dictionary of tensor inputs, commonly
+                including "obs", "prev_action", "prev_reward", each of shape
+                [BATCH_SIZE, ...].
+            hidden_state (list): List of hidden state tensors, each of shape
+                [BATCH_SIZE, h_size].
+
+        Returns:
+            (outputs, feature_layer, state_out): Tensors of size
+                [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
+                and [len(hidden_state), BATCH_SIZE, h_size].
         """
         raise NotImplementedError
 
 
-class SlimConv2d(nn.Module):
+class SlimConv2d(PyTorchModel):
     """Simple mock of tf.slim Conv2d"""
 
     def __init__(self,
@@ -56,7 +68,7 @@ class SlimConv2d(nn.Module):
         return self._model(x)
 
 
-class SlimFC(nn.Module):
+class SlimFC(PyTorchModel):
     """Simple PyTorch of `linear` function"""
 
     def __init__(self,
