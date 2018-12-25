@@ -10,7 +10,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
-from ray.params import RayParams
+from ray.parameter import RayParams
 
 if sys.version_info >= (3, 0):
     from importlib import reload

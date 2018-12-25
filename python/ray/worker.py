@@ -37,7 +37,7 @@ import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
-from ray.params import RayParams
+from ray.parameter import RayParams
 from ray.utils import (
     check_oversized_pickle,
     is_cython,

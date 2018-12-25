@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.params import RayParams
+from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils

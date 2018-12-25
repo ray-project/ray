@@ -13,7 +13,7 @@ import sys
 import time
 
 import ray
-from ray.params import RayParams
+from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
 import ray.test.cluster_utils

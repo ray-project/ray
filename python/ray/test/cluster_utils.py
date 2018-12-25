@@ -7,7 +7,7 @@ import logging
 import time
 
 import ray
-from ray.params import RayParams
+from ray.parameter import RayParams
 import ray.services as services
 
 logger = logging.getLogger(__name__)

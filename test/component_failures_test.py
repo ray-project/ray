@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.params import RayParams
+from ray.parameter import RayParams
 from ray.test.cluster_utils import Cluster
 from ray.test.test_utils import run_string_as_driver_nonblocking
 

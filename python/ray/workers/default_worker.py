@@ -8,7 +8,7 @@ import traceback
 
 import ray
 import ray.actor
-from ray.params import RayParams
+from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.tempfile_services as tempfile_services
 
