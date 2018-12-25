@@ -98,9 +98,9 @@ class TrialRunner(object):
         self._queue_trials = queue_trials
 
         self._server = None
+        self._server_port = server_port
         if launch_web_server:
-            self._server_port = server_port
-            self._server = TuneServer(self, server_port)
+            self._server = TuneServer(self, self._server_port)
 
         self._trials = []
         self._stop_queue = []
@@ -120,11 +120,11 @@ class TrialRunner(object):
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
-            "runner": self
+            "runner_data": self.__getstate__()
         }
         tmp_file_name = os.path.join(checkpoint_dir, ".tmp_checkpoint")
-        with open(tmp_file_name, "wb") as f:
-            cloudpickle.dump(runner_state, f)
+        with open(tmp_file_name, "w") as f:
+            json.dump(runner_state, f)
 
         os.rename(tmp_file_name,
                   os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE))
@@ -146,21 +146,19 @@ class TrialRunner(object):
             runner (TrialRunner): A TrialRunner to resume experiments from.
         """
         with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
-                  "rb") as f:
-            runner_state = cloudpickle.load(f)
+                  "r") as f:
+            runner_state = json.load(f)
 
         logger.warning(
             "Tune recovery is still experimental. "
             "There is limited search algorithm recovery support. "
             "Restoring with a BasicVariantGenerator and FIFOScheduler.")
 
-        runner = runner_state["runner"]
         from ray.tune.suggest import BasicVariantGenerator
-        runner._search_alg = BasicVariantGenerator()
-        runner._scheduler_alg = FIFOScheduler()
+        runner = TrialRunner(
+            BasicVariantGenerator(), trial_executor=trial_executor)
 
-        runner.trial_executor = trial_executor or \
-            RayTrialExecutor(queue_trials=runner._queue_trials)
+        runner.__setstate__(runner_state["runner_data"])
 
         logger.info("Adding all trials with checkpoint state.")
         trial_checkpoints = [
@@ -507,25 +505,21 @@ class TrialRunner(object):
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
     def __getstate__(self):
-        state = self.__dict__.copy()
-
-        state["trial_executor"] = None
-        state["_search_alg"] = None
-        # TODO(rliaw): Remove this once component FT is implemented
-        state["_scheduler_alg"] = None
-
-        if state["_server"]:
-            state["_launch_web_server"] = True
-            state["_server"] = None
-
-        state["_stop_queue"] = []
-        state["_trials"] = []
-        state["_trial_checkpoints"] = {}
+        state = {
+            "_checkpoint_dir": self._checkpoint_dir,
+            "_checkpoint_mode": self._checkpoint_mode,
+            "_global_time_limit": self._global_time_limit,
+            "_iteration": self._iteration,
+            "_queue_trials": self._queue_trials,
+            "_server_port": self._server_port,
+            "_total_time": self._total_time,
+            "_verbose": self._verbose,
+            "launch_web_server": bool(self._server)
+        }
         return state
 
     def __setstate__(self, state):
-        if "_launch_web_server" in state:
-            state.pop("_launch_web_server")
-            state["_server"] = TuneServer(self, state["_server_port"])
-
+        launch_web_server = state.pop("launch_web_server")
         self.__dict__.update(state)
+        if launch_web_server:
+            self._server = TuneServer(self, self._server_port)
