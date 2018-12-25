@@ -51,7 +51,7 @@ class TrialExecutor(object):
 
         Metadata checkpointing will occur either if the trial is
         checkpointable (meaning its checkpoint frequency is positive),
-        or if it has not started running
+        or if it has not started running.
 
         Args:
             trial (Trial): Trial to checkpoint.

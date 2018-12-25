@@ -88,6 +88,9 @@ class RayTrialExecutor(TrialExecutor):
             stop_logger (bool): Whether to shut down the trial logger.
         """
 
+        if stop_logger:
+            trial.close_logger()
+
         if error:
             self.set_status(trial, Trial.ERROR)
         else:
@@ -107,9 +110,6 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
-
-        if stop_logger:
-            trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None):
         """Starts the trial.
