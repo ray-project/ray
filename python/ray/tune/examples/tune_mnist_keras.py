@@ -187,7 +187,7 @@ if __name__ == '__main__':
                 },
                 "run": "train_mnist",
                 "num_samples": 1 if args.smoke_test else 10,
-                "trial_resources": {
+                "resources_per_trial": {
                     "cpu": args.threads,
                     "gpu": 0.5 if args.use_gpu else 0
                 },

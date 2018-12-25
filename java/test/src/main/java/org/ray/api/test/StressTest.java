@@ -5,14 +5,12 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.UniqueId;
 
-@RunWith(MyRunner.class)
-public class StressTest {
+public class StressTest extends BaseTest {
 
   public static int echo(int x) {
     return x;

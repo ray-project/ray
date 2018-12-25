@@ -54,11 +54,14 @@ ADD_THIRDPARTY_LIB(boost_system
   STATIC_LIB ${Boost_SYSTEM_LIBRARY})
 ADD_THIRDPARTY_LIB(boost_filesystem
   STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
+ADD_THIRDPARTY_LIB(boost_thread
+  STATIC_LIB ${Boost_THREAD_LIBRARY})
 
 add_dependencies(boost_system boost_ep)
 add_dependencies(boost_filesystem boost_ep)
+add_dependencies(boost_thread boost_ep)
 
-add_custom_target(boost DEPENDS boost_system boost_filesystem)
+add_custom_target(boost DEPENDS boost_system boost_filesystem boost_thread)
 
 # flatbuffers
 include(FlatBuffersExternalProject)
@@ -120,6 +123,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
       "PYARROW_WITH_TENSORFLOW=1"
       "PYARROW_BUNDLE_ARROW_CPP=1"
       "PARQUET_HOME=${PARQUET_HOME}"
+      "BOOST_ROOT=${BOOST_ROOT}"
       "PYARROW_WITH_PARQUET=1"
       "PYARROW_PARALLEL=")
 

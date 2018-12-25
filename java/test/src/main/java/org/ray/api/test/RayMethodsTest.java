@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
@@ -14,8 +13,7 @@ import org.ray.runtime.util.logger.RayLog;
 /**
  * Integration test for Ray.*
  */
-@RunWith(MyRunner.class)
-public class RayMethodsTest {
+public class RayMethodsTest extends BaseTest {
 
   @Test
   public void test() {

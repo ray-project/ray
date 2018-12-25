@@ -13,8 +13,7 @@ import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
 
 
-@RunWith(MyRunner.class)
-public class PlasmaFreeTest {
+public class PlasmaFreeTest extends BaseTest {
 
   @RayRemote
   private static String hello() {

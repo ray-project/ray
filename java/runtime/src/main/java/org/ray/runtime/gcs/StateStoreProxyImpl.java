@@ -11,13 +11,15 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.ClientTableData;
 import org.ray.runtime.util.NetworkUtil;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A class used to interface with the Ray control state.
  */
 public class StateStoreProxyImpl implements StateStoreProxy {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(StateStoreProxyImpl.class);
   public KeyValueStoreLink rayKvStore;
   public ArrayList<KeyValueStoreLink> shardStoreList = new ArrayList<>();
 
@@ -87,11 +89,11 @@ public class StateStoreProxyImpl implements StateStoreProxy {
         return doGetAddressInfo(nodeIpAddress, redisAddress);
       } catch (Exception e) {
         try {
-          RayLog.core.warn("Error occurred in StateStoreProxyImpl getAddressInfo, "
-                  + (numRetries - count) + " retries remaining", e);
+          LOGGER.warn("Error occurred in StateStoreProxyImpl getAddressInfo, {} retries remaining",
+                  (numRetries - count), e);
           TimeUnit.MILLISECONDS.sleep(1000);
         } catch (InterruptedException ie) {
-          RayLog.core.error("error at StateStoreProxyImpl getAddressInfo", e);
+          LOGGER.error("error at StateStoreProxyImpl getAddressInfo", e);
           throw new RuntimeException(e);
         }
       }

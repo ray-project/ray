@@ -366,12 +366,14 @@ class GlobalState(object):
             node_info[client_id] = {
                 "ClientID": client_id,
                 "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(client.NodeManagerAddress()),
+                "NodeManagerAddress": decode(
+                    client.NodeManagerAddress(), allow_none=True),
                 "NodeManagerPort": client.NodeManagerPort(),
                 "ObjectManagerPort": client.ObjectManagerPort(),
                 "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName()),
-                "RayletSocketName": decode(client.RayletSocketName()),
+                    client.ObjectStoreSocketName(), allow_none=True),
+                "RayletSocketName": decode(
+                    client.RayletSocketName(), allow_none=True),
                 "Resources": resources
             }
         return list(node_info.values())
@@ -433,7 +435,8 @@ class GlobalState(object):
 
             component_type = decode(profile_table_message.ComponentType())
             component_id = binary_to_hex(profile_table_message.ComponentId())
-            node_ip_address = decode(profile_table_message.NodeIpAddress())
+            node_ip_address = decode(
+                profile_table_message.NodeIpAddress(), allow_none=True)
 
             for j in range(profile_table_message.ProfileEventsLength()):
                 profile_event_message = profile_table_message.ProfileEvents(j)
