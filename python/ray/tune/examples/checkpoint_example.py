@@ -14,7 +14,6 @@ import numpy as np
 
 import ray
 from ray.tune import Trainable, run_experiments, Experiment, sample_from
-from ray.tune.schedulers import HyperBandScheduler
 
 
 class MyTrainableClass(Trainable):
@@ -60,7 +59,7 @@ if __name__ == "__main__":
         num_samples=20,
         stop={"training_iteration": 50},
         checkpoint_freq=4,
-        local_dir="~/ray_results/checkpoint_test/",
+        local_dir="~/ray_results/checkpoint_test2/",
         config={
             "width": sample_from(lambda spec: 10 + int(90 * random.random())),
             "height": sample_from(lambda spec: int(100 * random.random()))

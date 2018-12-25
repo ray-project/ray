@@ -117,8 +117,8 @@ def run_experiments(experiments=None,
         logger.info("Using checkpoint_dir: {}.".format(checkpoint_dir))
         if not os.path.exists(
                 os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
-            logger.warn("Did not find checkpoint file in {}.".format(
-                checkpoint_dir))
+            logger.warn(
+                "Did not find checkpoint file in {}.".format(checkpoint_dir))
         else:
             logger.warn("Restoring from previous experiment and "
                         "ignoring any new changes to specification.")

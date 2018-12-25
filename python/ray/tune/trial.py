@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import cloudpickle
 from datetime import datetime
 import logging
 import time
@@ -362,24 +363,59 @@ class Trial(object):
         """
         if not self._checkpoint.storage == Checkpoint.DISK:
             raise ValueError("Checkpoint cannot be in-memory.")
-        state = self.__dict__.copy()
+        state = {
+            "checkpoint_at_end": self.checkpoint_at_end,
+            "checkpoint_freq": self.checkpoint_freq,
+            "error_file": self.error_file,
+            "experiment_tag": self.experiment_tag,
+            "last_debug": self.last_debug,
+            "last_result": self.last_result,
+            "last_update_time": self.last_update_time,
+            "local_dir": self.local_dir,
+            "location": self.location,
+            "logdir": self.logdir,
+            "max_failures": self.max_failures,
+            "num_failures": self.num_failures,
+            "result_logger": None,
+            "runner": None,
+            "status": Trial.PENDING
+            if self.status == Trial.RUNNING else self.status,
+            "stopping_criterion": self.stopping_criterion,
+            "trainable_name": self.trainable_name,
+            "trial_id": self.trial_id,
+            "upload_dir": self.upload_dir,
+            "verbose": self.verbose
+        }
 
-        if state["status"] == Trial.RUNNING:
-            state["status"] = Trial.PENDING
+        state.update({
+            "_checkpoint": cloudpickle.dumps(self._checkpoint),
+            "config": cloudpickle.dumps(self.config),
+            "custom_loggers": cloudpickle.dumps(self.custom_loggers),
+            "resources": cloudpickle.dumps(self.resources),
+            "sync_function": cloudpickle.dumps(self.sync_function),
+            "trial_name_creator": cloudpickle.dumps(self.trial_name_creator),
+        })
+
         # Remove the unpicklable entries.
-        if state["result_logger"]:
-            state["result_logger"].flush()
+        if self.result_logger:
+            self.result_logger.flush()
             state["_logger_started"] = True
         else:
             state["_logger_started"] = False
-
-        state["result_logger"] = None
-        state["runner"] = None
         return state
 
     def __setstate__(self, state):
         logger_started = state.pop("_logger_started")
+        state.update({
+            "_checkpoint": cloudpickle.loads(state["_checkpoint"]),
+            "config": cloudpickle.loads(state["config"]),
+            "custom_loggers": cloudpickle.loads(state["custom_loggers"]),
+            "resources": cloudpickle.loads(state["resources"]),
+            "sync_function": cloudpickle.loads(state["sync_function"]),
+            "trial_name_creator": cloudpickle.loads(
+                state["trial_name_creator"]),
+        })
         self.__dict__.update(state)
-        Trial._registration_check(self.__dict__["trainable_name"])
+        Trial._registration_check(self.trainable_name)
         if logger_started:
             self.init_logger()
