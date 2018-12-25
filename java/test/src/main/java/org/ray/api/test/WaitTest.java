@@ -63,6 +63,15 @@ public class WaitTest {
 
   @Test
   public void testWaitForEmpty() {
-    Assert.assertNull(Ray.wait(new ArrayList<>()));
+    WaitResult<String> result = Ray.wait(new ArrayList<>());
+    Assert.assertTrue(result.getReady().isEmpty());
+    Assert.assertTrue(result.getUnready().isEmpty());
+
+    try {
+      Ray.wait(null);
+      Assert.fail();
+    } catch (NullPointerException e) {
+      Assert.assertTrue(true);
+    }
   }
 }

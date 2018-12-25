@@ -47,8 +47,11 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, UniqueId currentTaskId) {
-    if (waitFor == null || waitFor.isEmpty()) {
-      return null;
+    if (waitFor == null) {
+      throw new NullPointerException();
+    }
+    if (waitFor.isEmpty()) {
+      return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
     }
 
     List<UniqueId> ids = new ArrayList<>();
