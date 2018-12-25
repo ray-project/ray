@@ -163,11 +163,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
           }
         }
 
-        if (retryCounter  % LIMITED_RETRY_COUNTER == 0) {
-          LOGGER.warn("Attempted {} times to reconstruct object {}, "
+        if (retryCounter % LIMITED_RETRY_COUNTER == 0) {
+          LOGGER.warn("Attempted {} times to reconstruct objects {}, "
               + "but haven't received response. If this message continues to print,"
               + " it may indicate that the task is hanging, or someting wrong "
-              + "happened in raylet backend.", LIMITED_RETRY_COUNTER, taskId);
+              + "happened in raylet backend.",
+            retryCounter, unreadys.keySet());
         }
       }
 
