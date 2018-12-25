@@ -260,6 +260,10 @@ class ModelCatalog(object):
             return _global_registry.get(RLLIB_MODEL,
                                         model)(obs_space, num_outputs, options)
 
+        if options.get("use_lstm"):
+            raise NotImplementedError(
+                "LSTM auto-wrapping not implemented for torch")
+
         if default_model_cls:
             return default_model_cls(obs_space, num_outputs, options)
 
