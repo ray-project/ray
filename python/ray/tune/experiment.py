@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import logging
+import os
 import six
 import types
 
@@ -108,7 +109,7 @@ class Experiment(object):
             "config": config or {},
             "trial_resources": trial_resources,
             "num_samples": num_samples,
-            "local_dir": local_dir or DEFAULT_RESULTS_DIR,
+            "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "custom_loggers": custom_loggers,
