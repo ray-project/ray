@@ -46,7 +46,6 @@ class LocalSyncParallelOptimizer(object):
             clipped.
         build_graph: Function that takes the specified inputs and returns a
             TF Policy Graph instance.
-        grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
     def __init__(self,

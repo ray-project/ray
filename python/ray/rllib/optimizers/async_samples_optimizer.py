@@ -42,34 +42,41 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_envs_per_worker=1,
               num_gpus=0,
               lr=0.0005,
-              grad_clip=40,
               replay_buffer_num_slots=0,
               replay_proportion=0.0,
-              num_parallel_data_loaders=1,
+              num_data_loader_buffers=1,
               max_sample_requests_in_flight_per_worker=2,
-              broadcast_interval=1):
+              broadcast_interval=1,
+              num_sgd_iter=1,
+              minibatch_buffer_size=1,
+              _fake_gpus=False):
         self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
 
-        if num_gpus > 1 or num_parallel_data_loaders > 1:
+        if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
-                    num_gpus, num_parallel_data_loaders))
-            if train_batch_size // max(1, num_gpus) % (
-                    sample_batch_size // num_envs_per_worker) != 0:
+                    num_gpus, num_data_loader_buffers))
+            if num_data_loader_buffers < minibatch_buffer_size:
                 raise ValueError(
-                    "Sample batches must evenly divide across GPUs.")
+                    "In multi-gpu mode you must have at least as many "
+                    "parallel data loader buffers as minibatch buffers: "
+                    "{} vs {}".format(num_data_loader_buffers,
+                                      minibatch_buffer_size))
             self.learner = TFMultiGPULearner(
                 self.local_evaluator,
                 lr=lr,
                 num_gpus=num_gpus,
                 train_batch_size=train_batch_size,
-                grad_clip=grad_clip,
-                num_parallel_data_loaders=num_parallel_data_loaders)
+                num_data_loader_buffers=num_data_loader_buffers,
+                minibatch_buffer_size=minibatch_buffer_size,
+                num_sgd_iter=num_sgd_iter,
+                _fake_gpus=_fake_gpus)
         else:
-            self.learner = LearnerThread(self.local_evaluator)
+            self.learner = LearnerThread(self.local_evaluator,
+                                         minibatch_buffer_size, num_sgd_iter)
         self.learner.start()
 
         assert len(self.remote_evaluators) > 0
@@ -91,8 +98,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.batch_buffer = []
 
         if replay_proportion:
-            assert replay_buffer_num_slots > 0
-            assert (replay_buffer_num_slots * sample_batch_size >
+            if replay_buffer_num_slots * sample_batch_size <= train_batch_size:
+                raise ValueError(
+                    "Replay buffer size is too small to produce train, "
+                    "please increase replay_buffer_num_slots.",
+                    replay_buffer_num_slots, sample_batch_size,
                     train_batch_size)
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
@@ -220,12 +230,14 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator):
+    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
+        self.minibatch_buffer = MinibatchBuffer(
+            self.inqueue, minibatch_buffer_size, num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
@@ -241,7 +253,7 @@ class LearnerThread(threading.Thread):
 
     def step(self):
         with self.queue_timer:
-            batch = self.inqueue.get()
+            batch, _ = self.minibatch_buffer.get()
 
         with self.grad_timer:
             fetches = self.local_evaluator.compute_apply(batch)
@@ -260,19 +272,24 @@ class TFMultiGPULearner(LearnerThread):
                  num_gpus=1,
                  lr=0.0005,
                  train_batch_size=500,
-                 grad_clip=40,
-                 num_parallel_data_loaders=1):
+                 num_data_loader_buffers=1,
+                 minibatch_buffer_size=1,
+                 num_sgd_iter=1,
+                 _fake_gpus=False):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
-        LearnerThread.__init__(self, local_evaluator)
+        LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
+                               num_sgd_iter)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
             self.devices = ["/cpu:0"]
+        elif _fake_gpus:
+            self.devices = ["/cpu:{}".format(i) for i in range(num_gpus)]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(num_gpus)]
-            logger.info("TFMultiGPULearner devices {}".format(self.devices))
+        logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
         self.policy = self.local_evaluator.policy_map["default"]
@@ -291,7 +308,7 @@ class TFMultiGPULearner(LearnerThread):
                     else:
                         rnn_inputs = []
                     adam = tf.train.AdamOptimizer(self.lr)
-                    for _ in range(num_parallel_data_loaders):
+                    for _ in range(num_data_loader_buffers):
                         self.par_opt.append(
                             LocalSyncParallelOptimizer(
                                 adam,
@@ -299,8 +316,7 @@ class TFMultiGPULearner(LearnerThread):
                                 [v for _, v in self.policy._loss_inputs],
                                 rnn_inputs,
                                 999999,  # it will get rounded down
-                                self.policy.copy,
-                                grad_norm_clipping=grad_clip))
+                                self.policy.copy))
 
                 self.sess = self.local_evaluator.tf_sess
                 self.sess.run(tf.global_variables_initializer())
@@ -313,18 +329,22 @@ class TFMultiGPULearner(LearnerThread):
             self.loader_thread = _LoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
 
+        self.minibatch_buffer = MinibatchBuffer(
+            self.ready_optimizers, minibatch_buffer_size, num_sgd_iter)
+
     @override(LearnerThread)
     def step(self):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            opt = self.ready_optimizers.get()
+            opt, released = self.minibatch_buffer.get()
+            if released:
+                self.idle_optimizers.put(opt)
 
         with self.grad_timer:
             fetches = opt.optimize(self.sess, 0)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
-        self.idle_optimizers.put(opt)
         self.outqueue.put(self.train_batch_size)
         self.learner_queue_size.push(self.inqueue.qsize())
 
@@ -363,3 +383,43 @@ class _LoaderThread(threading.Thread):
                           [tuples[k] for k in state_keys])
 
         s.ready_optimizers.put(opt)
+
+
+class MinibatchBuffer(object):
+    """Ring buffer of recent data batches for minibatch SGD."""
+
+    def __init__(self, inqueue, size, num_passes):
+        """Initialize a minibatch buffer.
+
+        Arguments:
+           inqueue: Queue to populate the internal ring buffer from.
+           size: Max number of data items to buffer.
+           num_passes: Max num times each data item should be emitted.
+       """
+        self.inqueue = inqueue
+        self.size = size
+        self.max_ttl = num_passes
+        self.cur_max_ttl = 1  # ramp up slowly to better mix the input data
+        self.buffers = [None] * size
+        self.ttl = [0] * size
+        self.idx = 0
+
+    def get(self):
+        """Get a new batch from the internal ring buffer.
+
+        Returns:
+           buf: Data item saved from inqueue.
+           released: True if the item is now removed from the ring buffer.
+       """
+        if self.ttl[self.idx] <= 0:
+            self.buffers[self.idx] = self.inqueue.get()
+            self.ttl[self.idx] = self.cur_max_ttl
+            if self.cur_max_ttl < self.max_ttl:
+                self.cur_max_ttl += 1
+        buf = self.buffers[self.idx]
+        self.ttl[self.idx] -= 1
+        released = self.ttl[self.idx] <= 0
+        if released:
+            self.buffers[self.idx] = None
+        self.idx = (self.idx + 1) % len(self.buffers)
+        return buf, released

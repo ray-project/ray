@@ -8,6 +8,7 @@ import logging
 import numpy as np
 import os
 import yaml
+import distutils.version
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.log_sync import get_syncer
@@ -18,8 +19,11 @@ logger = logging.getLogger(__name__)
 
 try:
     import tensorflow as tf
+    use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                     distutils.version.LooseVersion("1.5.0"))
 except ImportError:
     tf = None
+    use_tf150_api = True
     logger.warning("Couldn't import TensorFlow - "
                    "disabling TensorBoard logging.")
 
@@ -96,7 +100,8 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
-                logger.exception("Could not instantiate {} - skipping.")
+                logger.exception("Could not instantiate {} - skipping.".format(
+                    str(cls)))
         self._log_syncer = get_syncer(
             self.logdir, self.uri, sync_function=self._sync_function)
 
@@ -158,7 +163,11 @@ def to_tf_values(result, path):
     values = []
     for attr, value in result.items():
         if value is not None:
-            if type(value) in [int, float, np.float32, np.float64, np.int32]:
+            if use_tf150_api:
+                type_list = [int, float, np.float32, np.float64, np.int32]
+            else:
+                type_list = [int, float]
+            if type(value) in type_list:
                 values.append(
                     tf.Summary.Value(
                         tag="/".join(path + [attr]), simple_value=value))

@@ -31,12 +31,11 @@ def _setup_logger():
 
 def _register_all():
 
-    for key in [
-            "PPO", "ES", "DQN", "APEX", "A3C", "PG", "DDPG", "APEX_DDPG",
-            "IMPALA", "ARS", "A2C", "__fake", "__sigmoid_fake_data",
-            "__parameter_tuning"
-    ]:
-        from ray.rllib.agents.agent import get_agent_class
+    from ray.rllib.agents.registry import ALGORITHMS
+    from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+    for key in list(ALGORITHMS.keys()) + list(CONTRIBUTED_ALGORITHMS.keys(
+    )) + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
+        from ray.rllib.agents.registry import get_agent_class
         register_trainable(key, get_agent_class(key))
 
 

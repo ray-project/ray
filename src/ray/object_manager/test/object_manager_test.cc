@@ -451,7 +451,7 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "\n";
     ClientTableDataT data;
     gcs_client_1->client_table().GetClient(client_id_1, data);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;

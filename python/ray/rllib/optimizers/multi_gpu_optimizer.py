@@ -12,6 +12,8 @@ import ray
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
+from ray.rllib.optimizers.rollout import collect_samples, \
+    collect_samples_straggler_mitigation
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
@@ -40,12 +42,18 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     def _init(self,
               sgd_batch_size=128,
               num_sgd_iter=10,
+              sample_batch_size=200,
+              num_envs_per_worker=1,
               train_batch_size=1024,
               num_gpus=0,
-              standardize_fields=[]):
+              standardize_fields=[],
+              straggler_mitigation=False):
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
+        self.num_envs_per_worker = num_envs_per_worker
+        self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
+        self.straggler_mitigation = straggler_mitigation
         if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
@@ -108,10 +116,20 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                # TODO(rliaw): remove when refactoring
-                from ray.rllib.agents.ppo.rollout import collect_samples
-                samples = collect_samples(self.remote_evaluators,
-                                          self.train_batch_size)
+                if self.straggler_mitigation:
+                    samples = collect_samples_straggler_mitigation(
+                        self.remote_evaluators, self.train_batch_size)
+                else:
+                    samples = collect_samples(
+                        self.remote_evaluators, self.sample_batch_size,
+                        self.num_envs_per_worker, self.train_batch_size)
+                if samples.count > self.train_batch_size * 2:
+                    logger.info(
+                        "Collected more training samples than expected "
+                        "(actual={}, train_batch_size={}). ".format(
+                            samples.count, self.train_batch_size) +
+                        "This may be because you have many workers or "
+                        "long episodes in 'complete_episodes' batch mode.")
             else:
                 samples = self.local_evaluator.sample()
             # Handle everything as if multiagent

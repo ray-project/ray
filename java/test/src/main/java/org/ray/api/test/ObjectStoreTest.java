@@ -13,8 +13,7 @@ import org.ray.api.id.UniqueId;
 /**
  * Test putting and getting objects.
  */
-@RunWith(MyRunner.class)
-public class ObjectStoreTest {
+public class ObjectStoreTest extends BaseTest {
 
   @Test
   public void testPutAndGet() {

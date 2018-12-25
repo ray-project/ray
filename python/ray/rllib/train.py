@@ -100,9 +100,9 @@ def run(args, parser):
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
                 "local_dir": args.local_dir,
-                "trial_resources": (
-                    args.trial_resources and
-                    resources_to_json(args.trial_resources)),
+                "resources_per_trial": (
+                    args.resources_per_trial and
+                    resources_to_json(args.resources_per_trial)),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,

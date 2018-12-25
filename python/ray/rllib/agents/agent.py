@@ -16,6 +16,7 @@ import ray
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
@@ -129,7 +130,7 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Offline Data Input / Output ===
+    # === Offline Data Input / Output (Experimental) ===
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -427,6 +428,21 @@ class Agent(Trainable):
                                  self.config) for i in range(count)
         ]
 
+    def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
+        """Export policy model with given policy_id to local directory.
+
+        Arguments:
+            export_dir (string): Writable local directory.
+            policy_id (string): Optional policy id to export.
+
+        Example:
+            >>> agent = MyAgent()
+            >>> for _ in range(10):
+            >>>     agent.train()
+            >>> agent.export_policy_model("/tmp/export_dir")
+        """
+        self.local_evaluator.export_policy_model(export_dir, policy_id)
+
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
@@ -541,55 +557,3 @@ def _register_if_needed(env_object):
         name = env_object.__name__
         register_env(name, lambda config: env_object(config))
         return name
-
-
-def get_agent_class(alg):
-    """Returns the class of a known agent given its name."""
-
-    if alg == "DDPG":
-        from ray.rllib.agents import ddpg
-        return ddpg.DDPGAgent
-    elif alg == "APEX_DDPG":
-        from ray.rllib.agents import ddpg
-        return ddpg.ApexDDPGAgent
-    elif alg == "PPO":
-        from ray.rllib.agents import ppo
-        return ppo.PPOAgent
-    elif alg == "ES":
-        from ray.rllib.agents import es
-        return es.ESAgent
-    elif alg == "ARS":
-        from ray.rllib.agents import ars
-        return ars.ARSAgent
-    elif alg == "DQN":
-        from ray.rllib.agents import dqn
-        return dqn.DQNAgent
-    elif alg == "APEX":
-        from ray.rllib.agents import dqn
-        return dqn.ApexAgent
-    elif alg == "A3C":
-        from ray.rllib.agents import a3c
-        return a3c.A3CAgent
-    elif alg == "A2C":
-        from ray.rllib.agents import a3c
-        return a3c.A2CAgent
-    elif alg == "PG":
-        from ray.rllib.agents import pg
-        return pg.PGAgent
-    elif alg == "IMPALA":
-        from ray.rllib.agents import impala
-        return impala.ImpalaAgent
-    elif alg == "script":
-        from ray.tune import script_runner
-        return script_runner.ScriptRunner
-    elif alg == "__fake":
-        from ray.rllib.agents.mock import _MockAgent
-        return _MockAgent
-    elif alg == "__sigmoid_fake_data":
-        from ray.rllib.agents.mock import _SigmoidFakeData
-        return _SigmoidFakeData
-    elif alg == "__parameter_tuning":
-        from ray.rllib.agents.mock import _ParameterTuningAgent
-        return _ParameterTuningAgent
-    else:
-        raise Exception(("Unknown algorithm {}.").format(alg))

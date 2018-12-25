@@ -15,8 +15,7 @@ import org.ray.api.annotation.RayRemote;
 /**
  * Test Ray.call API
  */
-@RunWith(MyRunner.class)
-public class RayCallTest {
+public class RayCallTest extends BaseTest {
 
   @RayRemote
   private static int testInt(int val) {

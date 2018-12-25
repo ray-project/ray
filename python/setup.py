@@ -135,7 +135,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy",
+    "numpy >= 1.10.4",
     "filelock",
     "funcsigs",
     "click",
@@ -154,6 +154,8 @@ if sys.version_info < (3, 0):
 setup(
     name="ray",
     version=find_version("ray", "__init__.py"),
+    author="Ray Team",
+    author_email="ray-dev@googlegroups.com",
     description=("A system for parallel and distributed Python that unifies "
                  "the ML ecosystem."),
     long_description=open("../README.rst").read(),
