@@ -9,6 +9,7 @@ import six
 import types
 
 from ray.tune.error import TuneError
+from ray.tune.log_sync import validate_sync_function
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 

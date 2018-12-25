@@ -122,7 +122,8 @@ def run_experiments(experiments=None,
         else:
             logger.warn("Restoring from previous experiment and "
                         "ignoring any new changes to specification.")
-            runner = TrialRunner.restore(checkpoint_dir, trial_executor)
+            runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
+                                         trial_executor)
 
     if not runner:
         if scheduler is None:

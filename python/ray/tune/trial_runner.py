@@ -10,7 +10,6 @@ import re
 import time
 import traceback
 
-import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TIME_THIS_ITER_S
@@ -130,7 +129,11 @@ class TrialRunner(object):
         return checkpoint_dir
 
     @classmethod
-    def restore(cls, checkpoint_dir, trial_executor=None):
+    def restore(cls,
+                checkpoint_dir,
+                search_alg=None,
+                scheduler=None,
+                trial_executor=None):
         """Restores all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -140,6 +143,11 @@ class TrialRunner(object):
 
         Args:
             checkpoint_dir (str): Path to checkpoint (previously specified).
+            search_alg (SearchAlgorithm): Search Algorithm. Defaults to
+                BasicVariantGenerator.
+            scheduler (TrialScheduler): Scheduler for executing
+                the experiment.
+            trial_executor (TrialExecutor): Manage the execution of trials.
 
         Returns:
             runner (TrialRunner): A TrialRunner to resume experiments from.
@@ -155,7 +163,9 @@ class TrialRunner(object):
 
         from ray.tune.suggest import BasicVariantGenerator
         runner = TrialRunner(
-            BasicVariantGenerator(), trial_executor=trial_executor)
+            search_alg or BasicVariantGenerator(),
+            scheduler=scheduler,
+            trial_executor=trial_executor)
 
         runner.__setstate__(runner_state["runner_data"])
 
