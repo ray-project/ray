@@ -76,6 +76,10 @@ class TorchPolicyGraph(PolicyGraph):
                         self.extra_action_out(model_out))
 
     @override(PolicyGraph)
+    def get_initial_state(self):
+        return [var_to_np(s) for s in self._model.state_init()]
+
+    @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
         with self.lock:
             loss_in = []
