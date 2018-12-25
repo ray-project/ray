@@ -11,6 +11,8 @@ from ray.rllib.utils.annotations import override
 
 
 class RNNModel(TorchModel):
+    """The default RNN model for QMIX."""
+
     def __init__(self, obs_space, num_outputs, options):
         TorchModel.__init__(self, obs_space, num_outputs, options)
         self.obs_size = _get_size(obs_space)
