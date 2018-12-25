@@ -284,18 +284,19 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                             "provided.")
 
         # Get the node IP address if one is not provided.
-        if ray_params.node_ip_address is None:
-            ray_params.node_ip_address = services.get_node_ip_address()
+        ray_params.apply_when_none(
+            node_ip_address=services.get_node_ip_address())
         logger.info("Using IP address {} for this node."
                     .format(ray_params.node_ip_address))
-        ray_params.redis_port = redis_port
-        ray_params.redis_shard_ports = redis_shard_ports
-        ray_params.redis_max_memory = redis_max_memory
-        ray_params.collect_profiling_data = collect_profiling_data
-        ray_params.num_redis_shards = num_redis_shards
-        ray_params.redis_max_clients = redis_max_clients
-        ray_params.include_webui = (not no_ui)
-        ray_params.autoscaling_config = autoscaling_config
+        ray_params.apply_when_none(
+            redis_port=redis_port,
+            redis_shard_ports=redis_shard_ports,
+            redis_max_memory=redis_max_memory,
+            collect_profiling_data=collect_profiling_data,
+            num_redis_shards=num_redis_shards,
+            redis_max_clients=redis_max_clients,
+            include_webui=(not no_ui),
+            autoscaling_config=autoscaling_config)
 
         address_info = services.start_ray_head(ray_params, cleanup=False)
         logger.info(address_info)

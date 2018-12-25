@@ -78,9 +78,8 @@ class Cluster(object):
             "object_store_memory": 100 * (2**20)  # 100 MB
         }
         node_kwargs.update(override_kwargs)
-        ray_params = RayParams()
-        ray_params.apply_settings(**node_kwargs)
-        ray_params.node_ip_address = services.get_node_ip_address()
+        ray_params = RayParams(
+            node_ip_address=services.get_node_ip_address(), **node_kwargs)
 
         if self.head_node is None:
             ray_params.include_webui = False

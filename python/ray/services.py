@@ -885,8 +885,9 @@ def start_raylet(ray_params,
             following parameters could be checked: redis_address,
             node_ip_address, worker_path, resources, object_manager_ports,
             node_manager_ports, redis_password
-        index (int): the index used in resources, object_manager_ports,
-            node_manager_ports
+        index (int): Usually, this index is 0. When index > 0, it means
+            starting multiple raylet locally. The index will be used in
+            resources, object_manager_ports, node_manager_ports.
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
@@ -1297,14 +1298,11 @@ def start_ray_processes(ray_params, cleanup=True):
     config = json.loads(
         ray_params._internal_config) if ray_params._internal_config else None
 
-    if ray_params.include_log_monitor is None:
-        ray_params.include_log_monitor = True
-    if ray_params.resources is None:
-        ray_params.resources = {}
-    if ray_params.num_local_schedulers is None:
-        ray_params.num_local_schedulers = 1
-    if ray_params.node_ip_address is None:
-        ray_params.node_ip_address = "127.0.0.1",
+    ray_params.apply_when_none(
+        include_log_monitor=True,
+        resources={},
+        num_local_schedulers=1,
+        node_ip_address="127.0.0.1")
     if not isinstance(ray_params.resources, list):
         ray_params.resources = ray_params.num_local_schedulers * [
             ray_params.resources
@@ -1320,14 +1318,12 @@ def start_ray_processes(ray_params, cleanup=True):
             workers_per_local_scheduler.append(cpus if cpus is not None else
                                                multiprocessing.cpu_count())
 
-    if ray_params.address_info is None:
-        ray_params.address_info = {}
-    ray_params.address_info["node_ip_address"] = ray_params.node_ip_address
-
-    if ray_params.worker_path is None:
-        ray_params.worker_path = os.path.join(
+    ray_params.apply_when_none(
+        address_info={},
+        worker_path=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            "workers/default_worker.py")
+            "workers/default_worker.py"))
+    ray_params.address_info["node_ip_address"] = ray_params.node_ip_address
 
     # Start Redis if there isn't already an instance running. TODO(rkn): We are
     # suppressing the output of Redis because on Linux it prints a bunch of
@@ -1439,16 +1435,17 @@ def start_ray_processes(ray_params, cleanup=True):
         time.sleep(0.1)
 
     # Start any raylets that do not exist yet.
-    for i in range(len(raylet_socket_names), ray_params.num_local_schedulers):
+    for raylet_index in range(
+            len(raylet_socket_names), ray_params.num_local_schedulers):
         raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
-            i, redirect_output=ray_params.redirect_worker_output)
+            raylet_index, redirect_output=ray_params.redirect_worker_output)
         ray_params.address_info["raylet_socket_names"].append(
             start_raylet(
                 ray_params,
-                i,
+                raylet_index,
                 ray_params.raylet_socket_name or get_raylet_socket_name(),
-                object_store_addresses[i],
-                num_workers=workers_per_local_scheduler[i],
+                object_store_addresses[raylet_index],
+                num_workers=workers_per_local_scheduler[raylet_index],
                 stdout_file=raylet_stdout_file,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
@@ -1519,6 +1516,5 @@ def start_ray_head(ray_params, cleanup=True):
         A dictionary of the address information for the processes that were
             started.
     """
-    if ray_params.num_redis_shards is None:
-        ray_params.num_redis_shards = 1
+    ray_params.apply_when_none(num_redis_shards=1)
     return start_ray_processes(ray_params, cleanup=cleanup)

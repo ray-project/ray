@@ -127,8 +127,8 @@ class RayParams(object):
                  raylet_socket_name=None,
                  temp_dir=None,
                  include_log_monitor=None,
-                 _internal_config=None,
-                 autoscaling_config=None):
+                 autoscaling_config=None,
+                 _internal_config=None):
         self.address_info = address_info
         self.start_ray_local = start_ray_local
         self.object_id_seed = object_id_seed
@@ -161,13 +161,32 @@ class RayParams(object):
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
-        self._internal_config = _internal_config
         self.autoscaling_config = autoscaling_config
+        self._internal_config = _internal_config
 
     def apply_settings(self, **kwargs):
+        """Apply the setting according to the keyword arguments.
+
+        Attributes:
+            kwargs: The keyword arguments to set corresponding fields.
+        """
         for arg in kwargs:
             if (hasattr(self, arg)):
                 setattr(self, arg, kwargs[arg])
             else:
-                raise Exception("Invalid RayParams parameter in"
-                                " apply_settings: %s" % arg)
+                raise ValueError("Invalid RayParams parameter in"
+                                 " apply_settings: %s" % arg)
+
+    def apply_when_none(self, **kwargs):
+        """Apply the setting when the target fields are None.
+
+        Attributes:
+            kwargs: The keyword arguments to set corresponding fields.
+        """
+        for arg in kwargs:
+            if (hasattr(self, arg)):
+                if getattr(self, arg) == None:
+                    setattr(self, arg, kwargs[arg])
+            else:
+                raise ValueError("Invalid RayParams parameter in"
+                                 " apply_when_none: %s" % arg)
