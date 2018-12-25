@@ -33,7 +33,7 @@ class WaitSuite(object):
     time_wait_many_tasks.param_names = ["num_returns"]
 
     def time_wait_timeout(self, timeout):
-        ray.wait([sleep.remote(0.5)], timeout=timeout)
+        ray.wait([sleep.remote(0.5)], timeout_milliseconds=timeout)
 
     time_wait_timeout.params = [200, 800]
     time_wait_timeout.param_names = ["timeout_ms"]

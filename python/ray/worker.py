@@ -2408,7 +2408,11 @@ def put(value, worker=global_worker):
         return object_id
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
+def wait(object_ids,
+         num_returns=1,
+         timeout_milliseconds=None,
+         timeout=None,
+         worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2430,13 +2434,17 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
-        timeout (int): The maximum amount of time in milliseconds to wait
-            before returning.
+        timeout_milliseconds (int): The maximum amount of time in milliseconds
+            to wait before returning.
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
         IDs.
     """
+    if timeout is not None:
+        logger.warning("WARNING: The timeout argument has been deprecated. "
+                       "Please use timeout_milliseconds.")
+        timeout_milliseconds = timeout
 
     if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
@@ -2480,9 +2488,11 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         with worker.state_lock:
             current_task_id = worker.get_current_thread_task_id()
 
-        timeout = timeout if timeout is not None else 2**30
+        timeout_milliseconds = (timeout_milliseconds
+                                if timeout_milliseconds is not None else 2**30)
         ready_ids, remaining_ids = worker.raylet_client.wait(
-            object_ids, num_returns, timeout, False, current_task_id)
+            object_ids, num_returns, timeout_milliseconds, False,
+            current_task_id)
         return ready_ids, remaining_ids
 
 

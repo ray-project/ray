@@ -219,7 +219,7 @@ class PlasmaEventHandler:
         fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
 
         if check_ready:
-            ready, _ = ray.wait([object_id], timeout=0)
+            ready, _ = ray.wait([object_id], timeout_milliseconds=0)
             if ready:
                 if self._loop.get_debug():
                     logger.debug("%s has been ready.", plain_object_id)

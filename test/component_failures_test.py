@@ -87,7 +87,7 @@ def test_dying_worker_get(shutdown_only):
     time.sleep(1)
 
     # Make sure the task hasn't finished.
-    ready_ids, _ = ray.wait([result_id], timeout=0)
+    ready_ids, _ = ray.wait([result_id], timeout_milliseconds=0)
     assert len(ready_ids) == 0
 
     # Kill the worker.
@@ -95,7 +95,7 @@ def test_dying_worker_get(shutdown_only):
     time.sleep(0.1)
 
     # Make sure the sleep task hasn't finished.
-    ready_ids, _ = ray.wait([x_id], timeout=0)
+    ready_ids, _ = ray.wait([x_id], timeout_milliseconds=0)
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
@@ -138,7 +138,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     time.sleep(0.1)
 
     # Make sure the original task hasn't finished.
-    ready_ids, _ = ray.wait([x_id], timeout=0)
+    ready_ids, _ = ray.wait([x_id], timeout_milliseconds=0)
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
@@ -223,7 +223,7 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     time.sleep(0.1)
 
     # Make sure the original task hasn't finished.
-    ready_ids, _ = ray.wait([x_id], timeout=0)
+    ready_ids, _ = ray.wait([x_id], timeout_milliseconds=0)
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
@@ -401,7 +401,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             ready, _ = ray.wait(
                 children_out,
                 num_returns=len(children_out),
-                timeout=5 * 60 * 1000)
+                timeout_milliseconds=5 * 60 * 1000)
             assert len(ready) == len(children_out)
 
             # Replace any actors that died.
