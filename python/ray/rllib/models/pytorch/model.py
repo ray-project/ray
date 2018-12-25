@@ -34,7 +34,7 @@ class TorchModel(nn.Module):
         return outputs, features, vf, h
 
     def state_init(self):
-        """Returns the initial hidden state, if any."""
+        """Returns a list of initial hidden state tensors, if any."""
         return []
 
     def _forward(self, input_dict, hidden_state):
