@@ -13,9 +13,9 @@ from ray.rllib.utils.annotations import override
 class RNNModel(TorchModel):
     def __init__(self, obs_space, num_outputs, options):
         TorchModel.__init__(self, obs_space, num_outputs, options)
-        obs_size = _get_size(obs_space)
+        self.obs_size = _get_size(obs_space)
         self.rnn_hidden_dim = options["lstm_cell_size"]
-        self.fc1 = nn.Linear(obs_size, self.rnn_hidden_dim)
+        self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)
         self.rnn = nn.GRUCell(self.rnn_hidden_dim, self.rnn_hidden_dim)
         self.fc2 = nn.Linear(self.rnn_hidden_dim, num_outputs)
 

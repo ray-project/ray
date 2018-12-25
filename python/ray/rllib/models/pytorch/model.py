@@ -27,7 +27,7 @@ class TorchModel(nn.Module):
 
     def forward(self, input_dict, hidden_state):
         """Wraps _forward() to unpack flattened Dict and Tuple observations."""
-        input_dict["obs"] = input_dict["obs"].float()  # force float?
+        input_dict["obs"] = input_dict["obs"].float()  # TODO(ekl): avoid cast
         input_dict = _restore_original_dimensions(
             input_dict, self.obs_space, tensorlib=torch)
         outputs, features, vf, h = self._forward(input_dict, hidden_state)

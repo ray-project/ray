@@ -73,7 +73,10 @@ class QMixLoss(nn.Module):
 
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
-        target_h = [s.expand([B, self.n_agents, -1]) for s in self.target_model.state_init()]
+        target_h = [
+            s.expand([B, self.n_agents, -1])
+            for s in self.target_model.state_init()
+        ]
         for t in range(T):
             target_q, target_h = _mac(self.target_model, obs[:, t], target_h)
             target_mac_out.append(target_q)
@@ -153,6 +156,8 @@ class QMixPolicyGraph(PolicyGraph):
                     (self.n_actions, ), mask_shape))
             self.has_action_mask = True
             self.obs_size = _get_size(agent_obs_space.spaces["obs"])
+            # The real agent obs space is nested inside the dict
+            agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.has_action_mask = False
             self.obs_size = _get_size(agent_obs_space)
@@ -212,8 +217,9 @@ class QMixPolicyGraph(PolicyGraph):
 
         # Compute actions
         with th.no_grad():
-            q_values, hiddens = _mac(self.model, th.from_numpy(obs_batch),
-                                     [th.from_numpy(np.array(s)) for s in state_batches])
+            q_values, hiddens = _mac(
+                self.model, th.from_numpy(obs_batch),
+                [th.from_numpy(np.array(s)) for s in state_batches])
             avail = th.from_numpy(action_mask).float()
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
@@ -294,7 +300,10 @@ class QMixPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def get_initial_state(self):
-        return [s.expand([self.n_agents, -1]).numpy() for s in self.model.state_init()]
+        return [
+            s.expand([self.n_agents, -1]).numpy()
+            for s in self.model.state_init()
+        ]
 
     @override(PolicyGraph)
     def get_weights(self):
@@ -343,9 +352,9 @@ class QMixPolicyGraph(PolicyGraph):
 
     def _unpack_observation(self, obs_batch):
         """Unpacks the action mask / tuple obs from agent grouping.
-        
+
         Returns:
-            obs (Tensor): flattened obs tensors
+            obs (Tensor): flattened obs tensor of shape [B, n_agents, obs_size]
             mask (Tensor): action mask, if any
         """
         unpacked = _unpack_obs(
@@ -410,4 +419,5 @@ def _mac(model, obs, h):
     obs_flat = obs.reshape([B * n_agents, -1])
     h_flat = [s.reshape([B * n_agents, -1]) for s in h]
     q_flat, _, _, h_flat = model.forward({"obs": obs_flat}, h_flat)
-    return q_flat.reshape([B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]
+    return q_flat.reshape(
+        [B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]
