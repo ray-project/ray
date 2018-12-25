@@ -89,7 +89,7 @@ class ReweightedImitationLoss(object):
         self.loss = tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
 
 
-class MARVILPolicyGraph(TFPolicyGraph):
+class MARWILPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
         # TO DO: support hybrid action

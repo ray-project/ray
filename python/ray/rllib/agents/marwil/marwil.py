@@ -6,7 +6,7 @@ import time
 
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
-from ray.rllib.agents.marvil.marvil_policy_graph import MARVILPolicyGraph
+from ray.rllib.agents.marwil.marwil_policy_graph import MARWILPolicyGraph
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
@@ -111,10 +111,10 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class MARVILAgent(Agent):
-    """MARVIL implementation in TensorFlow."""
+class MARWILAgent(Agent):
+    """MARWIL implementation in TensorFlow."""
 
-    _agent_name = "MARVIL"
+    _agent_name = "MARWIL"
     _default_config = DEFAULT_CONFIG
-    _policy_graph = MARVILPolicyGraph
+    _policy_graph = MARWILPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
