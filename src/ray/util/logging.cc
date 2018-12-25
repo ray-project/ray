@@ -139,7 +139,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
     for (enum RayLogLevel level = severity_threshold_; level <= RayLogLevel::FATAL;
-         level = (enum RayLogLevel)((int)level+1)) {
+         level = (enum RayLogLevel)((int)level + 1)) {
       google::SetLogDestination(GetMappedSeverity(level), dir_ends_with_slash.c_str());
     }
   }
