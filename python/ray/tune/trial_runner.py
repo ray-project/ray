@@ -104,7 +104,6 @@ class TrialRunner(object):
 
         self._trials = []
         self._stop_queue = []
-        self._trial_checkpoints = {}
         self._checkpoint_dir = checkpoint_dir
         self._checkpoint_mode = checkpoint_mode
 
@@ -249,7 +248,7 @@ class TrialRunner(object):
         """
         trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
-        self._checkpoint_trial_if_needed(trial)
+        self.trial_executor.try_checkpoint_metadata(trial)
         self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
