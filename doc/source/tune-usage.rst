@@ -298,7 +298,9 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
 
 Recovering From Failures (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed by passing `resume=True` in `run_experiments()`. If resume is not enabled, a new experiment will be created instead. You can always force a new experiment to be created by changing the experiment name.
 
+Note that trials will be restored to their last checkpoint. If checkpointing is not enabled, unfinished trials will be restarted from scratch.
 A Tune experiment run may crash due to unforeseen circumstances. To avoid losing all progress, set ``checkpoint_mode=True`` in ``run_experiments``. Note that only **checkpointable experiments** (i.e., experiments with ``checkpoint_freq > 0``) will be preserved. With ``checkpoint_mode=True``, Tune frequently save the entire experiment state at the ``local_dir`` of the first checkpointable experiment provided.  E.g.:
 
 .. code-block:: python
