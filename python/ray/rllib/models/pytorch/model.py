@@ -6,6 +6,8 @@ import torch.nn as nn
 
 
 class PyTorchModel(nn.Module):
+    """Defines an abstract network model for use with RLlib / PyTorch."""
+
     def __init__(self, obs_space, num_outputs, options):
         """All custom RLlib torch models must support this constructor.
 
@@ -36,57 +38,3 @@ class PyTorchModel(nn.Module):
                 and [len(hidden_state), BATCH_SIZE, h_size].
         """
         raise NotImplementedError
-
-
-class SlimConv2d(PyTorchModel):
-    """Simple mock of tf.slim Conv2d"""
-
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel,
-                 stride,
-                 padding,
-                 initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU,
-                 bias_init=0):
-        super(SlimConv2d, self).__init__()
-        layers = []
-        if padding:
-            layers.append(nn.ZeroPad2d(padding))
-        conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
-        if initializer:
-            initializer(conv.weight)
-        nn.init.constant_(conv.bias, bias_init)
-
-        layers.append(conv)
-        if activation_fn:
-            layers.append(activation_fn())
-        self._model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self._model(x)
-
-
-class SlimFC(PyTorchModel):
-    """Simple PyTorch of `linear` function"""
-
-    def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 bias_init=0):
-        super(SlimFC, self).__init__()
-        layers = []
-        linear = nn.Linear(in_size, out_size)
-        if initializer:
-            initializer(linear.weight)
-        nn.init.constant_(linear.bias, bias_init)
-        layers.append(linear)
-        if activation_fn:
-            layers.append(activation_fn())
-        self._model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self._model(x)

@@ -4,8 +4,9 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import Model, SlimConv2d, SlimFC
-from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding
+from ray.rllib.models.pytorch.model import Model
+from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding, \
+    SlimConv2d, SlimFC
 
 
 class VisionNetwork(Model):

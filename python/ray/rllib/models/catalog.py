@@ -257,15 +257,15 @@ class ModelCatalog(object):
             return _global_registry.get(RLLIB_MODEL, model)(
                 obs_space, num_outputs, options)
 
-        # TODO(alok): fix to handle Discrete(n) state spaces
-        obs_rank = len(input_shape) - 1
+        if isinstance(obs_space, Discrete):
+            obs_rank = 1
+        else:
+            obs_rank = len(obs_space.shape)
 
         if obs_rank > 1:
-            return PyTorchVisionNet(input_shape, num_outputs, options)
+            return PyTorchVisionNet(obs_space, num_outputs, options)
 
-        # TODO(alok): overhaul PyTorchFCNet so it can just
-        # take input shape directly
-        return PyTorchFCNet(input_shape[0], num_outputs, options)
+        return PyTorchFCNet(obs_space, num_outputs, options)
 
     @staticmethod
     def get_preprocessor(env, options=None):

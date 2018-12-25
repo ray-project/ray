@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import logging
 
-from ray.rllib.models.pytorch.model import Model, SlimFC
-from ray.rllib.models.pytorch.misc import normc_initializer
+from ray.rllib.models.pytorch.model import Model
+from ray.rllib.models.pytorch.misc import normc_initializer, SlimFC
 import torch.nn as nn
 
 logger = logging.getLogger(__name__)
@@ -62,3 +62,27 @@ class FullyConnectedNetwork(Model):
         logits = self.logits(res)
         value = self.value_branch(res).squeeze(1)
         return logits, value
+
+
+class SlimFC(PyTorchModel):
+    """Simple PyTorch of `linear` function"""
+
+    def __init__(self,
+                 in_size,
+                 out_size,
+                 initializer=None,
+                 activation_fn=None,
+                 bias_init=0):
+        super(SlimFC, self).__init__()
+        layers = []
+        linear = nn.Linear(in_size, out_size)
+        if initializer:
+            initializer(linear.weight)
+        nn.init.constant_(linear.bias, bias_init)
+        layers.append(linear)
+        if activation_fn:
+            layers.append(activation_fn())
+        self._model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self._model(x)
