@@ -1271,16 +1271,9 @@ def start_ray_processes(ray_params, cleanup=True):
 
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
-            following parameters could be checked: address_info,
-            object_manager_ports, node_manager_ports, node_ip_address,
-            redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, collect_profiling_data,
-            num_redis_shards, redis_max_clients, redis_password, worker_path,
-            cleanup, redirect_worker_output, redirect_output, resources,
-            include_webui, start_workers_from_local_scheduler, temp_dir,
-            plasma_directory, huge_pages, autoscaling_config,
-            raylet_socket_name, plasma_store_socket_name, include_log_monitor,
-            _internal_config
+            following parameters will be set to default values if it's None:
+            node_ip_address("127.0.0.1"), num_local_schedulers(1),
+            include_log_monitor(True), worker_path(path of default_worker.py)
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
