@@ -256,7 +256,7 @@ class ModelCatalog(object):
 
         if options.get("custom_model"):
             model = options["custom_model"]
-            logger.info("Using custom torch model {}".format(model))
+            logger.debug("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL,
                                         model)(obs_space, num_outputs, options)
 

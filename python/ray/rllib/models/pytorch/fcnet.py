@@ -46,8 +46,10 @@ class FullyConnectedNetwork(TorchModel):
             initializer=normc_initializer(1.0),
             activation_fn=None)
 
-    @override(TorchModel)
-    def _forward(self, input_dict, hidden_state):
+    @override(nn.Module)
+    def forward(self, input_dict, hidden_state):
+        # Note that we override forward() and not _forward() to get the
+        # flattened obs here.
         obs = input_dict["obs"]
         features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
         logits = self._logits(features)
