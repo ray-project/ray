@@ -1,7 +1,6 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
