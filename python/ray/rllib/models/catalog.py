@@ -52,7 +52,7 @@ MODEL_DEFAULTS = {
     "framestack": True,
     # Final resized frame dimension
     "dim": 84,
-    # Pytorch conv requires images to be channel-major
+    # (deprecated) Pytorch conv requires images to be channel-major
     "channel_major": False,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
     "grayscale": False,
@@ -236,7 +236,7 @@ class ModelCatalog(object):
         """Returns a custom model for PyTorch algorithms.
 
         Args:
-            input_shape (tuple): The input shape to the model.
+            obs_space (Space): The input observation space.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
 
@@ -248,16 +248,15 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
                                                         PyTorchVisionNet)
 
-        assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
 
         if options.get("custom_model"):
             model = options["custom_model"]
             logger.info("Using custom torch model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(
-                obs_space, num_outputs, options)
+            return _global_registry.get(RLLIB_MODEL,
+                                        model)(obs_space, num_outputs, options)
 
-        if isinstance(obs_space, Discrete):
+        if isinstance(obs_space, gym.spaces.Discrete):
             obs_rank = 1
         else:
             obs_rank = len(obs_space.shape)

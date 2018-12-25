@@ -4,29 +4,26 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import Model
+from ray.rllib.models.pytorch.model import TorchModel
 from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
+from ray.rllib.models.visionnet import _get_filter_config
+from ray.rllib.utils.annotations import override
 
 
-class VisionNetwork(Model):
-    """Generic vision network"""
+class VisionNetwork(TorchModel):
+    """Generic vision network."""
 
-    def _build_layers(self, inputs, num_outputs, options):
-        """TF visionnet in PyTorch.
-
-        Params:
-            inputs (tuple): (channels, rows/height, cols/width)
-            num_outputs (int): logits size
-        """
-        filters = options.get("conv_filters") or [
-            [16, [8, 8], 4],
-            [32, [4, 4], 2],
-            [512, [11, 11], 1],
-        ]
+    @override(TorchModel)
+    def __init__(self, obs_space, num_outputs, options):
+        TorchModel.__init__(self, obs_space, num_outputs, options)
+        filters = options.get("conv_filters")
+        if not filters:
+            filters = _get_filter_config(obs_space.shape)
         layers = []
-        in_channels, in_size = inputs[0], inputs[1:]
 
+        (w, h, in_channels) = obs_space.shape
+        in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
             padding, out_size = valid_padding(in_size, kernel,
                                               [stride, stride])
@@ -40,31 +37,20 @@ class VisionNetwork(Model):
             SlimConv2d(in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
-        self.logits = SlimFC(
+        self._logits = SlimFC(
             out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
-        self.value_branch = SlimFC(
+        self._value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
 
-    def hidden_layers(self, obs):
-        """ Internal method - pass in torch tensors, not numpy arrays
+    @override(TorchModel)
+    def _forward(self, input_dict, hidden_state):
+        features = self._hidden_layers(input_dict["obs"])
+        logits = self._logits(features)
+        value = self._value_branch(features).squeeze(1)
+        return logits, features, value, hidden_state
 
-        args:
-            obs: observations and features"""
-        res = self._convs(obs)
+    def _hidden_layers(self, obs):
+        res = self._convs(obs.permute(0, 3, 1, 2))
         res = res.squeeze(3)
         res = res.squeeze(2)
         return res
-
-    def forward(self, obs):
-        """Internal method. Implements the
-
-        Args:
-            obs (PyTorch): observations and features
-
-        Return:
-            logits (PyTorch): logits to be sampled from for each state
-            value (PyTorch): value function for each state"""
-        res = self.hidden_layers(obs)
-        logits = self.logits(res)
-        value = self.value_branch(res).squeeze(1)
-        return logits, value

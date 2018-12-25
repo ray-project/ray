@@ -66,15 +66,14 @@ class TorchPolicyGraph(PolicyGraph):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        if state_batches:
-            raise NotImplementedError("Torch RNN support")
         with self.lock:
             with torch.no_grad():
                 ob = torch.from_numpy(np.array(obs_batch)).float()
-                model_out = self._model(ob)
-                logits = model_out[0]  # assume the first output is the logits
+                model_out = self._model({"obs": ob}, state_batches)
+                logits, _, vf, state = model_out
                 actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
-                return var_to_np(actions), [], self.extra_action_out(model_out)
+                return (var_to_np(actions), [var_to_np(h) for h in state],
+                        self.extra_action_out(model_out))
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
