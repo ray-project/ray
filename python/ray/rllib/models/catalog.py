@@ -232,13 +232,17 @@ class ModelCatalog(object):
                                      options)
 
     @staticmethod
-    def get_torch_model(obs_space, num_outputs, options=None):
+    def get_torch_model(obs_space,
+                        num_outputs,
+                        options=None,
+                        default_model_cls=None):
         """Returns a custom model for PyTorch algorithms.
 
         Args:
             obs_space (Space): The input observation space.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
+            default_model_cls (cls): Optional class to use if no custom model.
 
         Returns:
             model (models.Model): Neural network model.
@@ -255,6 +259,9 @@ class ModelCatalog(object):
             logger.info("Using custom torch model {}".format(model))
             return _global_registry.get(RLLIB_MODEL,
                                         model)(obs_space, num_outputs, options)
+
+        if default_model_cls:
+            return default_model_cls(obs_space, num_outputs, options)
 
         if isinstance(obs_space, gym.spaces.Discrete):
             obs_rank = 1

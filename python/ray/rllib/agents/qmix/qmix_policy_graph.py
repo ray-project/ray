@@ -12,13 +12,13 @@ from torch.distributions import Categorical
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
-from ray.rllib.agents.qmix.model import RNNModel
+from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.action_dist import TupleActions
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.model import _unpack_obs
-from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.annotations import override
 
@@ -61,7 +61,7 @@ class QMixLoss(nn.Module):
 
         # Calculate estimated Q-Values
         mac_out = []
-        h = self.model.init_hidden().expand([B, self.n_agents, -1])
+        h = [s.expand([B, self.n_agents, -1]) for s in self.model.state_init()]
         for t in range(T):
             q, h = _mac(self.model, obs[:, t], h)
             mac_out.append(q)
@@ -73,8 +73,7 @@ class QMixLoss(nn.Module):
 
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
-        target_h = self.target_model.init_hidden().expand(
-            [B, self.n_agents, -1])
+        target_h = [s.expand([B, self.n_agents, -1]) for s in self.target_model.state_init()]
         for t in range(T):
             target_q, target_h = _mac(self.target_model, obs[:, t], target_h)
             target_mac_out.append(target_q)
@@ -158,9 +157,16 @@ class QMixPolicyGraph(PolicyGraph):
             self.has_action_mask = False
             self.obs_size = _get_size(agent_obs_space)
 
-        self.model = RNNModel(self.obs_size, self.h_size, self.n_actions)
-        self.target_model = RNNModel(self.obs_size, self.h_size,
-                                     self.n_actions)
+        self.model = ModelCatalog.get_torch_model(
+            agent_obs_space,
+            self.n_actions,
+            config["model"],
+            default_model_cls=RNNModel)
+        self.target_model = ModelCatalog.get_torch_model(
+            agent_obs_space,
+            self.n_actions,
+            config["model"],
+            default_model_cls=RNNModel)
 
         # Setup the mixer network.
         # The global state is just the stacked agent observations for now.
@@ -203,13 +209,11 @@ class QMixPolicyGraph(PolicyGraph):
                         episodes=None,
                         **kwargs):
         obs_batch, action_mask = self._unpack_observation(obs_batch)
-        assert len(state_batches) == self.n_agents, state_batches
-        state_batches = np.stack(state_batches, axis=1)
 
         # Compute actions
         with th.no_grad():
             q_values, hiddens = _mac(self.model, th.from_numpy(obs_batch),
-                                     th.from_numpy(state_batches))
+                                     [th.from_numpy(np.array(s)) for s in state_batches])
             avail = th.from_numpy(action_mask).float()
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
@@ -220,10 +224,9 @@ class QMixPolicyGraph(PolicyGraph):
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.max(dim=2)[1])
             actions = var_to_np(actions)
-            hiddens = var_to_np(hiddens)
+            hiddens = [var_to_np(s) for s in hiddens]
 
-        return (TupleActions(list(actions.transpose([1, 0]))),
-                hiddens.transpose([1, 0, 2]), {})
+        return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
     @override(PolicyGraph)
     def compute_apply(self, samples):
@@ -239,7 +242,7 @@ class QMixPolicyGraph(PolicyGraph):
                     samples["dones"], obs_batch
                 ],
                 [samples["state_in_{}".format(k)]
-                 for k in range(self.n_agents)],
+                 for k in range(len(self.get_initial_state()))],
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True,
                 _extra_padding=1)
@@ -291,10 +294,7 @@ class QMixPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def get_initial_state(self):
-        return [
-            self.model.init_hidden().numpy().squeeze()
-            for _ in range(self.n_agents)
-        ]
+        return [s.expand([self.n_agents, -1]).numpy() for s in self.model.state_init()]
 
     @override(PolicyGraph)
     def get_weights(self):
@@ -342,6 +342,12 @@ class QMixPolicyGraph(PolicyGraph):
         return group_rewards
 
     def _unpack_observation(self, obs_batch):
+        """Unpacks the action mask / tuple obs from agent grouping.
+        
+        Returns:
+            obs (Tensor): flattened obs tensors
+            mask (Tensor): action mask, if any
+        """
         unpacked = _unpack_obs(
             np.array(obs_batch),
             self.observation_space.original_space,
@@ -388,17 +394,13 @@ def _validate(obs_space, action_space):
             "must be homogeneous, got {}".format(action_space.spaces))
 
 
-def _get_size(obs_space):
-    return get_preprocessor(obs_space)(obs_space).size
-
-
 def _mac(model, obs, h):
     """Forward pass of the multi-agent controller.
 
     Arguments:
-        model: Model that produces q-values for a 1d agent batch
+        model: TorchModel class
         obs: Tensor of shape [B, n_agents, obs_size]
-        h: Tensor of shape [B, n_agents, h_size]
+        h: List of tensors of shape [B, n_agents, h_size]
 
     Returns:
         q_vals: Tensor of shape [B, n_agents, n_actions]
@@ -406,6 +408,6 @@ def _mac(model, obs, h):
     """
     B, n_agents = obs.size(0), obs.size(1)
     obs_flat = obs.reshape([B * n_agents, -1])
-    h_flat = h.reshape([B * n_agents, -1])
-    q_flat, h_flat = model.forward(obs_flat, h_flat)
-    return q_flat.reshape([B, n_agents, -1]), h_flat.reshape([B, n_agents, -1])
+    h_flat = [s.reshape([B * n_agents, -1]) for s in h]
+    q_flat, _, _, h_flat = model.forward({"obs": obs_flat}, h_flat)
+    return q_flat.reshape([B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]

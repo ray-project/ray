@@ -30,7 +30,8 @@ class TorchModel(nn.Module):
         input_dict["obs"] = input_dict["obs"].float()  # force float?
         input_dict = _restore_original_dimensions(
             input_dict, self.obs_space, tensorlib=torch)
-        return self._forward(input_dict, hidden_state)
+        outputs, features, vf, h = self._forward(input_dict, hidden_state)
+        return outputs, features, vf, h
 
     def state_init(self):
         """Returns the initial hidden state, if any."""

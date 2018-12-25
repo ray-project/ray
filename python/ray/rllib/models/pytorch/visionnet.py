@@ -14,7 +14,6 @@ from ray.rllib.utils.annotations import override
 class VisionNetwork(TorchModel):
     """Generic vision network."""
 
-    @override(TorchModel)
     def __init__(self, obs_space, num_outputs, options):
         TorchModel.__init__(self, obs_space, num_outputs, options)
         filters = options.get("conv_filters")

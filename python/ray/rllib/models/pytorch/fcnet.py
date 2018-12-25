@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 class FullyConnectedNetwork(TorchModel):
     """Generic fully connected network."""
 
-    @override(TorchModel)
     def __init__(self, obs_space, num_outputs, options):
         TorchModel.__init__(self, obs_space, num_outputs, options)
         hiddens = options.get("fcnet_hiddens")
