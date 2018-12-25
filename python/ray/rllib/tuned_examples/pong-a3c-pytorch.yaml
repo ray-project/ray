@@ -2,7 +2,7 @@ pong-a3c-pytorch-cnn:
     env: PongDeterministic-v4
     run: A3C
     config:
-        num_workers: 16
+        num_workers: 1
         sample_batch_size: 20
         use_pytorch: true
         vf_loss_coeff: 0.5

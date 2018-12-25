@@ -19,6 +19,7 @@ class FullyConnectedNetwork(TorchModel):
 
     @override(TorchModel)
     def __init__(self, obs_space, num_outputs, options):
+        TorchModel.__init__(self, obs_space, num_outputs, options)
         hiddens = options.get("fcnet_hiddens")
         activation = _get_activation_fn(options.get("fcnet_activation"))
         logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
