@@ -38,7 +38,9 @@ def _find_checkpoint_dir(exp_list):
     checkpointable_expts = [exp for exp in exp_list if exp.is_checkpointable()]
     logger.info("Searching checkpointable experiments for checkpoint_dir.")
     if checkpointable_expts:
-        return checkpointable_expts[0].spec["local_dir"]
+        # TODO(rliaw): This should be resolved in Experiment constructor.
+        exp = checkpointable_expts[0]
+        return os.path.join(exp.spec["local_dir"], exp.name)
     else:
         return None
 
