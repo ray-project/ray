@@ -146,7 +146,7 @@ class TorchSpyModel(TorchModel):
         front_cam = input_dict["obs"]["sensors"]["front_cam"][0].numpy()
         task = input_dict["obs"]["inner_state"]["job_status"]["task"].numpy()
         ray.experimental.internal_kv._internal_kv_put(
-            "t_spy_in_{}".format(TorchSpyModel.capture_index),
+            "torch_spy_in_{}".format(TorchSpyModel.capture_index),
             pickle.dumps((pos, front_cam, task)),
             overwrite=True)
         TorchSpyModel.capture_index += 1
@@ -406,7 +406,7 @@ class NestedSpacesTest(unittest.TestCase):
         for i in range(4):
             seen = pickle.loads(
                 ray.experimental.internal_kv._internal_kv_get(
-                    "t_spy_in_{}".format(i)))
+                    "torch_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
             task_i = one_hot(
