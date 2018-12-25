@@ -21,7 +21,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex
+from ray.utils import random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -355,7 +355,7 @@ class Trial(object):
             identifier += "_" + self.experiment_tag
         return identifier
 
-    def __getstate__(self):
+    def to_serializable(self):
         """Memento generator for Trial.
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
@@ -387,35 +387,33 @@ class Trial(object):
             "verbose": self.verbose
         }
 
-        state.update({
-            "_checkpoint": cloudpickle.dumps(self._checkpoint),
-            "config": cloudpickle.dumps(self.config),
-            "custom_loggers": cloudpickle.dumps(self.custom_loggers),
-            "resources": cloudpickle.dumps(self.resources),
-            "sync_function": cloudpickle.dumps(self.sync_function),
-            "trial_name_creator": cloudpickle.dumps(self.trial_name_creator),
-        })
+        state["__data__"] = binary_to_hex(
+            cloudpickle.dumps({
+                "_checkpoint": self._checkpoint,
+                "config": self.config,
+                "custom_loggers": self.custom_loggers,
+                "resources": self.resources,
+                "sync_function": self.sync_function,
+                "trial_name_creator": self.trial_name_creator,
+            }))
 
         # Remove the unpicklable entries.
         if self.result_logger:
             self.result_logger.flush()
-            state["_logger_started"] = True
+            state["__logger_started__"] = True
         else:
-            state["_logger_started"] = False
+            state["__logger_started__"] = False
         return state
 
-    def __setstate__(self, state):
-        logger_started = state.pop("_logger_started")
-        state.update({
-            "_checkpoint": cloudpickle.loads(state["_checkpoint"]),
-            "config": cloudpickle.loads(state["config"]),
-            "custom_loggers": cloudpickle.loads(state["custom_loggers"]),
-            "resources": cloudpickle.loads(state["resources"]),
-            "sync_function": cloudpickle.loads(state["sync_function"]),
-            "trial_name_creator": cloudpickle.loads(
-                state["trial_name_creator"]),
-        })
-        self.__dict__.update(state)
-        Trial._registration_check(self.trainable_name)
+    @classmethod
+    def from_serializable(cls, state):
+        trial = Trial(state["trainable_name"])
+        logger_started = state.pop("__logger_started__")
+        other_data = cloudpickle.loads(hex_to_binary(state.pop("__data__")))
+        state.update(other_data)
+
+        trial.__dict__.update(state)
+        Trial._registration_check(trial.trainable_name)
         if logger_started:
-            self.init_logger()
+            trial.init_logger()
+        return trial

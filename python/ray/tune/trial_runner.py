@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import logging
 import os
 import re
@@ -162,7 +163,12 @@ class TrialRunner(object):
             RayTrialExecutor(queue_trials=runner._queue_trials)
 
         logger.info("Adding all trials with checkpoint state.")
-        trials = [cloudpickle.loads(cp) for cp in runner_state["checkpoints"]]
+        trial_checkpoints = [
+            json.loads(cp) for cp in runner_state["checkpoints"]
+        ]
+        trials = [
+            Trial.from_serializable(trial_cp) for trial_cp in trial_checkpoints
+        ]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
             runner.add_trial(trial)
