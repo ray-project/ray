@@ -76,10 +76,6 @@ class TorchPolicyGraph(PolicyGraph):
                         self.extra_action_out(model_out))
 
     @override(PolicyGraph)
-    def get_initial_state(self):
-        return [var_to_np(s) for s in self._model.state_init()]
-
-    @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
         with self.lock:
             loss_in = []
@@ -110,6 +106,10 @@ class TorchPolicyGraph(PolicyGraph):
     def set_weights(self, weights):
         with self.lock:
             self._model.load_state_dict(weights)
+
+    @override(PolicyGraph)
+    def get_initial_state(self):
+        return [var_to_np(s) for s in self._model.state_init()]
 
     def extra_action_out(self, model_out):
         """Returns dict of extra info to include in experience batch.
