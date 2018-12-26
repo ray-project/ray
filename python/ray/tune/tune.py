@@ -124,10 +124,8 @@ def run_experiments(experiments=None,
 
     if resume:
         if not checkpoint_dir:
-            raise ValueError(
-                "checkpoint_dir not detected. "
-                "Set resume=False or set a local_dir."
-            )
+            raise ValueError("checkpoint_dir not detected. "
+                             "Set resume=False or set a local_dir.")
         if not os.path.exists(
                 os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
             logger.warn(
@@ -136,7 +134,8 @@ def run_experiments(experiments=None,
             runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
                                         trial_executor)
     elif resume is None and not os.environ.get("TUNE_RESUME_PROMPT_OFF"):
-        if os.path.exists(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
+        if checkpoint_dir and os.path.exists(
+                os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
             if click.confirm("Detected checkpoint dir: {}. Restore?".format(
                     checkpoint_dir)):
                 runner = try_restore_runner(checkpoint_dir, search_alg,
