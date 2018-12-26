@@ -57,7 +57,6 @@ class TrialRunner(object):
                  scheduler=None,
                  launch_web_server=False,
                  checkpoint_dir=None,
-                 checkpoint_mode=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -71,8 +70,6 @@ class TrialRunner(object):
             launch_web_server (bool): Flag for starting TuneServer
             checkpoint_dir (str): Path where global checkpoints are stored
                 and restored from.
-            checkpoint_mode: Turns on checkpointing for full Tune experiment.
-                Currently defaults to False.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -104,11 +101,10 @@ class TrialRunner(object):
         self._trials = []
         self._stop_queue = []
         self._checkpoint_dir = checkpoint_dir
-        self._checkpoint_mode = checkpoint_mode
 
     def checkpoint(self):
         """Saves execution state to `self._checkpoint_dir` if provided."""
-        if not self._checkpoint_mode or not self._checkpoint_dir:
+        if not self._checkpoint_dir:
             return
         checkpoint_dir = self._checkpoint_dir
         if not os.path.exists(checkpoint_dir):
@@ -173,9 +169,11 @@ class TrialRunner(object):
         trial_checkpoints = [
             json.loads(cp) for cp in runner_state["checkpoints"]
         ]
-        trials = [
-            Trial.from_serializable(trial_cp) for trial_cp in trial_checkpoints
-        ]
+        trials = []
+        for trial_cp in trial_checkpoints:
+            new_trial = Trial(trial_cp["trainable_name"])
+            new_trial.__setstate__(trial_cp)
+            trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
             runner.add_trial(trial)
@@ -226,7 +224,10 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
 
-        self.checkpoint()
+        try:
+            self.checkpoint()
+        except Exception:
+            logger.exception("Trial Runner checkpointing failed.")
         self._iteration += 1
 
         if self._server:
@@ -515,17 +516,17 @@ class TrialRunner(object):
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
     def __getstate__(self):
-        state = {
-            "_checkpoint_dir": self._checkpoint_dir,
-            "_checkpoint_mode": self._checkpoint_mode,
-            "_global_time_limit": self._global_time_limit,
-            "_iteration": self._iteration,
-            "_queue_trials": self._queue_trials,
-            "_server_port": self._server_port,
-            "_total_time": self._total_time,
-            "_verbose": self._verbose,
-            "launch_web_server": bool(self._server)
-        }
+        """Gets state for trial.
+
+        Note that this is not used as a pickling override as
+        does not have all fields.
+        """
+        state = copy.deepcopy(self.__dict__)
+        for k in [
+                "trials", "_stop_queue", "_server", "_search_alg",
+                "_scheduler_alg", "trial_executor", "launch_web_server"
+        ]:
+            del state[k]
         return state
 
     def __setstate__(self, state):

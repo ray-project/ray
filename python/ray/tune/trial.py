@@ -147,7 +147,6 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
-        self.trial_name_creator = trial_name_creator
         self.custom_loggers = custom_loggers
         self.sync_function = sync_function
         validate_sync_function(sync_function)
@@ -169,6 +168,11 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
+
+        self.trial_name = None
+        if trial_name_creator:
+            self.trial_name = trial_name_creator(self)
+
 
     @classmethod
     def _registration_check(cls, trainable_name):
@@ -341,8 +345,8 @@ class Trial(object):
 
         Can be overriden with a custom string creator.
         """
-        if self.trial_name_creator:
-            return self.trial_name_creator(self)
+        if self.trial_name:
+            return self.trial_name
 
         if "env" in self.config:
             env = self.config["env"]
@@ -355,7 +359,7 @@ class Trial(object):
             identifier += "_" + self.experiment_tag
         return identifier.replace("/", "_")
 
-    def to_serializable(self):
+    def __getstate__(self):
         """Memento generator for Trial.
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
@@ -371,8 +375,7 @@ class Trial(object):
                 "config": self.config,
                 "custom_loggers": self.custom_loggers,
                 "resources": self.resources,
-                "sync_function": self.sync_function,
-                "trial_name_creator": self.trial_name_creator,
+                "sync_function": self.sync_function
             }))
 
         # Remove the unpicklable entries.
@@ -386,15 +389,12 @@ class Trial(object):
             state["__logger_started__"] = False
         return state
 
-    @classmethod
-    def from_serializable(cls, state):
-        trial = Trial(state["trainable_name"])
+    def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         other_data = cloudpickle.loads(hex_to_binary(state.pop("__data__")))
         state.update(other_data)
 
-        trial.__dict__.update(state)
-        Trial._registration_check(trial.trainable_name)
+        self.__dict__.update(state)
+        Trial._registration_check(self.trainable_name)
         if logger_started:
-            trial.init_logger()
-        return trial
+            self.init_logger()

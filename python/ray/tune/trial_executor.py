@@ -58,7 +58,7 @@ class TrialExecutor(object):
                 return
             try:
                 logger.debug("Saving trial metadata.")
-                metadata = json.dumps(trial.to_serializable())
+                metadata = json.dumps(trial.__getstate__(), indent=2)
                 self._checkpoints[trial.trial_id] = metadata
             except Exception:
                 logger.exception("Error checkpointing trial metadata.")

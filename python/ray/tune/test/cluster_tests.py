@@ -274,8 +274,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     assert cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
-    runner = TrialRunner(
-        BasicVariantGenerator(), checkpoint_dir=dirpath, checkpoint_mode=True)
+    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -403,7 +402,8 @@ tune.run_experiments(
                 "checkpoint_freq": 1,
                 "local_dir": dirpath
             }
-        }, resume=True)
+        },
+        resume=True)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     cluster.shutdown()
 

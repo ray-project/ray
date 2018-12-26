@@ -1657,10 +1657,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            BasicVariantGenerator(),
-            checkpoint_mode=True,
-            checkpoint_dir=tmpdir)
+        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -1719,10 +1716,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            BasicVariantGenerator(),
-            checkpoint_mode=True,
-            checkpoint_dir=tmpdir)
+        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(
@@ -1730,7 +1724,8 @@ class TrialRunnerTest(unittest.TestCase):
                 trial_id="non_checkpoint",
                 stopping_criterion={"training_iteration": 2}))
 
-        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
             runner.step()
 
         runner.add_trial(
@@ -1740,7 +1735,8 @@ class TrialRunnerTest(unittest.TestCase):
                 checkpoint_at_end=True,
                 stopping_criterion={"training_iteration": 2}))
 
-        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
             runner.step()
 
         runner.add_trial(
@@ -1755,8 +1751,10 @@ class TrialRunnerTest(unittest.TestCase):
         runner2 = TrialRunner.restore(tmpdir)
         new_trials = runner2.get_trials()
         self.assertEquals(len(new_trials), 3)
-        self.assertTrue(runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
-        self.assertTrue(runner2.get_trial("checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(
+            runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(
+            runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         runner2.step()
         shutil.rmtree(tmpdir)
