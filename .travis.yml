@@ -165,8 +165,7 @@ script:
   - python -m pytest -v --durations=10 test/tensorflow_test.py
   - python -m pytest -v --durations=10 test/failure_test.py
   - python -m pytest -v --durations=10 test/microbenchmarks.py
-  - python -m pytest -v --durations=10 -s test/stress_tests.py::test_multiple_recursive
-  - python -m pytest -v --durations=10 test/stress_tests.py -k "not test_multiple_recursive"
+  - python -m pytest -v --durations=10 test/stress_tests.py
   - python -m pytest -v --durations=10 test/component_failures_test.py
   - python -m pytest -v --durations=10 test/multi_node_test.py
   - python -m pytest -v --durations=10 test/multi_node_test_2.py
@@ -175,6 +174,7 @@ script:
   - python -m pytest -v --durations=10 test/cython_test.py
   - python -m pytest -v --durations=10 test/credis_test.py
   - python -m pytest -v --durations=10 test/node_manager_test.py
+  # TODO: check whether object_manager_test.py fails in Jenkins but not in Travis.
   - python -m pytest -v --durations=10 test/object_manager_test.py
 
   # ray temp file tests
