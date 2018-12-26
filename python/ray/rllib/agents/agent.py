@@ -201,7 +201,7 @@ class Agent(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent"
+        "tf_session_args", "env_config", "model", "optimizer", "multiagent", "custom_resources_per_worker"
     ]
 
     def __init__(self, config=None, env=None, logger_creator=None):
