@@ -60,7 +60,7 @@ class TrialExecutor(object):
                 logger.debug("Saving trial metadata.")
                 metadata = json.dumps(trial.to_serializable())
                 self._checkpoints[trial.trial_id] = metadata
-            except ValueError:
+            except Exception:
                 logger.exception("Error checkpointing trial metadata.")
 
     def get_checkpoints(self):

@@ -363,29 +363,7 @@ class Trial(object):
         """
         if not self._checkpoint.storage == Checkpoint.DISK:
             raise ValueError("Checkpoint cannot be in-memory.")
-        state = {
-            "checkpoint_at_end": self.checkpoint_at_end,
-            "checkpoint_freq": self.checkpoint_freq,
-            "error_file": self.error_file,
-            "experiment_tag": self.experiment_tag,
-            "last_debug": self.last_debug,
-            "last_result": self.last_result,
-            "last_update_time": self.last_update_time,
-            "local_dir": self.local_dir,
-            "location": self.location,
-            "logdir": self.logdir,
-            "max_failures": self.max_failures,
-            "num_failures": self.num_failures,
-            "result_logger": None,
-            "runner": None,
-            "status": Trial.PENDING
-            if self.status == Trial.RUNNING else self.status,
-            "stopping_criterion": self.stopping_criterion,
-            "trainable_name": self.trainable_name,
-            "trial_id": self.trial_id,
-            "upload_dir": self.upload_dir,
-            "verbose": self.verbose
-        }
+        state = copy.deepcopy(self.__dict__)
 
         state["__data__"] = binary_to_hex(
             cloudpickle.dumps({
@@ -398,6 +376,9 @@ class Trial(object):
             }))
 
         # Remove the unpicklable entries.
+        state["runner"] = None
+        state["result_logger"] = None
+        state["status"] = Trial.PENDING if self.status == Trial.RUNNING else self.status
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
