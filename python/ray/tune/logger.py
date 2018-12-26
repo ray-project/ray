@@ -178,7 +178,6 @@ def to_tf_values(result, path):
 
 class _TFLogger(Logger):
     def _init(self):
-        # TODO(rliaw): Implement a proper resume functionality for this.
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):

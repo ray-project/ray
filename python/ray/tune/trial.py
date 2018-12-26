@@ -401,7 +401,7 @@ class Trial(object):
         assert self._checkpoint.storage == Checkpoint.DISK, (
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
-        state["resources"] = resources_to_json(self.resources),
+        state["resources"] = resources_to_json(self.resources)
 
         pickle_data = {
             "_checkpoint": self._checkpoint,
