@@ -265,7 +265,7 @@ public class RayletClientImpl implements RayletClient {
       LOGGER.error(
           "Allocated buffer is not enough to transfer the task specification: {}vs {}",
               TASK_SPEC_BUFFER_SIZE, buffer.remaining());
-      assert (false);
+      throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
   }

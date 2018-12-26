@@ -39,6 +39,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final int GET_TIMEOUT_MS = 1000;
   private static final int FETCH_BATCH_SIZE = 1000;
+  private static final int LIMITED_RETRY_COUNTER = 10;
 
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
@@ -137,7 +138,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
+      int retryCounter = 0;
       while (unreadys.size() > 0) {
+        retryCounter++;
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
         List<List<UniqueId>> reconstructBatches =
             splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
@@ -159,11 +162,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             unreadys.remove(id);
           }
         }
+
+        if (retryCounter % LIMITED_RETRY_COUNTER == 0) {
+          LOGGER.warn("Attempted {} times to reconstruct objects {}, "
+              + "but haven't received response. If this message continues to print,"
+              + " it may indicate that the task is hanging, or someting wrong "
+              + "happened in raylet backend.",
+              retryCounter, unreadys.keySet());
+        }
       }
 
       if (LOGGER.isDebugEnabled()) {
         LOGGER.debug("Got objects {} for task {}.", Arrays.toString(objectIds.toArray()), taskId);
       }
+
       List<T> finalRet = new ArrayList<>();
 
       for (Pair<T, GetStatus> value : ret) {
