@@ -578,6 +578,7 @@ class _MockTrial(Trial):
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
+        self.trial_name = None
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
