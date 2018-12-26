@@ -205,6 +205,14 @@ class PolicyGraph(object):
         """Export PolicyGraph to local directory for serving.
 
         Arguments:
-            export_dir (str): Local writable directory
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
+
+    def export_checkpoint(self, export_dir):
+        """Export PolicyGraph checkpoint to local directory.
+
+        Argument:
+            export_dir (str): Local writable directory.
         """
         raise NotImplementedError
