@@ -130,16 +130,15 @@ if __name__ == "__main__":
         }
     }
     if args.run.lower() == "qmix":
+
         def grouped_sc2(cfg):
             env = SC2MultiAgentEnv(cfg)
             agent_list = list(range(env._starcraft_env.n_agents))
             grouping = {
                 "group_1": agent_list,
             }
-            obs_space = Tuple([env.observation_space
-                               for i in agent_list])
-            act_space = Tuple([env.action_space
-                               for i in agent_list])
+            obs_space = Tuple([env.observation_space for i in agent_list])
+            act_space = Tuple([env.action_space for i in agent_list])
             return env.with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space)
 
