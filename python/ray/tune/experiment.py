@@ -99,6 +99,7 @@ class Experiment(object):
         >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
         >>>     upload_dir="s3://your_bucket/path",
+        >>>     checkpoint_freq=10,
         >>>     max_failures=2)
 
     """

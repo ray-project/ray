@@ -1741,6 +1741,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
+        self.assertTrue(runner2.get_trial("pending").last_result is None)
         runner2.step()
         shutil.rmtree(tmpdir)
 
