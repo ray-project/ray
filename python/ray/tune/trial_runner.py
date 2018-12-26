@@ -258,7 +258,8 @@ class TrialRunner(object):
         """
         trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
-        self.trial_executor.try_checkpoint_metadata(trial)
+        if trial.status == Trial.PENDING:
+            self.trial_executor.try_checkpoint_metadata(trial)
         self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):

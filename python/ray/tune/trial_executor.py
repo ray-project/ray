@@ -47,18 +47,12 @@ class TrialExecutor(object):
             self.try_checkpoint_metadata(trial)
 
     def try_checkpoint_metadata(self, trial):
-        """Checkpoints metadata if current session and trial allow.
-
-        Metadata checkpointing will occur either if the trial is
-        checkpointable (meaning its checkpoint frequency is positive),
-        or if it has not started running.
+        """Checkpoints metadata if checkpoint_mode is True.
 
         Args:
             trial (Trial): Trial to checkpoint.
         """
-        trial_not_started = (trial.status == Trial.PENDING)
-        if self._checkpoint_mode and (trial.checkpoint_freq > 0
-                                      or trial_not_started):
+        if self._checkpoint_mode:
             if trial._checkpoint.storage == Checkpoint.MEMORY:
                 logger.debug("Not saving data for trial w/ memory checkpoint.")
                 return

@@ -1656,16 +1656,17 @@ class TrialRunnerTest(unittest.TestCase):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
-        default_resources = Resources(cpu=1, gpu=0)
 
-        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
+        runner = TrialRunner(
+            BasicVariantGenerator(),
+            checkpoint_mode=True,
+            checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
                 trial_id="trial_terminate",
                 stopping_criterion={"training_iteration": 1},
-                checkpoint_freq=1,
-                resources=default_resources)
+                checkpoint_freq=1)
         ]
         runner.add_trial(trials[0])
         runner.step()  # start
@@ -1678,8 +1679,7 @@ class TrialRunnerTest(unittest.TestCase):
                 trial_id="trial_fail",
                 stopping_criterion={"training_iteration": 3},
                 checkpoint_freq=1,
-                config={"mock_error": True},
-                resources=default_resources)
+                config={"mock_error": True})
         ]
         runner.add_trial(trials[1])
         runner.step()
@@ -1692,8 +1692,7 @@ class TrialRunnerTest(unittest.TestCase):
                 "__fake",
                 trial_id="trial_succ",
                 stopping_criterion={"training_iteration": 2},
-                checkpoint_freq=1,
-                resources=default_resources)
+                checkpoint_freq=1)
         ]
         runner.add_trial(trials[2])
         runner.step()
@@ -1719,24 +1718,47 @@ class TrialRunnerTest(unittest.TestCase):
         """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
-        default_resources = Resources(cpu=1, gpu=0)
 
-        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
-        trials = [
+        runner = TrialRunner(
+            BasicVariantGenerator(),
+            checkpoint_mode=True,
+            checkpoint_dir=tmpdir)
+
+        runner.add_trial(
             Trial(
                 "__fake",
-                trial_id="trial_terminate",
-                stopping_criterion={"training_iteration": 2},
-                resources=default_resources)
-        ]
-        runner.add_trial(trials[0])
-        runner.step()  # start
+                trial_id="non_checkpoint",
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="checkpoint",
+                checkpoint_at_end=True,
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="pending",
+                stopping_criterion={"training_iteration": 2}))
+
+        runner.step()
         runner.step()
 
         runner2 = TrialRunner.restore(tmpdir)
-        self.assertEquals(len(runner2.get_trials()), 0)
+        new_trials = runner2.get_trials()
+        self.assertEquals(len(new_trials), 3)
+        self.assertTrue(runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         runner2.step()
-        self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
 
