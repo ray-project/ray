@@ -185,7 +185,7 @@ class RayParams(object):
         """
         for arg in kwargs:
             if (hasattr(self, arg)):
-                if getattr(self, arg) == None:
+                if getattr(self, arg) is None:
                     setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError("Invalid RayParams parameter in"
