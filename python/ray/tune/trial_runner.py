@@ -159,7 +159,6 @@ class TrialRunner(object):
 
         runner.__setstate__(runner_state["runner_data"])
 
-        logger.info("Adding trials.")
         trials = []
         for trial_cp in runner_state["checkpoints"]:
             new_trial = Trial(trial_cp["trainable_name"])
