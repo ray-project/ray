@@ -2,26 +2,40 @@
 # target:
 #  - boost_ep
 # defines:
-#  - BOOST_ROOT
 #  - Boost_INCLUDE_DIR
 #  - Boost_SYSTEM_LIBRARY
 #  - Boost_FILESYSTEM_LIBRARY
+#  - Boost_THREAD_LIBRARY
+
+option(RAY_BUILD_BOOST "Whether to build boost locally" ON)
+
+# Set the required boost version.
+set(BOOST_MAJOR_VERSION 1)
+set(BOOST_MINOR_VERSION 68)
+set(BOOST_SUBMINOR_VERSION 0)
+set(TARGET_BOOST_VERSION ${BOOST_MAJOR_VERSION}.${BOOST_MINOR_VERSION}.${BOOST_SUBMINOR_VERSION})
 
 # boost is a stable library in ray, and it supports to find
 # the boost pre-built in environment to speed up build process
 if (DEFINED ENV{RAY_BOOST_ROOT} AND EXISTS $ENV{RAY_BOOST_ROOT})
   set(Boost_USE_STATIC_LIBS ON)
   set(BOOST_ROOT "$ENV{RAY_BOOST_ROOT}")
-  message(STATUS "Find BOOST_ROOT: ${BOOST_ROOT}")
-#  find_package(Boost COMPONENTS system filesystem REQUIRED)
-  set(Boost_INCLUDE_DIR ${BOOST_ROOT}/include)
-  set(Boost_LIBRARY_DIR ${BOOST_ROOT}/lib)
-  set(Boost_SYSTEM_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_system${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set(Boost_THREAD_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_thread${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set(Boost_FILESYSTEM_LIBRARY ${Boost_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}boost_filesystem${CMAKE_STATIC_LIBRARY_SUFFIX})
+  find_package(Boost ${TARGET_BOOST_VERSION} COMPONENTS system filesystem thread)
+  if (Boost_FOUND)
+    # If there is a newer version of Boost, there will be a warning message and Boost_FOUND is true.
+    set(FOUND_BOOST_VERSION ${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION})
+    if (${TARGET_BOOST_VERSION} STREQUAL ${FOUND_BOOST_VERSION})
+      set(RAY_BUILD_BOOST OFF)
+      set(Boost_INCLUDE_DIR ${Boost_INCLUDE_DIRS})
+      # Boost_SYSTEM_LIBRARY, Boost_FILESYSTEM_LIBRARY, Boost_THREAD_LIBRARY will be set by find_package(Boost).
+      add_custom_target(boost_ep)
+    else()
+      message("Required Boost Version ${TARGET_BOOST_VERSION} does not match the path: $ENV{RAY_BOOST_ROOT}. Will build Boost Locally.")
+    endif()
+  endif(Boost_FOUND)
+endif()
 
-  add_custom_target(boost_ep)
-else()
+if (RAY_BUILD_BOOST)
   set(Boost_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/boost-install)
 
   set(Boost_INCLUDE_DIR ${Boost_INSTALL_PREFIX}/include)
