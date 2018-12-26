@@ -135,7 +135,7 @@ def run_experiments(experiments=None,
         else:
             runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
                                         trial_executor)
-    elif resume is None:
+    elif resume is None and not os.environ.get("TUNE_RESUME_PROMPT_OFF"):
         if os.path.exists(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
             if click.confirm("Detected checkpoint dir: {}. Restore?".format(
                     checkpoint_dir)):

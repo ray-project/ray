@@ -38,6 +38,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
@@ -543,6 +544,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -779,6 +781,7 @@ class RunExperimentTest(unittest.TestCase):
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -968,6 +971,9 @@ def create_mock_components():
 
 
 class TrialRunnerTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
