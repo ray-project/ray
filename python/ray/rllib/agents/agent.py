@@ -447,7 +447,7 @@ class Agent(Trainable):
                                  export_dir,
                                  filename_prefix="model",
                                  policy_id=DEFAULT_POLICY_ID):
-        """Export policy model checkpoint to local directory.
+        """Export tensorflow policy model checkpoint to local directory.
 
         Arguments:
             export_dir (string): Writable local directory.
