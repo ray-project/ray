@@ -82,7 +82,7 @@ class Cluster(object):
             node_ip_address=services.get_node_ip_address(), **node_kwargs)
 
         if self.head_node is None:
-            ray_params.include_webui = False
+            ray_params.update(include_webui=False)
             address_info = services.start_ray_head(ray_params, cleanup=True)
             self.redis_address = address_info["redis_address"]
             # TODO(rliaw): Find a more stable way than modifying global state.
@@ -92,7 +92,7 @@ class Cluster(object):
             node = Node(address_info, process_dict_copy)
             self.head_node = node
         else:
-            ray_params.redis_address = self.redis_address
+            ray_params.update(redis_address=self.redis_address)
             address_info = services.start_ray_node(ray_params, cleanup=True)
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()

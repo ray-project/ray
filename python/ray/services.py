@@ -1273,7 +1273,8 @@ def start_ray_processes(ray_params, cleanup=True):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters will be set to default values if it's None:
             node_ip_address("127.0.0.1"), num_local_schedulers(1),
-            include_log_monitor(False), worker_path(path of default_worker.py)
+            include_webui(False), worker_path(path of default_worker.py),
+            include_log_monitor(False)
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
@@ -1295,6 +1296,7 @@ def start_ray_processes(ray_params, cleanup=True):
         include_log_monitor=False,
         resources={},
         num_local_schedulers=1,
+        include_webui=False,
         node_ip_address="127.0.0.1")
     if not isinstance(ray_params.resources, list):
         ray_params.resources = ray_params.num_local_schedulers * [
@@ -1484,6 +1486,7 @@ def start_ray_node(ray_params, cleanup=True):
     ray_params.address_info = {
         "redis_address": ray_params.redis_address,
     }
+    ray_params.update(include_log_monitor=True)
     return start_ray_processes(ray_params, cleanup=cleanup)
 
 
@@ -1509,5 +1512,6 @@ def start_ray_head(ray_params, cleanup=True):
         A dictionary of the address information for the processes that were
             started.
     """
-    ray_params.update_if_absent(num_redis_shards=1)
+    ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+    ray_params.update(include_log_monitor=True)
     return start_ray_processes(ray_params, cleanup=cleanup)

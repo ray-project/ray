@@ -120,7 +120,7 @@ class RayParams(object):
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
-                 include_webui=True,
+                 include_webui=None,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
