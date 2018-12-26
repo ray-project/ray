@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import click
 import logging
 import os
 import time
@@ -35,9 +36,24 @@ def _make_scheduler(args):
 
 
 def _find_checkpoint_dir(exp_list):
-    exp = exp_list[0]
-    # TODO(rliaw): Make sure this is resolved earlier.
-    return os.path.join(exp.spec["local_dir"], exp.name)
+    if exp_list:
+        exp = exp_list[0]
+        # TODO(rliaw): Make sure this is resolved earlier.
+        return os.path.join(exp.spec["local_dir"], exp.name)
+    else:
+        return None
+
+
+def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
+    logger.warn("Restoring from previous experiment and "
+                "ignoring any new changes to specification.")
+    new_runner = None
+    try:
+        new_runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
+                                         trial_executor)
+    except Exception:
+        logger.exception("Runner restore failed. Restarting experiment.")
+    return new_runner
 
 
 def run_experiments(experiments=None,
@@ -46,7 +62,7 @@ def run_experiments(experiments=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
-                    resume=False,
+                    resume=None,
                     queue_trials=False,
                     trial_executor=None,
                     raise_on_failed_trial=True):
@@ -66,9 +82,9 @@ def run_experiments(experiments=None,
             using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (bool): How much output should be printed for each trial.
-        resume (bool): Turns on checkpointing.
-            If checkpoint exists, the experiment will resume from there.
-            Only the first checkpointable experiment local_dir is checked.
+        resume (bool|None): If checkpoint exists, the experiment will
+            resume from there. If resume is None, Tune will prompt if
+            checkpoint detected.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
@@ -102,24 +118,31 @@ def run_experiments(experiments=None,
     # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
-
+    if checkpoint_dir:
+        logger.info("Using checkpoint dir: {}.".format(checkpoint_dir))
     runner = None
 
     if resume:
-        logger.info("Using checkpoint dir: {}.".format(checkpoint_dir))
+        if not checkpoint_dir:
+            raise ValueError(
+                "checkpoint_dir not detected. "
+                "Set resume=False or set a local_dir."
+            )
         if not os.path.exists(
                 os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
             logger.warn(
                 "Did not find checkpoint file in {}.".format(checkpoint_dir))
         else:
-            logger.warn("Restoring from previous experiment and "
-                        "ignoring any new changes to specification.")
-            try:
-                runner = TrialRunner.restore(checkpoint_dir, search_alg,
-                                             scheduler, trial_executor)
-            except Exception:
-                logger.exception(
-                    "Runner restore failed. Restarting experiment.")
+            runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
+                                        trial_executor)
+    elif resume is None:
+        if os.path.exists(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
+            if click.confirm("Detected checkpoint dir: {}. Restore?".format(
+                    checkpoint_dir)):
+                runner = try_restore_runner(checkpoint_dir, search_alg,
+                                            scheduler, trial_executor)
+            else:
+                logger.info("Overriding checkpoint and restarting experiment.")
 
     if not runner:
         if scheduler is None:
