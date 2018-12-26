@@ -40,13 +40,14 @@ def shutdown_only():
 
 
 @pytest.fixture
-def head_node_cluster():
+def head_node_cluster(request):
+    timeout = getattr(request, 'param', 200)
     cluster = ray.test.cluster_utils.Cluster(
         initialize_head=True,
         connect=True,
         head_node_args={
             "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
+                "initial_reconstruction_timeout_milliseconds": timeout,
                 "num_heartbeats_timeout": 10,
             })
         })
@@ -2248,6 +2249,7 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
         ray.get(actor.increase.remote())
 
 
+@pytest.mark.parametrize('head_node_cluster', [1000], indirect=True)
 def test_multiple_actor_reconstruction(head_node_cluster):
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be
