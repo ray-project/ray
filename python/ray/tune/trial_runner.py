@@ -68,8 +68,8 @@ class TrialRunner(object):
                 Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            metadata_checkpoint_dir (str): Path where global checkpoints are stored
-                and restored from.
+            metadata_checkpoint_dir (str): Path where
+                global checkpoints are stored and restored from.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -103,7 +103,7 @@ class TrialRunner(object):
         self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
     def checkpoint(self):
-        """Saves execution state to `self._metadata_checkpoint_dir` if provided."""
+        """Saves execution state to `self._metadata_checkpoint_dir`."""
         if not self._metadata_checkpoint_dir:
             return
         metadata_checkpoint_dir = self._metadata_checkpoint_dir
@@ -114,12 +114,14 @@ class TrialRunner(object):
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__()
         }
-        tmp_file_name = os.path.join(metadata_checkpoint_dir, ".tmp_checkpoint")
+        tmp_file_name = os.path.join(metadata_checkpoint_dir,
+                                     ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2)
 
-        os.rename(tmp_file_name,
-                  os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME))
+        os.rename(
+            tmp_file_name,
+            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME))
         return metadata_checkpoint_dir
 
     @classmethod
@@ -134,7 +136,7 @@ class TrialRunner(object):
         all ongoing trials.
 
         Args:
-            metadata_checkpoint_dir (str): Path to checkpoint (previously specified).
+            metadata_checkpoint_dir (str): Path to metadata checkpoints.
             search_alg (SearchAlgorithm): Search Algorithm. Defaults to
                 BasicVariantGenerator.
             scheduler (TrialScheduler): Scheduler for executing
@@ -144,12 +146,18 @@ class TrialRunner(object):
         Returns:
             runner (TrialRunner): A TrialRunner to resume experiments from.
         """
-        with open(os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME),
-                  "r") as f:
+        with open(
+                os.path.join(metadata_checkpoint_dir,
+                             TrialRunner.CKPT_FILE_NAME), "r") as f:
             runner_state = json.load(f)
 
-        logger.warning("Tune recovery is still experimental. "
-                       "There is limited search algorithm recovery support. ")
+        logger.warning("".join([
+            "Attempting to resume experiment from {}. ".format(
+                metadata_checkpoint_dir),
+            "This feature is experimental, "
+            "and may not work with all search algorithms. ",
+            "This will ignore any new changes to specification."
+        ]))
 
         from ray.tune.suggest import BasicVariantGenerator
         runner = TrialRunner(

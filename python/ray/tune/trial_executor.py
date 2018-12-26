@@ -25,7 +25,7 @@ class TrialExecutor(object):
                 automatic scale-up.
         """
         self._queue_trials = queue_trials
-        self._checkpoints = {}
+        self._cached_trial_state = {}
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -53,13 +53,13 @@ class TrialExecutor(object):
             return
         try:
             logger.debug("Saving trial metadata.")
-            self._checkpoints[trial.trial_id] = trial.__getstate__()
+            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
         except Exception:
             logger.exception("Error checkpointing trial metadata.")
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
-        return self._checkpoints.copy()
+        return self._cached_trial_state.copy()
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""

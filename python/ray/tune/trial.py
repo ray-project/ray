@@ -427,7 +427,9 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
-        for key in ["_checkpoint", "config", "custom_loggers", "sync_function"]:
+        for key in [
+                "_checkpoint", "config", "custom_loggers", "sync_function"
+        ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)

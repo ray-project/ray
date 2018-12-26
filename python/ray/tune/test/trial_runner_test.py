@@ -617,29 +617,6 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
-    def testSpecifyAlgorithm(self):
-        """Tests run_experiments works without specifying experiment."""
-
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        register_trainable("f1", train)
-
-        alg = BasicVariantGenerator()
-        alg.add_configurations({
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
-            }
-        })
-        trials = run_experiments(search_alg=alg)
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
-
     def testAutoregisterTrainable(self):
         def train(config, reporter):
             for i in range(100):
@@ -1663,7 +1640,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
         trials = [
             Trial(
                 "__fake",
@@ -1722,7 +1700,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=tmpdir)
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
 
         runner.add_trial(
             Trial(

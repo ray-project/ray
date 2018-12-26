@@ -276,7 +276,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     assert cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
-    runner = TrialRunner(BasicVariantGenerator(), checkpoint_dir=dirpath)
+    runner = TrialRunner(
+        BasicVariantGenerator(), metadata_checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2

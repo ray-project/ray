@@ -36,17 +36,13 @@ def _make_scheduler(args):
 
 
 def _find_checkpoint_dir(exp_list):
-    if exp_list:
-        exp = exp_list[0]
-        # TODO(rliaw): Make sure this is resolved earlier.
-        return os.path.join(exp.spec["local_dir"], exp.name)
-    else:
-        return None
+    assert exp_list, "Experiments must be specified via `run_experiments`"
+    exp = exp_list[0]
+    # TODO(rliaw): Make sure this is resolved earlier.
+    return os.path.join(exp.spec["local_dir"], exp.name)
 
 
 def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
-    logger.warn("Restoring from previous experiment and "
-                "ignoring any new changes to specification.")
     new_runner = None
     try:
         new_runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
@@ -56,7 +52,7 @@ def try_restore_runner(checkpoint_dir, search_alg, scheduler, trial_executor):
     return new_runner
 
 
-def run_experiments(experiments=None,
+def run_experiments(experiments,
                     search_alg=None,
                     scheduler=None,
                     with_server=False,
@@ -76,8 +72,6 @@ def run_experiments(experiments=None,
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, and HyperBand.
-        checkpoint_dir (str): Path at which experiment checkpoints are stored
-            and restored from.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
@@ -118,31 +112,27 @@ def run_experiments(experiments=None,
     # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
-    if checkpoint_dir:
-        logger.info("Using checkpoint dir: {}.".format(checkpoint_dir))
-    runner = None
 
-    if resume:
-        if not checkpoint_dir:
-            raise ValueError(
-                "checkpoint_dir not detected. "
-                "Set resume=False or set a local_dir."
-            )
-        if not os.path.exists(
-                os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
-            logger.warn(
-                "Did not find checkpoint file in {}.".format(checkpoint_dir))
-        else:
-            runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
-                                        trial_executor)
-    elif resume is None and not os.environ.get("TUNE_RESUME_PROMPT_OFF"):
-        if os.path.exists(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
-            if click.confirm("Detected checkpoint dir: {}. Restore?".format(
-                    checkpoint_dir)):
-                runner = try_restore_runner(checkpoint_dir, search_alg,
-                                            scheduler, trial_executor)
-            else:
-                logger.info("Overriding checkpoint and restarting experiment.")
+    runner = None
+    restore = False
+
+    if os.path.exists(
+            os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+        if resume:
+            restore = True
+        elif resume is None and not os.environ.get("TUNE_RESUME_PROMPT_OFF"):
+            msg = "Would you like to resume your experiment from '{}'?".format(
+                checkpoint_dir)
+            restore = click.confirm(msg, default=True)
+    else:
+        logger.info(
+            "Did not find checkpoint file in {}.".format(checkpoint_dir))
+
+    if restore:
+        runner = try_restore_runner(checkpoint_dir, search_alg, scheduler,
+                                    trial_executor)
+    else:
+        logger.info("Starting a new experiment.")
 
     if not runner:
         if scheduler is None:
@@ -156,7 +146,7 @@ def run_experiments(experiments=None,
         runner = TrialRunner(
             search_alg,
             scheduler=scheduler,
-            checkpoint_dir=checkpoint_dir,
+            metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
             server_port=server_port,
             verbose=verbose,
