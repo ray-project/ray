@@ -16,7 +16,13 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
   boost::system::error_code error;
   socket.connect(endpoint, error);
-  return boost_to_ray_status(error);
+  const auto status = boost_to_ray_status(error);
+  if (!status.ok()) {
+    // Close the socket if the connect failed.
+    boost::system::error_code close_error;
+    socket.close(close_error);
+  }
+  return status;
 }
 
 template <class T>

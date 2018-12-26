@@ -444,7 +444,14 @@ class FunctionActorManager(object):
         # the function from GCS.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_descriptor, driver_id)
-        return self._function_execution_info[driver_id][function_id]
+        try:
+            info = self._function_execution_info[driver_id][function_id]
+        except KeyError as e:
+            message = ("Error occurs in get_execution_info: "
+                       "driver_id: %s, function_descriptor: %s. Message: %s" %
+                       (binary_to_hex(driver_id), function_descriptor, e))
+            raise KeyError(message)
+        return info
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -509,7 +516,8 @@ class FunctionActorManager(object):
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        key = (b"ActorClass:" + self._worker.task_driver_id.id() + b":" +
+               function_descriptor.function_id.id())
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
@@ -539,7 +547,8 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        key = (b"ActorClass:" + driver_id + b":" +
+               function_descriptor.function_id.id())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
