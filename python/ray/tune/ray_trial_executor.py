@@ -39,6 +39,8 @@ class RayTrialExecutor(TrialExecutor):
             num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
 
         trial.init_logger()
+        # We checkpoint metadata here to try mitigating logdir duplication
+        self.try_checkpoint_metadata(trial)
         remote_logdir = trial.logdir
 
         def logger_creator(config):

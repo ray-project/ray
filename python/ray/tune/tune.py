@@ -118,7 +118,8 @@ def run_experiments(experiments=None,
                 runner = TrialRunner.restore(checkpoint_dir, search_alg,
                                              scheduler, trial_executor)
             except Exception:
-                logger.info("Runner restore failed. Restarting experiment.")
+                logger.exception(
+                    "Runner restore failed. Restarting experiment.")
 
     if not runner:
         if scheduler is None:

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import namedtuple
 import cloudpickle
+import copy
 from datetime import datetime
 import logging
 import json
@@ -225,14 +226,13 @@ class Trial(object):
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
-
             if not self.logdir:
                 self.logdir = tempfile.mkdtemp(
                     prefix="{}_{}".format(
                         str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                     dir=self.local_dir)
             elif not os.path.exists(self.logdir):
-                os.makedirs(self.local_dir)
+                os.makedirs(self.logdir)
 
             self.result_logger = UnifiedLogger(
                 self.config,
@@ -424,7 +424,7 @@ class Trial(object):
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False
-        return state
+        return copy.deepcopy(state)
 
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")

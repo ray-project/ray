@@ -118,7 +118,7 @@ class TrialRunner(object):
         }
         tmp_file_name = os.path.join(checkpoint_dir, ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f)
+            json.dump(runner_state, f, indent=2)
 
         os.rename(tmp_file_name,
                   os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE))
@@ -152,10 +152,8 @@ class TrialRunner(object):
                   "r") as f:
             runner_state = json.load(f)
 
-        logger.warning(
-            "Tune recovery is still experimental. "
-            "There is limited search algorithm recovery support. "
-            "Restoring with a BasicVariantGenerator and FIFOScheduler.")
+        logger.warning("Tune recovery is still experimental. "
+                       "There is limited search algorithm recovery support. ")
 
         from ray.tune.suggest import BasicVariantGenerator
         runner = TrialRunner(
@@ -166,11 +164,8 @@ class TrialRunner(object):
         runner.__setstate__(runner_state["runner_data"])
 
         logger.info("Adding trials.")
-        trial_checkpoints = [
-            json.loads(cp) for cp in runner_state["checkpoints"]
-        ]
         trials = []
-        for trial_cp in trial_checkpoints:
+        for trial_cp in runner_state["checkpoints"]:
             new_trial = Trial(trial_cp["trainable_name"])
             new_trial.__setstate__(trial_cp)
             trials += [new_trial]
@@ -259,8 +254,7 @@ class TrialRunner(object):
         """
         trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
-        if trial.status == Trial.PENDING:
-            self.trial_executor.try_checkpoint_metadata(trial)
+        self.trial_executor.try_checkpoint_metadata(trial)
         self._trials.append(trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
