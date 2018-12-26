@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 import cloudpickle
-import copy
 from datetime import datetime
 import logging
 import json
@@ -401,18 +400,21 @@ class Trial(object):
         """
         if not self._checkpoint.storage == Checkpoint.DISK:
             raise ValueError("Checkpoint cannot be in-memory.")
-        state = copy.deepcopy(self.__dict__)
+        state = self.__dict__.copy()
 
-        state["__data__"] = binary_to_hex(
-            cloudpickle.dumps({
-                "_checkpoint": self._checkpoint,
-                "config": self.config,
-                "custom_loggers": self.custom_loggers,
-                "resources": resources_to_json(self.resources),
-                "sync_function": self.sync_function
-            }))
+        pickle_data = {
+            "_checkpoint": self._checkpoint,
+            "config": self.config,
+            "custom_loggers": self.custom_loggers,
+            "resources": resources_to_json(self.resources),
+            "sync_function": self.sync_function
+        }
+        state["__data__"] = binary_to_hex(cloudpickle.dumps(pickle_data))
 
         # Remove the unpicklable entries.
+        for key in pickle_data:
+            state[key] = None
+
         state["runner"] = None
         state["result_logger"] = None
         if self.status == Trial.RUNNING:
@@ -427,6 +429,7 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         other_data = cloudpickle.loads(hex_to_binary(state.pop("__data__")))
+        other_data["resources"] = json_to_resources(other_data["resources"])
         state.update(other_data)
 
         self.__dict__.update(state)

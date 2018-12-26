@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import json
 import logging
 import os
@@ -166,7 +165,7 @@ class TrialRunner(object):
 
         runner.__setstate__(runner_state["runner_data"])
 
-        logger.info("Adding all trials with checkpoint state.")
+        logger.info("Adding trials.")
         trial_checkpoints = [
             json.loads(cp) for cp in runner_state["checkpoints"]
         ]
@@ -522,12 +521,13 @@ class TrialRunner(object):
         Note that this is not used as a pickling override as
         does not have all fields.
         """
-        state = copy.deepcopy(self.__dict__)
+        state = self.__dict__.copy()
         for k in [
-                "trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor", "launch_web_server"
+                "_trials", "_stop_queue", "_server", "_search_alg",
+                "_scheduler_alg", "trial_executor"
         ]:
             del state[k]
+        state["launch_web_server"] = bool(self._server)
         return state
 
     def __setstate__(self, state):

@@ -35,14 +35,9 @@ def _make_scheduler(args):
 
 
 def _find_checkpoint_dir(exp_list):
-    checkpointable_expts = [exp for exp in exp_list if exp.is_checkpointable()]
-    logger.info("Searching checkpointable experiments for checkpoint_dir.")
-    if checkpointable_expts:
-        # TODO(rliaw): This should be resolved in Experiment constructor.
-        exp = checkpointable_expts[0]
-        return os.path.join(exp.spec["local_dir"], exp.name)
-    else:
-        return None
+    exp = exp_list[0]
+    # TODO(rliaw): Make sure this is resolved earlier.
+    return os.path.join(exp.spec["local_dir"], exp.name)
 
 
 def run_experiments(experiments=None,
@@ -111,10 +106,7 @@ def run_experiments(experiments=None,
     runner = None
 
     if resume:
-        if not checkpoint_dir:
-            raise ValueError("Did not find a checkpoint_dir. "
-                             "Do any experiments have checkpointing on?")
-        logger.info("Using checkpoint_dir: {}.".format(checkpoint_dir))
+        logger.info("Using checkpoint dir: {}.".format(checkpoint_dir))
         if not os.path.exists(
                 os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE)):
             logger.warn(
@@ -122,8 +114,11 @@ def run_experiments(experiments=None,
         else:
             logger.warn("Restoring from previous experiment and "
                         "ignoring any new changes to specification.")
-            runner = TrialRunner.restore(checkpoint_dir, search_alg, scheduler,
-                                         trial_executor)
+            try:
+                runner = TrialRunner.restore(checkpoint_dir, search_alg,
+                                             scheduler, trial_executor)
+            except Exception:
+                logger.info("Runner restore failed. Restarting experiment.")
 
     if not runner:
         if scheduler is None:
@@ -138,7 +133,6 @@ def run_experiments(experiments=None,
             search_alg,
             scheduler=scheduler,
             checkpoint_dir=checkpoint_dir,
-            checkpoint_mode=resume,
             launch_web_server=with_server,
             server_port=server_port,
             verbose=verbose,
