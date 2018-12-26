@@ -237,9 +237,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, null);
-    spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
-    actorImpl.setTaskCursor(spec.returnIds[1]);
+    TaskSpec spec;
+    synchronized (actor) {
+      spec = createTaskSpec(func, actorImpl, args, false, null);
+      spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
+      actorImpl.setTaskCursor(spec.returnIds[1]);
+    }
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }

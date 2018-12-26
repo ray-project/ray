@@ -1,6 +1,8 @@
 package org.ray.runtime;
 
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
@@ -25,17 +27,17 @@ public class WorkerContext {
   /**
    * How many puts have been done by current task.
    */
-  private int currentTaskPutCount;
+  private AtomicInteger currentTaskPutCount;
 
   /**
    * How many calls have been done by current task.
    */
-  private int currentTaskCallCount;
+  private AtomicInteger currentTaskCallCount;
 
   public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
     workerId = workerMode == WorkerMode.DRIVER ? driverId : UniqueId.randomId();
-    currentTaskPutCount = 0;
-    currentTaskCallCount = 0;
+    currentTaskPutCount = new AtomicInteger(0);
+    currentTaskCallCount = new AtomicInteger(0);
     currentClassLoader = null;
     currentTask = createDummyTask(workerMode, driverId);
   }
@@ -49,11 +51,11 @@ public class WorkerContext {
   }
 
   public int nextPutIndex() {
-    return ++currentTaskPutCount;
+    return currentTaskPutCount.incrementAndGet();
   }
 
   public int nextCallIndex() {
-    return ++currentTaskCallCount;
+    return currentTaskCallCount.incrementAndGet();
   }
 
   public UniqueId getCurrentWorkerId() {
