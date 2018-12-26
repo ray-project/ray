@@ -168,7 +168,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
               + "but haven't received response. If this message continues to print,"
               + " it may indicate that the task is hanging, or someting wrong "
               + "happened in raylet backend.",
-            retryCounter, unreadys.keySet());
+              retryCounter, unreadys.keySet());
         }
       }
 
