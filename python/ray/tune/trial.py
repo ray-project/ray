@@ -4,11 +4,16 @@ from __future__ import print_function
 
 from collections import namedtuple
 import cloudpickle
+import copy
 from datetime import datetime
 import logging
+import json
 import time
 import tempfile
 import os
+
+# For compatibility under py2 to consider unicode as str
+from six import string_types
 from numbers import Number
 
 import ray
@@ -66,6 +71,36 @@ class Resources(
 
     def gpu_total(self):
         return self.gpu + self.extra_gpu
+
+
+def json_to_resources(data):
+    if data is None or data == "null":
+        return None
+    if isinstance(data, string_types):
+        data = json.loads(data)
+    for k in data:
+        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
+            raise TuneError(
+                "The field `{}` is no longer supported. Use `extra_cpu` "
+                "or `extra_gpu` instead.".format(k))
+        if k not in Resources._fields:
+            raise TuneError(
+                "Unknown resource type {}, must be one of {}".format(
+                    k, Resources._fields))
+    return Resources(
+        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
+        data.get("extra_gpu", 0))
+
+
+def resources_to_json(resources):
+    if resources is None:
+        return None
+    return {
+        "cpu": resources.cpu,
+        "gpu": resources.gpu,
+        "extra_cpu": resources.extra_cpu,
+        "extra_gpu": resources.extra_gpu,
+    }
 
 
 def has_trainable(trainable_name):
@@ -172,7 +207,6 @@ class Trial(object):
         self.trial_name = None
         if trial_name_creator:
             self.trial_name = trial_name_creator(self)
-
 
     @classmethod
     def _registration_check(cls, trainable_name):
@@ -374,14 +408,15 @@ class Trial(object):
                 "_checkpoint": self._checkpoint,
                 "config": self.config,
                 "custom_loggers": self.custom_loggers,
-                "resources": self.resources,
+                "resources": resources_to_json(self.resources),
                 "sync_function": self.sync_function
             }))
 
         # Remove the unpicklable entries.
         state["runner"] = None
         state["result_logger"] = None
-        state["status"] = Trial.PENDING if self.status == Trial.RUNNING else self.status
+        if self.status == Trial.RUNNING:
+            state["status"] = Trial.PENDING
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
