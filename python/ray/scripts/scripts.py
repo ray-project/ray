@@ -284,11 +284,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                             "provided.")
 
         # Get the node IP address if one is not provided.
-        ray_params.apply_when_none(
+        ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
         logger.info("Using IP address {} for this node."
                     .format(ray_params.node_ip_address))
-        ray_params.apply_when_none(
+        ray_params.update_if_absent(
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,

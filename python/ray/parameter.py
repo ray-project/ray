@@ -164,8 +164,8 @@ class RayParams(object):
         self.autoscaling_config = autoscaling_config
         self._internal_config = _internal_config
 
-    def apply_settings(self, **kwargs):
-        """Apply the setting according to the keyword arguments.
+    def update(self, **kwargs):
+        """Update the settings according to the keyword arguments.
 
         Attributes:
             kwargs: The keyword arguments to set corresponding fields.
@@ -175,10 +175,10 @@ class RayParams(object):
                 setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError("Invalid RayParams parameter in"
-                                 " apply_settings: %s" % arg)
+                                 " update: %s" % arg)
 
-    def apply_when_none(self, **kwargs):
-        """Apply the setting when the target fields are None.
+    def update_if_absent(self, **kwargs):
+        """Update the settings when the target fields are None.
 
         Attributes:
             kwargs: The keyword arguments to set corresponding fields.
@@ -189,4 +189,4 @@ class RayParams(object):
                     setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError("Invalid RayParams parameter in"
-                                 " apply_when_none: %s" % arg)
+                                 " update_if_absent: %s" % arg)

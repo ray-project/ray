@@ -1327,14 +1327,14 @@ def _init(ray_params, driver_id=None):
         # In this case, we launch a scheduler, a new object store, and some
         # workers, and we connect to them. We do not launch any processes that
         # are already registered in address_info.
-        ray_params.apply_when_none(
+        ray_params.update_if_absent(
             node_ip_address=ray.services.get_node_ip_address())
         # Use 1 local scheduler if num_local_schedulers is not provided. If
         # existing local schedulers are provided, use that count as
         # num_local_schedulers.
-        ray_params.apply_when_none(num_local_schedulers=1)
+        ray_params.update_if_absent(num_local_schedulers=1)
         # Use 1 additional redis shard if num_redis_shards is not provided.
-        ray_params.apply_when_none(num_redis_shards=1)
+        ray_params.update_if_absent(num_redis_shards=1)
 
         # Stick the CPU and GPU resources into the resource dictionary.
         ray_params.resources = _normalize_resource_arguments(
@@ -1393,7 +1393,7 @@ def _init(ray_params, driver_id=None):
                             "_internal_config must not be provided.")
 
         # Get the node IP address if one is not provided.
-        ray_params.apply_when_none(
+        ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(
                 ray_params.redis_address))
         # Get the address info of the processes to connect to from Redis.
