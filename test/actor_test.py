@@ -2249,6 +2249,10 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
         ray.get(actor.increase.remote())
 
 
+# NOTE(hchen): we set initial_reconstruction_timeout_milliseconds to 1s for
+# this test. Because if this value is too small, suprious task reconstruction
+# may happen and cause the test fauilure. If the value is too large, this test
+# could be very slow. We can remove this once we support dynamic timeout.
 @pytest.mark.parametrize('head_node_cluster', [1000], indirect=True)
 def test_multiple_actor_reconstruction(head_node_cluster):
     # This test can be made more stressful by increasing the numbers below.
