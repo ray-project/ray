@@ -30,6 +30,7 @@ class SGDWorker(object):
                  plasma_op=False):
         self.worker_index = worker_index
         assert num_devices > 0
+        self.num_devices = num_devices
 
         # TODO(ekl) support custom session
         tf_session_args = {
@@ -263,3 +264,28 @@ class SGDWorker(object):
 
     def warmup(self):
         warmup()
+
+    def get_params(self):
+        # TODO(peter): use tensorflow op
+        all_params = []
+        for device_idx in range(self.num_devices):
+            variables = tf.get_collection(
+                tf.GraphKeys.GLOBAL_VARIABLES, scope="device_%d" % device_idx)
+            names = [var.name.split("/", 1)[1] for var in variables]
+            values = self.sess.run(variables)
+            all_params.append({k: v for k, v in zip(names, values)})
+        return all_params
+
+    def set_params(self, *params_list):
+        # TODO(peter): use tensorflow op
+        assert len(params_list) == self.num_devices
+        # TODO: create assign op with feed_dict
+        assign_ops = []
+        for device_idx, params in enumerate(params_list):
+            variables = tf.get_collection(
+                tf.GraphKeys.GLOBAL_VARIABLES, scope="device_%d" % device_idx)
+            for var in variables:
+                key = var.name.split("/", 1)[1]
+                assign_op = var.assign(params[key])
+                assign_ops.append(assign_op)
+        self.sess.run(assign_ops)

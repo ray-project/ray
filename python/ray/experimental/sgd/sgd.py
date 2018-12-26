@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import os
+import pickle
 import random
 import time
 
@@ -91,6 +93,7 @@ class DistributedSGD(object):
 
         RemoteSGDWorker = ray.remote(**requests)(SGDWorker)
         self.workers = []
+        self.devices_per_worker = devices_per_worker
         logger.info(
             "Creating SGD workers ({} total, {} devices per worker)".format(
                 num_workers, devices_per_worker))
@@ -176,6 +179,33 @@ class DistributedSGD(object):
         logger.info("Warming up object store of worker actors")
         ray.get([w.warmup.remote() for w in self.workers])
         logger.info("Warmup complete")
+
+    def save_checkpoint(self, path):
+        param_oids = [worker.get_params.remote() for worker in self.workers]
+        model_count = 0
+        while param_oids:
+            ready_oids, param_oids = ray.wait(param_oids)
+            params_list = ray.get(ready_oids)[0]
+            for params in params_list:
+                filename = os.path.join(path, "model_%d.pkl" % model_count)
+                with open(filename, "wb") as f:
+                    pickle.dump(params, f)
+                model_count += 1
+
+            ray.internal.free(ready_oids)
+
+    def restore_checkpoint(self, path):
+        filenames = os.listdir(path)
+        model_count = 0
+        for worker in self.workers:
+            params_list = []
+            for _ in range(self.devices_per_worker):
+                filename = os.path.join(path, "model_%d.pkl" % model_count)
+                with open(filename, "rb") as f:
+                    params = pickle.load(f)
+                params_list.append(params)
+                model_count += 1
+            worker.set_params.remote(*params_list)
 
 
 def _average_gradients(grads):
