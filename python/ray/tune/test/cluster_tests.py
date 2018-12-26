@@ -379,7 +379,7 @@ tune.run_experiments(
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     for i in range(50):
-        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
@@ -388,7 +388,7 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -448,7 +448,7 @@ tune.run_experiments(
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     for i in range(50):
-        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
@@ -457,7 +457,7 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE)):
+    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()

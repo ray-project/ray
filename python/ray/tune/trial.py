@@ -398,22 +398,20 @@ class Trial(object):
         Sets RUNNING trials to PENDING, and flushes the result logger.
         Note this can only occur if the trial holds a DISK checkpoint.
         """
-        if not self._checkpoint.storage == Checkpoint.DISK:
-            raise ValueError("Checkpoint cannot be in-memory.")
+        assert self._checkpoint.storage == Checkpoint.DISK, (
+            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
+        state["resources"] = resources_to_json(self.resources),
 
         pickle_data = {
             "_checkpoint": self._checkpoint,
             "config": self.config,
             "custom_loggers": self.custom_loggers,
-            "resources": resources_to_json(self.resources),
             "sync_function": self.sync_function
         }
-        state["__data__"] = binary_to_hex(cloudpickle.dumps(pickle_data))
 
-        # Remove the unpicklable entries.
-        for key in pickle_data:
-            state[key] = None
+        for key, value in pickle_data.items():
+            state[key] = binary_to_hex(cloudpickle.dumps(value))
 
         state["runner"] = None
         state["result_logger"] = None
@@ -428,9 +426,9 @@ class Trial(object):
 
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
-        other_data = cloudpickle.loads(hex_to_binary(state.pop("__data__")))
-        other_data["resources"] = json_to_resources(other_data["resources"])
-        state.update(other_data)
+        state["resources"] = json_to_resources(state["resources"])
+        for key in ["_checkpoint", "config", "custom_loggers", "sync_function"]:
+            state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
         Trial._registration_check(self.trainable_name)

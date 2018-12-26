@@ -50,13 +50,13 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    CKPT_FILE = "experiment.state"
+    CKPT_FILE_NAME = "experiment_state.json"
 
     def __init__(self,
                  search_alg,
                  scheduler=None,
                  launch_web_server=False,
-                 checkpoint_dir=None,
+                 metadata_checkpoint_dir=None,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  queue_trials=False,
@@ -68,7 +68,7 @@ class TrialRunner(object):
                 Trial objects.
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            checkpoint_dir (str): Path where global checkpoints are stored
+            metadata_checkpoint_dir (str): Path where global checkpoints are stored
                 and restored from.
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
@@ -100,33 +100,31 @@ class TrialRunner(object):
 
         self._trials = []
         self._stop_queue = []
-        self._checkpoint_dir = checkpoint_dir
+        self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
     def checkpoint(self):
-        """Saves execution state to `self._checkpoint_dir` if provided."""
-        if not self._checkpoint_dir:
+        """Saves execution state to `self._metadata_checkpoint_dir` if provided."""
+        if not self._metadata_checkpoint_dir:
             return
-        checkpoint_dir = self._checkpoint_dir
-        if not os.path.exists(checkpoint_dir):
-            logger.debug("Checkpoint directory newly created.")
-            logger.warning("Search Algorithm and Scheduler not checkpointed.")
-            os.makedirs(checkpoint_dir)
+        metadata_checkpoint_dir = self._metadata_checkpoint_dir
+        if not os.path.exists(metadata_checkpoint_dir):
+            os.makedirs(metadata_checkpoint_dir)
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__()
         }
-        tmp_file_name = os.path.join(checkpoint_dir, ".tmp_checkpoint")
+        tmp_file_name = os.path.join(metadata_checkpoint_dir, ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2)
 
         os.rename(tmp_file_name,
-                  os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE))
-        return checkpoint_dir
+                  os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME))
+        return metadata_checkpoint_dir
 
     @classmethod
     def restore(cls,
-                checkpoint_dir,
+                metadata_checkpoint_dir,
                 search_alg=None,
                 scheduler=None,
                 trial_executor=None):
@@ -135,10 +133,8 @@ class TrialRunner(object):
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
 
-        TODO: Consider checkpointing registry too.
-
         Args:
-            checkpoint_dir (str): Path to checkpoint (previously specified).
+            metadata_checkpoint_dir (str): Path to checkpoint (previously specified).
             search_alg (SearchAlgorithm): Search Algorithm. Defaults to
                 BasicVariantGenerator.
             scheduler (TrialScheduler): Scheduler for executing
@@ -148,7 +144,7 @@ class TrialRunner(object):
         Returns:
             runner (TrialRunner): A TrialRunner to resume experiments from.
         """
-        with open(os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE),
+        with open(os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME),
                   "r") as f:
             runner_state = json.load(f)
 

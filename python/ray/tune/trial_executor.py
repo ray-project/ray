@@ -15,7 +15,7 @@ class TrialExecutor(object):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False, checkpoint_mode=False):
+    def __init__(self, queue_trials=False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -23,11 +23,8 @@ class TrialExecutor(object):
                 not currently have enough resources to launch one. This should
                 be set to True when running on an autoscaling cluster to enable
                 automatic scale-up.
-            checkpoint_mode (bool): Whether to track metadata on status
-                change.
         """
         self._queue_trials = queue_trials
-        self._checkpoint_mode = checkpoint_mode
         self._checkpoints = {}
 
     def set_status(self, trial, status):
@@ -46,20 +43,19 @@ class TrialExecutor(object):
             self.try_checkpoint_metadata(trial)
 
     def try_checkpoint_metadata(self, trial):
-        """Checkpoints metadata if checkpoint_mode is True.
+        """Checkpoints metadata.
 
         Args:
             trial (Trial): Trial to checkpoint.
         """
-        if self._checkpoint_mode:
-            if trial._checkpoint.storage == Checkpoint.MEMORY:
-                logger.debug("Not saving data for trial w/ memory checkpoint.")
-                return
-            try:
-                logger.debug("Saving trial metadata.")
-                self._checkpoints[trial.trial_id] = trial.__getstate__()
-            except Exception:
-                logger.exception("Error checkpointing trial metadata.")
+        if trial._checkpoint.storage == Checkpoint.MEMORY:
+            logger.debug("Not saving data for trial w/ memory checkpoint.")
+            return
+        try:
+            logger.debug("Saving trial metadata.")
+            self._checkpoints[trial.trial_id] = trial.__getstate__()
+        except Exception:
+            logger.exception("Error checkpointing trial metadata.")
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
