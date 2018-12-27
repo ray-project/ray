@@ -42,7 +42,7 @@ WorkerPool::WorkerPool(
     int maximum_startup_concurrency,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
-      num_worker_processes_(num_worker_processes),
+      multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       last_warning_multiple_(0) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
@@ -57,7 +57,7 @@ WorkerPool::WorkerPool(
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
     // Force-start num_workers worker processes for this language.
-    for (int i = 0; i < num_worker_processes_; i++) {
+    for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first);
     }
   }
@@ -258,7 +258,7 @@ std::string WorkerPool::WarningAboutSize() {
     num_registered_workers +=
         static_cast<int64_t>(entry.second.registered_workers.size());
   }
-  int64_t multiple = num_registered_workers / num_worker_processes_;
+  int64_t multiple = num_registered_workers / multiple_for_warning_;
   std::stringstream warning_message;
   if (multiple >= 2 && multiple != last_warning_multiple_) {
     RAY_CHECK(last_warning_multiple_ < multiple);

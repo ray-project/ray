@@ -579,7 +579,8 @@ def test_warning_for_too_many_actors(shutdown_only):
 
     @ray.remote
     class Foo(object):
-        pass
+        def __init__(self):
+            time.sleep(1000)
 
     [Foo.remote() for _ in range(num_cpus * 2)]
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)

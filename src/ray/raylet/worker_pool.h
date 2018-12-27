@@ -156,8 +156,9 @@ class WorkerPool {
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
-  /// The number of workers to initially start for each language.
-  int num_worker_processes_;
+  /// We'll push a warning to the user every time a multiple of this many
+  /// workers has been started.
+  int multiple_for_warning_;
   /// The maximum number of workers that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Pool states per language.
