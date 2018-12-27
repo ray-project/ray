@@ -52,8 +52,6 @@ MODEL_DEFAULTS = {
     "framestack": True,
     # Final resized frame dimension
     "dim": 84,
-    # (deprecated) Pytorch conv requires images to be channel-major
-    "channel_major": False,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
     "grayscale": False,
     # (deprecated) Changes frame to range from [-1, 1] if true
