@@ -153,7 +153,9 @@ class TFPolicyGraph(PolicyGraph):
                         state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
-                        episodes=None):
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(builder, obs_batch,
                                               state_batches, prev_action_batch,
@@ -186,6 +188,17 @@ class TFPolicyGraph(PolicyGraph):
     def set_weights(self, weights):
         return self._variables.set_flat(weights)
 
+    @override(PolicyGraph)
+    def export_model(self, export_dir):
+        """Export tensorflow graph to export_dir for serving."""
+        with self._sess.graph.as_default():
+            builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+            signature_def_map = self._build_signature_def()
+            builder.add_meta_graph_and_variables(
+                self._sess, [tf.saved_model.tag_constants.SERVING],
+                signature_def_map=signature_def_map)
+            builder.save()
+
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders.
 
@@ -216,6 +229,26 @@ class TFPolicyGraph(PolicyGraph):
         """Extra values to fetch and return from apply_gradients()."""
         return {}  # e.g., batch norm updates
 
+    def _extra_input_signature_def(self):
+        """Extra input signatures to add when exporting tf model.
+        Inferred from extra_compute_action_feed_dict()
+        """
+        feed_dict = self.extra_compute_action_feed_dict()
+        return {
+            k.name: tf.saved_model.utils.build_tensor_info(k)
+            for k in feed_dict.keys()
+        }
+
+    def _extra_output_signature_def(self):
+        """Extra output signatures to add when exporting tf model.
+        Inferred from extra_compute_action_fetches()
+        """
+        fetches = self.extra_compute_action_fetches()
+        return {
+            k: tf.saved_model.utils.build_tensor_info(fetches[k])
+            for k in fetches.keys()
+        }
+
     def optimizer(self):
         """TF optimizer to use for policy optimization."""
         return tf.train.AdamOptimizer()
@@ -223,6 +256,46 @@ class TFPolicyGraph(PolicyGraph):
     def gradients(self, optimizer):
         """Override for custom gradient computation."""
         return optimizer.compute_gradients(self._loss)
+
+    def _build_signature_def(self):
+        """Build signature def map for tensorflow SavedModelBuilder.
+        """
+        # build input signatures
+        input_signature = self._extra_input_signature_def()
+        input_signature["observations"] = \
+            tf.saved_model.utils.build_tensor_info(self._obs_input)
+
+        if self._seq_lens is not None:
+            input_signature["seq_lens"] = \
+                tf.saved_model.utils.build_tensor_info(self._seq_lens)
+        if self._prev_action_input is not None:
+            input_signature["prev_action"] = \
+                tf.saved_model.utils.build_tensor_info(self._prev_action_input)
+        if self._prev_reward_input is not None:
+            input_signature["prev_reward"] = \
+                tf.saved_model.utils.build_tensor_info(self._prev_reward_input)
+        input_signature["is_training"] = \
+            tf.saved_model.utils.build_tensor_info(self._is_training)
+
+        for state_input in self._state_inputs:
+            input_signature[state_input.name] = \
+                tf.saved_model.utils.build_tensor_info(state_input)
+
+        # build output signatures
+        output_signature = self._extra_output_signature_def()
+        output_signature["actions"] = \
+            tf.saved_model.utils.build_tensor_info(self._sampler)
+        for state_output in self._state_outputs:
+            output_signature[state_output.name] = \
+                tf.saved_model.utils.build_tensor_info(state_output)
+        signature_def = (
+            tf.saved_model.signature_def_utils.build_signature_def(
+                input_signature, output_signature,
+                tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
+        signature_def_key = \
+            tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # noqa: E501
+        signature_def_map = {signature_def_key: signature_def}
+        return signature_def_map
 
     def _build_compute_actions(self,
                                builder,

@@ -67,7 +67,6 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return taskCounter++;
   }
 
-
   private UniqueId computeNextActorHandleId() {
     byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
     return new UniqueId(bytes);

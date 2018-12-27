@@ -16,6 +16,7 @@ def env_integer(key, default):
 
 ID_SIZE = 20
 NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
+NIL_FUNCTION_ID = NIL_JOB_ID
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
@@ -76,3 +77,8 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
+
+# A constant indicating that an actor doesn't need reconstructions.
+NO_RECONSTRUCTION = 0
+# A constant indicating that an actor should be reconstructed infinite times.
+INFINITE_RECONSTRUCTION = 2**30

@@ -94,9 +94,9 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # # Build Ray.
     # - git clone https://github.com/ray-project/ray || true
-    - pip install boto3==1.4.8 cython==0.27.3
+    - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
-    - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.1-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

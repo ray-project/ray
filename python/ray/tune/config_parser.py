@@ -83,7 +83,7 @@ def make_parser(parser_creator=None, **kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--trial-resources",
+        "--resources-per-trial",
         default=None,
         type=json_to_resources,
         help="Override the machine resources to allocate per trial, e.g. "
@@ -197,8 +197,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         args = parser.parse_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
-    if "trial_resources" in spec:
-        trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
+    if "resources_per_trial" in spec:
+        trial_kwargs["resources"] = json_to_resources(
+            spec["resources_per_trial"])
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.

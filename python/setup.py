@@ -23,7 +23,7 @@ ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store_server",
-    "ray/core/src/ray/raylet/liblocal_scheduler_library_python.so",
+    "ray/core/src/ray/raylet/libraylet_library_python.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
@@ -135,7 +135,7 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy",
+    "numpy >= 1.10.4",
     "filelock",
     "funcsigs",
     "click",
@@ -154,6 +154,8 @@ if sys.version_info < (3, 0):
 setup(
     name="ray",
     version=find_version("ray", "__init__.py"),
+    author="Ray Team",
+    author_email="ray-dev@googlegroups.com",
     description=("A system for parallel and distributed Python that unifies "
                  "the ML ecosystem."),
     long_description=open("../README.rst").read(),
@@ -165,7 +167,7 @@ setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=requires,
-    setup_requires=["cython >= 0.27, < 0.28"],
+    setup_requires=["cython >= 0.29"],
     extras_require=extras,
     entry_points={
         "console_scripts": [

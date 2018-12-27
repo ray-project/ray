@@ -50,6 +50,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "ray.core.generated.TablePrefix",
     "ray.core.generated.TablePubsub",
+    "ray.core.generated.Language",
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()

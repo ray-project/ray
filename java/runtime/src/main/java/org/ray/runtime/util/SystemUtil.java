@@ -3,12 +3,15 @@ package org.ray.runtime.util;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.concurrent.locks.ReentrantLock;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * some utilities for system process.
  */
 public class SystemUtil {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(SystemUtil.class);
 
   static final ReentrantLock pidlock = new ReentrantLock();
   static Integer pid;
@@ -34,7 +37,7 @@ public class SystemUtil {
     } catch (ClassNotFoundException e) {
       // TODO Auto-generated catch block
       e.printStackTrace();
-      RayLog.core.error("error at SystemUtil startWithJar", e);
+      LOGGER.error("error at SystemUtil startWithJar", e);
       return false;
     }
   }

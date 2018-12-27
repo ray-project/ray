@@ -53,6 +53,9 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
+    # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
+    # sampling tasks for performance but can waste a large portion of samples.
+    "straggler_mitigation": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -84,8 +87,12 @@ class PPOAgent(Agent):
                     "sgd_batch_size": self.config["sgd_minibatch_size"],
                     "num_sgd_iter": self.config["num_sgd_iter"],
                     "num_gpus": self.config["num_gpus"],
+                    "sample_batch_size": self.config["sample_batch_size"],
+                    "num_envs_per_worker": self.config["num_envs_per_worker"],
                     "train_batch_size": self.config["train_batch_size"],
                     "standardize_fields": ["advantages"],
+                    "straggler_mitigation": (
+                        self.config["straggler_mitigation"]),
                 })
 
     @override(Agent)
@@ -108,17 +115,6 @@ class PPOAgent(Agent):
         return res
 
     def _validate_config(self):
-        waste_ratio = (
-            self.config["sample_batch_size"] * self.config["num_workers"] /
-            self.config["train_batch_size"])
-        if waste_ratio > 1:
-            msg = ("sample_batch_size * num_workers >> train_batch_size. "
-                   "This means that many steps will be discarded. Consider "
-                   "reducing sample_batch_size, or increase train_batch_size.")
-            if waste_ratio > 1.5:
-                raise ValueError(msg)
-            else:
-                logger.warn(msg)
         if self.config["sgd_minibatch_size"] > self.config["train_batch_size"]:
             raise ValueError(
                 "Minibatch size {} must be <= train batch size {}.".format(
@@ -136,6 +132,6 @@ class PPOAgent(Agent):
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
             # TODO(ekl): consider setting the default to be NoFilter
-            logger.warn(
+            logger.warning(
                 "By default, observations will be normalized with {}".format(
                     self.config["observation_filter"]))

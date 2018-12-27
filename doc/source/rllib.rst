@@ -68,6 +68,10 @@ Algorithms
 
    -  `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 
+*  Multi-agent specific
+
+   -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
+
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
@@ -77,6 +81,14 @@ Models and Preprocessors
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
+
+RLlib Development
+-----------------
+
+* `Development Install <rllib-dev.html#development-install>`__
+* `Features <rllib-dev.html#feature-development>`__
+* `Benchmarks <rllib-dev.html#benchmarks>`__
+* `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
 RLlib Concepts
 --------------

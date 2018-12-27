@@ -2,10 +2,8 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import jdk.nashorn.internal.ir.annotations.Immutable;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -17,8 +15,7 @@ import org.ray.api.options.CallOptions;
 /**
  * Resources Management Test.
  */
-@RunWith(MyRunner.class)
-public class ResourcesManagementTest {
+public class ResourcesManagementTest extends BaseTest {
 
   @RayRemote
   public static Integer echo(Integer number) {

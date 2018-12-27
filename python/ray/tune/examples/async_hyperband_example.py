@@ -71,7 +71,7 @@ if __name__ == "__main__":
                     "training_iteration": 1 if args.smoke_test else 99999
                 },
                 "num_samples": 20,
-                "trial_resources": {
+                "resources_per_trial": {
                     "cpu": 1,
                     "gpu": 0
                 },

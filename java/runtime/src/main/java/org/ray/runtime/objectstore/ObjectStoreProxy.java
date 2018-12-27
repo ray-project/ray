@@ -75,6 +75,10 @@ public class ObjectStoreProxy {
     store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
   }
 
+  public void putSerialized(UniqueId id, byte[] obj, byte[] metadata) {
+    store.put(id.getBytes(), obj, metadata);
+  }
+
   public enum GetStatus {
     SUCCESS, FAILED
   }

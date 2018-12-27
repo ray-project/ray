@@ -60,6 +60,9 @@ table TaskInfo {
   actor_creation_id: string;
   // The dummy object ID of the actor creation task if this is an actor method.
   actor_creation_dummy_object_id: string;
+  // The max number of times this actor should be recontructed.
+  // If this number of 0 or negative, the actor won't be reconstructed on failure.
+  max_actor_reconstructions: int;
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
   actor_id: string;
@@ -70,8 +73,6 @@ table TaskInfo {
   actor_counter: int;
   // True if this task is an actor checkpoint task and false otherwise.
   is_actor_checkpoint_method: bool;
-  // Function ID of the task.
-  function_id: string;
   // Task arguments.
   args: [Arg];
   // Object IDs of return values.
@@ -167,8 +168,11 @@ table ClassTableData {
 enum ActorState:int {
   // Actor is alive.
   ALIVE = 0,
+  // Actor is dead, now being reconstructed.
+  // After reconstruction finishes, the state will become alive again.
+  RECONSTRUCTING = 1,
   // Actor is already dead and won't be reconstructed.
-  DEAD
+  DEAD = 2
 }
 
 table ActorTableData {
@@ -184,6 +188,10 @@ table ActorTableData {
   node_manager_id: string;
   // Current state of this actor.
   state: ActorState;
+  // Max number of times this actor should be reconstructed.
+  max_reconstructions: int;
+  // Remaining number of reconstructions.
+  remaining_reconstructions: int;
 }
 
 table ErrorTableData {

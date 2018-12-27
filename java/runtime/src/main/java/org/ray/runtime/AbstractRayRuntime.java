@@ -27,15 +27,19 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Core functionality to implement Ray APIs.
  */
 public abstract class AbstractRayRuntime implements RayRuntime {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+
   private static final int GET_TIMEOUT_MS = 1000;
   private static final int FETCH_BATCH_SIZE = 1000;
+  private static final int LIMITED_RETRY_COUNTER = 10;
 
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
@@ -75,8 +79,24 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public <T> void put(UniqueId objectId, T obj) {
     UniqueId taskId = workerContext.getCurrentTask().taskId;
-    RayLog.core.debug("Putting object {}, for task {} ", objectId, taskId);
+    LOGGER.debug("Putting object {}, for task {} ", objectId, taskId);
     objectStoreProxy.put(objectId, obj, null);
+  }
+
+
+  /**
+   * Store a serialized object in the object store.
+   *
+   * @param obj The serialized Java object to be stored.
+   * @return A RayObject instance that represents the in-store object.
+   */
+  public RayObject<Object> putSerialized(byte[] obj) {
+    UniqueId objectId = UniqueIdUtil.computePutId(
+            workerContext.getCurrentTask().taskId, workerContext.nextPutIndex());
+    UniqueId taskId = workerContext.getCurrentTask().taskId;
+    LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
+    objectStoreProxy.putSerialized(objectId, obj, null);
+    return new RayObjectImpl<>(objectId);
   }
 
   @Override
@@ -118,7 +138,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
+      int retryCounter = 0;
       while (unreadys.size() > 0) {
+        retryCounter++;
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
         List<List<UniqueId>> reconstructBatches =
             splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
@@ -140,10 +162,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             unreadys.remove(id);
           }
         }
+
+        if (retryCounter % LIMITED_RETRY_COUNTER == 0) {
+          LOGGER.warn("Attempted {} times to reconstruct objects {}, "
+              + "but haven't received response. If this message continues to print,"
+              + " it may indicate that the task is hanging, or someting wrong "
+              + "happened in raylet backend.",
+              retryCounter, unreadys.keySet());
+        }
       }
 
-      RayLog.core
-          .debug("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray()) + " get");
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Got objects {} for task {}.", Arrays.toString(objectIds.toArray()), taskId);
+      }
+
       List<T> finalRet = new ArrayList<>();
 
       for (Pair<T, GetStatus> value : ret) {
@@ -152,8 +184,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       return finalRet;
     } catch (RayException e) {
-      RayLog.core.error("Task " + taskId + " Objects " + Arrays.toString(objectIds.toArray())
-          + " get with Exception", e);
+      LOGGER.error("Failed to get objects for task {}.", taskId, e);
       throw e;
     } finally {
       // If there were objects that we weren't able to get locally, let the local
@@ -270,6 +301,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
+    int maxActorReconstruction = 0;
+    if (taskOptions instanceof ActorCreationOptions) {
+      maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
+    }
     RayFunction rayFunction = functionManager.getFunction(current.driverId, func);
     return new TaskSpec(
         current.driverId,
@@ -277,6 +312,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         current.taskId,
         -1,
         actorCreationId,
+        maxActorReconstruction,
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),

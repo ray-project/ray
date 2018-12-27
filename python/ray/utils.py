@@ -69,7 +69,7 @@ def push_error_to_driver(worker,
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
-    worker.local_scheduler_client.push_error(
+    worker.raylet_client.push_error(
         ray.ObjectID(driver_id), error_type, message, time.time())
 
 
@@ -165,10 +165,24 @@ def random_string():
     return random_id
 
 
-def decode(byte_str):
-    """Make this unicode in Python 3, otherwise leave it as bytes."""
+def decode(byte_str, allow_none=False):
+    """Make this unicode in Python 3, otherwise leave it as bytes.
+
+    Args:
+        byte_str: The byte string to decode.
+        allow_none: If true, then we will allow byte_str to be None in which
+            case we will return an empty string. TODO(rkn): Remove this flag.
+            This is only here to simplify upgrading to flatbuffers 1.10.0.
+
+    Returns:
+        A byte string in Python 2 and a unicode string in Python 3.
+    """
+    if byte_str is None and allow_none:
+        return ""
+
     if not isinstance(byte_str, bytes):
-        raise ValueError("The argument must be a bytes object.")
+        raise ValueError(
+            "The argument {} must be a bytes object.".format(byte_str))
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:

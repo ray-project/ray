@@ -26,7 +26,7 @@ For Ubuntu users, run the following commands:
   # If you are on Ubuntu 14.04, you need the following.
   pip install cmake
 
-  pip install cython==0.27.3
+  pip install cython==0.29.0
 
 For macOS users, run the following commands:
 ::
@@ -34,7 +34,7 @@ For macOS users, run the following commands:
   brew update
   brew install maven cmake pkg-config automake autoconf libtool openssl bison wget
 
-  pip install cython==0.27.3
+  pip install cython==0.29.0
 
 Build Ray
 ^^^^^^^^^
