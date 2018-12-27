@@ -54,7 +54,7 @@ public class WorkerContext {
     currentClassLoader = null;
     currentTask = createDummyTask(workerMode, driverId);
     mainThreadId = Thread.currentThread().getId();
-    multiThreadingWarned = new AtomicBoolean();
+    multiThreadingWarned = new AtomicBoolean(false);
   }
 
   /**
