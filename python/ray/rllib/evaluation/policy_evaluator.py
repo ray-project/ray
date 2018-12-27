@@ -113,6 +113,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_level=None,
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
+                 input_evaluation_method=None,
                  output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
@@ -179,6 +180,13 @@ class PolicyEvaluator(EvaluatorInterface):
             callbacks (dict): Dict of custom debug callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
+            input_evaluation_method (str): How to evaluate the current policy.
+                This only applies when the input is reading offline data.
+                Options are:
+                  - None: don't evaluate the policy. The episode reward and
+                    other metrics will be NaN.
+                  - "simulation": run the environment in the background, but
+                    use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
         """
@@ -294,6 +302,17 @@ class PolicyEvaluator(EvaluatorInterface):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
+        if input_evaluation_method == "simulation":
+            logger.warning(
+                "Requested 'simulation' input evaluation method: "
+                "will discard all sampler outputs and keep only metrics.")
+            sample_async = True
+        elif input_evaluation_method is None:
+            pass
+        else:
+            raise ValueError("Unknown evaluation method: {}".format(
+                input_evaluation_method))
+
         if sample_async:
             self.sampler = AsyncSampler(
                 self.async_env,
@@ -307,7 +326,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 horizon=episode_horizon,
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
-                clip_actions=clip_actions)
+                clip_actions=clip_actions,
+                blackhole_outputs=input_evaluation_method == "simulation")
             self.sampler.start()
         else:
             self.sampler = SyncSampler(

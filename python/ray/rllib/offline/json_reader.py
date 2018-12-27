@@ -124,7 +124,7 @@ def _from_json(batch):
         data_type = data["type"]
         del data["type"]
     else:
-        data_type = "Event"  # for simplicity, default to event type
+        raise ValueError("JSON record missing 'type' field")
 
     if data_type == "SampleBatch":
         for k, v in data.items():

@@ -310,19 +310,6 @@ class SampleBatch(object):
         for key, val in self.items():
             self[key] = val[permutation]
 
-    def slice(self, start, end):
-        """Returns a slice of the row data of this batch.
-
-        Arguments:
-            start (int): Starting index.
-            end (int): Ending index.
-
-        Returns:
-            SampleBatch which has a slice of this batch's data.
-        """
-
-        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
-
     def __getitem__(self, key):
         return self.data[key]
 

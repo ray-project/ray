@@ -99,7 +99,8 @@ class AsyncSampler(threading.Thread):
                  horizon=None,
                  pack=False,
                  tf_sess=None,
-                 clip_actions=True):
+                 clip_actions=True,
+                 blackhole_outputs=False):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
@@ -120,6 +121,7 @@ class AsyncSampler(threading.Thread):
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
+        self.blackhole_outputs = blackhole_outputs
         self.shutdown = False
 
     def run(self):
@@ -130,8 +132,13 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
-        extra_batches_putter = (
-            lambda x: self.extra_batches.put(x, timeout=600.0))
+        if self.blackhole_outputs:
+            queue_putter = (lambda x: None)
+            extra_batches_putter = (lambda x: None)
+        else:
+            queue_putter = self.queue.put
+            extra_batches_putter = (
+                lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
             self.async_vector_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
@@ -145,7 +152,7 @@ class AsyncSampler(threading.Thread):
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
-                self.queue.put(item)
+                queue_putter(item)
 
     def get_data(self):
         rollout = self.queue.get(timeout=600.0)

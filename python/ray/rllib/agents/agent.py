@@ -157,10 +157,6 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
-    # Whether to save experiences as postprocessed sample batches ("batch") or
-    # unprocessed transitions ("transitions"). Batch output is required for
-    # on-policy training; either can be used for off-policy algorithms.
-    "output_type": "batch",
 
     # === Multiagent ===
     "multiagent": {
