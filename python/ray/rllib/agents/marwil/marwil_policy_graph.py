@@ -26,7 +26,7 @@ class PNetwork(object):
                  num_actions,
                  hiddens=[256]):
         self.model = model
-        with tf.variable_scope("action_activation")
+        with tf.variable_scope("action_activation"):
             action_out = model.last_layer
             for i in range(len(hiddens)):
                 action_out = layers.fully_connected(
@@ -44,7 +44,7 @@ class VNetwork(object):
                  model,
                  hiddens=[256]):
         self.model = model
-        with tf.variable_scope("state_value")
+        with tf.variable_scope("state_value"):
             if hiddens:
                 state_out = model.last_layer
                 for i in range(len(hiddens)):
@@ -52,12 +52,12 @@ class VNetwork(object):
                         state_out,
                         num_outputs=hiddens[i],
                         activation_fn=tf.nn.relu)
-                self.value = layers.fully_connected(
+                self.values = layers.fully_connected(
                     state_out,
-                    num_outputs=num_actions,
+                    num_outputs=1,
                     activation_fn=None)
             else:
-                self.value = model.outputs
+                self.values = model.outputs
 
 
 class VLoss(object):
@@ -125,14 +125,14 @@ class MARWILPolicyGraph(TFPolicyGraph):
         # v network evaluation
         with tf.variable_scope(V_SCOPE) as scope:
             state_values = self._build_v_network(
-                self.cur_observations, observation_space)
+                self.obs_t, observation_space)
             self.v_func_vars = _scope_vars(scope.name)
         self.v_loss = self._build_v_loss(state_values, self.rew_t)
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
             logits = self._build_p_network(
-                self.cur_observations, observation_space)
+                self.obs_t, observation_space)
         self.p_loss = self._build_p_loss(
             state_values, self.rew_t, logits, self.act_t, action_space)
 
@@ -150,7 +150,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=model.loss()+(self.p_loss.loss+self.config["c"]*self.v_loss.loss),
+            loss=self.p_loss.loss+self.config["c"]*self.v_loss.loss,
             loss_inputs=self.loss_inputs,
             update_ops=[])
         self.sess.run(tf.global_variables_initializer())
@@ -161,6 +161,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, 1, self.config["model"]),
+            self.num_actions,
             self.config["actor_hiddens"]).logits
 
     def _build_v_network(self, obs, obs_space):
@@ -168,8 +169,8 @@ class MARWILPolicyGraph(TFPolicyGraph):
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, 1, self.config["model"]), self.num_actions,
-            self.config["critic_hiddens"]).logits
+            }, obs_space, 1, self.config["model"]),
+            self.config["critic_hiddens"]).values
 
     def _build_v_loss(self, state_values, cum_rwds):
         return VLoss(state_values, cum_rwds)
