@@ -253,19 +253,20 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 }
 
 std::string WorkerPool::WarningAboutSize() {
-  int64_t num_registered_workers = 0;
+  int64_t num_workers_started_or_registered = starting_worker_processes_.size();
   for (const auto &entry : states_by_lang_) {
-    num_registered_workers +=
+    num_workers_started_or_registered +=
         static_cast<int64_t>(entry.second.registered_workers.size());
   }
-  int64_t multiple = num_registered_workers / multiple_for_warning_;
+  int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
   std::stringstream warning_message;
   if (multiple >= 2 && multiple != last_warning_multiple_) {
     RAY_CHECK(last_warning_multiple_ < multiple);
     last_warning_multiple_ = multiple;
-    warning_message << "WARNING: " << num_registered_workers << " workers have been "
-                    << "started. This could be a result of using a large number of "
-                    << "actors, or it could be a consequence of using nested tasks "
+    warning_message << "WARNING: " << num_workers_started_or_registered
+                    << " workers have been started. This could be a result of using "
+                    << "a large number of actors, or it could be a consequence of "
+                    << "using nested tasks "
                     << "(see https://github.com/ray-project/ray/issues/3644) for "
                     << "some a discussion of workarounds.";
   }

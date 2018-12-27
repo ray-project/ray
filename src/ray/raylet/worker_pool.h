@@ -123,7 +123,8 @@ class WorkerPool {
   /// \return string.
   std::string DebugString() const;
 
-  /// Generate a warning about the number of registered workers if appropriate.
+  /// Generate a warning about the number of workers that have registered or
+  /// started if appropriate.
   ///
   /// \return An empty string if no warning should be generated and otherwise a
   /// string with a warning message.
