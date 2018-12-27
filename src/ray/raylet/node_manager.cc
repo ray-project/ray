@@ -1509,11 +1509,42 @@ bool NodeManager::AssignTask(const Task &task) {
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
-          // If the task was an actor task, then record this execution to guarantee
-          // consistency in the case of reconstruction.
+          // Actor tasks require extra accounting to track the actor's state.
           if (spec.IsActorTask()) {
             auto actor_entry = actor_registry_.find(spec.ActorId());
             RAY_CHECK(actor_entry != actor_registry_.end());
+            // Process any new actor handles that were created since the
+            // previous task on this handle was executed. The first task
+            // submitted on a new actor handle will depend on the dummy object
+            // returned by the previous task, so the dependency will not be
+            // released until this first task is submitted.
+            for (auto &new_handle_id : spec.NewActorHandles()) {
+              // Get the execution dependency for the first task submitted on the new
+              // actor handle. Since the new actor handle was created after this task
+              // began and before this task finished, it must have the same execution
+              // dependency.
+              const auto &execution_dependencies =
+                  assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
+              // TODO(swang): We expect this task to have exactly 1 execution dependency,
+              // the dummy object returned by the previous actor task. However, this
+              // leaks information about the TaskExecutionSpecification implementation.
+              RAY_CHECK(execution_dependencies.size() == 1);
+              const ObjectID &execution_dependency = execution_dependencies.front();
+              // If the new actor handle ID matches the current one, then this means
+              // that the actor handle was pickled.
+              if (new_handle_id == spec.ActorHandleId()) {
+                // The current execution dependency will never be safe to release, so
+                // generate a handle ID that will never actually appear to hold the
+                // reference.
+                new_handle_id = ActorHandleID::from_random();
+              }
+              // Add the new handle and give it a reference to the finished task's
+              // execution dependency.
+              actor_entry->second.AddHandle(new_handle_id, execution_dependency);
+            }
+
+            // If the task was an actor task, then record this execution to
+            // guarantee consistency in the case of reconstruction.
             auto execution_dependency = actor_entry->second.GetExecutionDependency();
             // The execution dependency is initialized to the actor creation task's
             // return value, and is subsequently updated to the assigned tasks'
@@ -1529,7 +1560,10 @@ bool NodeManager::AssignTask(const Task &task) {
             // (SetExecutionDependencies takes a non-const so copy task in a
             //  on-const variable.)
             assigned_task.SetExecutionDependencies({execution_dependency});
+          } else {
+            RAY_CHECK(spec.NewActorHandles().empty());
           }
+
           // We started running the task, so the task is ready to write to GCS.
           if (!lineage_cache_.AddReadyTask(assigned_task)) {
             RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
@@ -1655,29 +1689,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   }
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
-  // Process any new actor handles that were forked from the current handle.
-  // The first task submitted on a new actor handle will depend on the
-  // finished task's execution dependency, so do not release the dependency
-  // until this first task is submitted.
-  for (auto &new_handle_id : task.GetTaskSpecification().NewActorHandles()) {
-    // An actor creation task is the first task, so it cannot have new handles.
-    RAY_CHECK(task.GetTaskSpecification().IsActorTask());
-    // Get the execution dependency for the finished task.
-    const auto &frontier = actor_entry->second.GetFrontier();
-    auto it = frontier.find(actor_handle_id);
-    RAY_CHECK(it != frontier.end());
-    // If the new actor handle ID matches the current one, then this means
-    // that the actor handle was pickled.
-    if (new_handle_id == actor_handle_id) {
-      // The current execution dependency will never be safe to release, so
-      // generate a handle ID that will never actually appear to hold the
-      // reference.
-      new_handle_id = ActorHandleID::from_random();
-    }
-    // Add the new handle and give it a reference to the finished task's
-    // execution dependency.
-    actor_entry->second.AddHandle(new_handle_id, it->second.execution_dependency);
-  }
   // Extend the actor's frontier to include the executed task.
   auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
   ObjectID object_to_release =
