@@ -571,6 +571,44 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
 
 
+def test_warning_for_too_many_actors(shutdown_only):
+    # Check that if we run a workload which requires too many workers to be
+    # started that we will receive a warning.
+    num_cpus = 2
+    ray.init(num_cpus=num_cpus)
+
+    @ray.remote
+    class Foo(object):
+        pass
+
+    [Foo.remote() for _ in range(num_cpus * 2)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
+    [Foo.remote() for _ in range(num_cpus)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 2)
+
+
+def test_warning_for_too_many_nested_tasks(shutdown_only):
+    # Check that if we run a workload which requires too many workers to be
+    # started that we will receive a warning.
+    num_cpus = 2
+    ray.init(num_cpus=num_cpus)
+
+    @ray.remote
+    def f():
+        time.sleep(1000)
+        return 1
+
+    @ray.remote
+    def g():
+        # Sleep so that the f tasks all get submitted to the scheduler after
+        # the g tasks.
+        time.sleep(1)
+        ray.get(f.remote())
+
+    [g.remote() for _ in range(num_cpus * 4)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 3)
+
+
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
