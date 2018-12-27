@@ -1,5 +1,6 @@
 package org.ray.api.test;
 
+import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -13,6 +14,7 @@ import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 
 
@@ -42,20 +44,30 @@ public class MultiThreadingTest extends BaseTest {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.call(MultiThreadingTest::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
-    });
+    }, LOOP_COUNTER);
+
     // Test calling actors.
     RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.call(Echo::echo, echoActor, arg);
       Assert.assertEquals(arg, (int) obj.get());
-    });
+    }, LOOP_COUNTER);
+
     // Test put and get.
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = Ray.put(arg);
       Assert.assertEquals(arg, (int) Ray.get(obj.getId()));
-    });
+    }, LOOP_COUNTER);
+
+    // Test wait for one object in multi threads.
+    RayObject<Integer> obj = Ray.call(MultiThreadingTest::echo, 100);
+    runTestCaseInMultipleThreads(() -> {
+      WaitResult<Integer> result = Ray.wait(ImmutableList.of(obj), 1, 1000);
+      Assert.assertEquals(1, result.getReady().size());
+    }, 1);
+
     return "ok";
   }
 
@@ -70,14 +82,14 @@ public class MultiThreadingTest extends BaseTest {
     Assert.assertEquals("ok", obj.get());
   }
 
-  private static void runTestCaseInMultipleThreads(Runnable testCase) {
+  private static void runTestCaseInMultipleThreads(Runnable testCase, int numRepeats) {
     ExecutorService service = Executors.newFixedThreadPool(NUM_THREADS);
 
     try {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
         Callable<String> task = () -> {
-          for (int j = 0; j < LOOP_COUNTER; j++) {
+          for (int j = 0; j < numRepeats; j++) {
             TimeUnit.MILLISECONDS.sleep(1);
             testCase.run();
           }
