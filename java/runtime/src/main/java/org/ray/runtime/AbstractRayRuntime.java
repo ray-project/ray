@@ -110,7 +110,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     boolean wasBlocked = false;
     // TODO(swang): If we are not on the main thread, then we should generate a
     // random task ID to pass to the backend.
-    UniqueId taskId = workerContext.getCurrentTask().taskId;
+    UniqueId taskId = workerContext.getCurrentThreadTaskId();
 
     try {
       int numObjectIds = objectIds.size();
@@ -218,14 +218,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    // TODO(swang): If we are not on the main thread, then we should generate a
-    // random task ID to pass to the backend.
-    return rayletClient.wait(waitList, numReturns, timeoutMs,
-        workerContext.getCurrentTask().taskId);
+    return rayletClient.wait(waitList, numReturns,
+        timeoutMs, workerContext.getCurrentThreadTaskId());
   }
 
   @Override
-  public RayObject call(RayFunc func, Object[] args, CallOptions options) {
+  public synchronized RayObject call(RayFunc func, Object[] args, CallOptions options) {
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
