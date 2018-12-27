@@ -346,7 +346,8 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster.shutdown()
     cluster = _start_new_cluster()
 
-    trials = tune.run_experiments(all_experiments, resume=True)
+    trials = tune.run_experiments(
+        all_experiments, resume=True, raise_on_failed_trial=False)
     assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     cluster.shutdown()
@@ -381,8 +382,9 @@ tune.run_experiments(
     # the checkpoint.
     metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if os.path.exists(os.path.join(
-                metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+        if os.path.exists(
+                os.path.join(metadata_checkpoint_dir,
+                             TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
@@ -391,8 +393,8 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(
-            metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if not os.path.exists(
+            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -453,8 +455,9 @@ tune.run_experiments(
     # the checkpoint.
     metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if os.path.exists(os.path.join(
-                metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+        if os.path.exists(
+                os.path.join(metadata_checkpoint_dir,
+                             TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
@@ -463,8 +466,8 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(
-            metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if not os.path.exists(
+            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -490,6 +493,5 @@ tune.run_experiments(
         resume=True,
         raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials2)
-    assert set(t.trial_id for t in trials2) == set(
-        t.trial_id for t in trials)
+    assert set(t.trial_id for t in trials2) == set(t.trial_id for t in trials)
     cluster.shutdown()
