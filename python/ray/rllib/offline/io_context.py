@@ -18,9 +18,9 @@ class IOContext(object):
         evaluator (PolicyEvaluator): policy evaluator object reference.
     """
 
-    def __init__(self, log_dir, config, worker_index, evaluator):
+    def __init__(self, log_dir, config=None, worker_index=0, evaluator=None):
         self.log_dir = log_dir
-        self.config = config
+        self.config = config or {}
         self.worker_index = worker_index
         self.evaluator = evaluator
 
