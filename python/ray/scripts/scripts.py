@@ -353,14 +353,15 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         services.check_version_info(redis_client)
 
         # Get the node IP address if one is not provided.
-        if node_ip_address is None:
-            node_ip_address = services.get_node_ip_address(redis_address)
+        ray_params.update_if_absent(
+            node_ip_address=services.get_node_ip_address(redis_address))
         logger.info("Using IP address {} for this node."
-                    .format(node_ip_address))
+                    .format(ray_params.node_ip_address))
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
-        check_no_existing_redis_clients(node_ip_address, redis_client)
+        check_no_existing_redis_clients(ray_params.node_ip_address,
+                                        redis_client)
         ray_params.redis_address = redis_address
         address_info = services.start_ray_node(ray_params, cleanup=False)
         logger.info(address_info)
