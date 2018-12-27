@@ -345,4 +345,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public FunctionManager getFunctionManager() {
     return functionManager;
   }
+
+  public RayConfig getRayConfig() {
+    return rayConfig;
+  }
 }
