@@ -36,7 +36,7 @@ class MixedInput(InputReader):
             if k == "sampler":
                 self.choices.append(ioctx.default_sampler_input())
             else:
-                self.choices.append(JsonReader(ioctx, k))
+                self.choices.append(JsonReader(k))
             self.p.append(v)
 
     @override(InputReader)

@@ -6,7 +6,6 @@ import glob
 import gym
 import numpy as np
 import os
-import json
 import random
 import shutil
 import tempfile
@@ -55,8 +54,7 @@ class AgentIOTest(unittest.TestCase):
     def testAgentOutputOk(self):
         self.writeOutputs(self.test_dir)
         self.assertEqual(len(os.listdir(self.test_dir)), 1)
-        ioctx = IOContext(self.test_dir, {}, 0, None)
-        reader = JsonReader(ioctx, self.test_dir + "/*.json")
+        reader = JsonReader(self.test_dir + "/*.json")
         reader.next()
 
     def testAgentOutputLogdir(self):
@@ -181,7 +179,7 @@ class JsonIOTest(unittest.TestCase):
     def testWriteSimple(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx, self.test_dir, max_file_size=1000, compress_columns=["obs"])
+            self.test_dir, ioctx, max_file_size=1000, compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         writer.write(SAMPLES)
         writer.write(SAMPLES)
@@ -190,8 +188,8 @@ class JsonIOTest(unittest.TestCase):
     def testWriteFileURI(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx,
             "file:" + self.test_dir,
+            ioctx,
             max_file_size=1000,
             compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
@@ -202,7 +200,7 @@ class JsonIOTest(unittest.TestCase):
     def testWritePaginate(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx, self.test_dir, max_file_size=5000, compress_columns=["obs"])
+            self.test_dir, ioctx, max_file_size=5000, compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         for _ in range(100):
             writer.write(SAMPLES)
@@ -211,10 +209,10 @@ class JsonIOTest(unittest.TestCase):
     def testReadWrite(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
         writer = JsonWriter(
-            ioctx, self.test_dir, max_file_size=5000, compress_columns=["obs"])
+            self.test_dir, ioctx, max_file_size=5000, compress_columns=["obs"])
         for i in range(100):
             writer.write(make_sample_batch(i))
-        reader = JsonReader(ioctx, self.test_dir + "/*.json")
+        reader = JsonReader(self.test_dir + "/*.json")
         seen_a = set()
         seen_o = set()
         for i in range(1000):
@@ -227,7 +225,6 @@ class JsonIOTest(unittest.TestCase):
         self.assertLess(len(seen_o), 101)
 
     def testSkipsOverEmptyLinesAndFiles(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
         open(self.test_dir + "/empty", "w").close()
         with open(self.test_dir + "/f1", "w") as f:
             f.write("\n")
@@ -236,7 +233,7 @@ class JsonIOTest(unittest.TestCase):
         with open(self.test_dir + "/f2", "w") as f:
             f.write(_to_json(make_sample_batch(1), []))
             f.write("\n")
-        reader = JsonReader(ioctx, [
+        reader = JsonReader([
             self.test_dir + "/empty",
             self.test_dir + "/f1",
             "file:" + self.test_dir + "/f2",
@@ -248,7 +245,6 @@ class JsonIOTest(unittest.TestCase):
         self.assertEqual(len(seen_a), 2)
 
     def testSkipsOverCorruptedLines(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
         with open(self.test_dir + "/f1", "w") as f:
             f.write(_to_json(make_sample_batch(0), []))
             f.write("\n")
@@ -259,7 +255,7 @@ class JsonIOTest(unittest.TestCase):
             f.write(_to_json(make_sample_batch(3), []))
             f.write("\n")
             f.write("{..corrupted_json_record")
-        reader = JsonReader(ioctx, [
+        reader = JsonReader([
             self.test_dir + "/f1",
         ])
         seen_a = set()
@@ -269,9 +265,8 @@ class JsonIOTest(unittest.TestCase):
         self.assertEqual(len(seen_a), 4)
 
     def testAbortOnAllEmptyInputs(self):
-        ioctx = IOContext(self.test_dir, {}, 0, None)
         open(self.test_dir + "/empty", "w").close()
-        reader = JsonReader(ioctx, [
+        reader = JsonReader([
             self.test_dir + "/empty",
         ])
         self.assertRaises(ValueError, lambda: reader.next())
@@ -281,7 +276,7 @@ class JsonIOTest(unittest.TestCase):
         with open(self.test_dir + "/empty2", "w") as f:
             for _ in range(100):
                 f.write("\n")
-        reader = JsonReader(ioctx, [
+        reader = JsonReader([
             self.test_dir + "/empty1",
             self.test_dir + "/empty2",
         ])

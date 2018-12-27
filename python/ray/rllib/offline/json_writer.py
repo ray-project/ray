@@ -16,6 +16,7 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
@@ -27,21 +28,21 @@ class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
 
     def __init__(self,
-                 ioctx,
                  path,
+                 ioctx=None,
                  max_file_size=64 * 1024 * 1024,
                  compress_columns=frozenset(["obs", "new_obs"])):
         """Initialize a JsonWriter.
 
         Arguments:
-            ioctx (IOContext): current IO context object.
             path (str): a path/URI of the output directory to save files in.
+            ioctx (IOContext): current IO context object.
             max_file_size (int): max size of single files before rolling over.
             compress_columns (list): list of sample batch columns to compress.
         """
 
-        self.ioctx = ioctx
         self.path = path
+        self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
         if urlparse(path).scheme:

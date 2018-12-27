@@ -146,8 +146,6 @@ COMMON_CONFIG = {
     #    metrics will be NaN if using offline data.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    #  - "counterfactual": use counterfactual policy evaluation to estimate
-    #    performance (this option is not implemented yet).
     "input_evaluation": None,
     # Specify where experiences should be saved:
     #  - None: don't save any experiences
@@ -484,7 +482,7 @@ class Agent(Trainable):
         elif isinstance(config["input"], dict):
             input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
         else:
-            input_creator = (lambda ioctx: JsonReader(ioctx, config["input"]))
+            input_creator = (lambda ioctx: JsonReader(config["input"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -492,14 +490,14 @@ class Agent(Trainable):
             output_creator = (lambda ioctx: NoopOutput())
         elif config["output"] == "logdir":
             output_creator = (lambda ioctx: JsonWriter(
-                ioctx,
                 ioctx.log_dir,
+                ioctx,
                 max_file_size=config["output_max_file_size"],
                 compress_columns=config["output_compress_columns"]))
         else:
             output_creator = (lambda ioctx: JsonWriter(
-                    ioctx,
                     config["output"],
+                    ioctx,
                     max_file_size=config["output_max_file_size"],
                     compress_columns=config["output_compress_columns"]))
 

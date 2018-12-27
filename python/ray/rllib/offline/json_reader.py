@@ -16,8 +16,7 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
-    DEFAULT_POLICY_ID
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import unpack_if_needed
 
@@ -29,17 +28,15 @@ class JsonReader(InputReader):
 
     The input files will be read from in an random order."""
 
-    def __init__(self, ioctx, inputs):
+    def __init__(self, inputs):
         """Initialize a JsonReader.
 
         Arguments:
-            ioctx (IOContext): current IO context object.
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
         """
 
-        self.ioctx = ioctx
         if isinstance(inputs, six.string_types):
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
