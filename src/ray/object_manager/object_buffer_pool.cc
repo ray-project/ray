@@ -192,6 +192,7 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   for (const auto &id : object_ids) {
     plasma_ids.push_back(id.to_plasma_id());
   }
+  std::lock_guard<std::mutex> lock(pool_mutex_);
   ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
 }
 
