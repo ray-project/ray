@@ -108,8 +108,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
-    // TODO(swang): If we are not on the main thread, then we should generate a
-    // random task ID to pass to the backend.
     UniqueId taskId = workerContext.getCurrentThreadTaskId();
 
     try {
