@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import cloudpickle
+import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
 import logging
