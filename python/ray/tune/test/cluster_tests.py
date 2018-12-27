@@ -379,18 +379,20 @@ tune.run_experiments(
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
+    metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
         if os.path.exists(os.path.join(
-                dirpath, "experiment/" + TrialRunner.CKPT_FILE_NAME)):
+                metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(dirpath)
+            runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res is not None and last_res["training_iteration"]:
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
+    if not os.path.exists(os.path.join(
+            metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -449,18 +451,20 @@ tune.run_experiments(
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
+    metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
         if os.path.exists(os.path.join(
-                dirpath, "experiment/" + TrialRunner.CKPT_FILE_NAME)):
+                metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(dirpath)
+            runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res is not None and last_res["training_iteration"] == 3:
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
+    if not os.path.exists(os.path.join(
+            metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -469,7 +473,7 @@ tune.run_experiments(
     Experiment._register_if_needed(_Fail)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner.restore(dirpath)
+    runner = TrialRunner.restore(metadata_checkpoint_dir)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING
