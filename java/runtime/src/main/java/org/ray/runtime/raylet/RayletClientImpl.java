@@ -20,9 +20,12 @@ import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.UniqueIdUtil;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RayletClientImpl implements RayletClient {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayletClientImpl.class);
 
   private static final int TASK_SPEC_BUFFER_SIZE = 2 * 1024 * 1024;
 
@@ -47,6 +50,11 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, UniqueId currentTaskId) {
+    Preconditions.checkNotNull(waitFor);
+    if (waitFor.isEmpty()) {
+      return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
+    }
+
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
@@ -70,7 +78,7 @@ public class RayletClientImpl implements RayletClient {
 
   @Override
   public void submitTask(TaskSpec spec) {
-    RayLog.core.debug("Submitting task: {}", spec);
+    LOGGER.debug("Submitting task: {}", spec);
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {
@@ -91,8 +99,8 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
       UniqueId currentTaskId) {
-    if (RayLog.core.isDebugEnabled()) {
-      RayLog.core.debug("Blocked on objects for task {}, object IDs are {}",
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
     int ret = nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
@@ -183,7 +191,6 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
-    final int functionIdOffset = fbb.createString(UniqueId.randomId().toByteBuffer());
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
@@ -245,7 +252,6 @@ public class RayletClientImpl implements RayletClient {
         actorHandleIdOffset,
         actorCounter,
         false,
-        functionIdOffset,
         argsOffset,
         returnsOffset,
         requiredResourcesOffset,
@@ -256,10 +262,10 @@ public class RayletClientImpl implements RayletClient {
     ByteBuffer buffer = fbb.dataBuffer();
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
-      RayLog.core.error(
-          "Allocated buffer is not enough to transfer the task specification: "
-              + TASK_SPEC_BUFFER_SIZE + " vs " + buffer.remaining());
-      assert (false);
+      LOGGER.error(
+          "Allocated buffer is not enough to transfer the task specification: {}vs {}",
+              TASK_SPEC_BUFFER_SIZE, buffer.remaining());
+      throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
   }

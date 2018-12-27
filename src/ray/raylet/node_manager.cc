@@ -95,7 +95,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str(), "", 0));
+  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -405,7 +405,14 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   cluster_resource_map_.erase(client_id);
 
   // Remove the remote server connection.
-  remote_server_connections_.erase(client_id);
+  const auto connection_entry = remote_server_connections_.find(client_id);
+  if (connection_entry != remote_server_connections_.end()) {
+    connection_entry->second->Close();
+    remote_server_connections_.erase(connection_entry);
+  } else {
+    RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
+                     << client_id << ".";
+  }
 
   // For any live actors that were on the dead node, broadcast a notification
   // about the actor's death

@@ -1,6 +1,4 @@
-.. raw:: html
-
-    <a href=http://ray.readthedocs.io/en/latest/index.html><img align="right" width="30%" src="https://github.com/devin-petersohn/ray/raw/docs/update_readme/doc/source/images/ray_logo.png"></a>
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
 .. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
     :target: https://travis-ci.com/ray-project/ray
@@ -8,7 +6,7 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.6.0-blue.svg
+.. image:: https://img.shields.io/badge/pypi-0.6.1-blue.svg
     :target: https://pypi.org/project/ray/
 
 |

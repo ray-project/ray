@@ -11,10 +11,14 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.test.BaseTest;
 import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public abstract class RayBenchmarkTest<T> implements Serializable {
+public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializable {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayBenchmarkTest.class);
   //not thread safe ,but we only have one thread here
   public static final DecimalFormat df = new DecimalFormat("00.00");
   private static final long serialVersionUID = 416045641835782523L;
@@ -61,12 +65,12 @@ public abstract class RayBenchmarkTest<T> implements Serializable {
         long endTime = remoteResult.getFinishTime();
         long costTime = endTime - temp.getStartTime();
         counterList.add(costTime / 1000);
-        RayLog.core.warn(logPrefix + "_cost_time:" + costTime + "ns");
+        LOGGER.warn("{}_cost_time:{}ns",logPrefix, costTime);
         Assert.assertTrue(rayBenchmarkTest.checkResult(remoteResult.getResult()));
       }
       return counterList;
     } catch (Exception e) {
-      RayLog.core.error("singleClient", e);
+      LOGGER.error("singleClient", e);
       return null;
 
     }
@@ -83,7 +87,7 @@ public abstract class RayBenchmarkTest<T> implements Serializable {
       long endTime = System.nanoTime();
       long costTime = endTime - startTime;
       counterList.add(costTime / 1000);
-      RayLog.core.warn("SINGLE_LATENCY_cost_time: " + costTime + " us");
+      LOGGER.warn("SINGLE_LATENCY_cost_time: {} us", costTime);
       Assert.assertTrue(checkResult(t));
     }
     Collections.sort(counterList);
@@ -103,15 +107,15 @@ public abstract class RayBenchmarkTest<T> implements Serializable {
     int ninety = (int) (len * 0.9);
     int fifty = (int) (len * 0.5);
 
-    RayLog.core.error("Final result of rt as below:");
-    RayLog.core.error("max: " + list.get(len - 1) + "μs");
-    RayLog.core.error("min: " + list.get(0) + "μs");
-    RayLog.core.error("median: " + list.get(middle) + "μs");
-    RayLog.core.error("99.99% data smaller than: " + list.get(almostHundred) + "μs");
-    RayLog.core.error("99% data smaller than: " + list.get(ninetyNine) + "μs");
-    RayLog.core.error("95% data smaller than: " + list.get(ninetyFive) + "μs");
-    RayLog.core.error("90% data smaller than: " + list.get(ninety) + "μs");
-    RayLog.core.error("50% data smaller than: " + list.get(fifty) + "μs");
+    LOGGER.error("Final result of rt as below:");
+    LOGGER.error("max: {}μs", list.get(len - 1));
+    LOGGER.error("min: {}μs", list.get(0));
+    LOGGER.error("median: {}μs", list.get(middle));
+    LOGGER.error("99.99% data smaller than: {}μs", list.get(almostHundred));
+    LOGGER.error("99% data smaller than: {}μs", list.get(ninetyNine));
+    LOGGER.error("95% data smaller than: {}μs", list.get(ninetyFive));
+    LOGGER.error("90% data smaller than: {}μs", list.get(ninety));
+    LOGGER.error("50% data smaller than: {}μs", list.get(fifty));
   }
 
   public void rateLimiterPressureTest(PressureTestParameter pressureTestParameter) {

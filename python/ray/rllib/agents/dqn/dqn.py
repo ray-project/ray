@@ -117,12 +117,13 @@ class DQNAgent(Agent):
     _agent_name = "DQN"
     _default_config = DEFAULT_CONFIG
     _policy_graph = DQNPolicyGraph
+    _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
 
     @override(Agent)
     def _init(self):
         # Update effective batch size to include n-step
         adjusted_batch_size = max(self.config["sample_batch_size"],
-                                  self.config["n_step"])
+                                  self.config.get("n_step", 1))
         self.config["sample_batch_size"] = adjusted_batch_size
 
         self.exploration0 = self._make_exploration_schedule(-1)
@@ -131,7 +132,7 @@ class DQNAgent(Agent):
             for i in range(self.config["num_workers"])
         ]
 
-        for k in OPTIMIZER_SHARED_CONFIGS:
+        for k in self._optimizer_shared_configs:
             if self._agent_name != "DQN" and k in [
                     "schedule_max_timesteps", "beta_annealing_fraction",
                     "final_prioritized_replay_beta"

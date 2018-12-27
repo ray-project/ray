@@ -7,14 +7,12 @@ import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 
-@RunWith(MyRunner.class)
-public class ActorReconstructionTest {
+public class ActorReconstructionTest extends BaseTest {
 
   @RayRemote()
   public static class Counter {

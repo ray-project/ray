@@ -9,6 +9,7 @@ import sys
 import time
 
 import ray
+from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -234,6 +235,9 @@ class GlobalState(object):
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
         task_spec = ray.raylet.task_from_string(task_spec)
+        function_descriptor_list = task_spec.function_descriptor_list()
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            function_descriptor_list)
         task_spec_info = {
             "DriverID": binary_to_hex(task_spec.driver_id().id()),
             "TaskID": binary_to_hex(task_spec.task_id().id()),
@@ -245,10 +249,14 @@ class GlobalState(object):
             "ActorCreationDummyObjectID": binary_to_hex(
                 task_spec.actor_creation_dummy_object_id().id()),
             "ActorCounter": task_spec.actor_counter(),
-            "FunctionID": binary_to_hex(task_spec.function_id().id()),
             "Args": task_spec.arguments(),
             "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources()
+            "RequiredResources": task_spec.required_resources(),
+            "FunctionID": binary_to_hex(function_descriptor.function_id.id()),
+            "FunctionHash": binary_to_hex(function_descriptor.function_hash),
+            "ModuleName": function_descriptor.module_name,
+            "ClassName": function_descriptor.class_name,
+            "FunctionName": function_descriptor.function_name,
         }
 
         return {
@@ -358,12 +366,14 @@ class GlobalState(object):
             node_info[client_id] = {
                 "ClientID": client_id,
                 "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(client.NodeManagerAddress()),
+                "NodeManagerAddress": decode(
+                    client.NodeManagerAddress(), allow_none=True),
                 "NodeManagerPort": client.NodeManagerPort(),
                 "ObjectManagerPort": client.ObjectManagerPort(),
                 "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName()),
-                "RayletSocketName": decode(client.RayletSocketName()),
+                    client.ObjectStoreSocketName(), allow_none=True),
+                "RayletSocketName": decode(
+                    client.RayletSocketName(), allow_none=True),
                 "Resources": resources
             }
         return list(node_info.values())
@@ -425,7 +435,8 @@ class GlobalState(object):
 
             component_type = decode(profile_table_message.ComponentType())
             component_id = binary_to_hex(profile_table_message.ComponentId())
-            node_ip_address = decode(profile_table_message.NodeIpAddress())
+            node_ip_address = decode(
+                profile_table_message.NodeIpAddress(), allow_none=True)
 
             for j in range(profile_table_message.ProfileEventsLength()):
                 profile_event_message = profile_table_message.ProfileEvents(j)

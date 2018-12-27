@@ -1,17 +1,16 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 
-@RunWith(MyRunner.class)
-public class WaitTest {
+public class WaitTest extends BaseTest {
 
   @RayRemote
   private static String hi() {
@@ -57,5 +56,19 @@ public class WaitTest {
   public void testWaitInWorker() {
     RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
     res.get();
+  }
+
+  @Test
+  public void testWaitForEmpty() {
+    WaitResult<String> result = Ray.wait(new ArrayList<>());
+    Assert.assertTrue(result.getReady().isEmpty());
+    Assert.assertTrue(result.getUnready().isEmpty());
+
+    try {
+      Ray.wait(null);
+      Assert.fail();
+    } catch (NullPointerException e) {
+      Assert.assertTrue(true);
+    }
   }
 }

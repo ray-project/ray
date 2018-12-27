@@ -16,7 +16,13 @@ ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
   boost::system::error_code error;
   socket.connect(endpoint, error);
-  return boost_to_ray_status(error);
+  const auto status = boost_to_ray_status(error);
+  if (!status.ok()) {
+    // Close the socket if the connect failed.
+    boost::system::error_code close_error;
+    socket.close(close_error);
+  }
+  return status;
 }
 
 template <class T>
@@ -32,6 +38,14 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
       async_write_max_messages_(1),
       async_write_queue_(),
       async_write_in_flight_(false) {}
+
+template <class T>
+ServerConnection<T>::~ServerConnection() {
+  // If there are any pending messages, invoke their callbacks with an IOError status.
+  for (const auto &write_buffer : async_write_queue_) {
+    write_buffer->handler(Status::IOError("Connection closed."));
+  }
+}
 
 template <class T>
 Status ServerConnection<T>::WriteBuffer(

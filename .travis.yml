@@ -55,6 +55,9 @@ matrix:
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
         - .travis/format.sh --all
+        # Make sure that the README is formatted properly.
+        - cd python
+        - python setup.py check --restructuredtext --strict --metadata
 
     - os: linux
       dist: trusty
@@ -171,6 +174,11 @@ script:
   - python -m pytest -v --durations=10 test/cython_test.py
   - python -m pytest -v --durations=10 test/credis_test.py
   - python -m pytest -v --durations=10 test/node_manager_test.py
+  # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
+  # better be put in Jenkins. However, it fails frequently in Jenkins, but
+  # works well in Travis. We should consider moving it back to Jenkins once
+  # we figure out the reason.
+  - python -m pytest -v --durations=10 test/object_manager_test.py
 
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py

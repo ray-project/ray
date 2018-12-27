@@ -9,9 +9,7 @@ namespace ray {
 namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
-    : actor_table_data_(actor_table_data),
-      execution_dependency_(ObjectID::nil()),
-      frontier_() {}
+    : actor_table_data_(actor_table_data) {}
 
 const ClientID ActorRegistration::GetNodeManagerId() const {
   return ClientID::from_binary(actor_table_data_.node_manager_id);
