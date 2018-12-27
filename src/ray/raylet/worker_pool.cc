@@ -260,8 +260,7 @@ std::string WorkerPool::WarningAboutSize() {
   }
   int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
   std::stringstream warning_message;
-  if (multiple >= 2 && multiple != last_warning_multiple_) {
-    RAY_CHECK(last_warning_multiple_ < multiple);
+  if (multiple >= 2 && multiple > last_warning_multiple_) {
     last_warning_multiple_ = multiple;
     warning_message << "WARNING: " << num_workers_started_or_registered
                     << " workers have been started. This could be a result of using "
