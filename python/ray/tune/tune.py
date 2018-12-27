@@ -126,7 +126,7 @@ def run_experiments(experiments,
         if resume:
             restore = True
         elif resume is None:
-            msg = "Would you like to resume your experiment from '{}'?".format(
+             msg = "Found incomplete experiment at {}. Would you like to resume it?".format(
                 checkpoint_dir)
             restore = click.confirm(msg, default=True)
     else:
