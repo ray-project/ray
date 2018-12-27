@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Werror -std=c++11")
 
-add_subdirectory(util)
-add_subdirectory(gcs)
-add_subdirectory(object_manager)
-add_subdirectory(raylet)
-
 include_directories(thirdparty/ae)
 
 set(HIREDIS_SRCS
@@ -56,8 +51,15 @@ set(RAY_SRCS
   raylet/raylet.cc
 )
 
-set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+set(RAY_SYSTEM_LIBS ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} pthread)
+if(UNIX AND NOT APPLE)
+  set(RAY_SYSTEM_LIBS ${RAY_SYSTEM_LIBS} -lrt)
+endif()
+
+set(RAY_LIB_STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${RAY_SYSTEM_LIBS})
+
 set(RAY_LIB_DEPENDENCIES
+    boost_thread
     arrow_ep
     gen_gcs_fbs
     gen_object_manager_fbs
@@ -88,6 +90,13 @@ ADD_RAY_LIB(ray
     DEPENDENCIES ${RAY_LIB_DEPENDENCIES}
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${RAY_LIB_STATIC_LINK_LIBS})
+
+set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main gmock_main ${RAY_SYSTEM_LIBS})
+
+add_subdirectory(util)
+add_subdirectory(gcs)
+add_subdirectory(object_manager)
+add_subdirectory(raylet)
 
 add_custom_target(copy_redis ALL)
 foreach(file "redis-cli" "redis-server")

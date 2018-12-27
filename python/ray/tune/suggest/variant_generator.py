@@ -93,10 +93,25 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
+def resolve_nested_dict(nested_dict):
+    """Flattens a nested dict by joining keys into tuple of paths.
+
+    Can then be passed into `format_vars`.
+    """
+    res = {}
+    for k, v in nested_dict.items():
+        if isinstance(v, dict):
+            for k_, v_ in resolve_nested_dict(v).items():
+                res[(k, ) + k_] = v_
+        else:
+            res[(k, )] = v
+    return res
+
+
 def format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "trial_resources"]:
+        if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True

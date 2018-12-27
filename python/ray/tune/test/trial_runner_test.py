@@ -26,7 +26,8 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
-from ray.tune.suggest.variant_generator import RecursiveDependencyError
+from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
+                                                resolve_nested_dict)
 
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
@@ -294,7 +295,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "PPO",
-                    "trial_resources": {
+                    "resources_per_trial": {
                         "asdf": 1
                     }
                 }
@@ -681,6 +682,22 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testDeprecatedResources(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "trial_resources": {
+                    "cpu": 1
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
     def testCustomLogger(self):
         class CustomLogger(Logger):
             def on_result(self, result):
@@ -885,6 +902,20 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def test_resolve_dict(self):
+        config = {
+            "a": {
+                "b": 1,
+                "c": 2,
+            },
+            "b": {
+                "a": 3
+            }
+        }
+        resolved = resolve_nested_dict(config)
+        for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
+            self.assertEqual(resolved.get(k), v)
 
     def testRecursiveDep(self):
         try:
@@ -1633,6 +1664,19 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()  # this converts self._finished to True
         self.assertTrue(searcher.is_finished())
         self.assertRaises(TuneError, runner.step)
+
+
+class SearchAlgorithmTest(unittest.TestCase):
+    def testNestedSuggestion(self):
+        class TestSuggestion(SuggestionAlgorithm):
+            def _suggest(self, trial_id):
+                return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
+
+        alg = TestSuggestion()
+        alg.add_configurations({"test": {"run": "__fake"}})
+        trial = alg.next_trials()[0]
+        self.assertTrue("e=5" in trial.experiment_tag)
+        self.assertTrue("d=4" in trial.experiment_tag)
 
 
 if __name__ == "__main__":

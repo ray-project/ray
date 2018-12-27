@@ -398,7 +398,14 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   cluster_resource_map_.erase(client_id);
 
   // Remove the remote server connection.
-  remote_server_connections_.erase(client_id);
+  const auto connection_entry = remote_server_connections_.find(client_id);
+  if (connection_entry != remote_server_connections_.end()) {
+    connection_entry->second->Close();
+    remote_server_connections_.erase(connection_entry);
+  } else {
+    RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
+                     << client_id << ".";
+  }
 
   // For any live actors that were on the dead node, broadcast a notification
   // about the actor's death

@@ -65,7 +65,7 @@ class TuneServerSuite(unittest.TestCase):
             "stop": {
                 "training_iteration": 3
             },
-            "trial_resources": {
+            "resources_per_trial": {
                 'cpu': 1,
                 'gpu': 1
             },

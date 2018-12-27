@@ -1,6 +1,11 @@
 RLlib Development
 =================
 
+Development Install
+-------------------
+
+You can develop RLlib locally without needing to compile Ray by using the `setup-rllib-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/setup-rllib-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
+
 Features
 --------
 
@@ -9,7 +14,7 @@ Feature development and upcoming priorities are tracked on the `RLlib project bo
 Benchmarks
 ----------
 
-Currently we host a number of full training run results in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and maintain a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
+A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__, and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 Contributing Algorithms
 -----------------------
@@ -18,7 +23,7 @@ These are the guidelines for merging new algorithms into RLlib:
 
 * Contributed algorithms (`rllib/contrib <https://github.com/ray-project/ray/tree/master/python/ray/rllib/contrib>`__):
     - must subclass Agent and implement the ``_train()`` method
-    - must include a lightweight test (<30s to run) to sanity check functionality
+    - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
 
@@ -49,7 +54,7 @@ Second, register the agent with a name in `contrib/registry.py <https://github.c
 
     def _import_random_agent_2():
         from ray.rllib.contrib.random_agent_2.random_agent_2 import RandomAgent2
-        return RandomAgent
+        return RandomAgent2
 
     CONTRIBUTED_ALGORITHMS = {
         "contrib/RandomAgent": _import_random_agent,
