@@ -556,6 +556,13 @@ class PolicyEvaluator(EvaluatorInterface):
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         self.policy_map[policy_id].export_model(export_dir)
 
+    def export_policy_checkpoint(self,
+                                 export_dir,
+                                 filename_prefix="model",
+                                 policy_id=DEFAULT_POLICY_ID):
+        self.policy_map[policy_id].export_checkpoint(export_dir,
+                                                     filename_prefix)
+
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
         preprocessors = {}

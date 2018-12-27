@@ -443,6 +443,26 @@ class Agent(Trainable):
         """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
+    def export_policy_checkpoint(self,
+                                 export_dir,
+                                 filename_prefix="model",
+                                 policy_id=DEFAULT_POLICY_ID):
+        """Export tensorflow policy model checkpoint to local directory.
+
+        Arguments:
+            export_dir (string): Writable local directory.
+            filename_prefix (string): file name prefix of checkpoint files.
+            policy_id (string): Optional policy id to export.
+
+        Example:
+            >>> agent = MyAgent()
+            >>> for _ in range(10):
+            >>>     agent.train()
+            >>> agent.export_policy_checkpoint("/tmp/export_dir")
+        """
+        self.local_evaluator.export_policy_checkpoint(
+            export_dir, filename_prefix, policy_id)
+
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
