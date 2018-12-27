@@ -223,7 +223,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public synchronized RayObject call(RayFunc func, Object[] args, CallOptions options) {
+  public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
