@@ -1,9 +1,9 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import com.google.common.base.Preconditions;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class WorkerContext {
+  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
 
   /**
    * Worker id.
@@ -45,8 +46,6 @@ public class WorkerContext {
    * If the multi-threading warning message has been logged.
    */
   private AtomicBoolean multiThreadingWarned;
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
 
   public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
     workerId = workerMode == WorkerMode.DRIVER ? driverId : UniqueId.randomId();
