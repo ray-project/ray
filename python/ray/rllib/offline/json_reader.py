@@ -75,23 +75,7 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return self._postprocess_if_needed(batch)
-
-    def _postprocess_if_needed(self, batch):
-        if not self.ioctx.config.get("postprocess_inputs"):
-            return batch
-
-        if isinstance(batch, SampleBatch):
-            out = []
-            for sub_batch in batch.split_by_episode():
-                out.append(self.ioctx.evaluator.policy_map[DEFAULT_POLICY_ID]
-                           .postprocess_trajectory(sub_batch))
-            return SampleBatch.concat_samples(out)
-        else:
-            # TODO(ekl) this is trickier since the alignments between agent
-            # trajectories in the episode are not available any more.
-            raise NotImplementedError(
-                "Postprocessing of multi-agent data not implemented yet.")
+        return batch
 
     def _try_parse(self, line):
         line = line.strip()
