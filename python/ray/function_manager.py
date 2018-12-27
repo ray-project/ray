@@ -509,20 +509,27 @@ class FunctionActorManager(object):
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        actor_class_info["driver_id"] = self._worker.task_driver_id.id()
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        key = (b"ActorClass:" + self._worker.task_driver_id.id() + b":" +
+        if (self._worker.task_driver_id.is_nil()):
+            logger.warning("export_actor_class with NIL task_driver_id, this "
+                           "may happen when export_actor_class runs not in "
+                           "the main thread. Will wait for the driver id.")
+        while (self._worker.task_driver_id.is_nil()):
+            time.sleep(0.01)
+        driver_id = self._worker.task_driver_id
+        key = (b"ActorClass:" + driver_id.id() + b":" +
                function_descriptor.function_id.id())
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
             "class": pickle.dumps(Class),
             "checkpoint_interval": checkpoint_interval,
+            "driver_id": driver_id.id(),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
