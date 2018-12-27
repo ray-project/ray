@@ -116,11 +116,16 @@ def run_experiments(experiments,
     runner = None
     restore = False
 
+    # TUNE_RESUME_PROMPT_OFF is for testing purposes and defaults
+    # `resume=False.`
+    if os.environ.get("TUNE_RESUME_PROMPT_OFF"):
+        resume = resume or False
+
     if os.path.exists(
             os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         if resume:
             restore = True
-        elif resume is None and not os.environ.get("TUNE_RESUME_PROMPT_OFF"):
+        elif resume is None:
             msg = "Would you like to resume your experiment from '{}'?".format(
                 checkpoint_dir)
             restore = click.confirm(msg, default=True)

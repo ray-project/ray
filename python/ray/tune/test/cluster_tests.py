@@ -347,7 +347,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     cluster = _start_new_cluster()
 
     trials = tune.run_experiments(all_experiments, resume=True)
-    assert len(trials) == 2
+    assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     cluster.shutdown()
 
@@ -380,7 +380,8 @@ tune.run_experiments(
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     for i in range(50):
-        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
+        if os.path.exists(os.path.join(
+                dirpath, "experiment/" + TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
@@ -449,7 +450,8 @@ tune.run_experiments(
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     for i in range(50):
-        if os.path.exists(os.path.join(dirpath, TrialRunner.CKPT_FILE_NAME)):
+        if os.path.exists(os.path.join(
+                dirpath, "experiment/" + TrialRunner.CKPT_FILE_NAME)):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(dirpath)
             trials = runner.get_trials()
@@ -466,7 +468,7 @@ tune.run_experiments(
     cluster = _start_new_cluster()
     Experiment._register_if_needed(_Fail)
 
-    # Inspect the internal trialrunner just in case
+    # Inspect the internal trialrunner
     runner = TrialRunner.restore(dirpath)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
@@ -483,7 +485,7 @@ tune.run_experiments(
         },
         resume=True,
         raise_on_failed_trial=False)
-    assert all([t.status == Trial.ERROR for t in trials2])
-    assert set([t.trial_id for t in trials2]) == set(
-        [t.trial_id for t in trials])
+    assert all(t.status == Trial.ERROR for t in trials2)
+    assert set(t.trial_id for t in trials2) == set(
+        t.trial_id for t in trials)
     cluster.shutdown()
