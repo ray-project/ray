@@ -14,6 +14,11 @@ def _import_appo():
     return ppo.APPOAgent
 
 
+def _import_sac():
+    from ray.rllib.agents import sac
+    return sac.SACAgent
+
+
 def _import_qmix():
     from ray.rllib.agents import qmix
     return qmix.QMixAgent
@@ -85,6 +90,7 @@ def _import_marwil():
 
 
 ALGORITHMS = {
+    "SAC": _import_sac,
     "DDPG": _import_ddpg,
     "APEX_DDPG": _import_apex_ddpg,
     "PPO": _import_ppo,
