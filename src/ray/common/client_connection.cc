@@ -188,9 +188,8 @@ std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
     boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
     int64_t error_message_type) {
-  std::shared_ptr<ClientConnection<T>> self(
-      new ClientConnection(message_handler, std::move(socket), debug_label,
-      error_message_type));
+  std::shared_ptr<ClientConnection<T>> self(new ClientConnection(
+      message_handler, std::move(socket), debug_label, error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;

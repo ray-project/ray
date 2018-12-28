@@ -170,8 +170,7 @@ class ClientConnection : public ServerConnection<T> {
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket,
-                   const std::string &debug_label,
-                   int64_t error_message_type);
+                   const std::string &debug_label, int64_t error_message_type);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
