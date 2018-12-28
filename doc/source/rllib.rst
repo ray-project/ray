@@ -76,7 +76,8 @@ Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
 * `Built-in Models and Preprocessors <rllib-models.html#built-in-models-and-preprocessors>`__
-* `Custom Models <rllib-models.html#custom-models>`__
+* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
+* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__

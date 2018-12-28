@@ -27,8 +27,8 @@ The following is a list of the built-in model hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Custom Models
--------------
+Custom Models (TensorFlow)
+--------------------------
 
 Custom models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
 
@@ -152,10 +152,44 @@ Batch Normalization
 
 You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy_graph.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/tf_policy_graph.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
+Custom Models (PyTorch)
+-----------------------
+
+Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, QMIX):
+
+.. code-block:: python
+
+    from ray.rllib.models.pytorch.model import TorchModel
+
+    class CustomTorchModel(TorchModel):
+        def _forward(self, input_dict, hidden_state):
+            """Forward pass for the model.
+
+            Prefer implementing this instead of forward() directly for proper
+            handling of Dict and Tuple observations.
+
+            Arguments:
+                input_dict (dict): Dictionary of tensor inputs, commonly
+                    including "obs", "prev_action", "prev_reward", each of shape
+                    [BATCH_SIZE, ...].
+                hidden_state (list): List of hidden state tensors, each of shape
+                    [BATCH_SIZE, h_size].
+
+            Returns:
+                (outputs, feature_layer, values, state): Tensors of size
+                    [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
+                    [BATCH_SIZE], and [len(hidden_state), BATCH_SIZE, h_size].
+            """
+            obs = input_dict["obs"]
+            ...
+            return logits, features, value, hidden_state
+            
+See also these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
+
 Custom Preprocessors
 --------------------
 
-Similarly, custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
 
 .. code-block:: python
 
