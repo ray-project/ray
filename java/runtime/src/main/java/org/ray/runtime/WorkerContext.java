@@ -107,7 +107,7 @@ public class WorkerContext {
   public void setCurrentTask(TaskSpec currentTask) {
     this.currentTask = currentTask;
     currentTaskCallCount.set(0);
-    currentTaskCallCount.set(0);
+    currentTaskPutCount.set(0);
   }
 
   public void setCurrentClassLoader(ClassLoader currentClassLoader) {
