@@ -186,9 +186,10 @@ void ServerConnection<T>::DoAsyncWrites() {
 template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
-    boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label) {
-  std::shared_ptr<ClientConnection<T>> self(
-      new ClientConnection(message_handler, std::move(socket), debug_label));
+    boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
+    int64_t error_message_type) {
+  std::shared_ptr<ClientConnection<T>> self(new ClientConnection(
+      message_handler, std::move(socket), debug_label, error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
@@ -197,10 +198,12 @@ std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
 template <class T>
 ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
                                       boost::asio::basic_stream_socket<T> &&socket,
-                                      const std::string &debug_label)
+                                      const std::string &debug_label,
+                                      int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
       message_handler_(message_handler),
-      debug_label_(debug_label) {}
+      debug_label_(debug_label),
+      error_message_type_(error_message_type) {}
 
 template <class T>
 const ClientID &ClientConnection<T>::GetClientId() {
@@ -230,7 +233,7 @@ template <class T>
 void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
     // If there was an error, disconnect the client.
-    read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
+    read_type_ = error_message_type_;
     read_length_ = 0;
     ProcessMessage(error);
     return;
@@ -251,7 +254,7 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
 template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
-    read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
+    read_type_ = error_message_type_;
   }
 
   int64_t start_ms = current_time_ms();
