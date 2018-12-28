@@ -197,6 +197,7 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
 }
 
 std::string ObjectBufferPool::DebugString() const {
+  std::lock_guard<std::mutex> lock(pool_mutex_);
   std::stringstream result;
   result << "BufferPool:";
   result << "\n- get buffer state map size: " << get_buffer_state_.size();
