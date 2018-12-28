@@ -182,7 +182,7 @@ class ObjectBufferPool {
 
   /// Mutex on public methods for thread-safe operations on
   /// get_buffer_state_, create_buffer_state_, and store_client_.
-  std::mutex pool_mutex_;
+  mutable std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
   /// The state of a buffer that's currently being used.
