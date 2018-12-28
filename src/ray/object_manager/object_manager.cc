@@ -727,7 +727,6 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &c
     break;
   }
   case object_manager_protocol::MessageType::DisconnectClient: {
-    // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
   }
