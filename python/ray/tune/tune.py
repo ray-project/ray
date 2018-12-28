@@ -126,9 +126,14 @@ def run_experiments(experiments,
         if resume:
             restore = True
         elif resume is None:
-            msg = "Would you like to resume your experiment from '{}'?".format(
+             msg = "Found incomplete experiment at {}. Would you like to resume it?".format(
                 checkpoint_dir)
-            restore = click.confirm(msg, default=True)
+             restore = click.confirm(msg, default=True)
+             if restore:
+                 logger.info("Tip: to always resume, pass resume=True to run_experiments()"
+             else:
+                 logger.info("Tip: to always start a new experiment, pass resume=False to run_experiments()"
+
     else:
         logger.info(
             "Did not find checkpoint file in {}.".format(checkpoint_dir))

@@ -72,6 +72,10 @@ def create_parser(parser_creator=None):
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Whether to attempt to resume previous Tune experiments.")
+    parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
@@ -139,7 +143,8 @@ def run(args, parser):
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials)
+        queue_trials=args.queue_trials,
+        resume=args.resume)
 
 
 if __name__ == "__main__":
