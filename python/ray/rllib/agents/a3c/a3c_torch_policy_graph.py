@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch import nn
 
 import ray
-from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -60,7 +59,7 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {"vf_preds": var_to_np(model_out[2])}
+        return {"vf_preds": model_out[2].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
@@ -83,4 +82,4 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0)
             _, _, vf, _ = self.model({"obs": obs}, [])
-            return var_to_np(vf).squeeze()
+            return vf.numpy().squeeze()

@@ -8,10 +8,6 @@ import torch
 import torch.nn as nn
 
 
-def var_to_np(var):
-    return var.cpu().detach().numpy()
-
-
 def normc_initializer(std=1.0):
     def initializer(tensor):
         tensor.data.normal_(0, 1)

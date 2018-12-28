@@ -16,7 +16,6 @@ from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.model import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
@@ -229,8 +228,8 @@ class QMixPolicyGraph(PolicyGraph):
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.max(dim=2)[1])
-            actions = var_to_np(actions)
-            hiddens = [var_to_np(s) for s in hiddens]
+            actions = actions.numpy()
+            hiddens = [s.numpy() for s in hiddens]
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
