@@ -493,5 +493,5 @@ tune.run_experiments(
         resume=True,
         raise_on_failed_trial=False)
     assert all(t.status == Trial.ERROR for t in trials2)
-    assert set(t.trial_id for t in trials2) == set(t.trial_id for t in trials)
+    assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
     cluster.shutdown()
