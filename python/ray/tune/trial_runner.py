@@ -155,7 +155,7 @@ class TrialRunner(object):
             "Attempting to resume experiment from {}. ".format(
                 metadata_checkpoint_dir), "This feature is experimental, "
             "and may not work with all search algorithms. ",
-            "This will ignore any new changes to specification."
+            "This will ignore any new changes to the specification."
         ]))
 
         from ray.tune.suggest import BasicVariantGenerator
