@@ -414,7 +414,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
         --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-l   ./train.py \
+    python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
