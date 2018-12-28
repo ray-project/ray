@@ -155,13 +155,21 @@ You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"
 Custom Models (PyTorch)
 -----------------------
 
-Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, QMIX):
+Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, QMIX). See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
 
 .. code-block:: python
 
+    import ray
+    from ray.rllib.agents import a3c
+    from ray.rllib.models import ModelCatalog
     from ray.rllib.models.pytorch.model import TorchModel
 
     class CustomTorchModel(TorchModel):
+
+        def __init__(self, obs_space, num_outputs, options):
+            TorchModel.__init__(self, obs_space, num_outputs, options)
+            ...  # setup hidden layers
+
         def _forward(self, input_dict, hidden_state):
             """Forward pass for the model.
 
@@ -183,8 +191,17 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
             obs = input_dict["obs"]
             ...
             return logits, features, value, hidden_state
-            
-See also these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
+
+    ModelCatalog.register_custom_model("my_model", CustomTorchModel)
+
+    ray.init()
+    agent = a3c.A2CAgent(env="CartPole-v0", config={
+        "use_pytorch": True,
+        "model": {
+            "custom_model": "my_model",
+            "custom_options": {},  # extra options to pass to your model
+        },
+    })
 
 Custom Preprocessors
 --------------------
