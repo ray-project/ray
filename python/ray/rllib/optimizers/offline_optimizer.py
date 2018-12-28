@@ -41,6 +41,7 @@ class OfflineOptimizer(PolicyOptimizer):
         self.sample_timer = TimerStat()
         self.replay_timer = TimerStat()
         self.grad_timer = TimerStat()
+        self.sampled_episode_lens = list()
         self.learner_stats = {}
 
         # Set up replay buffer
@@ -70,6 +71,8 @@ class OfflineOptimizer(PolicyOptimizer):
                         i += 1
                         j += 1
                         cur_episode = self.cur_batch.build_and_reset()
+                        # Stat episode length
+                        self.sampled_episode_lens.append(cur_episode.count)
                         # Calculate delayed reward
                         self._calc_delayed_reward(cur_episode)
                         # Handle everything as if multiagent
@@ -89,6 +92,20 @@ class OfflineOptimizer(PolicyOptimizer):
                         self.num_steps_sampled += cur_episode.count
                 else:
                     self.cur_batch.add_batch(batch)
+
+    @override(PolicyOptimizer)
+    def stats(self):
+        return dict(
+            PolicyOptimizer.stats(self), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "opt_peak_throughput": round(self.grad_timer.mean_throughput,
+                                             3),
+                "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+                "learner": self.learner_stats,
+                "sampled_episode_length": np.mean(self.sampled_episode_lens)
+            })
 
     def _optimize(self):
         samples = self._replay()

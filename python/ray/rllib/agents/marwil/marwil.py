@@ -20,13 +20,13 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "actor_hiddens": [64],
     "critic_hiddens": [64],
-    "beta": 1.0,
+    "beta": .01,
     "c": 3.0,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": 20000,
+    "buffer_size": 60000,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 

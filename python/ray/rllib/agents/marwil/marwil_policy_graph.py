@@ -86,7 +86,7 @@ class ReweightedImitationLoss(object):
         action_dist = dist_cls(logits)
         logprobs = action_dist.logp(actions)
 
-        self.loss = tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
+        self.loss = -1.0 * tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
 
 
 class MARWILPolicyGraph(TFPolicyGraph):
