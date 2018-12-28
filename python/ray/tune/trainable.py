@@ -10,6 +10,7 @@ import io
 import logging
 import os
 import pickle
+from six import string_types
 import shutil
 import tempfile
 import time
@@ -220,7 +221,7 @@ class Trainable(object):
             os.makedirs(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
-        if isinstance(checkpoint, str):
+        if isinstance(checkpoint, string_types):
             if (not checkpoint.startswith(checkpoint_dir)
                     or checkpoint == checkpoint_dir):
                 raise ValueError(
@@ -238,7 +239,9 @@ class Trainable(object):
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
-            raise ValueError("Return value from `_save` must be dict or str.")
+            raise ValueError(
+                "`_save` must return a dict or string type: {}".format(
+                    str(type(checkpoint))))
         pickle.dump({
             "experiment_id": self._experiment_id,
             "iteration": self._iteration,
