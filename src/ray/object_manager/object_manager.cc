@@ -707,13 +707,6 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
-  if (static_cast<protocol::MessageType>(message_type) ==
-      protocol::MessageType::DisconnectClient) {
-     // TODO(hme): Disconnect without depending on the node manager protocol.
-     DisconnectClient(conn, message);
-     return;
-  }
-
   auto message_type_value =
       static_cast<object_manager_protocol::MessageType>(message_type);
   switch (message_type_value) {
@@ -731,6 +724,11 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &c
   }
   case object_manager_protocol::MessageType::FreeRequest: {
     ReceiveFreeRequest(conn, message);
+    break;
+  }
+  case object_manager_protocol::MessageType::DisconnectClient: {
+    // TODO(hme): Disconnect without depending on the node manager protocol.
+    DisconnectClient(conn, message);
     break;
   }
   default: { RAY_LOG(FATAL) << "invalid request " << message_type; }
