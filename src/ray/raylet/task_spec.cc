@@ -59,10 +59,11 @@ TaskSpecification::TaskSpecification(
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const Language &language, const std::vector<std::string> &function_descriptor)
-    : TaskSpecification(
-          driver_id, parent_task_id, parent_counter, ActorID(), ObjectID(), 0, ActorID(),
-          ActorHandleID(), -1, {}, task_arguments, num_returns, required_resources,
-          std::unordered_map<std::string, double>(), language, function_descriptor) {}
+    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
+                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1, {},
+                        task_arguments, num_returns, required_resources,
+                        std::unordered_map<std::string, double>(), language,
+                        function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,

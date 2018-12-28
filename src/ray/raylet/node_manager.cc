@@ -103,8 +103,8 @@ ray::Status NodeManager::RegisterGcs() {
     lineage_cache_.HandleEntryCommitted(task_id);
   };
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
-      JobID(), gcs_client_->client_table().GetLocalClientId(), task_committed_callback,
-      nullptr, nullptr));
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_committed_callback, nullptr, nullptr));
 
   const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
                                                        const TaskID &task_id,
@@ -127,7 +127,7 @@ ray::Status NodeManager::RegisterGcs() {
     reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
   };
   RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
-      JobID(), gcs_client_->client_table().GetLocalClientId(),
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
       task_lease_notification_callback, task_lease_empty_callback, nullptr));
 
   // Register a callback to handle actor notifications.
@@ -142,7 +142,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
 
   RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
-      UniqueID(), UniqueID(), actor_notification_callback, nullptr));
+      UniqueID::nil(), UniqueID::nil(), actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
@@ -164,7 +164,7 @@ ray::Status NodeManager::RegisterGcs() {
     HeartbeatBatchAdded(heartbeat_batch);
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
-      UniqueID(), UniqueID(), heartbeat_batch_added, nullptr,
+      UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added, nullptr,
       [](gcs::AsyncGcsClient *client) {
         RAY_LOG(DEBUG) << "Heartbeat batch table subscription done.";
       }));
@@ -175,7 +175,7 @@ ray::Status NodeManager::RegisterGcs() {
       const std::vector<DriverTableDataT> &driver_data) {
     HandleDriverTableUpdate(client_id, driver_data);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID(), UniqueID(),
+  RAY_RETURN_NOT_OK(gcs_client_->driver_table().Subscribe(JobID::nil(), UniqueID::nil(),
                                                           driver_table_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
@@ -271,7 +271,7 @@ void NodeManager::Heartbeat() {
   }
 
   ray::Status status = heartbeat_table.Add(
-      UniqueID(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
+      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
          const HeartbeatTableDataT &data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
@@ -497,7 +497,7 @@ void NodeManager::PublishActorStateTransition(
     log_length += 1;
   }
   RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(
-      JobID(), actor_id, actor_notification, nullptr, failure_callback, log_length));
+      JobID::nil(), actor_id, actor_notification, nullptr, failure_callback, log_length));
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
@@ -1284,8 +1284,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
             HandleActorStateTransition(actor_id, data.back());
           }
         };
-        RAY_CHECK_OK(
-            gcs_client_->actor_table().Lookup(JobID(), spec.ActorId(), lookup_callback));
+        RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
+                                                       lookup_callback));
         actor_creation_dummy_object = spec.ActorCreationDummyObjectId();
       } else {
         actor_creation_dummy_object = actor_entry->second.GetActorCreationDependency();
@@ -1626,11 +1626,11 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   task_dependency_manager_.TaskCanceled(task_id);
 
   // Unset the worker's assigned task.
-  worker.AssignTaskId(TaskID());
+  worker.AssignTaskId(TaskID::nil());
   // Unset the worker's assigned driver Id if this is not an actor.
   if (!task.GetTaskSpecification().IsActorCreationTask() &&
       !task.GetTaskSpecification().IsActorTask()) {
-    worker.AssignDriverId(DriverID());
+    worker.AssignDriverId(DriverID::nil());
   }
 }
 
@@ -1719,7 +1719,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
   // Retrieve the task spec in order to re-execute the task.
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
-      JobID(), task_id,
+      JobID::nil(), task_id,
       /*success_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
              const ray::protocol::TaskT &task_data) {

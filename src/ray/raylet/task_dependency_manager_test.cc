@@ -43,7 +43,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         gcs_mock_(),
         initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
-                                 io_service_, ClientID(), initial_lease_period_ms_,
+                                 io_service_, ClientID::nil(), initial_lease_period_ms_,
                                  gcs_mock_) {}
 
   void Run(uint64_t timeout_ms) {

@@ -330,8 +330,8 @@ void TestLogSubscribeAll(const JobID &job_id,
   // Subscribe to all object table notifications. Once we have successfully
   // subscribed, we will append to the key several times and check that we get
   // notified for each.
-  RAY_CHECK_OK(client->object_table().Subscribe(job_id, ClientID(), notification_callback,
-                                                subscribe_callback));
+  RAY_CHECK_OK(client->object_table().Subscribe(
+      job_id, ClientID::nil(), notification_callback, subscribe_callback));
 
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).

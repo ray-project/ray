@@ -372,7 +372,7 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   if (unsubscribed) {
     // Request notifications for the task if we haven't already requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), task_id, client_id_));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -385,7 +385,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   if (subscribed) {
     // Cancel notifications for the task if we previously requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now
