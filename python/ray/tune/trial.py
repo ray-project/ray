@@ -253,12 +253,14 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
+            '{}'.format(
+                self._status_string()),
+            '[{}]'.format(self.resources.summary_string()),
+            '[{}]'.format(
                 location_string(
                     self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
-                        int(self.last_result.get(TIME_TOTAL_S)))
+                    self.last_result.get(PID))),
+            '{} s'.format(int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
