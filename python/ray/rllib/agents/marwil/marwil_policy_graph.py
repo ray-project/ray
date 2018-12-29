@@ -76,10 +76,22 @@ class ReweightedImitationLoss(object):
                  actions,
                  action_space,
                  beta):
+
+        ma_adv_norm = tf.get_variable(
+            name="moving_average_of_advantage_norm",
+            dtype=tf.float32,
+            initializer=100.0,
+            trainable=False)
         # advantage estimation
         adv = cummulative_rewards - state_values
+        # update averaged advantage norm
+        update_adv_norm = tf.assign_add(
+            ref=ma_adv_norm,
+            value=1e-6*(tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
+
         # exponentially weighted advantages
-        exp_advs = tf.exp(beta * adv)
+        with tf.control_dependencies([update_adv_norm]):
+            exp_advs = tf.exp(beta * tf.divide(adv, 1e-8+tf.sqrt(ma_adv_norm)))
 
         # log\pi_\theta(a|s)
         dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})

@@ -20,19 +20,19 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "actor_hiddens": [64],
     "critic_hiddens": [64],
-    "beta": .01,
+    "beta": 0.1,
     "c": 3.0,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": 60000,
+    "buffer_size": 50000,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 
     # === Optimization ===
     # Learning rate for adam optimizer
-    "lr": 5e-4,
+    "lr": 1e-4,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 40,
     # Update the replay buffer with this many samples at once. Note that
@@ -41,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 32,
+    "train_batch_size": 64,
     "timesteps_per_iteration": 1000,
 
     # === Parallelism ===
