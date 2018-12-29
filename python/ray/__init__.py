@@ -47,7 +47,7 @@ except ImportError as e:
     raise
 
 modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
-sys.path.insert(0, modin_path)
+sys.path.append(modin_path)
 
 from ray.raylet import ObjectID, _config  # noqa: E402
 from ray.profiling import profile  # noqa: E402
@@ -65,7 +65,7 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 
 # Ray version string.
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",

@@ -38,6 +38,8 @@ class RayTrialExecutor(TrialExecutor):
             num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
 
         trial.init_logger()
+        # We checkpoint metadata here to try mitigating logdir duplication
+        self.try_checkpoint_metadata(trial)
         remote_logdir = trial.logdir
 
         def logger_creator(config):
@@ -60,7 +62,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def _start_trial(self, trial, checkpoint=None):
         prior_status = trial.status
-        trial.status = Trial.RUNNING
+        self.set_status(trial, Trial.RUNNING)
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             return
@@ -87,10 +89,13 @@ class RayTrialExecutor(TrialExecutor):
             stop_logger (bool): Whether to shut down the trial logger.
         """
 
+        if stop_logger:
+            trial.close_logger()
+
         if error:
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         else:
-            trial.status = Trial.TERMINATED
+            self.set_status(trial, Trial.TERMINATED)
 
         try:
             trial.write_error_log(error_msg)
@@ -103,12 +108,9 @@ class RayTrialExecutor(TrialExecutor):
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
             logger.exception("Error stopping runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
-
-        if stop_logger:
-            trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None):
         """Starts the trial.
@@ -302,7 +304,7 @@ class RayTrialExecutor(TrialExecutor):
             return True
         if trial.runner is None:
             logger.error("Unable to restore - no runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False
         try:
             value = checkpoint.value
@@ -316,5 +318,5 @@ class RayTrialExecutor(TrialExecutor):
             return True
         except Exception:
             logger.exception("Error restoring runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False
