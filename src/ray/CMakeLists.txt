@@ -25,6 +25,8 @@ set(RAY_SRCS
   gcs/redis_context.cc
   gcs/asio.cc
   util/logging.cc
+  metrics/tag/tags.cc
+  metrics/registry/metrics_registry_interface.cc
   common/client_connection.cc
   common/common_protocol.cc
   object_manager/object_manager_client_connection.cc
@@ -94,6 +96,7 @@ ADD_RAY_LIB(ray
 set(RAY_TEST_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main gmock_main ${RAY_SYSTEM_LIBS})
 
 add_subdirectory(util)
+add_subdirectory(metrics)
 add_subdirectory(gcs)
 add_subdirectory(object_manager)
 add_subdirectory(raylet)
