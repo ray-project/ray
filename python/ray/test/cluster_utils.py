@@ -7,6 +7,7 @@ import logging
 import time
 
 import ray
+from ray.parameter import RayParams
 import ray.services as services
 
 logger = logging.getLogger(__name__)
@@ -73,19 +74,18 @@ class Cluster(object):
             Node object of the added Ray node.
         """
         node_kwargs = {
-            "cleanup": True,
             "resources": {
                 "CPU": 1
             },
             "object_store_memory": 100 * (2**20)  # 100 MB
         }
         node_kwargs.update(override_kwargs)
+        ray_params = RayParams(
+            node_ip_address=services.get_node_ip_address(), **node_kwargs)
 
         if self.head_node is None:
-            address_info = services.start_ray_head(
-                node_ip_address=services.get_node_ip_address(),
-                include_webui=False,
-                **node_kwargs)
+            ray_params.update(include_webui=False)
+            address_info = services.start_ray_head(ray_params, cleanup=True)
             self.redis_address = address_info["redis_address"]
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
@@ -94,9 +94,8 @@ class Cluster(object):
             node = Node(address_info, process_dict_copy)
             self.head_node = node
         else:
-            address_info = services.start_ray_node(
-                services.get_node_ip_address(), self.redis_address,
-                **node_kwargs)
+            ray_params.update(redis_address=self.redis_address)
+            address_info = services.start_ray_node(ray_params, cleanup=True)
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
