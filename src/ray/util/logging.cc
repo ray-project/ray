@@ -3,7 +3,10 @@
 #ifndef _WIN32
 #include <execinfo.h>
 #endif
+
+#include <signal.h>
 #include <stdlib.h>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
@@ -92,6 +95,26 @@ static int GetMappedSeverity(RayLogLevel severity) {
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
+  const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
+  if (var_value != nullptr) {
+    std::string data = var_value;
+    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
+    if (data == "debug") {
+      severity_threshold = RayLogLevel::DEBUG;
+    } else if (data == "info") {
+      severity_threshold = RayLogLevel::INFO;
+    } else if (data == "warning") {
+      severity_threshold = RayLogLevel::WARNING;
+    } else if (data == "error") {
+      severity_threshold = RayLogLevel::ERROR;
+    } else if (data == "fatal") {
+      severity_threshold = RayLogLevel::FATAL;
+    } else {
+      RAY_LOG(INFO) << "Unrecognized setting of RAY_BACKEND_LOG_LEVEL=" << var_value;
+    }
+    RAY_LOG(INFO) << "Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL"
+                  << " to " << static_cast<int>(severity_threshold_);
+  }
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
 #ifdef RAY_USE_GLOG
@@ -120,8 +143,21 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
 }
 
+void RayLog::UnInstallSignalAction() {
+  RAY_LOG(INFO) << "Uninstall signal handlers.";
+  static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+  struct sigaction sig_action;
+  memset(&sig_action, 0, sizeof(sig_action));
+  sigemptyset(&sig_action.sa_mask);
+  sig_action.sa_handler = SIG_DFL;
+  for (int signal_num : installed_signals) {
+    sigaction(signal_num, &sig_action, NULL);
+  }
+}
+
 void RayLog::ShutDownRayLog() {
 #ifdef RAY_USE_GLOG
+  UnInstallSignalAction();
   google::ShutdownGoogleLogging();
 #endif
 }
