@@ -167,7 +167,7 @@ class RayParams(object):
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.
 
-        Attributes:
+        Args:
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
@@ -180,7 +180,7 @@ class RayParams(object):
     def update_if_absent(self, **kwargs):
         """Update the settings when the target fields are None.
 
-        Attributes:
+        Args:
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
