@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 import pytest
+import shutil
 try:
     import pytest_timeout
 except ImportError:
@@ -240,3 +242,37 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
 
     with pytest.raises(TuneError):
         runner.step()
+
+
+def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
+    """Test checks that trial restarts if checkpoint is lost w/ node fail."""
+    cluster = start_connected_emptyhead_cluster
+    node = cluster.add_node(resources=dict(CPU=1))
+    assert cluster.wait_for_nodes()
+
+    runner = TrialRunner(BasicVariantGenerator())
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 3
+        },
+        "checkpoint_freq": 2,
+        "max_failures": 2
+    }
+
+    # Test recovery of trial that has been checkpointed
+    t1 = Trial("__fake", **kwargs)
+    runner.add_trial(t1)
+    runner.step()  # start
+    runner.step()  # 1 result
+    runner.step()  # 2 result and checkpoint
+    assert t1.has_checkpoint()
+    cluster.add_node(resources=dict(CPU=1))
+    cluster.remove_node(node)
+    assert cluster.wait_for_nodes()
+    shutil.rmtree(os.path.dirname(t1._checkpoint.value))
+
+    runner.step()  # Recovery step
+    for i in range(3):
+        runner.step()
+
+    assert t1.status == Trial.TERMINATED

@@ -125,12 +125,14 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint)
         except Exception:
-            logger.exception("Error stopping runner - retrying...")
+            logger.exception("Error starting runner. "
+                             "Trying again without checkpoint.")
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                self._start_trial(trial, checkpoint)
+                # This forces the trial to not start from checkpoint.
+                self._start_trial(trial, checkpoint=False)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
