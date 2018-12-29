@@ -8,6 +8,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.ppo.vtrace_policy_graph import VTracePolicyGraph
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncSamplesOptimizer
+from ray.rllib.agents import impala
 
 OPTIMIZER_SHARED_CONFIGS = [
     "lr",
@@ -96,37 +97,9 @@ DEFAULT_CONFIG = with_common_config({
 })
 
 
-class APPOAgent(Agent):
+class APPOAgent(impala.ImpalaAgent):
     """IMPALA implementation using DeepMind's V-trace."""
 
     _agent_name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = VTracePolicyGraph
-
-    def _init(self):
-        for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer"]:
-                self.config["optimizer"][k] = self.config[k]
-        if self.config["vtrace"]:
-            policy_cls = self._policy_graph
-        else:
-            policy_cls = A3CPolicyGraph
-        self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
-        self.optimizer = AsyncSamplesOptimizer(self.local_evaluator,
-                                               self.remote_evaluators,
-                                               self.config["optimizer"])
-
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        start = time.time()
-        self.optimizer.step()
-        while time.time() - start < self.config["min_iter_time_s"]:
-            self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
-        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
-                      prev_steps)
-        return result
