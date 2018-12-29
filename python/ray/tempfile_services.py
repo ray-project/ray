@@ -72,7 +72,7 @@ def try_to_create_directory(directory_path):
         # on a directory may not own it. The chmod is attempted whether the
         # directory is new or not to avoid race conditions.
         # ray-project/ray/#3591
-        if e.errno == errno.EACCES:
+        if e.errno in [errno.EACCES, errno.EPERM]:
             pass
         else:
             raise
