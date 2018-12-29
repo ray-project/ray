@@ -83,7 +83,7 @@ class RayLog : public RayLogBase {
   static void ShutDownRayLog();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
-  static void UnInstallSignalAction();
+  static void UninstallSignalAction();
 
   /// Return whether or not the log level is enabled in current setting.
   ///

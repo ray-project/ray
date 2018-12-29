@@ -1,4 +1,5 @@
 #include "task_spec.h"
+
 #include <sstream>
 
 #include "ray/common/common_protocol.h"

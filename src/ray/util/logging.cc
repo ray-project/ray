@@ -113,7 +113,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       RAY_LOG(INFO) << "Unrecognized setting of RAY_BACKEND_LOG_LEVEL=" << var_value;
     }
     RAY_LOG(INFO) << "Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL"
-                  << " to " << static_cast<int>(severity_threshold_);
+                  << " to " << static_cast<int>(severity_threshold);
   }
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
@@ -143,8 +143,10 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
 }
 
-void RayLog::UnInstallSignalAction() {
+void RayLog::UninstallSignalAction() {
   RAY_LOG(INFO) << "Uninstall signal handlers.";
+  // This signal list comes from glog's signalhandler.cc.
+  // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
   static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
   struct sigaction sig_action;
   memset(&sig_action, 0, sizeof(sig_action));
@@ -157,7 +159,7 @@ void RayLog::UnInstallSignalAction() {
 
 void RayLog::ShutDownRayLog() {
 #ifdef RAY_USE_GLOG
-  UnInstallSignalAction();
+  UninstallSignalAction();
   google::ShutdownGoogleLogging();
 #endif
 }
