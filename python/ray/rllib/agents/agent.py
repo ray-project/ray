@@ -157,6 +157,9 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
+    # Whether to run postprocess_trajectory() on the trajectory fragments from
+    # offline inputs. Whether this makes sense is algorithm-specific.
+    "postprocess_inputs": False,
 
     # === Multiagent ===
     "multiagent": {
@@ -478,7 +481,7 @@ class Agent(Trainable):
         elif isinstance(config["input"], dict):
             input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
         else:
-            input_creator = (lambda ioctx: JsonReader(config["input"]))
+            input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]

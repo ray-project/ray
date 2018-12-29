@@ -306,9 +306,47 @@ class SampleBatch(object):
         return out
 
     def shuffle(self):
+        """Shuffles the rows of this batch in-place."""
+
         permutation = np.random.permutation(self.count)
         for key, val in self.items():
             self[key] = val[permutation]
+
+    def split_by_episode(self):
+        """Splits this batch's data by `eps_id`.
+
+        Returns:
+            list of SampleBatch, one per distinct episode.
+        """
+
+        slices = []
+        cur_eps_id = self.data["eps_id"][0]
+        offset = 0
+        for i in range(self.count):
+            next_eps_id = self.data["eps_id"][i]
+            if next_eps_id != cur_eps_id:
+                slices.append(self.slice(offset, i))
+                offset = i
+                cur_eps_id = next_eps_id
+        slices.append(self.slice(offset, self.count))
+        for s in slices:
+            slen = len(set(s["eps_id"]))
+            assert slen == 1, (s, slen)
+        assert sum(s.count for s in slices) == self.count, (slices, self.count)
+        return slices
+
+    def slice(self, start, end):
+        """Returns a slice of the row data of this batch.
+
+        Arguments:
+            start (int): Starting index.
+            end (int): Ending index.
+
+        Returns:
+            SampleBatch which has a slice of this batch's data.
+        """
+
+        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
 
     def __getitem__(self, key):
         return self.data[key]

@@ -16,7 +16,9 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.offline.io_context import IOContext
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
+    DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import unpack_if_needed
 
@@ -28,15 +30,17 @@ class JsonReader(InputReader):
 
     The input files will be read from in an random order."""
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, ioctx=None):
         """Initialize a JsonReader.
 
         Arguments:
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
+            ioctx (IOContext): current IO context object.
         """
 
+        self.ioctx = ioctx or IOContext()
         if isinstance(inputs, six.string_types):
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
@@ -72,7 +76,23 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return batch
+        return self._postprocess_if_needed(batch)
+
+    def _postprocess_if_needed(self, batch):
+        if not self.ioctx.config.get("postprocess_inputs"):
+            return batch
+
+        if isinstance(batch, SampleBatch):
+            out = []
+            for sub_batch in batch.split_by_episode():
+                out.append(self.ioctx.evaluator.policy_map[DEFAULT_POLICY_ID]
+                           .postprocess_trajectory(sub_batch))
+            return SampleBatch.concat_samples(out)
+        else:
+            # TODO(ekl) this is trickier since the alignments between agent
+            # trajectories in the episode are not available any more.
+            raise NotImplementedError(
+                "Postprocessing of multi-agent data not implemented yet.")
 
     def _try_parse(self, line):
         line = line.strip()
