@@ -296,6 +296,31 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
         },
     })
 
+Recovering From Failures (Experimental)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed after prompting. The default setting of `resume=None` will cause Tune to prompt you for whether you want to resume. Prompting can be turned off with ``resume=True``. If ``resume=False``, a new experiment will be created instead. You can always force a new experiment to be created by changing the experiment name.
+
+Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
+
+E.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment_name": {
+            "run": my_trainable
+            "checkpoint_freq": 10,
+            "local_dir": "~/path/to/results"
+        },
+    }, resume=True)
+
+
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored.
+
+This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+
+
 Handling Large Datasets
 -----------------------
 
