@@ -1281,13 +1281,14 @@ def _init(ray_params, driver_id=None):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: address_info,
             start_ray_local, object_id_seed, num_workers,
-            num_local_schedulers, object_store_memory, redis_max_memory,
-            collect_profiling_data, local_mode, redirect_worker_output,
-            driver_mode, redirect_output, start_workers_from_local_scheduler,
-            num_cpus, num_gpus, resources, num_redis_shards,
-            redis_max_clients, redis_password, plasma_directory, huge_pages,
-            include_webui, driver_id, plasma_store_socket_name, temp_dir,
-            raylet_socket_name, _internal_config
+            num_local_schedulers, object_store_memory_bytes,
+            redis_max_memory_bytes, collect_profiling_data, local_mode,
+            redirect_worker_output, driver_mode, redirect_output,
+            start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
+            num_redis_shards, redis_max_clients, redis_password,
+            plasma_directory, huge_pages, include_webui, driver_id,
+            plasma_store_socket_name, temp_dir, raylet_socket_name,
+            _internal_config
         driver_id: The ID of driver.
 
     Returns:
@@ -1305,10 +1306,10 @@ def _init(ray_params, driver_id=None):
     else:
         ray_params.driver_mode = SCRIPT_MODE
 
-    if ray_params.redis_max_memory and ray_params.collect_profiling_data:
+    if ray_params.redis_max_memory_bytes and ray_params.collect_profiling_data:
         logger.warning(
             "Profiling data cannot be LRU evicted, so it is disabled "
-            "when redis_max_memory is set.")
+            "when redis_max_memory_bytes is set.")
         ray_params.collect_profiling_data = False
 
     # Get addresses of existing services.
@@ -1367,12 +1368,12 @@ def _init(ray_params, driver_id=None):
         if ray_params.redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
-        if ray_params.object_store_memory is not None:
+        if ray_params.object_store_memory_bytes is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory must not be provided.")
-        if ray_params.redis_max_memory is not None:
+                            "object_store_memory_bytes must not be provided.")
+        if ray_params.redis_max_memory_bytes is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory must not be provided.")
+                            "redis_max_memory_bytes must not be provided.")
         if ray_params.plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
@@ -1434,8 +1435,8 @@ def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
-         object_store_memory=None,
-         redis_max_memory=None,
+         object_store_memory_bytes=None,
+         redis_max_memory_bytes=None,
          collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
@@ -1491,11 +1492,11 @@ def init(redis_address=None,
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory: The amount of memory (in bytes) to start the
+        object_store_memory_bytes: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
         collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
@@ -1597,8 +1598,8 @@ def init(redis_address=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         include_webui=include_webui,
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
+        object_store_memory_bytes=object_store_memory_bytes,
+        redis_max_memory_bytes=redis_max_memory_bytes,
         collect_profiling_data=collect_profiling_data,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -2313,13 +2314,17 @@ def put(value, worker=global_worker):
         return object_id
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
+def wait(object_ids,
+         num_returns=1,
+         timeout_seconds=None,
+         timeout=None,
+         worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    If timeout is set, the function returns either when the requested number of
-    IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object IDs.
+    If timeout_seconds is set, the function returns either when the requested
+    number of IDs are ready or when the timeout is reached, whichever occurs
+    first. If it is not set, the function simply waits until that number of
+    objects is ready and returns that exact number of object IDs.
 
     This method returns two lists. The first list consists of object IDs that
     correspond to objects that are available in the object store. The second
@@ -2335,13 +2340,18 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
-        timeout (int): The maximum amount of time in milliseconds to wait
+        timeout_seconds (int): The maximum amount of time in seconds to wait
             before returning.
+        timeout: This is deprecated. Use timeout_seconds.
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
         IDs.
     """
+    if timeout is not None:
+        logger.warning("WARNING: The timeout argument has been deprecated. "
+                       "Please use timeout_seconds.")
+        timeout_seconds = timeout / 1000
 
     if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
@@ -2385,9 +2395,11 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         with worker.state_lock:
             current_task_id = worker.get_current_thread_task_id()
 
-        timeout = timeout if timeout is not None else 2**30
+        timeout_milliseconds = int(timeout_seconds * 1000
+                                   if timeout_seconds is not None else 2**30)
         ready_ids, remaining_ids = worker.raylet_client.wait(
-            object_ids, num_returns, timeout, False, current_task_id)
+            object_ids, num_returns, timeout_milliseconds, False,
+            current_task_id)
         return ready_ids, remaining_ids
 
 

@@ -28,7 +28,8 @@ class TaskPool(object):
     def completed(self):
         pending = list(self._tasks)
         if pending:
-            ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
+            ready, _ = ray.wait(
+                pending, num_returns=len(pending), timeout_seconds=0.01)
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), self._objects.pop(obj_id))
 

@@ -21,7 +21,8 @@ if (multiprocessing.cpu_count() < 40
 def create_cluster(num_nodes):
     cluster = Cluster()
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
+        cluster.add_node(
+            resources={str(i): 100}, object_store_memory_bytes=10**9)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster

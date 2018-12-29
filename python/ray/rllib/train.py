@@ -57,15 +57,15 @@ def create_parser(parser_creator=None):
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
     parser.add_argument(
-        "--ray-redis-max-memory",
+        "--ray-redis-max-memory-bytes",
         default=None,
         type=int,
-        help="--redis-max-memory to use if starting a new cluster.")
+        help="--redis-max-memory-bytes to use if starting a new cluster.")
     parser.add_argument(
-        "--ray-object-store-memory",
+        "--ray-object-store-memory-bytes",
         default=None,
         type=int,
-        help="--object-store-memory to use if starting a new cluster.")
+        help="--object-store-memory-bytes to use if starting a new cluster.")
     parser.add_argument(
         "--experiment-name",
         default="default",
@@ -130,14 +130,14 @@ def run(args, parser):
                     "num_cpus": args.ray_num_cpus or 1,
                     "num_gpus": args.ray_num_gpus or 0,
                 },
-                object_store_memory=args.ray_object_store_memory,
-                redis_max_memory=args.ray_redis_max_memory)
+                object_store_memory_bytes=args.ray_object_store_memory_bytes,
+                redis_max_memory_bytes=args.ray_redis_max_memory_bytes)
         ray.init(redis_address=cluster.redis_address)
     else:
         ray.init(
             redis_address=args.redis_address,
-            object_store_memory=args.ray_object_store_memory,
-            redis_max_memory=args.ray_redis_max_memory,
+            object_store_memory_bytes=args.ray_object_store_memory_bytes,
+            redis_max_memory_bytes=args.ray_redis_max_memory_bytes,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus)
     run_experiments(

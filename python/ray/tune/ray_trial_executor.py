@@ -105,7 +105,7 @@ class RayTrialExecutor(TrialExecutor):
                 stop_tasks.append(trial.runner.__ray_terminate__.remote())
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
-                    stop_tasks, num_returns=2, timeout=250)
+                    stop_tasks, num_returns=2, timeout_seconds=0.25)
         except Exception:
             logger.exception("Error stopping runner.")
             self.set_status(trial, Trial.ERROR)

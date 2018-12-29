@@ -36,9 +36,9 @@ class RayOutOfMemoryError(Exception):
                 "\n\nIn addition, ~{} GB of shared memory is ".format(
                     round(psutil.virtual_memory().shared / 1e9, 2)) +
                 "currently being used by the Ray object store. You can set "
-                "the object store size with the `object_store_memory` "
+                "the object store size with the `object_store_memory_bytes` "
                 "parameter when starting Ray, and the max Redis size with "
-                "`redis_max_memory`.")
+                "`redis_max_memory_bytes`.")
 
 
 class MemoryMonitor(object):

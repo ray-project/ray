@@ -330,7 +330,7 @@ def test_actor_worker_dying(ray_start_regular):
         pass
 
     a = Actor.remote()
-    [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
+    [obj], _ = ray.wait([a.kill.remote()], timeout_seconds=5)
     with pytest.raises(Exception):
         ray.get(obj)
     with pytest.raises(Exception):
@@ -389,17 +389,17 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
 
 
 @pytest.fixture
-def ray_start_object_store_memory():
+def ray_start_object_store_memory_bytes():
     # Start the Ray processes.
     store_size = 10**6
-    ray.init(num_cpus=1, object_store_memory=store_size)
+    ray.init(num_cpus=1, object_store_memory_bytes=store_size)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
 @pytest.mark.skip("This test does not work yet.")
-def test_put_error1(ray_start_object_store_memory):
+def test_put_error1(ray_start_object_store_memory_bytes):
     num_objects = 3
     object_size = 4 * 10**5
 
@@ -441,7 +441,7 @@ def test_put_error1(ray_start_object_store_memory):
 
 
 @pytest.mark.skip("This test does not work yet.")
-def test_put_error2(ray_start_object_store_memory):
+def test_put_error2(ray_start_object_store_memory_bytes):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
     object_size = 4 * 10**5

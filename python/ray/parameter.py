@@ -40,11 +40,11 @@ class RayParams(object):
             This is only provided if start_ray_local is True.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory: The amount of memory (in bytes) to start the
+        object_store_memory_bytes: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
         object_manager_ports (list): A list of the ports to use for the object
             managers. There should be one per object manager being started on
@@ -100,8 +100,8 @@ class RayParams(object):
                  num_gpus=None,
                  num_local_schedulers=None,
                  resources=None,
-                 object_store_memory=None,
-                 redis_max_memory=None,
+                 object_store_memory_bytes=None,
+                 redis_max_memory_bytes=None,
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_ports=None,
@@ -137,8 +137,8 @@ class RayParams(object):
         self.num_gpus = num_gpus
         self.num_local_schedulers = num_local_schedulers
         self.resources = resources
-        self.object_store_memory = object_store_memory
-        self.redis_max_memory = redis_max_memory
+        self.object_store_memory_bytes = object_store_memory_bytes
+        self.redis_max_memory_bytes = redis_max_memory_bytes
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_ports = object_manager_ports

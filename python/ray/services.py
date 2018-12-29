@@ -417,7 +417,7 @@ def start_redis(node_ip_address,
                 cleanup=True,
                 password=None,
                 use_credis=None,
-                redis_max_memory=None):
+                redis_max_memory_bytes=None):
     """Start the Redis global state store.
 
     Args:
@@ -446,9 +446,9 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
 
     Returns:
@@ -481,7 +481,7 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
             password=password,
-            redis_max_memory=None)
+            redis_max_memory_bytes=None)
     else:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
@@ -496,7 +496,7 @@ def start_redis(node_ip_address,
             # supplies.
             modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
             password=password,
-            redis_max_memory=None)
+            redis_max_memory_bytes=None)
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -531,7 +531,7 @@ def start_redis(node_ip_address,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup,
                 password=password,
-                redis_max_memory=redis_max_memory)
+                redis_max_memory_bytes=redis_max_memory_bytes)
         else:
             assert num_redis_shards == 1, \
                 "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
@@ -549,7 +549,7 @@ def start_redis(node_ip_address,
                 # module, as the latter contains an extern declaration that the
                 # former supplies.
                 modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE],
-                redis_max_memory=redis_max_memory)
+                redis_max_memory_bytes=redis_max_memory_bytes)
 
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
@@ -580,7 +580,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                           password=None,
                           executable=REDIS_EXECUTABLE,
                           modules=None,
-                          redis_max_memory=None):
+                          redis_max_memory_bytes=None):
     """Start a single Redis server.
 
     Args:
@@ -604,9 +604,9 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         modules (list of str): A list of pathnames, pointing to the redis
             module(s) that will be loaded in this redis server.  If None, load
             the default Ray redis module.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
+        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+            redis to use, or None for no limit. Once the limit is exceeded,
+            redis will start LRU eviction of entries.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -671,12 +671,12 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     redis_client.config_set("protected-mode", "no")
 
     # Discard old task and object metadata.
-    if redis_max_memory is not None:
-        redis_client.config_set("maxmemory", str(redis_max_memory))
+    if redis_max_memory_bytes is not None:
+        redis_client.config_set("maxmemory", str(redis_max_memory_bytes))
         redis_client.config_set("maxmemory-policy", "allkeys-lru")
         redis_client.config_set("maxmemory-samples", "10")
         logger.info("Starting Redis shard with {} GB max memory.".format(
-            round(redis_max_memory / 1e9, 2)))
+            round(redis_max_memory_bytes / 1e9, 2)))
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
     # number of Redis clients.
@@ -1006,7 +1006,7 @@ def start_raylet(ray_params,
     return raylet_name
 
 
-def determine_plasma_store_config(object_store_memory=None,
+def determine_plasma_store_config(object_store_memory_bytes=None,
                                   plasma_directory=None,
                                   huge_pages=False):
     """Figure out how to configure the plasma object store.
@@ -1019,7 +1019,7 @@ def determine_plasma_store_config(object_store_memory=None,
     values will be preserved.
 
     Args:
-        object_store_memory (int): The user-specified object store memory
+        object_store_memory_bytes (int): The user-specified object store memory
             parameter.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
@@ -1032,16 +1032,17 @@ def determine_plasma_store_config(object_store_memory=None,
     system_memory = ray.utils.get_system_memory()
 
     # Choose a default object store size.
-    if object_store_memory is None:
-        object_store_memory = int(system_memory * 0.4)
+    if object_store_memory_bytes is None:
+        object_store_memory_bytes = int(system_memory * 0.4)
         # Cap memory to avoid memory waste and perf issues on large nodes
-        if object_store_memory > MAX_DEFAULT_MEM:
+        if object_store_memory_bytes > MAX_DEFAULT_MEM:
             logger.warning(
                 "Warning: Capping object memory store to {}GB. ".format(
                     MAX_DEFAULT_MEM // 1e9) +
-                "To increase this further, specify `object_store_memory` "
-                "when calling ray.init() or ray start.")
-            object_store_memory = MAX_DEFAULT_MEM
+                "To increase this further, specify "
+                "`object_store_memory_bytes` when calling ray.init() or ray "
+                "start.")
+            object_store_memory_bytes = MAX_DEFAULT_MEM
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -1051,7 +1052,7 @@ def determine_plasma_store_config(object_store_memory=None,
             shm_avail = ray.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            if shm_avail > object_store_memory:
+            if shm_avail > object_store_memory_bytes:
                 plasma_directory = "/dev/shm"
             else:
                 plasma_directory = "/tmp"
@@ -1068,20 +1069,21 @@ def determine_plasma_store_config(object_store_memory=None,
             plasma_directory = "/tmp"
 
         # Do some sanity checks.
-        if object_store_memory > system_memory:
+        if object_store_memory_bytes > system_memory:
             raise Exception(
                 "The requested object store memory size is greater "
                 "than the total available memory.")
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.warning("WARNING: object_store_memory is not verified when "
-                       "plasma_directory is set.")
+        logger.warning(
+            "WARNING: object_store_memory_bytes is not verified when "
+            "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise Exception("The file {} does not exist or is not a directory."
                         .format(plasma_directory))
 
-    return object_store_memory, plasma_directory
+    return object_store_memory_bytes, plasma_directory
 
 
 def start_plasma_store(node_ip_address,
@@ -1089,7 +1091,7 @@ def start_plasma_store(node_ip_address,
                        object_manager_port=None,
                        store_stdout_file=None,
                        store_stderr_file=None,
-                       object_store_memory=None,
+                       object_store_memory_bytes=None,
                        cleanup=True,
                        plasma_directory=None,
                        huge_pages=False,
@@ -1107,7 +1109,7 @@ def start_plasma_store(node_ip_address,
             to. If no redirection should happen, then this should be None.
         store_stderr_file: A file handle opened for writing to redirect stderr
             to. If no redirection should happen, then this should be None.
-        object_store_memory: The amount of memory (in bytes) to start the
+        object_store_memory_bytes: The amount of memory (in bytes) to start the
             object store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
@@ -1121,16 +1123,18 @@ def start_plasma_store(node_ip_address,
     Return:
         The Plasma store socket name.
     """
-    object_store_memory, plasma_directory = determine_plasma_store_config(
-        object_store_memory, plasma_directory, huge_pages)
+    object_store_memory_bytes, plasma_directory = (
+        determine_plasma_store_config(object_store_memory_bytes,
+                                      plasma_directory, huge_pages))
 
     # Print the object store memory using two decimal places.
-    object_store_memory_str = (object_store_memory / 10**7) / 10**2
+    object_store_memory_bytes_str = (object_store_memory_bytes / 10**7) / 10**2
     logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(object_store_memory_str, plasma_directory))
+                "using {}.".format(object_store_memory_bytes_str,
+                                   plasma_directory))
     # Start the Plasma store.
     plasma_store_name, p1 = ray.plasma.start_plasma_store(
-        plasma_store_memory=object_store_memory,
+        plasma_store_memory=object_store_memory_bytes,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=store_stdout_file,
         stderr_file=store_stderr_file,
@@ -1337,7 +1341,7 @@ def start_ray_processes(ray_params, cleanup=True):
             redirect_worker_output=ray_params.redirect_worker_output,
             cleanup=cleanup,
             password=ray_params.redis_password,
-            redis_max_memory=ray_params.redis_max_memory)
+            redis_max_memory_bytes=ray_params.redis_max_memory_bytes)
         ray_params.address_info["redis_address"] = ray_params.redis_address
         time.sleep(0.1)
 
@@ -1420,7 +1424,7 @@ def start_ray_processes(ray_params, cleanup=True):
             ray_params.redis_address,
             store_stdout_file=plasma_store_stdout_file,
             store_stderr_file=plasma_store_stderr_file,
-            object_store_memory=ray_params.object_store_memory,
+            object_store_memory_bytes=ray_params.object_store_memory_bytes,
             cleanup=cleanup,
             plasma_directory=ray_params.plasma_directory,
             huge_pages=ray_params.huge_pages,
@@ -1470,7 +1474,7 @@ def start_ray_node(ray_params, cleanup=True):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: node_ip_address,
             redis_address, object_manager_ports, node_manager_ports,
-            num_workers, num_local_schedulers, object_store_memory,
+            num_workers, num_local_schedulers, object_store_memory_bytes,
             redis_password, worker_path, cleanup, redirect_worker_output,
             redirect_output, resources, plasma_directory, huge_pages,
             plasma_store_socket_name, raylet_socket_name, temp_dir,
@@ -1498,8 +1502,9 @@ def start_ray_head(ray_params, cleanup=True):
             following parameters could be checked: address_info,
             object_manager_ports, node_manager_ports, node_ip_address,
             redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, collect_profiling_data,
-            worker_path, cleanup, redirect_worker_output, redirect_output,
+            object_store_memory_bytes, redis_max_memory_bytes,
+            collect_profiling_data, worker_path, cleanup,
+            redirect_worker_output, redirect_output,
             start_workers_from_local_scheduler, resources, num_redis_shards,
             redis_max_clients, redis_password, include_webui, huge_pages,
             plasma_directory, autoscaling_config, plasma_store_socket_name,

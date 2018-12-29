@@ -41,7 +41,7 @@ def get(object_ids, worker=None):
         return ray.get(object_ids, worker)
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=None):
+def wait(object_ids, num_returns=1, timeout_seconds=None, worker=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     This method is identical to `ray.wait` except it adds support for tuples
@@ -52,7 +52,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=None):
             List like of object IDs for objects that may or may not be ready.
             Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
-        timeout (int): The maximum amount of time in milliseconds to wait
+        timeout_seconds (int): The maximum amount of time in seconds to wait
             before returning.
 
     Returns:
@@ -61,6 +61,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=None):
     """
     worker = ray.worker.global_worker if worker is None else worker
     if isinstance(object_ids, (tuple, np.ndarray)):
-        return ray.wait(list(object_ids), num_returns, timeout, worker)
+        return ray.wait(list(object_ids), num_returns, timeout_seconds, worker)
 
-    return ray.wait(object_ids, num_returns, timeout, worker)
+    return ray.wait(object_ids, num_returns, timeout_seconds, worker)
