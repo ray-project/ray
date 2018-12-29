@@ -27,6 +27,7 @@ set(RAY_SRCS
   util/logging.cc
   metrics/tag/tags.cc
   metrics/registry/metrics_registry_interface.cc
+  metrics/perf_counter.cc
   common/client_connection.cc
   common/common_protocol.cc
   object_manager/object_manager_client_connection.cc
