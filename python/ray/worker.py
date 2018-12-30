@@ -1435,7 +1435,9 @@ def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
+         object_store_memory=None,
          object_store_memory_mb=None,
+         redis_max_memory=None,
          redis_max_memory_mb=None,
          collect_profiling_data=True,
          node_ip_address=None,
@@ -1558,6 +1560,16 @@ def init(redis_address=None,
         else:
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
+
+    if object_store_memory is not None:
+        logger.warning("WARNING: The 'object_store_memory' argument has been "
+                       "deprecated. Please use 'object_store_memory_mb'.")
+        object_store_memory_mb = object_store_memory / 10**6
+
+    if redis_max_memory is not None:
+        logger.warning("WARNING: The 'redis_max_memory' argument has been "
+                       "deprecated. Please use 'redis_max_memory_mb'.")
+        redis_max_memory_mb = redis_max_memory / 10**6
 
     if setproctitle is None:
         logger.warning(

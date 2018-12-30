@@ -239,14 +239,15 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           internal_config):
     if object_store_memory is not None:
-        logger.warning("WARNING: The --object-store-memory argument has been "
-                       "deprecated. Please use --object-store-memory-mb.")
-        object_store_memory_mb = object_store_memory
+        logger.warning("WARNING: The '--object-store-memory' argument has "
+                       "been deprecated. Please use "
+                       "'--object-store-memory-mb'.")
+        object_store_memory_mb = object_store_memory / 10**6
 
     if redis_max_memory is not None:
-        logger.warning("WARNING: The --redis-max-memory argument has been "
-                       "deprecated. Please use --redis-max-memory-mb.")
-        redis_max_memory_mb = redis_max_memory
+        logger.warning("WARNING: The '--redis-max-memory' argument has been "
+                       "deprecated. Please use '--redis-max-memory-mb'.")
+        redis_max_memory_mb = redis_max_memory / 10**6
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
