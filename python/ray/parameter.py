@@ -40,9 +40,9 @@ class RayParams(object):
             This is only provided if start_ray_local is True.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory_bytes: The amount of memory (in bytes) to start the
+        object_store_memory_mb: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+        redis_max_memory_mb: The max amount of memory (in bytes) to allow
             redis to use, or None for no limit. Once the limit is exceeded,
             redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
@@ -100,8 +100,8 @@ class RayParams(object):
                  num_gpus=None,
                  num_local_schedulers=None,
                  resources=None,
-                 object_store_memory_bytes=None,
-                 redis_max_memory_bytes=None,
+                 object_store_memory_mb=None,
+                 redis_max_memory_mb=None,
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_ports=None,
@@ -137,8 +137,8 @@ class RayParams(object):
         self.num_gpus = num_gpus
         self.num_local_schedulers = num_local_schedulers
         self.resources = resources
-        self.object_store_memory_bytes = object_store_memory_bytes
-        self.redis_max_memory_bytes = redis_max_memory_bytes
+        self.object_store_memory_mb = object_store_memory_mb
+        self.redis_max_memory_mb = redis_max_memory_mb
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_ports = object_manager_ports

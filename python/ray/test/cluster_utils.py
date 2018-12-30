@@ -64,7 +64,7 @@ class Cluster(object):
         All nodes are by default started with the following settings:
             cleanup=True,
             resources={"CPU": 1},
-            object_store_memory_bytes=100 * (2**20) # 100 MB
+            object_store_memory_mb=100  # 100 MB
 
         Args:
             override_kwargs: Keyword arguments used in `start_ray_head`
@@ -77,7 +77,7 @@ class Cluster(object):
             "resources": {
                 "CPU": 1
             },
-            "object_store_memory_bytes": 100 * (2**20)  # 100 MB
+            "object_store_memory_mb": 100 * (2**20)  # 100 MB
         }
         node_kwargs.update(override_kwargs)
         ray_params = RayParams(

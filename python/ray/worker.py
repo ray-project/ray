@@ -1281,8 +1281,8 @@ def _init(ray_params, driver_id=None):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: address_info,
             start_ray_local, object_id_seed, num_workers,
-            num_local_schedulers, object_store_memory_bytes,
-            redis_max_memory_bytes, collect_profiling_data, local_mode,
+            num_local_schedulers, object_store_memory_mb,
+            redis_max_memory_mb, collect_profiling_data, local_mode,
             redirect_worker_output, driver_mode, redirect_output,
             start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
             num_redis_shards, redis_max_clients, redis_password,
@@ -1306,10 +1306,10 @@ def _init(ray_params, driver_id=None):
     else:
         ray_params.driver_mode = SCRIPT_MODE
 
-    if ray_params.redis_max_memory_bytes and ray_params.collect_profiling_data:
+    if ray_params.redis_max_memory_mb and ray_params.collect_profiling_data:
         logger.warning(
             "Profiling data cannot be LRU evicted, so it is disabled "
-            "when redis_max_memory_bytes is set.")
+            "when redis_max_memory_mb is set.")
         ray_params.collect_profiling_data = False
 
     # Get addresses of existing services.
@@ -1368,12 +1368,12 @@ def _init(ray_params, driver_id=None):
         if ray_params.redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
-        if ray_params.object_store_memory_bytes is not None:
+        if ray_params.object_store_memory_mb is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory_bytes must not be provided.")
-        if ray_params.redis_max_memory_bytes is not None:
+                            "object_store_memory_mb must not be provided.")
+        if ray_params.redis_max_memory_mb is not None:
             raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory_bytes must not be provided.")
+                            "redis_max_memory_mb must not be provided.")
         if ray_params.plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
@@ -1435,8 +1435,8 @@ def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
-         object_store_memory_bytes=None,
-         redis_max_memory_bytes=None,
+         object_store_memory_mb=None,
+         redis_max_memory_mb=None,
          collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
@@ -1492,9 +1492,9 @@ def init(redis_address=None,
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory_bytes: The amount of memory (in bytes) to start the
+        object_store_memory_mb: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory_bytes: The max amount of memory (in bytes) to allow
+        redis_max_memory_mb: The max amount of memory (in bytes) to allow
             redis to use, or None for no limit. Once the limit is exceeded,
             redis will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
@@ -1598,8 +1598,8 @@ def init(redis_address=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         include_webui=include_webui,
-        object_store_memory_bytes=object_store_memory_bytes,
-        redis_max_memory_bytes=redis_max_memory_bytes,
+        object_store_memory_mb=object_store_memory_mb,
+        redis_max_memory_mb=redis_max_memory_mb,
         collect_profiling_data=collect_profiling_data,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,

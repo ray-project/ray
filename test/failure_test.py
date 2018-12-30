@@ -389,17 +389,17 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
 
 
 @pytest.fixture
-def ray_start_object_store_memory_bytes():
+def ray_start_object_store_memory_mb():
     # Start the Ray processes.
     store_size = 10**6
-    ray.init(num_cpus=1, object_store_memory_bytes=store_size)
+    ray.init(num_cpus=1, object_store_memory_mb=store_size)
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
 @pytest.mark.skip("This test does not work yet.")
-def test_put_error1(ray_start_object_store_memory_bytes):
+def test_put_error1(ray_start_object_store_memory_mb):
     num_objects = 3
     object_size = 4 * 10**5
 
@@ -441,7 +441,7 @@ def test_put_error1(ray_start_object_store_memory_bytes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-def test_put_error2(ray_start_object_store_memory_bytes):
+def test_put_error2(ray_start_object_store_memory_mb):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
     object_size = 4 * 10**5

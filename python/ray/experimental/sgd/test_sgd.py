@@ -20,7 +20,7 @@ parser.add_argument("--grad-shard-bytes", default=10000000, type=int)
 parser.add_argument("--devices-per-worker", default=2, type=int)
 parser.add_argument("--stats-interval", default=10, type=int)
 parser.add_argument("--all-reduce-alg", default="simple", type=str)
-parser.add_argument("--object-store-memory-bytes", default=None, type=int)
+parser.add_argument("--object-store-memory-mb", default=None, type=int)
 parser.add_argument(
     "--warmup", action="store_true", help="Warm up object store before start.")
 parser.add_argument(
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init(
         redis_address=args.redis_address,
-        object_store_memory_bytes=args.object_store_memory_bytes)
+        object_store_memory_mb=args.object_store_memory_mb)
 
     model_creator = (
         lambda worker_idx, device_idx: TFBenchModel(

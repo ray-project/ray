@@ -82,3 +82,6 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
 INFINITE_RECONSTRUCTION = 2**30
+
+# Max bytes to allocate to plasma unless overriden by the user
+DEFAULT_MAX_MEMORY_MB = 20 * 1000

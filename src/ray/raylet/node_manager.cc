@@ -1683,7 +1683,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
                "evicted "
             << "by the redis LRU configuration. Consider increasing the memory "
                "allocation via "
-            << "ray.init(redis_max_memory_bytes=<max_memory_bytes>).";
+            << "ray.init(redis_max_memory_mb=<max_memory_bytes>).";
         // Use a copy of the cached task spec to re-execute the task.
         const Task task = lineage_cache_.GetTask(task_id);
         ResubmitTask(task);

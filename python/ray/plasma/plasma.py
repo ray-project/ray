@@ -11,8 +11,6 @@ from ray.tempfile_services import get_object_store_socket_name
 
 __all__ = ["start_plasma_store", "DEFAULT_PLASMA_STORE_MEMORY"]
 
-PLASMA_WAIT_TIMEOUT = 2**30
-
 DEFAULT_PLASMA_STORE_MEMORY = 10**9
 
 

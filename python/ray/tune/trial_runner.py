@@ -322,7 +322,7 @@ class TrialRunner(object):
                         "unexpected crashes. Consider "
                         "reducing the memory used by your application "
                         "or reducing the Ray object store size by setting "
-                        "`object_store_memory_bytes` when calling `ray.init`.")
+                        "`object_store_memory_mb` when calling `ray.init`.")
             else:
                 warn = ""
             return "Memory usage on this node: {}/{} GB{}".format(

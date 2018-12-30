@@ -2124,9 +2124,9 @@ def test_actor_eviction(shutdown_only):
         def create_object(self, size):
             return np.random.rand(size)
 
-    object_store_memory_bytes = 10**8
+    object_store_memory_mb = 10**8
     ray.init(
-        object_store_memory_bytes=object_store_memory_bytes,
+        object_store_memory_mb=object_store_memory_mb,
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200
         }))
@@ -2137,7 +2137,7 @@ def test_actor_eviction(shutdown_only):
     objects = []
     num_objects = 20
     for _ in range(num_objects):
-        obj = a.create_object.remote(object_store_memory_bytes // num_objects)
+        obj = a.create_object.remote(object_store_memory_mb // num_objects)
         objects.append(obj)
         # Get each object once to make sure each object gets created.
         ray.get(obj)
