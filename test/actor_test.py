@@ -2124,7 +2124,7 @@ def test_actor_eviction(shutdown_only):
         def create_object(self, size):
             return np.random.rand(size)
 
-    object_store_memory_mb = 10**8
+    object_store_memory_mb = 100
     ray.init(
         object_store_memory_mb=object_store_memory_mb,
         _internal_config=json.dumps({

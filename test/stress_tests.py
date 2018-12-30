@@ -196,7 +196,7 @@ def ray_start_reconstruction(request):
     # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
     plasma_addresses = []
-    object_store_memory_mb = plasma_store_memory // num_local_schedulers
+    object_store_memory_mb = plasma_store_memory / 1e6 // num_local_schedulers
     for i in range(num_local_schedulers):
         store_stdout_file, store_stderr_file = (
             ray.tempfile_services.new_plasma_store_log_file(i, True))
@@ -500,7 +500,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
 def ray_start_driver_put_errors():
     plasma_store_memory = 10**9
     # Start the Ray processes.
-    ray.init(num_cpus=1, object_store_memory_mb=plasma_store_memory)
+    ray.init(num_cpus=1, object_store_memory_mb=plasma_store_memory / 10**6)
     yield plasma_store_memory
     # The code after the yield will run as teardown code.
     ray.shutdown()
