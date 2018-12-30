@@ -61,6 +61,14 @@ def wait(object_ids, num_returns=1, timeout_seconds=None, worker=None):
     """
     worker = ray.worker.global_worker if worker is None else worker
     if isinstance(object_ids, (tuple, np.ndarray)):
-        return ray.wait(list(object_ids), num_returns, timeout_seconds, worker)
+        return ray.wait(
+            list(object_ids),
+            num_returns=num_returns,
+            timeout_seconds=timeout_seconds,
+            worker=worker)
 
-    return ray.wait(object_ids, num_returns, timeout_seconds, worker)
+    return ray.wait(
+        object_ids,
+        num_returns=num_returns,
+        timeout_seconds=timeout_seconds,
+        worker=worker)
