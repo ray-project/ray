@@ -2353,6 +2353,10 @@ def wait(object_ids,
                        "Please use timeout_seconds.")
         timeout_seconds = timeout / 1000
 
+    if timeout_seconds is not None and timeout_seconds < 0:
+        raise ValueError("The timeout_seconds argument cannot be negative. "
+                         "Received {}.".format(timeout_seconds))
+
     if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
             "wait() expected a list of ObjectID, got a single ObjectID")
