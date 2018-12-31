@@ -473,7 +473,7 @@ class StandardAutoscaler(object):
                 logger.exception("StandardAutoscaler: Error parsing config.")
 
     def target_num_workers(self):
-        initial_workers = self.config.get("initial_workers", 0)
+        initial_workers = self.config["initial_workers"]
 
         if self.bringup:
             ideal_num_workers = initial_workers
