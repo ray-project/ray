@@ -179,7 +179,7 @@ class DistributedSGD(object):
         logger.info("Warmup complete")
 
     def save_checkpoint(self, path):
-        w0 = self.for_model(lambda m: m.get_variables().get_flat())
+        w0 = self.for_model(lambda m: m.get_weights())
         filename = os.path.join(path, "model.npy")
         np.save(filename, w0)
 
@@ -187,7 +187,7 @@ class DistributedSGD(object):
         filename = os.path.join(path, "model.npy")
         assert os.path.exists(filename), "No model present at %s" % filename
         w0 = np.load(filename)
-        self.foreach_model(lambda m: m.get_variables().set_flat(w0))
+        self.foreach_model(lambda m: m.set_weights(w0))
 
 
 def _average_gradients(grads):
