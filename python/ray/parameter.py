@@ -40,8 +40,8 @@ class RayParams(object):
             This is only provided if start_ray_local is True.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
-        object_store_memory_mb: The amount of memory (in bytes) to start the
-            object store with.
+        object_store_memory_mb: The amount of memory (in megabytes) to start
+            the object store with.
         redis_max_memory_mb: The max amount of memory (in bytes) to allow
             redis to use, or None for no limit. Once the limit is exceeded,
             redis will start LRU eviction of entries. This only applies to the

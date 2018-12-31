@@ -316,7 +316,7 @@ def sysctl(command):
         return result
 
 
-def get_system_memory():
+def get_system_memory_bytes():
     """Return the total amount of system memory in bytes.
 
     Returns:

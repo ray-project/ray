@@ -2138,7 +2138,7 @@ def test_actor_eviction(shutdown_only):
     num_objects = 20
     for _ in range(num_objects):
         obj = a.create_object.remote(
-            10**6 * object_store_memory_mb // num_objects)
+            (10**6 * object_store_memory_mb) // num_objects)
         objects.append(obj)
         # Get each object once to make sure each object gets created.
         ray.get(obj)

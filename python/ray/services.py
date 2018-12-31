@@ -1027,7 +1027,7 @@ def determine_plasma_store_config(object_store_memory_mb=None,
             use. If either of these values is specified by the user, then that
             value will be preserved.
     """
-    system_memory_mb = ray.utils.get_system_memory() / 1e6
+    system_memory_mb = ray.utils.get_system_memory_bytes() / 1e6
 
     # Choose a default object store size.
     if object_store_memory_mb is None:
@@ -1047,22 +1047,22 @@ def determine_plasma_store_config(object_store_memory_mb=None,
     # in which case we default to /tmp on Linux.
     if plasma_directory is None:
         if sys.platform == "linux" or sys.platform == "linux2":
-            shm_avail = ray.utils.get_shared_memory_bytes()
+            shm_avail_mb = ray.utils.get_shared_memory_bytes() / 1e6
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            if shm_avail > object_store_memory_mb:
+            if shm_avail_mb > object_store_memory_mb:
                 plasma_directory = "/dev/shm"
             else:
                 plasma_directory = "/tmp"
                 logger.warning(
                     "WARNING: The object store is using /tmp instead of "
-                    "/dev/shm because /dev/shm has only {} bytes available. "
+                    "/dev/shm because /dev/shm has only {}MB available. "
                     "This may slow down performance! You may be able to free "
                     "up space by deleting files in /dev/shm or terminating "
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
                     "argument with the flag '--shm-size' to 'docker run'."
-                    .format(shm_avail))
+                    .format(shm_avail_mb))
         else:
             plasma_directory = "/tmp"
 
