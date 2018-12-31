@@ -13,6 +13,7 @@ import sys
 import time
 
 import ray
+from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.test.test_utils
 import ray.test.cluster_utils
@@ -40,13 +41,14 @@ def shutdown_only():
 
 
 @pytest.fixture
-def head_node_cluster():
+def head_node_cluster(request):
+    timeout = getattr(request, 'param', 200)
     cluster = ray.test.cluster_utils.Cluster(
         initialize_head=True,
         connect=True,
         head_node_args={
             "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
+                "initial_reconstruction_timeout_milliseconds": timeout,
                 "num_heartbeats_timeout": 10,
             })
         })
@@ -741,10 +743,11 @@ def test_actors_on_nodes_with_no_cpus(ray_start_regular):
 
 def test_actor_load_balancing(shutdown_only):
     num_local_schedulers = 3
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_cpus=1,
         num_local_schedulers=num_local_schedulers)
+    ray.worker._init(ray_params)
 
     @ray.remote
     class Actor1(object):
@@ -787,11 +790,12 @@ def test_actor_load_balancing(shutdown_only):
 def test_actor_gpus(shutdown_only):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 4
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(ray_params)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -829,11 +833,12 @@ def test_actor_gpus(shutdown_only):
 def test_actor_multiple_gpus(shutdown_only):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 5
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=(num_local_schedulers * [10 * num_gpus_per_scheduler]),
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(ray_params)
 
     @ray.remote(num_gpus=2)
     class Actor1(object):
@@ -899,11 +904,12 @@ def test_actor_multiple_gpus(shutdown_only):
 def test_actor_different_numbers_of_gpus(shutdown_only):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=3,
         num_cpus=[10, 10, 10],
         num_gpus=[0, 5, 10])
+    ray.worker._init(ray_params)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -939,7 +945,7 @@ def test_actor_different_numbers_of_gpus(shutdown_only):
 def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
     num_local_schedulers = 5
     num_gpus_per_scheduler = 5
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         redirect_output=True,
@@ -948,6 +954,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
         _internal_config=json.dumps({
             "num_heartbeats_timeout": 1000
         }))
+    ray.worker._init(ray_params)
 
     @ray.remote
     def create_actors(i, n):
@@ -1019,11 +1026,12 @@ def test_actor_multiple_gpus_from_multiple_tasks(shutdown_only):
 def test_actors_and_tasks_with_gpus(shutdown_only):
     num_local_schedulers = 3
     num_gpus_per_scheduler = 6
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=num_gpus_per_scheduler,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
+    ray.worker._init(ray_params)
 
     def check_intervals_non_overlapping(list_of_intervals):
         for i in range(len(list_of_intervals)):
@@ -1386,11 +1394,12 @@ def test_reconstruction_suppression(head_node_cluster):
 def setup_counter_actor(test_checkpoint=False,
                         save_exception=False,
                         resume_exception=False):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=2,
         num_cpus=1,
         redirect_output=True)
+    ray.worker._init(ray_params)
 
     # Only set the checkpoint interval if we're testing with checkpointing.
     checkpoint_interval = -1
@@ -1720,11 +1729,12 @@ def test_checkpoint_distributed_handle(shutdown_only):
 
 def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
                                           num_forks_to_wait):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=2,
         num_cpus=1,
         redirect_output=True)
+    ray.worker._init(ray_params)
 
     # Make a shared queue.
     @ray.remote
@@ -2018,7 +2028,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
 
 def test_custom_label_placement(shutdown_only):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=2,
         num_cpus=2,
@@ -2027,6 +2037,7 @@ def test_custom_label_placement(shutdown_only):
         }, {
             "CustomResource2": 2
         }])
+    ray.worker._init(ray_params)
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):
@@ -2248,6 +2259,11 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
         ray.get(actor.increase.remote())
 
 
+# NOTE(hchen): we set initial_reconstruction_timeout_milliseconds to 1s for
+# this test. Because if this value is too small, suprious task reconstruction
+# may happen and cause the test fauilure. If the value is too large, this test
+# could be very slow. We can remove this once we support dynamic timeout.
+@pytest.mark.parametrize('head_node_cluster', [1000], indirect=True)
 def test_multiple_actor_reconstruction(head_node_cluster):
     # This test can be made more stressful by increasing the numbers below.
     # The total number of actors created will be

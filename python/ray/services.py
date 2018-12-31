@@ -867,41 +867,31 @@ def check_and_update_resources(resources):
     return resources
 
 
-def start_raylet(redis_address,
-                 node_ip_address,
+def start_raylet(ray_params,
+                 index,
                  raylet_name,
                  plasma_store_name,
-                 worker_path,
-                 resources=None,
-                 object_manager_port=None,
-                 node_manager_port=None,
                  num_workers=0,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
                  cleanup=True,
-                 config=None,
-                 redis_password=None,
-                 collect_profiling_data=True):
+                 config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
-        redis_address (str): The address of the Redis instance.
-        node_ip_address (str): The IP address of the node that this local
-            scheduler is running on.
-        plasma_store_name (str): The name of the plasma store socket to connect
-            to.
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: redis_address,
+            node_ip_address, worker_path, resources, object_manager_ports,
+            node_manager_ports, redis_password
+        index (int): Usually, this index is 0. When index > 0, it means
+            starting multiple raylet locally. The index will be used in
+            resources, object_manager_ports, node_manager_ports.
         raylet_name (str): The name of the raylet socket to create.
-        worker_path (str): The path of the script to use when the local
-            scheduler starts up new workers.
-        resources: The resources that this raylet has.
-        object_manager_port (int): The port to use for the object manager. If
-            this is not provided, we will use 0 and the object manager will
-            choose its own port.
-        node_manager_port (int): The port to use for the node manager. If
-            this is not provided, we will use 0 and the node manager will
-            choose its own port.
+        plasma_store_name (str): The name of the plasma store socket to connect
+             to.
+        num_workers (int): The number of workers to start.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -915,8 +905,6 @@ def start_raylet(redis_address,
             Python process that imported services exits.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        redis_password (str): The password of the redis server.
-        collect_profiling_data: Whether to collect profiling data from workers.
 
     Returns:
         The raylet socket name.
@@ -927,7 +915,7 @@ def start_raylet(redis_address,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    static_resources = check_and_update_resources(resources)
+    static_resources = check_and_update_resources(ray_params.resources[index])
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -938,7 +926,7 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    gcs_ip_address, gcs_port = ray_params.redis_address.split(":")
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -948,29 +936,31 @@ def start_raylet(redis_address,
                             "--redis-address={} "
                             "--collect-profiling-data={} "
                             "--temp-dir={}".format(
-                                sys.executable, worker_path, node_ip_address,
-                                plasma_store_name, raylet_name, redis_address,
-                                "1" if collect_profiling_data else "0",
+                                sys.executable, ray_params.worker_path,
+                                ray_params.node_ip_address, plasma_store_name,
+                                raylet_name, ray_params.redis_address, "1"
+                                if ray_params.collect_profiling_data else "0",
                                 get_temp_root()))
-    if redis_password:
-        start_worker_command += " --redis-password {}".format(redis_password)
+    if ray_params.redis_password:
+        start_worker_command += " --redis-password {}".format(
+            ray_params.redis_password)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
-    if object_manager_port is None:
-        object_manager_port = 0
+    if ray_params.object_manager_ports[index] is None:
+        ray_params.object_manager_ports[index] = 0
     # If the node manager port is None, then use 0 to cause the node manager
     # to choose its own port.
-    if node_manager_port is None:
-        node_manager_port = 0
+    if ray_params.node_manager_ports[index] is None:
+        ray_params.node_manager_ports[index] = 0
 
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
         plasma_store_name,
-        str(object_manager_port),
-        str(node_manager_port),
-        node_ip_address,
+        str(ray_params.object_manager_ports[index]),
+        str(ray_params.node_manager_ports[index]),
+        ray_params.node_ip_address,
         gcs_ip_address,
         gcs_port,
         str(num_workers),
@@ -979,7 +969,7 @@ def start_raylet(redis_address,
         config_str,
         start_worker_command,
         "",  # Worker command for Java, not needed for Python.
-        redis_password or "",
+        ray_params.redis_password or "",
         get_temp_root(),
     ]
 
@@ -1009,9 +999,9 @@ def start_raylet(redis_address,
     if cleanup:
         all_processes[PROCESS_TYPE_RAYLET].append(pid)
     record_log_files_in_redis(
-        redis_address,
-        node_ip_address, [stdout_file, stderr_file],
-        password=redis_password)
+        ray_params.redis_address,
+        ray_params.node_ip_address, [stdout_file, stderr_file],
+        password=ray_params.redis_password)
 
     return raylet_name
 
@@ -1276,502 +1266,252 @@ def start_raylet_monitor(redis_address,
         all_processes[PROCESS_TYPE_MONITOR].append(p)
 
 
-def start_ray_processes(address_info=None,
-                        object_manager_ports=None,
-                        node_manager_ports=None,
-                        node_ip_address="127.0.0.1",
-                        redis_port=None,
-                        redis_shard_ports=None,
-                        num_workers=None,
-                        num_local_schedulers=1,
-                        object_store_memory=None,
-                        redis_max_memory=None,
-                        collect_profiling_data=True,
-                        num_redis_shards=1,
-                        redis_max_clients=None,
-                        redis_password=None,
-                        worker_path=None,
-                        cleanup=True,
-                        redirect_worker_output=False,
-                        redirect_output=False,
-                        include_log_monitor=False,
-                        include_webui=False,
-                        start_workers_from_local_scheduler=True,
-                        resources=None,
-                        plasma_directory=None,
-                        huge_pages=False,
-                        autoscaling_config=None,
-                        plasma_store_socket_name=None,
-                        raylet_socket_name=None,
-                        temp_dir=None,
-                        _internal_config=None):
+def start_ray_processes(ray_params, cleanup=True):
     """Helper method to start Ray processes.
 
     Args:
-        address_info (dict): A dictionary with address information for
-            processes that have already been started. If provided, address_info
-            will be modified to include processes that are newly started.
-        object_manager_ports (list): A list of the ports to use for the object
-            managers. There should be one per object manager being started on
-            this node (typically just one).
-        node_manager_ports (list): A list of the ports to use for the node
-            managers. There should be one per node manager being started on
-            this node (typically just one).
-        node_ip_address (str): The IP address of this node.
-        redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen. If the key
-            "redis_address" is in address_info, then this argument will be
-            ignored.
-        redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
-        num_workers (int): The number of workers to start.
-        num_local_schedulers (int): The total number of local schedulers
-            required. This is also the total number of object stores required.
-            This method will start new instances of local schedulers and object
-            stores until there are num_local_schedulers existing instances of
-            each, including ones already registered with the given
-            address_info.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data. Note that
-            profiling data cannot be LRU evicted, so if you set
-            redis_max_memory then profiling will also be disabled to prevent
-            it from consuming all available redis memory.
-        num_redis_shards: The number of Redis shards to start in addition to
-            the primary Redis shard.
-        redis_max_clients: If provided, attempt to configure Redis with this
-            maxclients number.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        worker_path (str): The path of the source code that will be run by the
-            worker.
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters will be set to default values if it's None:
+            node_ip_address("127.0.0.1"), num_local_schedulers(1),
+            include_webui(False), worker_path(path of default_worker.py),
+            include_log_monitor(False)
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
-        redirect_output (bool): True if stdout and stderr for non-worker
-            processes should be redirected to files and false otherwise.
-        include_log_monitor (bool): If True, then start a log monitor to
-            monitor the log files for all processes on this node and push their
-            contents to Redis.
-        include_webui (bool): If True, then attempt to start the web UI. Note
-            that this is only possible with Python 3.
-        start_workers_from_local_scheduler (bool): If this flag is True, then
-            start the initial workers from the local scheduler. Else, start
-            them from Python.
-        resources: A dictionary mapping resource name to the quantity of that
-            resource.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        autoscaling_config: path to autoscaling config file.
-        plasma_store_socket_name (str): If provided, it will specify the socket
-            name used by the plasma store.
-        raylet_socket_name (str): If provided, it will specify the socket path
-            used by the raylet process.
-        temp_dir (str): If provided, it will specify the root temporary
-            directory for the Ray process.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
             started.
     """
 
-    set_temp_root(temp_dir)
+    set_temp_root(ray_params.temp_dir)
 
     logger.info("Process STDOUT and STDERR is being redirected to {}.".format(
         get_logs_dir_path()))
 
-    config = json.loads(_internal_config) if _internal_config else None
+    config = json.loads(
+        ray_params._internal_config) if ray_params._internal_config else None
 
-    if resources is None:
-        resources = {}
-    if not isinstance(resources, list):
-        resources = num_local_schedulers * [resources]
+    ray_params.update_if_absent(
+        include_log_monitor=False,
+        resources={},
+        num_local_schedulers=1,
+        include_webui=False,
+        node_ip_address="127.0.0.1")
+    if not isinstance(ray_params.resources, list):
+        ray_params.resources = ray_params.num_local_schedulers * [
+            ray_params.resources
+        ]
 
-    if num_workers is not None:
+    if ray_params.num_workers is not None:
         raise Exception("The 'num_workers' argument is deprecated. Please use "
                         "'num_cpus' instead.")
     else:
         workers_per_local_scheduler = []
-        for resource_dict in resources:
+        for resource_dict in ray_params.resources:
             cpus = resource_dict.get("CPU")
             workers_per_local_scheduler.append(cpus if cpus is not None else
                                                multiprocessing.cpu_count())
 
-    if address_info is None:
-        address_info = {}
-    address_info["node_ip_address"] = node_ip_address
-
-    if worker_path is None:
-        worker_path = os.path.join(
+    ray_params.update_if_absent(
+        address_info={},
+        worker_path=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            "workers/default_worker.py")
+            "workers/default_worker.py"))
+    ray_params.address_info["node_ip_address"] = ray_params.node_ip_address
 
     # Start Redis if there isn't already an instance running. TODO(rkn): We are
     # suppressing the output of Redis because on Linux it prints a bunch of
     # warning messages when it starts up. Instead of suppressing the output, we
     # should address the warnings.
-    redis_address = address_info.get("redis_address")
-    redis_shards = address_info.get("redis_shards", [])
-    if redis_address is None:
-        redis_address, redis_shards = start_redis(
-            node_ip_address,
-            port=redis_port,
-            redis_shard_ports=redis_shard_ports,
-            num_redis_shards=num_redis_shards,
-            redis_max_clients=redis_max_clients,
+    ray_params.redis_address = ray_params.address_info.get("redis_address")
+    ray_params.redis_shards = ray_params.address_info.get("redis_shards", [])
+    if ray_params.redis_address is None:
+        ray_params.redis_address, ray_params.redis_shards = start_redis(
+            ray_params.node_ip_address,
+            port=ray_params.redis_port,
+            redis_shard_ports=ray_params.redis_shard_ports,
+            num_redis_shards=ray_params.num_redis_shards,
+            redis_max_clients=ray_params.redis_max_clients,
             redirect_output=True,
-            redirect_worker_output=redirect_worker_output,
+            redirect_worker_output=ray_params.redirect_worker_output,
             cleanup=cleanup,
-            password=redis_password,
-            redis_max_memory=redis_max_memory)
-        address_info["redis_address"] = redis_address
+            password=ray_params.redis_password,
+            redis_max_memory=ray_params.redis_max_memory)
+        ray_params.address_info["redis_address"] = ray_params.redis_address
         time.sleep(0.1)
 
         # Start monitoring the processes.
         monitor_stdout_file, monitor_stderr_file = new_monitor_log_file(
-            redirect_output)
+            ray_params.redirect_output)
         start_monitor(
-            redis_address,
-            node_ip_address,
+            ray_params.redis_address,
+            ray_params.node_ip_address,
             stdout_file=monitor_stdout_file,
             stderr_file=monitor_stderr_file,
             cleanup=cleanup,
-            autoscaling_config=autoscaling_config,
-            redis_password=redis_password)
+            autoscaling_config=ray_params.autoscaling_config,
+            redis_password=ray_params.redis_password)
         start_raylet_monitor(
-            redis_address,
+            ray_params.redis_address,
             stdout_file=monitor_stdout_file,
             stderr_file=monitor_stderr_file,
             cleanup=cleanup,
-            redis_password=redis_password,
+            redis_password=ray_params.redis_password,
             config=config)
-    if redis_shards == []:
+    if ray_params.redis_shards == []:
         # Get redis shards from primary redis instance.
-        redis_ip_address, redis_port = redis_address.split(":")
+        redis_ip_address, redis_port = ray_params.redis_address.split(":")
         redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port, password=redis_password)
+            host=redis_ip_address,
+            port=redis_port,
+            password=ray_params.redis_password)
         redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-        redis_shards = [ray.utils.decode(shard) for shard in redis_shards]
-        address_info["redis_shards"] = redis_shards
+        ray_params.redis_shards = [
+            ray.utils.decode(shard) for shard in redis_shards
+        ]
+        ray_params.address_info["redis_shards"] = ray_params.redis_shards
 
     # Start the log monitor, if necessary.
-    if include_log_monitor:
+    if ray_params.include_log_monitor:
         log_monitor_stdout_file, log_monitor_stderr_file = (
             new_log_monitor_log_file())
         start_log_monitor(
-            redis_address,
-            node_ip_address,
+            ray_params.redis_address,
+            ray_params.node_ip_address,
             stdout_file=log_monitor_stdout_file,
             stderr_file=log_monitor_stderr_file,
             cleanup=cleanup,
-            redis_password=redis_password)
+            redis_password=ray_params.redis_password)
 
     # Initialize with existing services.
-    if "object_store_addresses" not in address_info:
-        address_info["object_store_addresses"] = []
-    object_store_addresses = address_info["object_store_addresses"]
-    if "raylet_socket_names" not in address_info:
-        address_info["raylet_socket_names"] = []
-    raylet_socket_names = address_info["raylet_socket_names"]
+    if "object_store_addresses" not in ray_params.address_info:
+        ray_params.address_info["object_store_addresses"] = []
+    object_store_addresses = ray_params.address_info["object_store_addresses"]
+    if "raylet_socket_names" not in ray_params.address_info:
+        ray_params.address_info["raylet_socket_names"] = []
+    raylet_socket_names = ray_params.address_info["raylet_socket_names"]
 
     # Get the ports to use for the object managers if any are provided.
-    if not isinstance(object_manager_ports, list):
-        assert object_manager_ports is None or num_local_schedulers == 1
-        object_manager_ports = num_local_schedulers * [object_manager_ports]
-    assert len(object_manager_ports) == num_local_schedulers
-    if not isinstance(node_manager_ports, list):
-        assert node_manager_ports is None or num_local_schedulers == 1
-        node_manager_ports = num_local_schedulers * [node_manager_ports]
-    assert len(node_manager_ports) == num_local_schedulers
+    if not isinstance(ray_params.object_manager_ports, list):
+        assert (ray_params.object_manager_ports is None
+                or ray_params.num_local_schedulers == 1)
+        ray_params.object_manager_ports = (ray_params.num_local_schedulers *
+                                           [ray_params.object_manager_ports])
+    assert len(
+        ray_params.object_manager_ports) == ray_params.num_local_schedulers
+    if not isinstance(ray_params.node_manager_ports, list):
+        assert (ray_params.node_manager_ports is None
+                or ray_params.num_local_schedulers == 1)
+        ray_params.node_manager_ports = (
+            ray_params.num_local_schedulers * [ray_params.node_manager_ports])
+    assert len(
+        ray_params.node_manager_ports) == ray_params.num_local_schedulers
 
     # Start any object stores that do not yet exist.
-    for i in range(num_local_schedulers - len(object_store_addresses)):
+    for i in range(ray_params.num_local_schedulers -
+                   len(object_store_addresses)):
         # Start Plasma.
         plasma_store_stdout_file, plasma_store_stderr_file = (
-            new_plasma_store_log_file(i, redirect_output))
+            new_plasma_store_log_file(i, ray_params.redirect_output))
 
         object_store_address = start_plasma_store(
-            node_ip_address,
-            redis_address,
+            ray_params.node_ip_address,
+            ray_params.redis_address,
             store_stdout_file=plasma_store_stdout_file,
             store_stderr_file=plasma_store_stderr_file,
-            object_store_memory=object_store_memory,
+            object_store_memory=ray_params.object_store_memory,
             cleanup=cleanup,
-            plasma_directory=plasma_directory,
-            huge_pages=huge_pages,
-            plasma_store_socket_name=plasma_store_socket_name,
-            redis_password=redis_password)
+            plasma_directory=ray_params.plasma_directory,
+            huge_pages=ray_params.huge_pages,
+            plasma_store_socket_name=ray_params.plasma_store_socket_name,
+            redis_password=ray_params.redis_password)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
     # Start any raylets that do not exist yet.
-    for i in range(len(raylet_socket_names), num_local_schedulers):
+    for raylet_index in range(
+            len(raylet_socket_names), ray_params.num_local_schedulers):
         raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
-            i, redirect_output=redirect_worker_output)
-        address_info["raylet_socket_names"].append(
+            raylet_index, redirect_output=ray_params.redirect_worker_output)
+        ray_params.address_info["raylet_socket_names"].append(
             start_raylet(
-                redis_address,
-                node_ip_address,
-                raylet_socket_name or get_raylet_socket_name(),
-                object_store_addresses[i],
-                worker_path,
-                object_manager_port=object_manager_ports[i],
-                node_manager_port=node_manager_ports[i],
-                resources=resources[i],
-                num_workers=workers_per_local_scheduler[i],
+                ray_params,
+                raylet_index,
+                ray_params.raylet_socket_name or get_raylet_socket_name(),
+                object_store_addresses[raylet_index],
+                num_workers=workers_per_local_scheduler[raylet_index],
                 stdout_file=raylet_stdout_file,
                 stderr_file=raylet_stderr_file,
                 cleanup=cleanup,
-                redis_password=redis_password,
-                collect_profiling_data=collect_profiling_data,
                 config=config))
 
     # Try to start the web UI.
-    if include_webui:
+    if ray_params.include_webui:
         ui_stdout_file, ui_stderr_file = new_webui_log_file()
-        address_info["webui_url"] = start_ui(
-            redis_address,
+        ray_params.address_info["webui_url"] = start_ui(
+            ray_params.redis_address,
             stdout_file=ui_stdout_file,
             stderr_file=ui_stderr_file,
             cleanup=cleanup)
     else:
-        address_info["webui_url"] = ""
+        ray_params.address_info["webui_url"] = ""
     # Return the addresses of the relevant processes.
-    return address_info
+    return ray_params.address_info
 
 
-def start_ray_node(node_ip_address,
-                   redis_address,
-                   object_manager_ports=None,
-                   node_manager_ports=None,
-                   num_workers=None,
-                   num_local_schedulers=1,
-                   object_store_memory=None,
-                   redis_password=None,
-                   worker_path=None,
-                   cleanup=True,
-                   redirect_worker_output=False,
-                   redirect_output=False,
-                   resources=None,
-                   plasma_directory=None,
-                   huge_pages=False,
-                   plasma_store_socket_name=None,
-                   raylet_socket_name=None,
-                   temp_dir=None,
-                   _internal_config=None):
+def start_ray_node(ray_params, cleanup=True):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
     started.
 
     Args:
-        node_ip_address (str): The IP address of this node.
-        redis_address (str): The address of the Redis server.
-        object_manager_ports (list): A list of the ports to use for the object
-            managers. There should be one per object manager being started on
-            this node (typically just one).
-        node_manager_ports (list): A list of the ports to use for the node
-            managers. There should be one per node manager being started on
-            this node (typically just one).
-        num_workers (int): The number of workers to start.
-        num_local_schedulers (int): The number of local schedulers to start.
-            This is also the number of plasma stores and raylets to start.
-        object_store_memory (int): The maximum amount of memory (in bytes) to
-            let the plasma store use.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        worker_path (str): The path of the source code that will be run by the
-            worker.
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: node_ip_address,
+            redis_address, object_manager_ports, node_manager_ports,
+            num_workers, num_local_schedulers, object_store_memory,
+            redis_password, worker_path, cleanup, redirect_worker_output,
+            redirect_output, resources, plasma_directory, huge_pages,
+            plasma_store_socket_name, raylet_socket_name, temp_dir,
+            _internal_config
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
-        redirect_output (bool): True if stdout and stderr for non-worker
-            processes should be redirected to files and false otherwise.
-        resources: A dictionary mapping resource name to the available quantity
-            of that resource.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        plasma_store_socket_name (str): If provided, it will specify the socket
-            name used by the plasma store.
-        raylet_socket_name (str): If provided, it will specify the socket path
-            used by the raylet process.
-        temp_dir (str): If provided, it will specify the root temporary
-            directory for the Ray process.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
             started.
     """
-    address_info = {
-        "redis_address": redis_address,
+    ray_params.address_info = {
+        "redis_address": ray_params.redis_address,
     }
-    return start_ray_processes(
-        address_info=address_info,
-        object_manager_ports=object_manager_ports,
-        node_manager_ports=node_manager_ports,
-        node_ip_address=node_ip_address,
-        num_workers=num_workers,
-        num_local_schedulers=num_local_schedulers,
-        object_store_memory=object_store_memory,
-        redis_password=redis_password,
-        worker_path=worker_path,
-        include_log_monitor=True,
-        cleanup=cleanup,
-        redirect_worker_output=redirect_worker_output,
-        redirect_output=redirect_output,
-        resources=resources,
-        plasma_directory=plasma_directory,
-        huge_pages=huge_pages,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir,
-        _internal_config=_internal_config)
+    ray_params.update(include_log_monitor=True)
+    return start_ray_processes(ray_params, cleanup=cleanup)
 
 
-def start_ray_head(address_info=None,
-                   object_manager_ports=None,
-                   node_manager_ports=None,
-                   node_ip_address="127.0.0.1",
-                   redis_port=None,
-                   redis_shard_ports=None,
-                   num_workers=None,
-                   num_local_schedulers=1,
-                   object_store_memory=None,
-                   redis_max_memory=None,
-                   collect_profiling_data=True,
-                   worker_path=None,
-                   cleanup=True,
-                   redirect_worker_output=False,
-                   redirect_output=False,
-                   start_workers_from_local_scheduler=True,
-                   resources=None,
-                   num_redis_shards=None,
-                   redis_max_clients=None,
-                   redis_password=None,
-                   include_webui=True,
-                   plasma_directory=None,
-                   huge_pages=False,
-                   autoscaling_config=None,
-                   plasma_store_socket_name=None,
-                   raylet_socket_name=None,
-                   temp_dir=None,
-                   _internal_config=None):
+def start_ray_head(ray_params, cleanup=True):
     """Start Ray in local mode.
 
     Args:
-        address_info (dict): A dictionary with address information for
-            processes that have already been started. If provided, address_info
-            will be modified to include processes that are newly started.
-        object_manager_ports (list): A list of the ports to use for the object
-            managers. There should be one per object manager being started on
-            this node (typically just one).
-        node_manager_ports (list): A list of the ports to use for the node
-            managers. There should be one per node manager being started on
-            this node (typically just one).
-        node_ip_address (str): The IP address of this node.
-        redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen. If the key
-            "redis_address" is in address_info, then this argument will be
-            ignored.
-        redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
-        num_workers (int): The number of workers to start.
-        num_local_schedulers (int): The total number of local schedulers
-            required. This is also the total number of object stores required.
-            This method will start new instances of local schedulers and object
-            stores until there are at least num_local_schedulers existing
-            instances of each, including ones already registered with the given
-            address_info.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data from workers.
-        worker_path (str): The path of the source code that will be run by the
-            worker.
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: address_info,
+            object_manager_ports, node_manager_ports, node_ip_address,
+            redis_port, redis_shard_ports, num_workers, num_local_schedulers,
+            object_store_memory, redis_max_memory, collect_profiling_data,
+            worker_path, cleanup, redirect_worker_output, redirect_output,
+            start_workers_from_local_scheduler, resources, num_redis_shards,
+            redis_max_clients, redis_password, include_webui, huge_pages,
+            plasma_directory, autoscaling_config, plasma_store_socket_name,
+            raylet_socket_name, temp_dir, _internal_config
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
-        redirect_output (bool): True if stdout and stderr for non-worker
-            processes should be redirected to files and false otherwise.
-        start_workers_from_local_scheduler (bool): If this flag is True, then
-            start the initial workers from the local scheduler. Else, start
-            them from Python.
-        resources: A dictionary mapping resource name to the available quantity
-            of that resource.
-        num_redis_shards: The number of Redis shards to start in addition to
-            the primary Redis shard.
-        redis_max_clients: If provided, attempt to configure Redis with this
-            maxclients number.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        include_webui: True if the UI should be started and false otherwise.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        autoscaling_config: path to autoscaling config file.
-        plasma_store_socket_name (str): If provided, it will specify the socket
-            name used by the plasma store.
-        raylet_socket_name (str): If provided, it will specify the socket path
-            used by the raylet process.
-        temp_dir (str): If provided, it will specify the root temporary
-            directory for the Ray process.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         A dictionary of the address information for the processes that were
             started.
     """
-    num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
-    return start_ray_processes(
-        address_info=address_info,
-        object_manager_ports=object_manager_ports,
-        node_manager_ports=node_manager_ports,
-        node_ip_address=node_ip_address,
-        redis_port=redis_port,
-        redis_shard_ports=redis_shard_ports,
-        num_workers=num_workers,
-        num_local_schedulers=num_local_schedulers,
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        collect_profiling_data=collect_profiling_data,
-        worker_path=worker_path,
-        cleanup=cleanup,
-        redirect_worker_output=redirect_worker_output,
-        redirect_output=redirect_output,
-        include_log_monitor=True,
-        include_webui=include_webui,
-        start_workers_from_local_scheduler=start_workers_from_local_scheduler,
-        resources=resources,
-        num_redis_shards=num_redis_shards,
-        redis_max_clients=redis_max_clients,
-        redis_password=redis_password,
-        plasma_directory=plasma_directory,
-        huge_pages=huge_pages,
-        autoscaling_config=autoscaling_config,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir,
-        _internal_config=_internal_config)
+    ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+    ray_params.update(include_log_monitor=True)
+    return start_ray_processes(ray_params, cleanup=cleanup)
