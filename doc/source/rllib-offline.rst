@@ -75,7 +75,7 @@ Note that for on-policy algorithms, you'll also have to throw away experiences g
 Mixing simulation and offline data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib supports multiplexing inputs from multiple data sources, including simulation. For example, in the following example we read 40% of our experiences from ``/tmp/cartpole-out``, 30% from ``hdfs:/archive/cartpole``, and the last 30% is produced via policy evaluation. Data sources are multiplexed using `np.random.choice <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.choice.html>`__:
+RLlib supports multiplexing inputs from multiple input sources, including simulation. For example, in the following example we read 40% of our experiences from ``/tmp/cartpole-out``, 30% from ``hdfs:/archive/cartpole``, and the last 30% is produced via policy evaluation. Input sources are multiplexed using `np.random.choice <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.choice.html>`__:
 
 .. code-block:: bash
 
