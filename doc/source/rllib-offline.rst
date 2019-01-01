@@ -90,7 +90,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 Scaling I/O throughput
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput.
+Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
 Input API
 ---------
