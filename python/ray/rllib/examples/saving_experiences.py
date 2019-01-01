@@ -28,7 +28,7 @@ if __name__ == "__main__":
             action = env.action_space.sample()
             new_obs, rew, done, info = env.step(action)
             batch_builder.add_values(
-                agent_id="demo_agent_id",
+                agent_id="single_agent",
                 policy_id="default",
                 t=t,
                 eps_id=eps_id,
