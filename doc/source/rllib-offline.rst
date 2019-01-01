@@ -99,7 +99,7 @@ Similar to scaling online training, you can scale offline I/O throughput by incr
 Input API
 ---------
 
-You can configure experience input for an agent using the following agent config:
+You can configure experience input for an agent using the following options:
 
 .. literalinclude:: ../../python/ray/rllib/agents/agent.py
    :language: python
@@ -121,7 +121,7 @@ The interface for a custom input reader is as follows:
 Output API
 ----------
 
-You can configure experience output for an agent using the following agent config:
+You can configure experience output for an agent using the following options:
 
 .. literalinclude:: ../../python/ray/rllib/agents/agent.py
    :language: python
