@@ -28,7 +28,7 @@ To train a policy on a cluster (e.g., using 900 workers), run the following.
       --env=Humanoid-v1 \
       --run=ES \
       --redis-address=<redis-address> \
-      --config='{"num_workers": 900, "episodes_per_batch": 10000, "timesteps_per_batch": 100000}'
+      --config='{"num_workers": 900, "episodes_per_batch": 10000, "train_batch_size": 100000}'
 
 At the heart of this example, we define a ``Worker`` class. These workers have
 a method ``do_rollouts``, which will be used to perform simulate randomly
