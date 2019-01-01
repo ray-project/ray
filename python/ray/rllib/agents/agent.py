@@ -130,7 +130,7 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Offline Data Input / Output (Experimental) ===
+    # === Offline Data Input / Output ===
     # __sphinx_doc_input_begin__
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
