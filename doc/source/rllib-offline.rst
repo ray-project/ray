@@ -8,7 +8,7 @@ RLlib Offline Data Input / Output
 Working with Offline Experiences
 --------------------------------
 
-RLlib's I/O APIs enable you to work with datasets of experiences read from offline storage (e.g., disk, cloud storage, streaming systems, HDFS). For example, you might want to read experiences saved from previous simulation runs, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can also log new agent experiences produced during training for future use.
+RLlib's I/O APIs enable you to work with datasets of experiences read from offline storage (e.g., disk, cloud storage, streaming systems, HDFS). For example, you might want to read experiences saved from previous training runs, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can also log new agent experiences produced during training for future use.
 
 RLlib represents trajectory sequences (i.e., ``(s, a, r, s')`` tuples) with `SampleBatch <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/sample_batch.py>`__ objects. Using a batch format enables efficient encoding and compression of experiences during training. During online training, RLlib uses `policy evaluation <rllib-concepts.html#policy-evaluation>`__ actors to generate batches of experiences in parallel using the current policy. RLlib also uses this same batch format for reading and writing experiences to offline storage.
 
@@ -46,17 +46,17 @@ Then, we can tell DQN to train using these previously generated experiences with
             "exploration_final_eps": 0,
             "exploration_fraction": 0}'
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance as training progresses. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value:
+Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value:
 
 .. image:: offline-q.png
 
-In this input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning.
+In offline input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning.
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When the env does not support simulation, it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/python/ray/rllib/offline/json_writer.py>`__ class to write out batches.
-The `following example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to ``/tmp/demo-out``:
+This `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to ``/tmp/demo-out``:
 
 .. literalinclude:: ../../python/ray/rllib/examples/saving_experiences.py
    :language: python
