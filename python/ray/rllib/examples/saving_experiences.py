@@ -11,7 +11,7 @@ from ray.rllib.evaluation.sample_batch import SampleBatchBuilder
 from ray.rllib.offline.json_writer import JsonWriter
 
 if __name__ == "__main__":
-    batch_builder = SampleBatchBuilder()
+    batch_builder = SampleBatchBuilder()  # or MultiAgentSampleBatchBuilder
     writer = JsonWriter("/tmp/demo-out")
 
     # You normally wouldn't need to manually create sample batches if a
