@@ -108,15 +108,10 @@ You can configure experience input for an agent using the following options:
 
 The interface for a custom input reader is as follows:
 
-.. code-block:: python
-
-    class InputReader(object):
-        """Input object for loading experiences in policy evaluation."""
-
-        def next(self):
-            """Return the next batch of experiences read."""
-
-            raise NotImplementedError
+.. literalinclude:: ../../python/ray/rllib/offline/input_reader.py
+   :language: python
+   :start-after: __sphinx_doc_input_begin__
+   :end-before: __sphinx_doc_input_end__
 
 Output API
 ----------
@@ -130,15 +125,7 @@ You can configure experience output for an agent using the following options:
 
 The interface for a custom output writer is as follows:
 
-.. code-block:: python
-
-    class OutputWriter(object):
-        """Writer object for saving experiences from policy evaluation."""
-
-        def write(self, sample_batch):
-            """Save a batch of experiences.
-
-            Arguments:
-                sample_batch: SampleBatch or MultiAgentBatch to save.
-            """
-            raise NotImplementedError
+.. literalinclude:: ../../python/ray/rllib/offline/output_writer.py
+   :language: python
+   :start-after: __sphinx_doc_output_begin__
+   :end-before: __sphinx_doc_output_end__
