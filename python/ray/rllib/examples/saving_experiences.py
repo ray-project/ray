@@ -14,8 +14,8 @@ if __name__ == "__main__":
     batch_builder = SampleBatchBuilder()  # or MultiAgentSampleBatchBuilder
     writer = JsonWriter("/tmp/demo-out")
 
-    # You normally wouldn't need to manually create sample batches if a
-    # simulator is available, but let's use one for example purposes:
+    # You normally wouldn't want to manually create sample batches if a
+    # simulator is available, but let's do it anyways for example purposes:
     env = gym.make("CartPole-v0")
 
     for eps_id in range(100):
