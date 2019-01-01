@@ -1830,7 +1830,8 @@ def connect(ray_params,
     assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
-    faulthandler.enable(all_threads=False)
+    if not faulthandler.is_enabled():
+        faulthandler.enable(all_threads=False)
 
     if ray_params.collect_profiling_data:
         worker.profiler = profiling.Profiler(worker)
