@@ -55,7 +55,7 @@ In offline input mode, no simulations are run, though you still need to specify 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When the env does not support simulation, it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/python/ray/rllib/offline/json_writer.py>`__ class to write out batches.
+When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/python/ray/rllib/offline/json_writer.py>`__ class to write out batches.
 This `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
 
 .. literalinclude:: ../../python/ray/rllib/examples/saving_experiences.py
