@@ -5,8 +5,8 @@ RLlib Offline Data Input / Output
 
     RLlib I/O is currently *experimental*. Please report any `issues <https://github.com/ray-project/ray/issues>`__ you encounter.
 
-Working with Offline Experiences
---------------------------------
+Working with Offline Datasets
+-----------------------------
 
 RLlib's I/O APIs enable you to work with datasets of experiences read from offline storage (e.g., disk, cloud storage, streaming systems, HDFS). For example, you might want to read experiences saved from previous training runs, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can also log new agent experiences produced during online training for future use.
 

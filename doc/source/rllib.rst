@@ -84,7 +84,7 @@ Models and Preprocessors
 
 Offline Data Input / Output
 ---------------------------
-* `Working with Offline Experiences <rllib-offline.html>`__
+* `Working with Offline Datasets <rllib-offline.html>`__
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
