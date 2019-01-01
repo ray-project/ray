@@ -34,7 +34,7 @@ The experiences will be saved in compressed JSON batch format:
     -rw-rw-r-- 1 eric eric 5002416 output-2019-01-01_15-59-22_worker-0_1.json
     -rw-rw-r-- 1 eric eric 1881666 output-2019-01-01_15-59-47_worker-0_2.json
 
-Then, we can tell DQN to train using these previously generated experiences with ``"input": "/tmp/cartpole-out"``:
+Then, we can tell DQN to train using these previously generated experiences with ``"input": "/tmp/cartpole-out"``. We disable exploration since it has no effect on the input:
 
 .. code-block:: bash
 
@@ -44,50 +44,96 @@ Then, we can tell DQN to train using these previously generated experiences with
         --config='{
             "input": "/tmp/cartpole-out",
             "exploration_final_eps": 0,
-            "schedule_max_timesteps": 10}'
+            "exploration_fraction": 0}'
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance. However, you can use ``tensorboard --logdir=~/ray-results`` to monitor training progress via other metrics such as estimated Q-value:
+Since the input experiences are not from running simulations, RLlib cannot report the true policy performance as training progresses. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value:
 
 .. image:: offline-q.png
 
-In this input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to additionally run simulations to estimate the true policy performance. The output of these simulations will not be used for learning.
+In this input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning.
 
-Example: Converting experiences to batch format
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Converting external experiences to batch format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In a non-simulated application, it will is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/python/ray/rllib/offline/json_writer.py>`__ class:
+When the env does not support simulation, it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/python/ray/rllib/offline/json_writer.py>`__ class to write out batches.
+The `following example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to ``/tmp/demo-out``:
 
-To address this, the policy needs to be re-deployed to gather new experiences.
-
-Unless your experience dataset adequately covers the space of possible states and actions (as it is in the toy cartpole example), your policy will not converge to an optimal solution.
+.. literalinclude:: ../../python/ray/rllib/examples/saving_experiences.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 On-policy algorithms and experience postprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Example: Mixing simulation and offline data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/b8a9e3f1064c6f8d754884fd9c75e0b2f88df4d6/python/ray/rllib/evaluation/policy_graph.py#L103>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/b8a9e3f1064c6f8d754884fd9c75e0b2f88df4d6/python/ray/rllib/agents/dqn/dqn_policy_graph.py#L514>`__ is only needed if ``n_step > 1`` or ``worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config.
 
-Unless your experience dataset adequately covers the space of possible states and actions (as it is in the toy cartpole example), your policy will not converge to an optimal solution. To address this, the policy needs to be re-deployed to gather new experiences. In this example we show how this can be done when a simulator is available:
+However, for on-policy algorithms like PPO, you'll need to pass in the extra values added during policy evaluation and postprocessing to ``batch_builder.add_values()``, e.g., ``logits``, ``vf_preds``, ``value_target``, and ``advantages`` for PPO. This is needed since the calculation of these values depends on the weights of the *behaviour* policy, which RLlib does not have access to in the offline setting (in online training, these values are automatically added during policy evaluation).
 
-Step 1: 
+For on-policy algorithms, you'll also have to throw away experiences generated by prior versions of the policy. This greatly reduces sample efficiency, which is typically undesirable when simulation is not possible, but can make sense for certain applications.
+
+Mixing simulation and offline data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib supports multiplexing inputs from multiple data sources, including simulation. For example, in the following example we read 40% of our experiences from ``/tmp/cartpole-out``, 30% from ``hdfs:/archive/cartpole``, and the last 30% is produced via policy evaluation. Data sources are multiplexed using `np.random.choice <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.choice.html>`__:
 
 .. code-block:: bash
 
-    $ rllib train.py \
+    $ rllib train \
         --run=DQN \
         --env=CartPole-v0 \
-        --config='{"input": "/tmp/cartpole-out"}' \
-        --checkpoint-freq=1
-
-
-Generating Experiences: Online
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-sampler -> postprocessing(batch) -> gradients(theta, batch)
+        --config='{
+            "input": {
+                "/tmp/cartpole-out": 0.4,
+                "hdfs:/archive/cartpole": 0.3,
+                "sampler": 0.3,
+            },
+            "exploration_final_eps": 0,
+            "exploration_fraction": 0}'
 
 Input API
 ---------
 
+You can configure experience input for an agent using the following agent config:
+
+.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+   :language: python
+   :start-after: __sphinx_doc_input_begin__
+   :end-before: __sphinx_doc_input_end__
+
+The interface for a custom input reader is as follows:
+
+.. code-block:: python
+
+    class InputReader(object):
+        """Input object for loading experiences in policy evaluation."""
+
+        def next(self):
+            """Return the next batch of experiences read."""
+
+            raise NotImplementedError
+
 Output API
 ----------
 
+You can configure experience output for an agent using the following agent config:
+
+.. literalinclude:: ../../python/ray/rllib/agents/agent.py
+   :language: python
+   :start-after: __sphinx_doc_output_begin__
+   :end-before: __sphinx_doc_output_end__
+
+The interface for a custom output writer is as follows:
+
+.. code-block:: python
+
+    class OutputWriter(object):
+        """Writer object for saving experiences from policy evaluation."""
+
+        def write(self, sample_batch):
+            """Save a batch of experiences.
+
+            Arguments:
+                sample_batch: SampleBatch or MultiAgentBatch to save.
+            """
+            raise NotImplementedError

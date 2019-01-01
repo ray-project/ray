@@ -131,6 +131,7 @@ COMMON_CONFIG = {
     "collect_metrics_timeout": 180,
 
     # === Offline Data Input / Output (Experimental) ===
+    # __sphinx_doc_input_begin__
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -147,6 +148,13 @@ COMMON_CONFIG = {
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
     "input_evaluation": None,
+    # Whether to run postprocess_trajectory() on the trajectory fragments from
+    # offline inputs. Note that postprocessing will be done using the *current*
+    # policy, not the *behaviour* policy, which is typically undesirable for
+    # on-policy algorithms.
+    "postprocess_inputs": False,
+    # __sphinx_doc_input_end__
+    # __sphinx_doc_output_begin__
     # Specify where experiences should be saved:
     #  - None: don't save any experiences
     #  - "logdir" to save to the agent log dir
@@ -157,9 +165,7 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
-    # Whether to run postprocess_trajectory() on the trajectory fragments from
-    # offline inputs. Whether this makes sense is algorithm-specific.
-    "postprocess_inputs": False,
+    # __sphinx_doc_output_end__
 
     # === Multiagent ===
     "multiagent": {
