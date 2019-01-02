@@ -17,6 +17,7 @@ from collections import defaultdict, namedtuple, OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pickle
 import pytest
 
 import ray
@@ -301,8 +302,7 @@ def test_putting_object_that_closes_over_object_id(ray_start):
             f
 
     f = Foo()
-    with pytest.raises(ray.raylet.common_error):
-        ray.put(f)
+    ray.put(f)
 
 
 def test_put_get(shutdown_only):
@@ -2453,6 +2453,26 @@ def test_specific_driver_id():
     assert_equal(dummy_driver_id.id(), task_driver_id)
 
     ray.shutdown()
+
+
+def test_object_id_properties():
+    id_bytes = b"00112233445566778899"
+    object_id = ray.ObjectID(id_bytes)
+    assert object_id.id() == id_bytes
+    object_id = ray.ObjectID()
+    assert object_id.is_nil()
+    with pytest.raises(
+            ray.raylet.CommonError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(id_bytes + b"1234")
+    with pytest.raises(
+            ray.raylet.CommonError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(b"0123456789")
+    object_id = ray.ObjectID.from_random()
+    assert not object_id.is_nil()
+    assert object_id.id() != id_bytes
+    id_dumps = pickle.dumps(object_id)
+    id_from_dumps = pickle.loads(id_dumps)
+    assert id_from_dumps == object_id
 
 
 @pytest.fixture

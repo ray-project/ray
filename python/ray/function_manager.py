@@ -211,7 +211,7 @@ class FunctionDescriptor(object):
         Returns:
             The value of ray.ObjectID that represents the function id.
         """
-        return ray.ObjectID(self._function_id)
+        return self._function_id
 
     def _get_function_id(self):
         """Calculate the function id of current function descriptor.
@@ -223,7 +223,7 @@ class FunctionDescriptor(object):
             bytes with length of ray_constants.ID_SIZE.
         """
         if self.is_for_driver_task:
-            return ray_constants.NIL_FUNCTION_ID.id()
+            return ray.ObjectID()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.module_name.encode("ascii"))
@@ -233,7 +233,7 @@ class FunctionDescriptor(object):
         # Compute the function ID.
         function_id = function_id_hash.digest()
         assert len(function_id) == ray_constants.ID_SIZE
-        return function_id
+        return ray.ObjectID(function_id)
 
     def get_function_descriptor_list(self):
         """Return a list of bytes representing the function descriptor.
@@ -474,12 +474,12 @@ class FunctionActorManager(object):
         warning_sent = False
         while True:
             with self._worker.lock:
-                if (self._worker.actor_id == ray.worker.NIL_ACTOR_ID
+                if (self._worker.actor_id.is_nil()
                         and (function_descriptor.function_id.id() in
                              self._function_execution_info[driver_id])):
                     break
-                elif self._worker.actor_id != ray.worker.NIL_ACTOR_ID and (
-                        self._worker.actor_id in self._worker.actors):
+                elif not self._worker.actor_id.is_nil() and (
+                        self._worker.actor_id.id() in self._worker.actors):
                     break
                 if time.time() - start_time > timeout:
                     warning_message = ("This worker was asked to execute a "
@@ -578,7 +578,7 @@ class FunctionActorManager(object):
             actor_class_key: The key in Redis to use to fetch the actor.
             worker: The worker to use.
         """
-        actor_id_str = self._worker.actor_id
+        actor_id_str = self._worker.actor_id.id()
         (driver_id, class_name, module, pickled_class, checkpoint_interval,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [

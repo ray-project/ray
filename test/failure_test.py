@@ -12,8 +12,6 @@ import threading
 import time
 
 import ray.ray_constants as ray_constants
-import ray.test.cluster_utils
-from ray.utils import _random_string
 import pytest
 
 
@@ -665,7 +663,7 @@ def test_warning_for_dead_node(ray_start_two_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID(_random_string())
+    nonexistent_id = ray.ObjectID.from_random()
 
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
@@ -674,6 +672,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(Exception, match=r".*raylet client may be closed.*"):
+    with pytest.raises(
+            ray.raylet.CommonError, match=r".*raylet client may be closed.*"):
         ray.get(nonexistent_id)
     thread.join()

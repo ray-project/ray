@@ -53,13 +53,6 @@ PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
-# This must match the definition of NIL_ACTOR_ID in task.h.
-NIL_ID = ray_constants.ID_SIZE * b"\xff"
-NIL_LOCAL_SCHEDULER_ID = NIL_ID
-NIL_ACTOR_ID = NIL_ID
-NIL_ACTOR_HANDLE_ID = NIL_ID
-NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
@@ -168,7 +161,7 @@ class Worker(object):
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
         # Identity of the driver that this worker is processing.
-        self.task_driver_id = ray.ObjectID(NIL_ID)
+        self.task_driver_id = ray.ObjectID()
         self._task_context = threading.local()
 
     @property
@@ -574,16 +567,16 @@ class Worker(object):
         with profiling.profile("submit_task", worker=self):
             if actor_id is None:
                 assert actor_handle_id is None
-                actor_id = ray.ObjectID(NIL_ACTOR_ID)
-                actor_handle_id = ray.ObjectID(NIL_ACTOR_HANDLE_ID)
+                actor_id = ray.ObjectID()
+                actor_handle_id = ray.ObjectID()
             else:
                 assert actor_handle_id is not None
 
             if actor_creation_id is None:
-                actor_creation_id = ray.ObjectID(NIL_ACTOR_ID)
+                actor_creation_id = ray.ObjectID()
 
             if actor_creation_dummy_object_id is None:
-                actor_creation_dummy_object_id = (ray.ObjectID(NIL_ID))
+                actor_creation_dummy_object_id = ray.ObjectID()
 
             # Put large or complex arguments that are passed by value in the
             # object store first.
@@ -890,7 +883,7 @@ class Worker(object):
                 "class_name": function_descriptor.class_name
             })
         # Mark the actor init as failed
-        if self.actor_id != NIL_ACTOR_ID and function_name == "__init__":
+        if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
 
     def _wait_for_and_process_task(self, task):
@@ -906,8 +899,8 @@ class Worker(object):
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
         if not task.actor_creation_id().is_nil():
-            assert self.actor_id == NIL_ACTOR_ID
-            self.actor_id = task.actor_creation_id().id()
+            assert self.actor_id.is_nil()
+            self.actor_id = task.actor_creation_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
 
@@ -943,14 +936,14 @@ class Worker(object):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
-                self.task_context.current_task_id = ray.ObjectID(NIL_ID)
+                self.task_context.current_task_id = ray.ObjectID()
                 self.task_context.task_index = 0
                 self.task_context.put_index = 1
-                if self.actor_id == NIL_ACTOR_ID:
+                if self.actor_id.is_nil():
                     # Don't need to reset task_driver_id if the worker is an
                     # actor. Because the following tasks should all have the
                     # same driver id.
-                    self.task_driver_id = ray.ObjectID(NIL_ID)
+                    self.task_driver_id = ray.ObjectID()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1772,7 +1765,7 @@ def connect(info,
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = ray.ObjectID(random_string())
+            driver_id = ray.ObjectID.from_random()
 
         if not isinstance(driver_id, ray.ObjectID):
             raise Exception(
@@ -1789,7 +1782,7 @@ def connect(info,
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
-    worker.actor_id = NIL_ACTOR_ID
+    worker.actor_id = ray.ObjectID()
     worker.connected = True
     worker.set_mode(mode)
 
@@ -1922,11 +1915,11 @@ def connect(info,
             0,  # num_returns.
             ray.ObjectID(random_string()),  # parent_task_id.
             0,  # parent_counter.
-            ray.ObjectID(NIL_ACTOR_ID),  # actor_creation_id.
-            ray.ObjectID(NIL_ACTOR_ID),  # actor_creation_dummy_object_id.
+            ray.ObjectID(),  # actor_creation_id.
+            ray.ObjectID(),  # actor_creation_dummy_object_id.
             0,  # max_actor_reconstructions.
-            ray.ObjectID(NIL_ACTOR_ID),  # actor_id.
-            ray.ObjectID(NIL_ACTOR_ID),  # actor_handle_id.
+            ray.ObjectID(),  # actor_id.
+            ray.ObjectID(),  # actor_handle_id.
             nil_actor_counter,  # actor_counter.
             [],  # new_actor_handles.
             [],  # execution_dependencies.

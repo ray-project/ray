@@ -84,7 +84,7 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
         checkpoint: The state object to save.
         frontier: The task frontier at the time of the checkpoint.
     """
-    actor_key = b"Actor:" + actor_id
+    actor_key = b"Actor:" + actor_id.id()
     worker.redis_client.hmset(
         actor_key, {
             "checkpoint_index": checkpoint_index,
@@ -156,7 +156,7 @@ def get_actor_checkpoint(worker, actor_id):
             exists, all objects are set to None.  The checkpoint index is the .
             executed on the actor before the checkpoint was made.
     """
-    actor_key = b"Actor:" + actor_id
+    actor_key = b"Actor:" + actor_id.id()
     checkpoint_index, checkpoint, frontier = worker.redis_client.hmget(
         actor_key, ["checkpoint_index", "checkpoint", "frontier"])
     if checkpoint_index is not None:
@@ -371,7 +371,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ray.ObjectID(_random_string())
+        actor_id = ray.ObjectID.from_random()
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -509,8 +509,7 @@ class ActorHandle(object):
         # if it was created by the _serialization_helper function.
         self._ray_original_handle = actor_handle_id is None
         if self._ray_original_handle:
-            self._ray_actor_handle_id = ray.ObjectID(
-                ray.worker.NIL_ACTOR_HANDLE_ID)
+            self._ray_actor_handle_id = ray.ObjectID()
         else:
             self._ray_actor_handle_id = actor_handle_id
         self._ray_actor_cursor = actor_cursor
@@ -840,7 +839,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             # scheduler has seen. Handle IDs for which no task has yet reached
             # the local scheduler will not be included, and may not be runnable
             # on checkpoint resumption.
-            actor_id = ray.ObjectID(worker.actor_id)
+            actor_id = worker.actor_id
             frontier = worker.raylet_client.get_actor_frontier(actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
             # should not be stored in Redis. Fix this.
@@ -865,7 +864,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             checkpoint_resumed = False
             if checkpoint_index is not None:
                 # Load the actor state from the checkpoint.
-                worker.actors[worker.actor_id] = (
+                worker.actors[worker.actor_id.id()] = (
                     worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint))
                 # Set the number of tasks executed so far.

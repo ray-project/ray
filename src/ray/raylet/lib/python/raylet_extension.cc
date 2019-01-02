@@ -487,7 +487,7 @@ MOD_INIT(libraylet_library_python) {
   char common_error[] = "common.error";
   CommonError = PyErr_NewException(common_error, NULL, NULL);
   Py_INCREF(CommonError);
-  PyModule_AddObject(m, "common_error", CommonError);
+  PyModule_AddObject(m, "CommonError", CommonError);
 
   Py_INCREF(&PyRayConfigType);
   PyModule_AddObject(m, "RayConfig", (PyObject *)&PyRayConfigType);
