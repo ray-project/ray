@@ -186,16 +186,17 @@ class PopulationBasedTraining(FIFOScheduler):
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
+        executor = trial_runner.trial_executor
         score = result[self._reward_attr]
         state.last_score = score
         state.last_perturbation_time = time
 
         if self._synchronous:
             if any(t.status == Trial.RUNNING and t is not trial
-                       for t in trial_runner.get_trials()):
+                   for t in trial_runner.get_trials()):
                 return TrialScheduler.PAUSE
             else:
-                trial_executor.pause_trial(trial)
+                executor.pause_trial(trial)
                 lower_quantile, upper_quantile = self._quantiles()
                 for trial in trial_runner.get_trials():
                     if trial.status == Trial.PAUSED:
@@ -204,8 +205,8 @@ class PopulationBasedTraining(FIFOScheduler):
                         if trial in lower_quantile:
                             trial_to_clone = random.choice(upper_quantile)
                             assert trial is not trial_to_clone
-                            self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
-                        trial_executor.unpause_trial(trial)
+                            self._exploit(executor, trial, trial_to_clone)
+                        executor.unpause_trial(trial)
 
         else:
             lower_quantile, upper_quantile = self._quantiles()
@@ -220,7 +221,8 @@ class PopulationBasedTraining(FIFOScheduler):
             if trial in lower_quantile:
                 trial_to_clone = random.choice(upper_quantile)
                 assert trial is not trial_to_clone
-                self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
+                self._exploit(trial_runner.trial_executor,
+                              trial, trial_to_clone)
 
             for trial in trial_runner.get_trials():
                 if trial.status in [Trial.PENDING, Trial.PAUSED]:
@@ -251,7 +253,8 @@ class PopulationBasedTraining(FIFOScheduler):
         try:
             reset_successful = trial_executor.reset_trial(trial, new_config,
                                                           new_tag)
-            assert not self._synchronous, "Reset shouldn't be able to run if synchronous."
+            assert not self._synchronous, (
+                "Reset shouldn't be able to run if synchronous.")
         except Exception:
             reset_successful = False
 
