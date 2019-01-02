@@ -515,10 +515,8 @@ class FunctionActorManager(object):
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        if (self._worker.task_driver_id.is_nil()):
-            logger.warning("export_actor_class with NIL task_driver_id, this "
-                           "may happen when export_actor_class runs not in "
-                           "the main thread. Will wait for the driver id.")
+        # When a worker becomes an actor, task_driver_id will be fixed without
+        # changing. Therefore, self._worker.task_driver_id should not be NIL.
         assert not self._worker.task_driver_id.is_nil()
         driver_id = self._worker.task_driver_id
         key = (b"ActorClass:" + driver_id.id() + b":" +
