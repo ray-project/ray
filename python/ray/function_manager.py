@@ -519,8 +519,7 @@ class FunctionActorManager(object):
             logger.warning("export_actor_class with NIL task_driver_id, this "
                            "may happen when export_actor_class runs not in "
                            "the main thread. Will wait for the driver id.")
-        while (self._worker.task_driver_id.is_nil()):
-            time.sleep(0.01)
+        assert not self._worker.task_driver_id.is_nil()
         driver_id = self._worker.task_driver_id
         key = (b"ActorClass:" + driver_id.id() + b":" +
                function_descriptor.function_id.id())
