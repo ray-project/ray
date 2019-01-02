@@ -466,8 +466,12 @@ class GlobalState(object):
 
         result = defaultdict(list)
         for batch_id in batch_identifiers_binary:
-            result[binary_to_hex(batch_id)].extend(
-                self._profile_table(binary_to_object_id(batch_id)))
+            profile_data = self._profile_table(binary_to_object_id(batch_id))
+            # Note that if keys are being evicted from Redis, then it is
+            # possible that the batch will be evicted before we get it.
+            if len(profile_data) > 0:
+                component_id = profile_data[0]["component_id"]
+                result[component_id].extend(profile_data)
 
         return dict(result)
 

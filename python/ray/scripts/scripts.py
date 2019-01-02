@@ -127,14 +127,6 @@ def cli(logging_level, logging_format):
           "eviction of entries. This only applies to the sharded "
           "redis tables (task and object tables)."))
 @click.option(
-    "--collect-profiling-data",
-    default=True,
-    type=bool,
-    help=("Whether to collect profiling data. Note that "
-          "profiling data cannot be LRU evicted, so if you set "
-          "redis_max_memory then profiling will also be disabled to prevent "
-          "it from consuming all available redis memory."))
-@click.option(
     "--num-workers",
     required=False,
     type=int,
@@ -220,11 +212,11 @@ def cli(logging_level, logging_format):
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, collect_profiling_data, num_workers, num_cpus,
-          num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, internal_config):
+          redis_max_memory, num_workers, num_cpus, num_gpus, resources, head,
+          no_ui, block, plasma_directory, huge_pages, autoscaling_config,
+          no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -292,7 +284,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
-            collect_profiling_data=collect_profiling_data,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
