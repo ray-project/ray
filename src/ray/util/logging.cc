@@ -110,7 +110,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     } else if (data == "fatal") {
       severity_threshold = RayLogLevel::FATAL;
     } else {
-      RAY_LOG(INFO) << "Unrecognized setting of RAY_BACKEND_LOG_LEVEL=" << var_value;
+      RAY_LOG(WARNING) << "Unrecognized setting of RAY_BACKEND_LOG_LEVEL=" << var_value;
     }
     RAY_LOG(INFO) << "Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL"
                   << " to " << static_cast<int>(severity_threshold);
@@ -144,7 +144,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 }
 
 void RayLog::UninstallSignalAction() {
-  RAY_LOG(INFO) << "Uninstall signal handlers.";
+#ifdef RAY_USE_GLOG
+  RAY_LOG(DEBUG) << "Uninstall signal handlers.";
   // This signal list comes from glog's signalhandler.cc.
   // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
   static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
@@ -155,6 +156,7 @@ void RayLog::UninstallSignalAction() {
   for (int signal_num : installed_signals) {
     sigaction(signal_num, &sig_action, NULL);
   }
+#endif
 }
 
 void RayLog::ShutDownRayLog() {
