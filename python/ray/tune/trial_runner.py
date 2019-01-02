@@ -164,8 +164,8 @@ class TrialRunner(object):
             trial (Trial): Trial to queue.
         """
         trial.set_verbose(self._verbose)
-        self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
+        self._scheduler_alg.on_trial_add(self, trial)
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
         """Returns a human readable message for printing to the console."""
@@ -291,6 +291,8 @@ class TrialRunner(object):
             else:
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
+        except AssertionError as e:
+            raise e
         except Exception:
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()

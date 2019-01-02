@@ -156,7 +156,7 @@ class Trial(object):
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = None
+        self.last_result = {}
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
@@ -243,7 +243,7 @@ class Trial(object):
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
 
-        if self.last_result is None:
+        if not self.last_result:
             return self._status_string()
 
         def location_string(hostname, pid):
