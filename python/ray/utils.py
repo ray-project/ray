@@ -72,8 +72,8 @@ def push_error_to_driver(worker,
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
-    logging.error("push_error_to_driver with type={} and message: {}".format(
-        error_type, message))
+    logging.error("Pushing error to dirver, type: %s, message: %s.",
+                  error_type, message)
     worker.raylet_client.push_error(
         ray.ObjectID(driver_id), error_type, message, time.time())
 

@@ -515,9 +515,14 @@ class FunctionActorManager(object):
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        # When a worker becomes an actor, task_driver_id will be fixed without
-        # changing. Therefore, self._worker.task_driver_id should not be NIL.
-        assert not self._worker.task_driver_id.is_nil()
+        # `task_driver_id` shouldn't be NIL, unless:
+        # 1) This worker isn't an actor;
+        # 2) And a previous task started a background thread, which didn't
+        #    finish before the task finished, and still uses Ray API
+        #    after that.
+        assert not self._worker.task_driver_id.is_nil(), (
+            "You might have started a background thread in a non-actor task, "
+            "please make sure the thread finishes before the task finishes.")
         driver_id = self._worker.task_driver_id
         key = (b"ActorClass:" + driver_id.id() + b":" +
                function_descriptor.function_id.id())

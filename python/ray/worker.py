@@ -770,16 +770,17 @@ class Worker(object):
             assert self.current_task_id.is_nil()
             assert self.task_index == 0
             assert self.put_index == 1
-            # self.actor_id is set before hand, so here we use task.actor_id.
             if task.actor_id().is_nil():
-                # This worker is not an actor, task_driver_id has been reset.
+                # If this worker is not an actor, check that `task_driver_id`
+                # was reset when the worker finished the previous task.
                 assert self.task_driver_id.is_nil()
-                # The ID of the driver that this task belongs to. This is
+                # Set the driver ID of the current running task. This is
                 # needed so that if the task throws an exception, we propagate
                 # the error message to the correct driver.
                 self.task_driver_id = task.driver_id()
             else:
-                # This worker is an actor, we will not change task_driver_id.
+                # If this worker is an actor, task_driver_id wasn't reset.
+                # Check that current task's driver ID equals the previous one.
                 assert self.task_driver_id == task.driver_id()
 
             self.current_task_id = task.task_id()
