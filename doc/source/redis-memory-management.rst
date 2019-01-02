@@ -10,6 +10,3 @@ to out-of-memory (OOM) errors.
 In Ray `0.6.1+` Redis shards can be configured to LRU evict task and object
 metadata by setting ``redis_max_memory`` when starting Ray. This supercedes the
 previously documented flushing functionality.
-
-Note that profiling is disabled when ``redis_max_memory`` is set. This is because
-profiling data cannot be LRU evicted.
