@@ -82,6 +82,9 @@ class RayLog : public RayLogBase {
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
 
+  /// Uninstall the signal actions installed by InstallFailureSignalHandler.
+  static void UninstallSignalAction();
+
   /// Return whether or not the log level is enabled in current setting.
   ///
   /// \param log_level The input log level to test.
