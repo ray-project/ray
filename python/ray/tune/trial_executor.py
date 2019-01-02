@@ -73,8 +73,13 @@ class TrialExecutor(object):
             self.stop_trial(trial, stop_logger=False)
             trial.status = Trial.PAUSED
         except Exception:
-            logger.exception("Error pausing runner.")
-            trial.status = Trial.ERROR
+            try:
+                self.save(trial, Checkpoint.DISK)
+                self.stop_trial(trial, stop_logger=False)
+                trial.status = Trial.PAUSED
+            except Exception:
+                logger.exception("Error pausing runner.")
+                trial.status = Trial.ERROR
 
     def unpause_trial(self, trial):
         """Sets PAUSED trial to pending to allow scheduler to start."""
