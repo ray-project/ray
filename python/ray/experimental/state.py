@@ -406,20 +406,20 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def _profile_table(self, component_id):
-        """Get the profile events for a given component.
+    def _profile_table(self, batch_id):
+        """Get the profile events for a given batch of profile events.
 
         Args:
-            component_id: An identifier for a component.
+            batch_id: An identifier for a batch of profile events.
 
         Returns:
-            A list of the profile events for the specified process.
+            A list of the profile events for the specified batch.
         """
         # TODO(rkn): This method should support limiting the number of log
         # events and should also support returning a window of events.
-        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        component_id.id())
+                                        batch_id.id())
 
         if message is None:
             return []
@@ -459,16 +459,17 @@ class GlobalState(object):
     def profile_table(self):
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
-        component_identifiers_binary = [
+        batch_identifiers_binary = [
             key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
             for key in profile_table_keys
         ]
 
-        return {
-            binary_to_hex(component_id): self._profile_table(
-                binary_to_object_id(component_id))
-            for component_id in component_identifiers_binary
-        }
+        result = defaultdict(list)
+        for batch_id in batch_identifiers_binary:
+            result[binary_to_hex(batch_id)].extend(
+                self._profile_table(binary_to_object_id(batch_id)))
+
+        return dict(result)
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
