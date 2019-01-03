@@ -58,7 +58,7 @@ def run_experiments(experiments,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=True,
-                    resume=None,
+                    resume=False,
                     queue_trials=False,
                     trial_executor=None,
                     raise_on_failed_trial=True):
@@ -76,8 +76,8 @@ def run_experiments(experiments,
             using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (bool): How much output should be printed for each trial.
-        resume (bool|None): If checkpoint exists, the experiment will
-            resume from there. If resume is None, Tune will prompt if
+        resume (bool|"prompt"): If checkpoint exists, the experiment will
+            resume from there. If resume is "prompt", Tune will prompt if
             checkpoint detected.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
@@ -116,16 +116,11 @@ def run_experiments(experiments,
     runner = None
     restore = False
 
-    # TUNE_RESUME_PROMPT_OFF is for testing purposes and defaults
-    # `resume=False.`
-    if os.environ.get("TUNE_RESUME_PROMPT_OFF"):
-        resume = resume or False
-
     if os.path.exists(
             os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
         if resume:
             restore = True
-        elif resume is None:
+        elif resume == "prompt":
             msg = ("Found incomplete experiment at {}. "
                    "Would you like to resume it?".format(checkpoint_dir))
             restore = click.confirm(msg, default=True)
@@ -135,6 +130,9 @@ def run_experiments(experiments,
             else:
                 logger.info("Tip: to always start a new experiment, "
                             "pass resume=False to run_experiments()")
+        else:
+            logger.info("Tip: to resume incomplete experiments, "
+                        "pass resume='prompt' or resume=True to run_experiments()")
     else:
         logger.info(
             "Did not find checkpoint file in {}.".format(checkpoint_dir))
