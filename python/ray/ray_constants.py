@@ -21,9 +21,13 @@ NIL_FUNCTION_ID = NIL_JOB_ID
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
+# The smallest cap on the memory used by the object store that we allow.
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
+# The smallest cap on the memory used by Redis that we allow.
+REDIS_MINIMUM_MEMORY_BYTES = 10**7
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.

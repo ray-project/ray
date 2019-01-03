@@ -19,7 +19,7 @@ import redis
 
 import pyarrow
 # Ray modules
-import ray.ray_constants
+import ray.ray_constants as ray_constants
 import ray.plasma
 
 from ray.tempfile_services import (
@@ -520,7 +520,13 @@ def start_redis(node_ip_address,
 
     # Cap the memory of the other redis shards if no limit is provided.
     redis_max_memory = (redis_max_memory if redis_max_memory is not None else
-                        ray.ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
+                        ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
+    if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
+        raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
+                         "but the minimum allowed is {} bytes.".format(
+                             redis_max_memory,
+                             ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
+
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
     redis_shards = []
@@ -865,9 +871,9 @@ def check_and_update_resources(resources):
                 and not resource_quantity.is_integer()):
             raise ValueError("Resource quantities must all be whole numbers.")
 
-        if resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY:
+        if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
             raise ValueError("Resource quantities must be at most {}.".format(
-                ray.ray_constants.MAX_RESOURCE_QUANTITY))
+                ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -1039,15 +1045,14 @@ def determine_plasma_store_config(object_store_memory=None,
         object_store_memory = int(system_memory * 0.4)
         # Cap memory to avoid memory waste and perf issues on large nodes
         if (object_store_memory >
-                ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
+                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
             logger.warning(
                 "Warning: Capping object memory store to {}GB. ".format(
-                    ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
-                    1e9) +
-                "To increase this further, specify `object_store_memory` "
+                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES // 1e9)
+                + "To increase this further, specify `object_store_memory` "
                 "when calling ray.init() or ray start.")
             object_store_memory = (
-                ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -1129,6 +1134,12 @@ def start_plasma_store(node_ip_address,
     """
     object_store_memory, plasma_directory = determine_plasma_store_config(
         object_store_memory, plasma_directory, huge_pages)
+
+    if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        raise ValueError("Attempting to cap object store memory usage at {} "
+                         "bytes, but the minimum allowed is {} bytes.".format(
+                             object_store_memory,
+                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
