@@ -39,6 +39,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final int GET_TIMEOUT_MS = 1000;
   private static final int FETCH_BATCH_SIZE = 1000;
+  private static final int LIMITED_RETRY_COUNTER = 10;
 
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
@@ -107,9 +108,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> List<T> get(List<UniqueId> objectIds) {
     boolean wasBlocked = false;
-    // TODO(swang): If we are not on the main thread, then we should generate a
-    // random task ID to pass to the backend.
-    UniqueId taskId = workerContext.getCurrentTask().taskId;
+    UniqueId taskId = workerContext.getCurrentThreadTaskId();
 
     try {
       int numObjectIds = objectIds.size();
@@ -137,7 +136,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
       // Try reconstructing any objects we haven't gotten yet. Try to get them
       // until at least PlasmaLink.GET_TIMEOUT_MS milliseconds passes, then repeat.
+      int retryCounter = 0;
       while (unreadys.size() > 0) {
+        retryCounter++;
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
         List<List<UniqueId>> reconstructBatches =
             splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
@@ -159,11 +160,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             unreadys.remove(id);
           }
         }
+
+        if (retryCounter % LIMITED_RETRY_COUNTER == 0) {
+          LOGGER.warn("Attempted {} times to reconstruct objects {}, "
+              + "but haven't received response. If this message continues to print,"
+              + " it may indicate that the task is hanging, or someting wrong "
+              + "happened in raylet backend.",
+              retryCounter, unreadys.keySet());
+        }
       }
 
       if (LOGGER.isDebugEnabled()) {
         LOGGER.debug("Got objects {} for task {}.", Arrays.toString(objectIds.toArray()), taskId);
       }
+
       List<T> finalRet = new ArrayList<>();
 
       for (Pair<T, GetStatus> value : ret) {
@@ -206,10 +216,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    // TODO(swang): If we are not on the main thread, then we should generate a
-    // random task ID to pass to the backend.
-    return rayletClient.wait(waitList, numReturns, timeoutMs,
-        workerContext.getCurrentTask().taskId);
+    return rayletClient.wait(waitList, numReturns,
+        timeoutMs, workerContext.getCurrentThreadTaskId());
   }
 
   @Override
@@ -225,9 +233,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
     RayActorImpl actorImpl = (RayActorImpl)actor;
-    TaskSpec spec = createTaskSpec(func, actorImpl, args, false, null);
-    spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
-    actorImpl.setTaskCursor(spec.returnIds[1]);
+    TaskSpec spec;
+    synchronized (actor) {
+      spec = createTaskSpec(func, actorImpl, args, false, null);
+      spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
+      actorImpl.setTaskCursor(spec.returnIds[1]);
+    }
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
@@ -329,5 +340,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public FunctionManager getFunctionManager() {
     return functionManager;
+  }
+
+  public RayConfig getRayConfig() {
+    return rayConfig;
   }
 }

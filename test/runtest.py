@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
@@ -308,10 +309,8 @@ def test_python_workers(shutdown_only):
     # instead of the local scheduler. This codepath is for debugging
     # purposes only.
     num_workers = 4
-    ray.worker._init(
-        num_cpus=num_workers,
-        start_workers_from_local_scheduler=False,
-        start_ray_local=True)
+    ray_params = RayParams(num_cpus=num_workers, start_ray_local=True)
+    ray.worker._init(ray_params)
 
     @ray.remote
     def f(x):
@@ -1263,7 +1262,7 @@ def test_free_objects_multi_node(shutdown_only):
     # workers and the plasma client holding the deletion target
     # may not be flushed.
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=3,
         num_cpus=[1, 1, 1],
@@ -1275,6 +1274,7 @@ def test_free_objects_multi_node(shutdown_only):
             "Custom2": 1
         }],
         _internal_config=config)
+    ray.worker._init(ray_params)
 
     @ray.remote(resources={"Custom0": 1})
     class ActorOnNode0(object):
@@ -1719,8 +1719,9 @@ def test_zero_cpus(shutdown_only):
 
 
 def test_zero_cpus_actor(shutdown_only):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
+    ray.worker._init(ray_params)
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1789,11 +1790,12 @@ def test_multiple_local_schedulers(shutdown_only):
     # This test will define a bunch of tasks that can only be assigned to
     # specific local schedulers, and we will check that they are assigned
     # to the correct local schedulers.
-    address_info = ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=3,
         num_cpus=[11, 5, 10],
         num_gpus=[0, 5, 1])
+    address_info = ray.worker._init(ray_params)
 
     # Define a bunch of remote functions that all return the socket name of
     # the plasma store. Since there is a one-to-one correspondence between
@@ -1897,7 +1899,7 @@ def test_multiple_local_schedulers(shutdown_only):
 
 
 def test_custom_resources(shutdown_only):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=2,
         num_cpus=[3, 3],
@@ -1906,6 +1908,7 @@ def test_custom_resources(shutdown_only):
         }, {
             "CustomResource": 1
         }])
+    ray.worker._init(ray_params)
 
     @ray.remote
     def f():
@@ -1938,7 +1941,7 @@ def test_custom_resources(shutdown_only):
 
 
 def test_two_custom_resources(shutdown_only):
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=2,
         num_cpus=[3, 3],
@@ -1949,6 +1952,7 @@ def test_two_custom_resources(shutdown_only):
             "CustomResource1": 3,
             "CustomResource2": 4
         }])
+    ray.worker._init(ray_params)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -2149,10 +2153,11 @@ def test_load_balancing(shutdown_only):
     # schedulers in a roughly equal manner.
     num_local_schedulers = 3
     num_cpus = 7
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=num_cpus)
+    ray.worker._init(ray_params)
 
     @ray.remote
     def f():
@@ -2168,10 +2173,11 @@ def test_load_balancing_with_dependencies(shutdown_only):
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
     num_local_schedulers = 3
-    ray.worker._init(
+    ray_params = RayParams(
         start_ray_local=True,
         num_local_schedulers=num_local_schedulers,
         num_cpus=1)
+    ray.worker._init(ray_params)
 
     @ray.remote
     def f(x):

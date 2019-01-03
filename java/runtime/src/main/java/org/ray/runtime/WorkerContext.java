@@ -1,11 +1,17 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WorkerContext {
+  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
 
   /**
    * Worker id.
@@ -25,19 +31,53 @@ public class WorkerContext {
   /**
    * How many puts have been done by current task.
    */
-  private int currentTaskPutCount;
+  private AtomicInteger currentTaskPutCount;
 
   /**
    * How many calls have been done by current task.
    */
-  private int currentTaskCallCount;
+  private AtomicInteger currentTaskCallCount;
+
+  /**
+   * The ID of main thread which created the worker context.
+   */
+  private long mainThreadId;
+  /**
+   * If the multi-threading warning message has been logged.
+   */
+  private AtomicBoolean multiThreadingWarned;
 
   public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
     workerId = workerMode == WorkerMode.DRIVER ? driverId : UniqueId.randomId();
-    currentTaskPutCount = 0;
-    currentTaskCallCount = 0;
+    currentTaskPutCount = new AtomicInteger(0);
+    currentTaskCallCount = new AtomicInteger(0);
     currentClassLoader = null;
     currentTask = createDummyTask(workerMode, driverId);
+    mainThreadId = Thread.currentThread().getId();
+    multiThreadingWarned = new AtomicBoolean(false);
+  }
+
+  /**
+   * Get the current thread's task ID.
+   * This returns the assigned task ID if called on the main thread, else a
+   * random task ID.
+   */
+  public UniqueId getCurrentThreadTaskId() {
+    UniqueId taskId;
+    if (Thread.currentThread().getId() == mainThreadId) {
+      taskId = currentTask.taskId;
+    } else {
+      taskId = UniqueId.randomId();
+      if (multiThreadingWarned.compareAndSet(false, true)) {
+        LOGGER.warn("Calling Ray.get or Ray.wait in a separate thread " +
+            "may lead to deadlock if the main thread blocks on this " +
+            "thread and there are not enough resources to execute " +
+            "more tasks");
+      }
+    }
+
+    Preconditions.checkState(!taskId.isNil());
+    return taskId;
   }
 
   public void setWorkerId(UniqueId workerId) {
@@ -49,11 +89,11 @@ public class WorkerContext {
   }
 
   public int nextPutIndex() {
-    return ++currentTaskPutCount;
+    return currentTaskPutCount.incrementAndGet();
   }
 
   public int nextCallIndex() {
-    return ++currentTaskCallCount;
+    return currentTaskCallCount.incrementAndGet();
   }
 
   public UniqueId getCurrentWorkerId() {
@@ -66,6 +106,8 @@ public class WorkerContext {
 
   public void setCurrentTask(TaskSpec currentTask) {
     this.currentTask = currentTask;
+    currentTaskCallCount.set(0);
+    currentTaskPutCount.set(0);
   }
 
   public void setCurrentClassLoader(ClassLoader currentClassLoader) {

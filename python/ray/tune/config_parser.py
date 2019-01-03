@@ -11,38 +11,8 @@ from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Resources, Trial
+from ray.tune.trial import Trial, json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
-
-
-def json_to_resources(data):
-    if data is None or data == "null":
-        return None
-    if isinstance(data, string_types):
-        data = json.loads(data)
-    for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
-            raise TuneError(
-                "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k))
-        if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
-                    k, Resources._fields))
-    return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
-
-
-def resources_to_json(resources):
-    if resources is None:
-        return None
-    return {
-        "cpu": resources.cpu,
-        "gpu": resources.gpu,
-        "extra_cpu": resources.extra_cpu,
-        "extra_gpu": resources.extra_gpu,
-    }
 
 
 def make_parser(parser_creator=None, **kwargs):
