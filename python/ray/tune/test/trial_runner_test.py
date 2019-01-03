@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import sys
+import tempfile
 import time
 import unittest
 
@@ -37,6 +39,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
@@ -542,6 +545,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -610,29 +614,6 @@ class RunExperimentTest(unittest.TestCase):
             }
         })
         trials = run_experiments([exp1, exp2])
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
-
-    def testSpecifyAlgorithm(self):
-        """Tests run_experiments works without specifying experiment."""
-
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        register_trainable("f1", train)
-
-        alg = BasicVariantGenerator()
-        alg.add_configurations({
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
-            }
-        })
-        trials = run_experiments(search_alg=alg)
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -778,6 +759,7 @@ class RunExperimentTest(unittest.TestCase):
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -981,6 +963,9 @@ def create_mock_components():
 
 
 class TrialRunnerTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -1664,6 +1649,116 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()  # this converts self._finished to True
         self.assertTrue(searcher.is_finished())
         self.assertRaises(TuneError, runner.step)
+
+    def testTrialSaveRestore(self):
+        """Creates different trials to test runner.checkpoint/restore."""
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        trials = [
+            Trial(
+                "__fake",
+                trial_id="trial_terminate",
+                stopping_criterion={"training_iteration": 1},
+                checkpoint_freq=1)
+        ]
+        runner.add_trial(trials[0])
+        runner.step()  # start
+        runner.step()
+        self.assertEquals(trials[0].status, Trial.TERMINATED)
+
+        trials += [
+            Trial(
+                "__fake",
+                trial_id="trial_fail",
+                stopping_criterion={"training_iteration": 3},
+                checkpoint_freq=1,
+                config={"mock_error": True})
+        ]
+        runner.add_trial(trials[1])
+        runner.step()
+        runner.step()
+        runner.step()
+        self.assertEquals(trials[1].status, Trial.ERROR)
+
+        trials += [
+            Trial(
+                "__fake",
+                trial_id="trial_succ",
+                stopping_criterion={"training_iteration": 2},
+                checkpoint_freq=1)
+        ]
+        runner.add_trial(trials[2])
+        runner.step()
+        self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
+        self.assertEquals(trials[2].status, Trial.RUNNING)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for tid in ["trial_terminate", "trial_fail"]:
+            original_trial = runner.get_trial(tid)
+            restored_trial = runner2.get_trial(tid)
+            self.assertEqual(original_trial.status, restored_trial.status)
+
+        restored_trial = runner2.get_trial("trial_succ")
+        self.assertEqual(Trial.PENDING, restored_trial.status)
+
+        runner2.step()
+        runner2.step()
+        runner2.step()
+        self.assertRaises(TuneError, runner2.step)
+        shutil.rmtree(tmpdir)
+
+    def testTrialNoSave(self):
+        """Check that non-checkpointing trials are not saved."""
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="non_checkpoint",
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="checkpoint",
+                checkpoint_at_end=True,
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="pending",
+                stopping_criterion={"training_iteration": 2}))
+
+        runner.step()
+        runner.step()
+
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trials = runner2.get_trials()
+        self.assertEquals(len(new_trials), 3)
+        self.assertTrue(
+            runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(
+            runner2.get_trial("checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
+        self.assertTrue(runner2.get_trial("pending").last_result is None)
+        runner2.step()
+        shutil.rmtree(tmpdir)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
