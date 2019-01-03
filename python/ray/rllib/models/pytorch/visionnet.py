@@ -49,7 +49,7 @@ class VisionNetwork(TorchModel):
         return logits, features, value, hidden_state
 
     def _hidden_layers(self, obs):
-        res = self._convs(obs.permute(0, 3, 1, 2))
+        res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
         res = res.squeeze(3)
         res = res.squeeze(2)
         return res
