@@ -934,12 +934,10 @@ def start_raylet(ray_params,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
-                            "--collect-profiling-data={} "
                             "--temp-dir={}".format(
                                 sys.executable, ray_params.worker_path,
                                 ray_params.node_ip_address, plasma_store_name,
-                                raylet_name, ray_params.redis_address, "1"
-                                if ray_params.collect_profiling_data else "0",
+                                raylet_name, ray_params.redis_address,
                                 get_temp_root()))
     if ray_params.redis_password:
         start_worker_command += " --redis-password {}".format(
@@ -1498,8 +1496,8 @@ def start_ray_head(ray_params, cleanup=True):
             following parameters could be checked: address_info,
             object_manager_ports, node_manager_ports, node_ip_address,
             redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, collect_profiling_data,
-            worker_path, cleanup, redirect_worker_output, redirect_output,
+            object_store_memory, redis_max_memory, worker_path, cleanup,
+            redirect_worker_output, redirect_output,
             start_workers_from_local_scheduler, resources, num_redis_shards,
             redis_max_clients, redis_password, include_webui, huge_pages,
             plasma_directory, autoscaling_config, plasma_store_socket_name,

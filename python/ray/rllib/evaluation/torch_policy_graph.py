@@ -8,7 +8,6 @@ from threading import Lock
 try:
     import torch
     import torch.nn.functional as F
-    from ray.rllib.models.pytorch.misc import var_to_np
 except ImportError:
     pass  # soft dep
 
@@ -66,15 +65,14 @@ class TorchPolicyGraph(PolicyGraph):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        if state_batches:
-            raise NotImplementedError("Torch RNN support")
         with self.lock:
             with torch.no_grad():
                 ob = torch.from_numpy(np.array(obs_batch)).float()
-                model_out = self._model(ob)
-                logits = model_out[0]  # assume the first output is the logits
+                model_out = self._model({"obs": ob}, state_batches)
+                logits, _, vf, state = model_out
                 actions = F.softmax(logits, dim=1).multinomial(1).squeeze(0)
-                return var_to_np(actions), [], self.extra_action_out(model_out)
+                return (actions.numpy(), [h.numpy() for h in state],
+                        self.extra_action_out(model_out))
 
     @override(PolicyGraph)
     def compute_gradients(self, postprocessed_batch):
@@ -87,7 +85,7 @@ class TorchPolicyGraph(PolicyGraph):
             loss_out.backward()
             # Note that return values are just references;
             # calling zero_grad will modify the values
-            grads = [var_to_np(p.grad.data) for p in self._model.parameters()]
+            grads = [p.grad.data.numpy() for p in self._model.parameters()]
             return grads, {}
 
     @override(PolicyGraph)
@@ -107,6 +105,10 @@ class TorchPolicyGraph(PolicyGraph):
     def set_weights(self, weights):
         with self.lock:
             self._model.load_state_dict(weights)
+
+    @override(PolicyGraph)
+    def get_initial_state(self):
+        return [s.numpy() for s in self._model.state_init()]
 
     def extra_action_out(self, model_out):
         """Returns dict of extra info to include in experience batch.

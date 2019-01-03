@@ -156,7 +156,7 @@ All RLlib agents are compatible with the `Tune API <tune-usage.html>`__. This en
             "config": {
                 "num_gpus": 0,
                 "num_workers": 1,
-                "sgd_stepsize": tune.grid_search([0.01, 0.001, 0.0001]),
+                "lr": tune.grid_search([0.01, 0.001, 0.0001]),
             },
         },
     })
@@ -170,10 +170,10 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     Resources requested: 4/4 CPUs, 0/0 GPUs
     Result logdir: ~/ray_results/my_experiment
     PENDING trials:
-     - PPO_CartPole-v0_2_sgd_stepsize=0.0001:	PENDING
+     - PPO_CartPole-v0_2_lr=0.0001:	PENDING
     RUNNING trials:
-     - PPO_CartPole-v0_0_sgd_stepsize=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
-     - PPO_CartPole-v0_1_sgd_stepsize=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
+     - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~

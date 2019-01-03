@@ -18,7 +18,7 @@ class VisionNetwork(Model):
         inputs = input_dict["obs"]
         filters = options.get("conv_filters")
         if not filters:
-            filters = _get_filter_config(inputs)
+            filters = _get_filter_config(inputs.shape.as_list()[1:])
 
         activation = get_activation_fn(options.get("conv_activation"))
 
@@ -49,7 +49,8 @@ class VisionNetwork(Model):
             return flatten(fc2), flatten(fc1)
 
 
-def _get_filter_config(inputs):
+def _get_filter_config(shape):
+    shape = list(shape)
     filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],
@@ -60,15 +61,14 @@ def _get_filter_config(inputs):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    shape = inputs.shape.as_list()[1:]
     if len(shape) == 3 and shape[:2] == [84, 84]:
         return filters_84x84
     elif len(shape) == 3 and shape[:2] == [42, 42]:
         return filters_42x42
     else:
         raise ValueError(
-            "No default configuration for obs input {}".format(inputs) +
+            "No default configuration for obs shape {}".format(shape) +
             ", you must specify `conv_filters` manually as a model option. "
-            "Default configurations are only available for inputs of size "
-            "[?, 42, 42, K] and [?, 84, 84, K]. You may alternatively want "
+            "Default configurations are only available for inputs of shape "
+            "[42, 42, K] and [84, 84, K]. You may alternatively want "
             "to use a custom model or preprocessor.")
