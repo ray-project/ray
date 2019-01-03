@@ -359,6 +359,7 @@ def test_recursive(ray_start_reconstruction):
         del values
 
 
+@pytest.mark.skip(reason="This test often hangs or fails in CI.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
