@@ -9,7 +9,6 @@ import pytest
 import time
 
 import ray
-from ray.parameter import RayParams
 import ray.tempfile_services
 from ray.test.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
@@ -25,8 +24,8 @@ def ray_start_sharded(request):
         # 1-node chain for that shard only.
 
     # Start the Ray processes.
-    ray.init(num_cpus=10, num_redis_shards=num_redis_shards,
-             redis_max_memory=10**6)
+    ray.init(
+        num_cpus=10, num_redis_shards=num_redis_shards, redis_max_memory=10**7)
 
     yield None
 
@@ -36,18 +35,22 @@ def ray_start_sharded(request):
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_combination(request):
-    num_local_schedulers = request.param[0]
+    num_nodes = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
-    cluster = Cluster(initialize_head=True,
+    cluster = Cluster(
+        initialize_head=True,
         head_node_args={
-            "resources": {"CPU": 10}, "redis_max_memory": 10**7
+            "resources": {
+                "CPU": 10
+            },
+            "redis_max_memory": 10**7
         })
-    for i in range(num_local_schedulers):
+    for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
     ray.init(redis_address=cluster.redis_address)
 
-    yield num_local_schedulers, num_workers_per_scheduler
+    yield num_nodes, num_workers_per_scheduler
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -162,8 +165,8 @@ def test_getting_many_objects(ray_start_sharded):
 
 
 def test_wait(ray_start_combination):
-    num_local_schedulers, num_workers_per_scheduler = ray_start_combination
-    num_workers = num_local_schedulers * num_workers_per_scheduler
+    num_nodes, num_workers_per_scheduler = ray_start_combination
+    num_workers = num_nodes * num_workers_per_scheduler
 
     @ray.remote
     def f(x):
@@ -195,10 +198,25 @@ def ray_start_reconstruction(request):
     plasma_store_memory = 10**9
 
     cluster = Cluster()
-    for i in range(num_nodes):
+    cluster = Cluster(
+        initialize_head=True,
+        head_node_args={
+            "resources": {
+                "CPU": 1
+            },
+            "object_store_memory": plasma_store_memory // num_nodes,
+            "redis_max_memory": 10**7,
+            "redirect_output": True,
+            "_internal_config": json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200
+            })
+        })
+    for i in range(num_nodes - 1):
         cluster.add_node(
-            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes,
-            redirect_output=True, _internal_config=json.dumps({
+            num_cpus=1,
+            object_store_memory=plasma_store_memory // num_nodes,
+            redirect_output=True,
+            _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             }))
     ray.init(redis_address=cluster.redis_address)
