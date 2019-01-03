@@ -83,8 +83,8 @@ Models and Preprocessors
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
-Offline Data Input / Output
----------------------------
+Offline Datasets
+----------------
 * `Working with Offline Datasets <rllib-offline.html>`__
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
