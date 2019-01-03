@@ -61,11 +61,18 @@ class RayTrialExecutor(TrialExecutor):
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
+        """Starts trial and restores last result if trial was paused.
+
+
+        Raises:
+            ValueError if restoring from checkpoint fails.
+        """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
-            return
+            if trial.status == Trial.ERROR:
+                raise ValueError("Checkpointing failed.")
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
@@ -134,7 +141,8 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 # This forces the trial to not start from checkpoint.
-                self._start_trial(trial, checkpoint=False)
+                trial.clear_checkpoint()
+                self._start_trial(trial)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
