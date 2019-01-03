@@ -11,6 +11,7 @@ import time
 import ray
 from ray.parameter import RayParams
 import ray.tempfile_services
+from ray.test.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 
@@ -24,7 +25,8 @@ def ray_start_sharded(request):
         # 1-node chain for that shard only.
 
     # Start the Ray processes.
-    ray.init(num_cpus=10, num_redis_shards=num_redis_shards)
+    ray.init(num_cpus=10, num_redis_shards=num_redis_shards,
+             redis_max_memory=10**6)
 
     yield None
 
@@ -37,14 +39,18 @@ def ray_start_combination(request):
     num_local_schedulers = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=10)
-    ray.worker._init(ray_params)
+    cluster = Cluster(initialize_head=True,
+        head_node_args={
+            "resources": {"CPU": 10}, "redis_max_memory": 10**7
+        })
+    for i in range(num_local_schedulers):
+        cluster.add_node(num_cpus=10)
+    ray.init(redis_address=cluster.redis_address)
+
     yield num_local_schedulers, num_workers_per_scheduler
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    cluster.shutdown()
 
 
 def test_submitting_tasks(ray_start_combination):
@@ -184,83 +190,35 @@ def test_wait(ray_start_combination):
 
 @pytest.fixture(params=[1, 4])
 def ray_start_reconstruction(request):
-    num_local_schedulers = request.param
+    num_nodes = request.param
 
-    # Start the Redis global state store.
-    node_ip_address = "127.0.0.1"
-    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
-    redis_ip_address = ray.services.get_ip_address(redis_address)
-    redis_port = ray.services.get_port(redis_address)
-    time.sleep(0.1)
-
-    # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
-    plasma_addresses = []
-    object_store_memory = plasma_store_memory // num_local_schedulers
-    for i in range(num_local_schedulers):
-        store_stdout_file, store_stderr_file = (
-            ray.tempfile_services.new_plasma_store_log_file(i, True))
-        plasma_addresses.append(
-            ray.services.start_plasma_store(
-                node_ip_address,
-                redis_address,
-                object_store_memory=object_store_memory,
-                store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file))
 
-    # Start the rest of the services in the Ray cluster.
-    address_info = {
-        "redis_address": redis_address,
-        "redis_shards": redis_shards,
-        "object_store_addresses": plasma_addresses
-    }
-    ray_params = RayParams(
-        address_info=address_info,
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=[1] * num_local_schedulers,
-        redirect_output=True,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
-    ray.worker._init(ray_params)
+    cluster = Cluster()
+    for i in range(num_nodes):
+        cluster.add_node(
+            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes,
+            redirect_output=True, _internal_config=json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200
+            }))
+    ray.init(redis_address=cluster.redis_address)
 
-    yield (redis_ip_address, redis_port, plasma_store_memory,
-           num_local_schedulers)
+    yield plasma_store_memory, num_nodes
 
     # The code after the yield will run as teardown code.
-    assert ray.services.all_processes_alive()
-
-    # Determine the IDs of all local schedulers that had a task scheduled
-    # or submitted.
-    state = ray.experimental.state.GlobalState()
-    state._initialize_global_state(redis_ip_address, redis_port)
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        tasks = state.task_table()
-        local_scheduler_ids = {
-            task["LocalSchedulerID"]
-            for task in tasks.values()
-        }
-
-    # Make sure that all nodes in the cluster were used by checking that
-    # the set of local scheduler IDs that had a task scheduled or submitted
-    # is equal to the total number of local schedulers started. We add one
-    # to the total number of local schedulers to account for
-    # NIL_LOCAL_SCHEDULER_ID. This is the local scheduler ID associated
-    # with the driver task, since it is not scheduled by a particular local
-    # scheduler.
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        assert len(local_scheduler_ids) == num_local_schedulers + 1
+    for node in cluster.list_all_nodes():
+        assert node.all_processes_alive()
 
     # Clean up the Ray cluster.
     ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -290,7 +248,7 @@ def test_simple(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
-    num_chunks = 4 * num_local_schedulers
+    num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
@@ -307,7 +265,7 @@ def sorted_random_indexes(total, output_num):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -352,7 +310,7 @@ def test_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
-    num_chunks = 4 * num_local_schedulers
+    num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
@@ -363,7 +321,7 @@ def test_recursive(ray_start_reconstruction):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
-    _, _, plasma_store_memory, _ = ray_start_reconstruction
+    plasma_store_memory, _ = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -434,7 +392,7 @@ def wait_for_errors(error_check):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_nondeterministic_task(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -478,7 +436,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
         assert value[0] == i
 
     def error_check(errors):
-        if num_local_schedulers == 1:
+        if num_nodes == 1:
             # In a single-node setting, each object is evicted and
             # reconstructed exactly once, so exactly half the objects will
             # produce an error during reconstruction.
