@@ -1429,7 +1429,7 @@ def init(redis_address=None,
          num_gpus=None,
          resources=None,
          object_store_memory=None,
-         redis_max_memory=ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
+         redis_max_memory=None,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
@@ -1485,12 +1485,13 @@ def init(redis_address=None,
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
+            object store with. By default, this is capped at 20GB but can be
+            set higher.
         redis_max_memory: The max amount of memory (in bytes) to allow each
-            redis shard to use, or None for no limit. Once the limit is
-            exceeded, redis will start LRU eviction of entries. This only
-            applies to the sharded redis tables (task, object, and profile
-            tables).
+            redis shard to use. Once the limit is exceeded, redis will start
+            LRU eviction of entries. This only applies to the sharded redis
+            tables (task, object, and profile tables). By default, this is
+            capped at 10GB but can be set higher.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the

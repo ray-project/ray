@@ -116,16 +116,16 @@ def cli(logging_level, logging_format):
     "--object-store-memory",
     required=False,
     type=int,
-    help="the maximum amount of memory (in bytes) to allow the "
-    "object store to use")
+    help="The amount of memory (in bytes) to start the object store with. "
+    "By default, this is capped at 20GB but can be set higher.")
 @click.option(
     "--redis-max-memory",
-    default=ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
+    required=False,
     type=int,
-    help=("The max amount of memory (in bytes) to allow redis to use, or None "
-          "for no limit. Once the limit is exceeded, redis will start LRU "
-          "eviction of entries. This only applies to the sharded "
-          "redis tables (task and object tables)."))
+    help="The max amount of memory (in bytes) to allow redis to use. Once the "
+    "limit is exceeded, redis will start LRU eviction of entries. This only "
+    "applies to the sharded redis tables (task, object, and profile tables). "
+    "By default this is capped at 10GB but can be set higher.")
 @click.option(
     "--num-workers",
     required=False,

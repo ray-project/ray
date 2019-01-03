@@ -36,9 +36,6 @@ PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 
-# Max bytes to allocate to plasma unless overriden by the user
-MAX_DEFAULT_MEM = 20 * 1000 * 1000 * 1000
-
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
 # important because it determines the order in which these processes will be
@@ -446,10 +443,11 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
+        redis_max_memory: The max amount of memory (in bytes) to allow each
+            redis shard to use. Once the limit is exceeded, redis will start
+            LRU eviction of entries. This only applies to the sharded redis
+            tables (task, object, and profile tables). By default, this is
+            capped at 10GB but can be set higher.
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -481,6 +479,8 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
             password=password,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
             redis_max_memory=None)
     else:
         assigned_port, _ = _start_redis_instance(
@@ -496,6 +496,8 @@ def start_redis(node_ip_address,
             # supplies.
             modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
             password=password,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
             redis_max_memory=None)
     if port is not None:
         assert assigned_port == port
@@ -516,6 +518,9 @@ def start_redis(node_ip_address,
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
+    # Cap the memory of the other redis shards if no limit is provided.
+    redis_max_memory = (redis_max_memory if redis_max_memory is not None else
+                        ray.ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
     redis_shards = []
@@ -1033,13 +1038,16 @@ def determine_plasma_store_config(object_store_memory=None,
     if object_store_memory is None:
         object_store_memory = int(system_memory * 0.4)
         # Cap memory to avoid memory waste and perf issues on large nodes
-        if object_store_memory > MAX_DEFAULT_MEM:
+        if (object_store_memory >
+                ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
             logger.warning(
                 "Warning: Capping object memory store to {}GB. ".format(
-                    MAX_DEFAULT_MEM // 1e9) +
+                    ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
+                    1e9) +
                 "To increase this further, specify `object_store_memory` "
                 "when calling ray.init() or ray start.")
-            object_store_memory = MAX_DEFAULT_MEM
+            object_store_memory = (
+                ray.ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,

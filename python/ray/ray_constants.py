@@ -18,8 +18,11 @@ ID_SIZE = 20
 NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 NIL_FUNCTION_ID = NIL_JOB_ID
 
+# The default maximum number of bytes to allocate to the object store unless
+# overridden by the user.
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
 # The default maximum number of bytes that the non-primary Redis shards are
-# allowed to use.
+# allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 
 # If a remote function or actor (or some other export) has serialized size
