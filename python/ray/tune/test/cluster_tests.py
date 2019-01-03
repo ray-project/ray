@@ -124,38 +124,33 @@ def test_counting_resources(start_connected_cluster):
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
 
 
-@pytest.mark.skip("Add this test once reconstruction is fixed")
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test.")
-@pytest.mark.timeout(10, method="thread")
-def test_remove_node_before_result(start_connected_cluster):
-    """Removing a node should cause a Trial to be requeued."""
-    cluster = start_connected_cluster
+def test_remove_node_before_result(start_connected_emptyhead_cluster):
+    """Tune continues when node is removed before trial returns."""
+    cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(resources=dict(CPU=1))
-    # TODO(rliaw): Make blocking an option?
     assert cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
-    kwargs = {"stopping_criterion": {"training_iteration": 3}}
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
-    for t in trials:
-        runner.add_trial(t)
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 3
+        },
+        "checkpoint_freq": 2,
+        "max_failures": 2
+    }
+    trial = Trial("__fake", **kwargs)
+    runner.add_trial(trial)
 
     runner.step()  # run 1
-    runner.step()  # run 2
-    assert all(t.status == Trial.RUNNING for t in trials)
-
-    runner.step()  # 1 result
-
+    assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
+    cluster.add_node(resources=dict(CPU=1))
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources["CPU"] == 1
+    assert ray.global_state.cluster_resources()["CPU"] == 1
 
-    runner.step()  # recover
-    for i in range(5):
+    for i in range(3):
         runner.step()
-    assert all(t.status == Trial.TERMINATED for t in trials)
+    assert trial.status == Trial.TERMINATED
 
     with pytest.raises(TuneError):
         runner.step()
