@@ -1282,12 +1282,12 @@ def _init(ray_params, driver_id=None):
             following parameters could be checked: address_info,
             start_ray_local, object_id_seed, num_workers,
             num_local_schedulers, object_store_memory, redis_max_memory,
-            collect_profiling_data, local_mode, redirect_worker_output,
-            driver_mode, redirect_output, start_workers_from_local_scheduler,
-            num_cpus, num_gpus, resources, num_redis_shards,
-            redis_max_clients, redis_password, plasma_directory, huge_pages,
-            include_webui, driver_id, plasma_store_socket_name, temp_dir,
-            raylet_socket_name, _internal_config
+            local_mode, redirect_worker_output, driver_mode, redirect_output,
+            start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
+            num_redis_shards, redis_max_clients, redis_password,
+            plasma_directory, huge_pages, include_webui, driver_id,
+            plasma_store_socket_name, temp_dir, raylet_socket_name,
+            _internal_config
         driver_id: The ID of driver.
 
     Returns:
@@ -1304,12 +1304,6 @@ def _init(ray_params, driver_id=None):
         ray_params.driver_mode = LOCAL_MODE
     else:
         ray_params.driver_mode = SCRIPT_MODE
-
-    if ray_params.redis_max_memory and ray_params.collect_profiling_data:
-        logger.warning(
-            "Profiling data cannot be LRU evicted, so it is disabled "
-            "when redis_max_memory is set.")
-        ray_params.collect_profiling_data = False
 
     # Get addresses of existing services.
     if ray_params.address_info is None:
@@ -1436,7 +1430,6 @@ def init(redis_address=None,
          resources=None,
          object_store_memory=None,
          redis_max_memory=None,
-         collect_profiling_data=True,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
@@ -1497,7 +1490,6 @@ def init(redis_address=None,
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
-        collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -1599,7 +1591,6 @@ def init(redis_address=None,
         include_webui=include_webui,
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        collect_profiling_data=collect_profiling_data,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
@@ -1816,7 +1807,7 @@ def connect(ray_params,
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: object_id_seed,
-            redis_password, collect_profiling_data
+            redis_password
         info (dict): A dictionary with address of the Redis server and the
             sockets of the plasma store and raylet.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
@@ -1833,10 +1824,7 @@ def connect(ray_params,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    if ray_params.collect_profiling_data:
-        worker.profiler = profiling.Profiler(worker)
-    else:
-        worker.profiler = profiling.NoopProfiler()
+    worker.profiler = profiling.Profiler(worker)
 
     # Initialize some fields.
     if mode is WORKER_MODE:

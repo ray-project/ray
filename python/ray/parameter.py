@@ -52,7 +52,6 @@ class RayParams(object):
         node_manager_ports (list): A list of the ports to use for the node
             managers. There should be one per node manager being started on
             this node (typically just one).
-        collect_profiling_data: Whether to collect profiling data from workers.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -106,7 +105,6 @@ class RayParams(object):
                  redis_shard_ports=None,
                  object_manager_ports=None,
                  node_manager_ports=None,
-                 collect_profiling_data=True,
                  node_ip_address=None,
                  object_id_seed=None,
                  num_workers=None,
@@ -143,7 +141,6 @@ class RayParams(object):
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_ports = object_manager_ports
         self.node_manager_ports = node_manager_ports
-        self.collect_profiling_data = collect_profiling_data
         self.node_ip_address = node_ip_address
         self.num_workers = num_workers
         self.local_mode = local_mode
