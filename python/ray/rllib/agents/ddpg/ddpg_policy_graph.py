@@ -362,7 +362,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.model_loss + self.loss.total_loss,
+            loss=self.loss.total_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + p_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
@@ -393,7 +393,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
-            model_grads_and_vars = optimizer.gradients(self.model.loss())
         else:
             actor_grads_and_vars = optimizer.compute_gradients(
                 self.loss.actor_loss, var_list=self.p_func_vars)
