@@ -63,7 +63,6 @@ class RayTrialExecutor(TrialExecutor):
     def _start_trial(self, trial, checkpoint=None):
         """Starts trial and restores last result if trial was paused.
 
-
         Raises:
             ValueError if restoring from checkpoint fails.
         """
