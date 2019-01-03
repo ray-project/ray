@@ -118,21 +118,22 @@ def run_experiments(experiments,
 
     if os.path.exists(
             os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
-        if resume:
-            restore = True
-        elif resume == "prompt":
+        if resume == "prompt":
             msg = ("Found incomplete experiment at {}. "
                    "Would you like to resume it?".format(checkpoint_dir))
-            restore = click.confirm(msg, default=True)
+            restore = click.confirm(msg, default=False)
             if restore:
                 logger.info("Tip: to always resume, "
                             "pass resume=True to run_experiments()")
             else:
                 logger.info("Tip: to always start a new experiment, "
                             "pass resume=False to run_experiments()")
+        elif resume:
+            restore = True
         else:
-            logger.info("Tip: to resume incomplete experiments, "
-                        "pass resume='prompt' or resume=True to run_experiments()")
+            logger.info(
+                "Tip: to resume incomplete experiments, "
+                "pass resume='prompt' or resume=True to run_experiments()")
     else:
         logger.info(
             "Did not find checkpoint file in {}.".format(checkpoint_dir))
