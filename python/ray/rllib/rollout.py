@@ -97,21 +97,18 @@ def run(args, parser):
     agent = cls(env=args.env, config=config)
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
-    rollout(agent, args.env, num_steps, config, args.out, args.no_render)
+    rollout(agent, args.env, num_steps, args.out, args.no_render)
 
 
-def rollout(agent, env_name, num_steps, config, out=None, no_render=True):
+def rollout(agent, env_name, num_steps, out=None, no_render=True):
     if hasattr(agent, "local_evaluator"):
         env = agent.local_evaluator.env
     else:
         env = gym.make(env_name)
 
-    if config['model']['use_lstm']:
+    state_init = agent.local_evaluator.policy_map["default"].get_initial_state()
+    if state_init:
         use_lstm = True
-        state_init = [
-            np.zeros(config['model']['lstm_cell_size'], np.float32),
-            np.zeros(config['model']['lstm_cell_size'], np.float32)
-        ]
     else:
         use_lstm = False
 
