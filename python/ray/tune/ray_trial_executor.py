@@ -71,7 +71,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             if trial.status == Trial.ERROR:
-                raise ValueError("Checkpointing failed.")
+                raise RuntimeError("Restore from checkpoint failed.")
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
