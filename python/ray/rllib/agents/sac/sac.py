@@ -118,3 +118,96 @@ class SACAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = SACPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
+
+    @override(Agent)
+    def _init(self):
+        # Update effective batch size to include n-step
+        adjusted_batch_size = max(self.config["sample_batch_size"],
+                                  self.config.get("n_step", 1))
+        self.config["sample_batch_size"] = adjusted_batch_size
+
+        self.config["optimizer"].update({
+            key: self.config[key]
+            for key in self._optimizer_shared_configs
+            if key not in self.config["optimizer"]
+
+        })
+
+        self.local_evaluator = self.make_local_evaluator(
+            self.env_creator, self._policy_graph)
+
+        def create_remote_evaluators():
+            return self.make_remote_evaluators(self.env_creator,
+                                               self._policy_graph,
+                                               self.config["num_workers"])
+
+        optimizer_class = self.config["parallelism"]["optimizer_class"]
+        if optimizer_class != "AsyncReplayOptimizer":
+            self.remote_evaluators = create_remote_evaluators()
+        else:
+            raise NotImplementedError("TODO(hartikainen): Check this.")
+            # Hack to workaround https://github.com/ray-project/ray/issues/2541
+            self.remote_evaluators = None
+
+        self.optimizer = getattr(optimizers, optimizer_class)(
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer"])
+
+        # Create the remote evaluators *after* the replay actors
+        # TODO(hartikainen): Why?
+        if self.remote_evaluators is None:
+            self.remote_evaluators = create_remote_evaluators()
+            self.optimizer._set_evaluators(self.remote_evaluators)
+
+        self.last_target_update_ts = 0
+        self.num_target_updates = 0
+
+    @override(Agent)
+    def _train(self):
+        start_timestep = self.global_timestep
+
+        # Do optimization steps
+        start = time.time()
+        while (self.global_timestep - start_timestep <
+               self.config["timesteps_per_iteration"]
+               ) or time.time() - start < self.config["min_iter_time_s"]:
+            self.optimizer.step()
+            self.update_Q_target_if_needed()
+
+        result = self.optimizer.collect_metrics(
+            timeout_seconds=self.config["collect_metrics_timeout"])
+
+        result.update(
+            timesteps_this_iter=self.global_timestep - start_timestep,
+            info=dict({
+                "num_target_updates": self.num_target_updates,
+            }, **self.optimizer.stats()))
+
+        return result
+
+    def update_Q_target_if_needed(self):
+        if (self.global_timestep - self.last_target_update_ts
+            > self.config["target_update_interval"]):
+            self.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.update_target())
+            self.last_target_update_ts = self.global_timestep
+            self.num_target_updates += 1
+
+    @property
+    def global_timestep(self):
+        return self.optimizer.num_steps_sampled
+
+    def __getstate__(self):
+        raise NotImplementedError("TODO(hartikainen): Check this.")
+        state = Agent.__getstate__(self)
+        state.update({
+            "num_target_updates": self.num_target_updates,
+            "last_target_update_ts": self.last_target_update_ts,
+        })
+        return state
+
+    def __setstate__(self, state):
+        raise NotImplementedError("TODO(hartikainen): Check this.")
+        Agent.__setstate__(self, state)
+        self.num_target_updates = state["num_target_updates"]
+        self.last_target_update_ts = state["last_target_update_ts"]
