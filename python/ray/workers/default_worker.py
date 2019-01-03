@@ -52,11 +52,6 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
-    "--collect-profiling-data",
-    type=int,  # int since argparse can't handle bool values
-    default=1,
-    help="Whether to collect profiling data from workers.")
-parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
