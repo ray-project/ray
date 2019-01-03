@@ -505,7 +505,7 @@ class Agent(Trainable):
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
+            input_creator = (lambda ioctx: MixedInput(config["input"], ioctx))
         else:
             input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
 

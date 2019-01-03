@@ -13,20 +13,20 @@ class MixedInput(InputReader):
     """Mixes input from a number of other input sources.
 
     Examples:
-        >>> MixedInput(ioctx, {
+        >>> MixedInput({
             "sampler": 0.4,
             "/tmp/experiences/*.json": 0.4,
             "s3://bucket/expert.json": 0.2,
-        })
+        }, ioctx)
     """
 
-    def __init__(self, ioctx, dist):
+    def __init__(self, dist, ioctx):
         """Initialize a MixedInput.
 
         Arguments:
-            ioctx (IOContext): current IO context object.
             dist (dict): dict mapping JSONReader paths or "sampler" to
                 probabilities. The probabilities must sum to 1.0.
+            ioctx (IOContext): current IO context object.
         """
         if sum(dist.values()) != 1.0:
             raise ValueError("Values must sum to 1.0: {}".format(dist))

@@ -5,8 +5,6 @@ from __future__ import print_function
 from ray.rllib.utils.annotations import override
 
 
-# yapf: disable
-# __sphinx_doc_input_begin__
 class InputReader(object):
     """Input object for loading experiences in policy evaluation."""
 
@@ -17,8 +15,6 @@ class InputReader(object):
             SampleBatch or MultiAgentBatch read.
         """
         raise NotImplementedError
-# __sphinx_doc_input_end__
-# yapf: enable
 
 
 class SamplerInput(InputReader):

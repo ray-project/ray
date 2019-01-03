@@ -141,8 +141,7 @@ def _from_json(batch):
     data = json.loads(batch)
 
     if "type" in data:
-        data_type = data["type"]
-        del data["type"]
+        data_type = data.pop("type")
     else:
         raise ValueError("JSON record missing 'type' field")
 
@@ -159,4 +158,6 @@ def _from_json(batch):
             policy_batches[policy_id] = SampleBatch(inner)
         return MultiAgentBatch(policy_batches, data["count"])
     else:
-        raise ValueError("Unknown input data type", data_type)
+        raise ValueError(
+            "Type field must be one of ['SampleBatch', 'MultiAgentBatch']",
+            data_type)

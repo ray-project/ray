@@ -104,10 +104,8 @@ You can configure experience input for an agent using the following options:
 
 The interface for a custom input reader is as follows:
 
-.. literalinclude:: ../../python/ray/rllib/offline/input_reader.py
-   :language: python
-   :start-after: __sphinx_doc_input_begin__
-   :end-before: __sphinx_doc_input_end__
+.. autoclass:: ray.rllib.offline.InputReader
+    :members:
 
 Output API
 ----------
@@ -121,7 +119,5 @@ You can configure experience output for an agent using the following options:
 
 The interface for a custom output writer is as follows:
 
-.. literalinclude:: ../../python/ray/rllib/offline/output_writer.py
-   :language: python
-   :start-after: __sphinx_doc_output_begin__
-   :end-before: __sphinx_doc_output_end__
+.. autoclass:: ray.rllib.offline.OutputWriter
+    :members:
