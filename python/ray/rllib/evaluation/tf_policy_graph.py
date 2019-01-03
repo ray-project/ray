@@ -113,10 +113,28 @@ class TFPolicyGraph(PolicyGraph):
         self._batch_divisibility_req = batch_divisibility_req
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [(g, v)
-                                for (g, v) in self.gradients(self._optimizer)
-                                if g is not None]
-        self._grads = [g for (g, v) in self._grads_and_vars]
+        grads_and_vars = self.gradients(self._optimizer)
+
+        if isinstance(grads_and_vars, dict):
+            self._grads_and_vars = {
+                key: [
+                    (grad, var)
+                    for (grad, var) in grads_and_vars
+                    if grad is not None
+                ]
+                for key, grads_and_vars in grads_and_vars.items()
+            }
+            self._grads = {
+                key: [grad for (grad, var) in grads_and_vars]
+                for key, grads_and_vars in self._grads_and_vars.items()
+            }
+        else:
+            self._grads_and_vars = [
+                (g, v)
+                for (g, v) in self.gradients(self._optimizer)
+                if g is not None]
+            self._grads = [g for (g, v) in self._grads_and_vars]
+
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
@@ -129,11 +147,25 @@ class TFPolicyGraph(PolicyGraph):
         if self._update_ops:
             logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
+
         with tf.control_dependencies(self._update_ops):
-            # specify global_step for TD3 which needs to count the num updates
-            self._apply_op = self._optimizer.apply_gradients(
-                self._grads_and_vars,
-                global_step=tf.train.get_or_create_global_step())
+            if isinstance(self._optimizer, dict):
+                self._apply_op = {}
+
+                assert (set(self._optimizer.keys())
+                        == set(self._grads_and_vars.keys()))
+
+                for key in self._optimizer.keys():
+                    optimizer = self._optimizer[key]
+                    grads_and_vars = self._grads_and_vars[key]
+
+                    self._apply_op[key] = optimizer.apply_gradients(
+                        grads_and_vars,
+                        global_step=tf.train.get_or_create_global_step())
+            else:
+                self._apply_op = self._optimizer.apply_gradients(
+                    self._grads_and_vars,
+                    global_step=tf.train.get_or_create_global_step())
 
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
