@@ -18,6 +18,10 @@ ID_SIZE = 20
 NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 NIL_FUNCTION_ID = NIL_JOB_ID
 
+# The default maximum number of bytes that the non-primary Redis shards are
+# allowed to use.
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7

@@ -120,7 +120,7 @@ def cli(logging_level, logging_format):
     "object store to use")
 @click.option(
     "--redis-max-memory",
-    required=False,
+    default=ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
     type=int,
     help=("The max amount of memory (in bytes) to allow redis to use, or None "
           "for no limit. Once the limit is exceeded, redis will start LRU "
