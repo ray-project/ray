@@ -132,9 +132,27 @@ class ActorRegistration {
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
 
-  /// A map from all of the dummy object IDs stored for this
-  /// actor to the number of actor handles that have the object
-  /// ID in scope.
+  /// A map from all of the dummy object IDs stored for this actor to the
+  /// number of actor handles that have the object ID in scope. Each actor
+  /// handle will have one dummy object ID in scope, the execution dependency
+  /// for the next task submitted by that actor handle to be executed. If a
+  /// task submitted by this actor handle has been executed before, then this
+  /// is also the dummy object returned by the last task executed. Otherwise,
+  /// it's the dummy object returned by the last task submitted on the original
+  /// actor handle from which this handle was forked.
+  ///
+  /// We release an actor handle's dummy object when a new task submitted by
+  /// that handle finishes, since this means that the handle will never submit
+  /// another task that depends on that object. We also acquire a reference to
+  /// the dummy object returned by the finished task, since this means that the
+  /// next task submitted by the handle will depend on that object. If new
+  /// actor handles are created, these will be included in the next task
+  /// submitted on the original actor handle and are given a reference to the
+  /// same dummy object as the original handle.
+  ///
+  /// Once all handles have released a dummy object, it will be removed from
+  /// this map. This object is safe to evict, since no handle will submit
+  /// another method dependent on that object.
   std::unordered_map<ObjectID, int64_t> dummy_objects_;
 };
 

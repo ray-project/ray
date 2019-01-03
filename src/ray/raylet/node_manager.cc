@@ -1537,14 +1537,6 @@ bool NodeManager::AssignTask(const Task &task) {
               // leaks information about the TaskExecutionSpecification implementation.
               RAY_CHECK(execution_dependencies.size() == 1);
               const ObjectID &execution_dependency = execution_dependencies.front();
-              // If the new actor handle ID matches the current one, then this means
-              // that the actor handle was pickled.
-              if (new_handle_id == spec.ActorHandleId()) {
-                // The current execution dependency will never be safe to release, so
-                // generate a handle ID that will never actually appear to hold the
-                // reference.
-                new_handle_id = ActorHandleID::from_random();
-              }
               // Add the new handle and give it a reference to the finished task's
               // execution dependency.
               actor_entry->second.AddHandle(new_handle_id, execution_dependency);
@@ -1689,7 +1681,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorHandleID actor_handle_id;
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
-    actor_handle_id = ActorHandleID();
+    actor_handle_id = ActorHandleID::nil();
   } else {
     actor_id = task.GetTaskSpecification().ActorId();
     actor_handle_id = task.GetTaskSpecification().ActorHandleId();
@@ -1697,8 +1689,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   // Extend the actor's frontier to include the executed task.
-  auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-  ObjectID object_to_release =
+  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+  const ObjectID object_to_release =
       actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
   if (!object_to_release.is_nil()) {
     // If there were no new actor handles created, then no other actor task

@@ -709,13 +709,19 @@ class ActorHandle(object):
 
         if ray_forking:
             self._ray_actor_forks += 1
+            new_actor_handle_id = actor_handle_id
+        else:
+            # The execution dependency for a pickled actor handle is never safe
+            # to release, since it could be unpickled and submit another
+            # dependent task at any time. Therefore, we notify the backend of a
+            # random handle ID that will never actually be used.
+            new_actor_handle_id = ray.ObjectID(_random_string())
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
-        # NOTE(swang): If the new actor handle fails to be used (e.g., due
-        # to a failure to register a named actor), then this may cause a
-        # memory leak in the backend.
-        self._ray_new_actor_handles.append(actor_handle_id)
+        # NOTE(swang): There is currently no garbage collection for actor
+        # handles until the actor itself is removed.
+        self._ray_new_actor_handles.append(new_actor_handle_id)
 
         return state
 
