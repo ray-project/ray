@@ -346,7 +346,7 @@ def get_system_memory():
     memory_in_bytes = None
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
-    if sys.platform == "linux" or sys.platform == "linux2":
+    elif sys.platform == "linux" or sys.platform == "linux2":
         # Handle Linux.
         bytes_in_kilobyte = 1024
         memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
