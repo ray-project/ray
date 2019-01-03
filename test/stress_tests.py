@@ -197,7 +197,6 @@ def ray_start_reconstruction(request):
 
     plasma_store_memory = 10**9
 
-    cluster = Cluster()
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
@@ -221,11 +220,7 @@ def ray_start_reconstruction(request):
             }))
     ray.init(redis_address=cluster.redis_address)
 
-    yield plasma_store_memory, num_nodes
-
-    # The code after the yield will run as teardown code.
-    for node in cluster.list_all_nodes():
-        assert node.all_processes_alive()
+    yield plasma_store_memory, num_nodes, cluster
 
     # Clean up the Ray cluster.
     ray.shutdown()
@@ -236,7 +231,7 @@ def ray_start_reconstruction(request):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
-    plasma_store_memory, num_nodes = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -272,6 +267,9 @@ def test_simple(ray_start_reconstruction):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
 
+    for node in cluster.list_all_nodes():
+        assert node.all_processes_alive()
+
 
 def sorted_random_indexes(total, output_num):
     random_indexes = [np.random.randint(total) for _ in range(output_num)]
@@ -283,7 +281,7 @@ def sorted_random_indexes(total, output_num):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
-    plasma_store_memory, num_nodes = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -334,12 +332,15 @@ def test_recursive(ray_start_reconstruction):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
 
+    for node in cluster.list_all_nodes():
+        assert node.all_processes_alive()
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
-    plasma_store_memory, _ = ray_start_reconstruction
+    plasma_store_memory, _, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -388,6 +389,9 @@ def test_multiple_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
 
+    for node in cluster.list_all_nodes():
+        assert node.all_processes_alive()
+
 
 def wait_for_errors(error_check):
     # Wait for errors from all the nondeterministic tasks.
@@ -410,7 +414,7 @@ def wait_for_errors(error_check):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_nondeterministic_task(ray_start_reconstruction):
-    plasma_store_memory, num_nodes = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -470,6 +474,9 @@ def test_nondeterministic_task(ray_start_reconstruction):
     # Make sure all the errors have the correct type.
     assert all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
                for error in errors)
+
+    for node in cluster.list_all_nodes():
+        assert node.all_processes_alive()
 
 
 @pytest.fixture
