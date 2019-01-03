@@ -178,8 +178,6 @@ class ActorCriticLoss(object):
         self.actor_loss = (-1.0 * actor_loss_coeff * policy_delay_mask *
                            tf.reduce_mean(q_tp0))
 
-        self.total_loss = self.actor_loss + self.critic_loss
-
 
 class DDPGPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
@@ -362,7 +360,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.loss.total_loss,
+            loss=self.loss.actor_loss + self.loss.critic_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + p_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
