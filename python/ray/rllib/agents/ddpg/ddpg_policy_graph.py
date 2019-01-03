@@ -176,7 +176,7 @@ class ActorCriticLoss(object):
         policy_delay_mask = tf.to_float(
             tf.equal(tf.mod(global_step, policy_delay), 0))
         self.actor_loss = (-1.0 * actor_loss_coeff * policy_delay_mask *
-                           tf.reduce_mean(q_tp0)) + self.p_model.loss()
+                           tf.reduce_mean(q_tp0))
 
         self.total_loss = self.actor_loss + self.critic_loss
 
