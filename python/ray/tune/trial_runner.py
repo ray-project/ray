@@ -288,11 +288,11 @@ class TrialRunner(object):
                 # if checkpoint_at_end experiment option is set to True
                 self._checkpoint_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
+            elif decision == TrialScheduler.NOOP:
+                return
             else:
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
-        except AssertionError as e:
-            raise e
         except Exception:
             logger.exception("Error processing event.")
             error_msg = traceback.format_exc()

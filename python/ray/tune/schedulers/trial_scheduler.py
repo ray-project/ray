@@ -11,6 +11,7 @@ class TrialScheduler(object):
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
+    NOOP = "NOOP"  #: Status for no-op (letting scheduler manage)
 
     def on_trial_add(self, trial_runner, trial):
         """Called when a new trial is added to the trial runner."""
