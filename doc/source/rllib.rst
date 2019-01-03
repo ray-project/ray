@@ -89,16 +89,16 @@ Offline Datasets
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
-RLlib Development
------------------
+Development
+-----------
 
 * `Development Install <rllib-dev.html#development-install>`__
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
-RLlib Concepts
---------------
+Concepts
+--------
 * `Policy Graphs <rllib-concepts.html>`__
 * `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 * `Policy Optimization <rllib-concepts.html#policy-optimization>`__
