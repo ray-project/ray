@@ -13,36 +13,10 @@ from ray.autoscaler.commands import (attach_cluster, exec_cluster,
                                      create_or_update_cluster, rsync,
                                      teardown_cluster, get_head_node_ip)
 import ray.ray_constants as ray_constants
-import ray.utils
 
 from ray.parameter import RayParams
 
 logger = logging.getLogger(__name__)
-
-
-def check_no_existing_redis_clients(node_ip_address, redis_client):
-    # The client table prefix must be kept in sync with the file
-    # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
-    REDIS_CLIENT_TABLE_PREFIX = "CL:"
-    client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
-    # Filter to clients on the same node and do some basic checking.
-    for key in client_keys:
-        info = redis_client.hgetall(key)
-        assert b"ray_client_id" in info
-        assert b"node_ip_address" in info
-        assert b"client_type" in info
-        assert b"deleted" in info
-        # Clients that ran on the same node but that are marked dead can be
-        # ignored.
-        deleted = info[b"deleted"]
-        deleted = bool(int(deleted))
-        if deleted:
-            continue
-
-        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
-            raise Exception("This Redis instance is already connected to "
-                            "clients with this IP address.")
-
 
 @click.group()
 @click.option(
@@ -217,12 +191,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           internal_config):
-    # Convert hostnames to numerical IP address.
-    if node_ip_address is not None:
-        node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
-
     try:
         resources = json.loads(resources)
     except Exception:
@@ -239,8 +207,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         resources["GPU"] = num_gpus
     ray_params = RayParams(
         node_ip_address=node_ip_address,
-        object_manager_ports=[object_manager_port],
-        node_manager_ports=[node_manager_port],
+        object_manager_port=object_manager_port,
+        node_manager_port=node_manager_port,
         num_workers=num_workers,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
@@ -275,11 +243,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                             "started, so a Redis address should not be "
                             "provided.")
 
-        # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address())
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
         ray_params.update_if_absent(
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -289,8 +252,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             include_webui=(not no_ui),
             autoscaling_config=autoscaling_config)
 
-        address_info = services.start_ray_head(ray_params, cleanup=False)
-        logger.info(address_info)
+        session = services.start_ray_head(ray_params, cleanup=False)
+        logger.info(session.address_info)
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
@@ -303,9 +266,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                address_info["redis_address"], " --redis-password "
+                ray_params.redis_address, " --redis-password "
                 if redis_password else "", redis_password if redis_password
-                else "", address_info["redis_address"], "\", redis_password=\""
+                else "", ray_params.redis_address, "\", redis_password=\""
                 if redis_password else "", redis_password
                 if redis_password else ""))
     else:
@@ -328,34 +291,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if no_ui:
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")
-        redis_ip_address, redis_port = redis_address.split(":")
-
-        # Wait for the Redis server to be started. And throw an exception if we
-        # can't connect to it.
-        services.wait_for_redis_to_start(
-            redis_ip_address, int(redis_port), password=redis_password)
-
-        # Create a Redis client.
-        redis_client = services.create_redis_client(
-            redis_address, password=redis_password)
-
-        # Check that the verion information on this node matches the version
-        # information that the cluster was started with.
-        services.check_version_info(redis_client)
-
-        # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(redis_address))
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
-        # Check that there aren't already Redis clients with the same IP
-        # address connected with this Redis instance. This raises an exception
-        # if the Redis server already has clients on this node.
-        check_no_existing_redis_clients(ray_params.node_ip_address,
-                                        redis_client)
         ray_params.redis_address = redis_address
-        address_info = services.start_ray_node(ray_params, cleanup=False)
-        logger.info(address_info)
+        session = services.start_ray_node(ray_params, cleanup=False)
+        logger.info(session.address_info)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")

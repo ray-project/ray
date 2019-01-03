@@ -85,13 +85,13 @@ class Cluster(object):
 
         if self.head_node is None:
             ray_params.update(include_webui=False)
-            address_info = services.start_ray_head(ray_params, cleanup=True)
-            self.redis_address = address_info["redis_address"]
+            services.start_ray_head(ray_params, cleanup=True)
+            self.redis_address = ray_params.redis_address
             # TODO(rliaw): Find a more stable way than modifying global state.
             process_dict_copy = services.all_processes.copy()
             for key in services.all_processes:
                 services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
+            node = Node(ray_params.address_info, process_dict_copy)
             self.head_node = node
         else:
             ray_params.update(redis_address=self.redis_address)
@@ -103,7 +103,7 @@ class Cluster(object):
             node = Node(address_info, process_dict_copy)
             self.worker_nodes[node] = address_info
         logger.info("Starting Node with raylet socket {}".format(
-            address_info["raylet_socket_names"]))
+            ray_params.raylet_socket_name))
 
         return node
 

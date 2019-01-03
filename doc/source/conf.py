@@ -36,7 +36,6 @@ MOCK_MODULES = [
     "tensorflow.python.client",
     "tensorflow.python.util",
     "ray.raylet",
-    "ray.plasma",
     "ray.core",
     "ray.core.generated",
     "ray.core.generated.ClientTableData",

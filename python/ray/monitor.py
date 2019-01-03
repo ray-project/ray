@@ -14,9 +14,9 @@ import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
 import ray.cloudpickle as pickle
 import ray.gcs_utils
+import ray.runner
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
 
 # Set up logging.
@@ -38,15 +38,14 @@ class Monitor(object):
 
     def __init__(self,
                  redis_address,
-                 redis_port,
                  autoscaling_config,
                  redis_password=None):
         # Initialize the Redis clients.
-        self.state = ray.experimental.state.GlobalState()
-        self.state._initialize_global_state(
-            redis_address, redis_port, redis_password=redis_password)
-        self.redis = redis.StrictRedis(
-            host=redis_address, port=redis_port, db=0, password=redis_password)
+        self.state = ray.experimental.state.GlobalState(
+            redis_address, redis_password=redis_password)
+        self.state.initialize_global_state()
+        self.redis = ray.runner.create_redis_client(
+            redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -361,17 +360,13 @@ if __name__ == "__main__":
     level = logging.getLevelName(args.logging_level.upper())
     logging.basicConfig(level=level, format=args.logging_format)
 
-    redis_ip_address = get_ip_address(args.redis_address)
-    redis_port = get_port(args.redis_address)
-
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
         autoscaling_config = None
 
     monitor = Monitor(
-        redis_ip_address,
-        redis_port,
+        args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password)
 
@@ -379,8 +374,8 @@ if __name__ == "__main__":
         monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+        redis_client = ray.runner.create_redis_client(
+            args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)

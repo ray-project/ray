@@ -6,11 +6,10 @@ import argparse
 import logging
 import traceback
 
-import ray
-import ray.actor
-from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
-import ray.tempfile_services as tempfile_services
+from ray.parameter import RayParams
+import ray.services
+import ray.session
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -61,20 +60,9 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    info = {
-        "node_ip_address": args.node_ip_address,
-        "redis_address": args.redis_address,
-        "redis_password": args.redis_password,
-        "store_socket_name": args.object_store_name,
-        "raylet_socket_name": args.raylet_name,
-    }
-
     logging.basicConfig(
         level=logging.getLevelName(args.logging_level.upper()),
         format=args.logging_format)
-
-    # Override the temporary directory.
-    tempfile_services.set_temp_root(args.temp_dir)
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
@@ -82,9 +70,12 @@ if __name__ == "__main__":
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
-        temp_dir=args.temp_dir)
+        temp_dir=args.temp_dir)  # Override the temporary directory.
 
-    ray.worker.connect(ray_params, info, mode=ray.WORKER_MODE)
+    session = ray.session.RayNodeSession(ray_params)
+    session.connect_cluster()
+    ray.services.current_session = session
+    ray.worker.connect(session, mode=ray.WORKER_MODE)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

@@ -4,7 +4,8 @@ from __future__ import print_function
 
 from collections import defaultdict
 import json
-import redis
+import logging
+import os
 import sys
 import time
 
@@ -12,8 +13,16 @@ import ray
 from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import ray.runner
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
+
+NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
+logger = logging.getLogger(__name__)
 
 
 class GlobalState(object):
@@ -27,13 +36,22 @@ class GlobalState(object):
         redis_clients: Redis clients for each of the Redis shards.
     """
 
-    def __init__(self):
-        """Create a GlobalState object."""
+    def __init__(self, redis_address, redis_password=None):
+        """Create a GlobalState object by connecting to Redis.
+
+        Args:
+            redis_address: The address of the Redis server.
+            redis_password: The password of the redis server.
+        """
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         # The redis server storing metadata, such as function table, client
         # table, log files, event logs, workers/actions info.
-        self.redis_client = None
+        self.redis_client = ray.runner.create_redis_client(
+            redis_address, password=redis_password)
         # Clients for the redis shards, storing the object table & task table.
         self.redis_clients = None
+        self.redis_shards_addresses = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -50,26 +68,13 @@ class GlobalState(object):
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
 
-    def _initialize_global_state(self,
-                                 redis_ip_address,
-                                 redis_port,
-                                 redis_password=None,
-                                 timeout=20):
+    def initialize_global_state(self, timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
         It's possible that certain keys in Redis may not have been fully
         populated yet. In this case, we will retry this method until they have
         been populated or we exceed a timeout.
-
-        Args:
-            redis_ip_address: The IP address of the node that the Redis server
-                lives on.
-            redis_port: The port that the Redis server is listening on.
-            redis_password: The password of the redis server.
         """
-        self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port, password=redis_password)
-
         start_time = time.time()
 
         num_redis_shards = None
@@ -77,19 +82,18 @@ class GlobalState(object):
 
         while time.time() - start_time < timeout:
             # Attempt to get the number of Redis shards.
-            num_redis_shards = self.redis_client.get("NumRedisShards")
+            num_redis_shards = self.num_redis_shards
             if num_redis_shards is None:
                 print("Waiting longer for NumRedisShards to be populated.")
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if (num_redis_shards < 1):
+            if num_redis_shards < 1:
                 raise Exception("Expected at least one Redis shard, found "
                                 "{}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
-            ip_address_ports = self.redis_client.lrange(
-                "RedisShards", start=0, end=-1)
+            ip_address_ports = self.get_redis_shards()
             if len(ip_address_ports) != num_redis_shards:
                 print("Waiting longer for RedisShards to be populated.")
                 time.sleep(1)
@@ -105,15 +109,21 @@ class GlobalState(object):
                             "ip_address_ports = {}".format(
                                 num_redis_shards, ip_address_ports))
 
+        self.redis_shards_addresses = ip_address_ports
         # Get the rest of the information.
-        self.redis_clients = []
-        for ip_address_port in ip_address_ports:
-            shard_address, shard_port = ip_address_port.split(b":")
-            self.redis_clients.append(
-                redis.StrictRedis(
-                    host=shard_address,
-                    port=shard_port,
-                    password=redis_password))
+        self.redis_clients = [ray.runner.create_redis_client(
+            addr, password=self.redis_password) for addr in ip_address_ports]
+
+    def initialize_credis_shards(self, node_ip_address):
+        # TODO(suquark): Why we only execute command on the last shard?
+        # Configure the chain state.
+        self.redis_client.execute_command(
+            "MASTER.ADD", node_ip_address, ray.utils.get_port(
+                self.redis_shards_addresses[-1]))
+        shard_client = self.redis_clients[-1]
+        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
+                                     node_ip_address,
+                                     ray.utils.get_port(self.redis_address))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -328,7 +338,6 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
             NIL_CLIENT_ID)
@@ -406,8 +415,212 @@ class GlobalState(object):
 
         return ip_filename_file
 
+    def record_log_files(self, node_ip_address, log_files):
+        """Record in Redis that a new log file has been created.
+
+        This is used so that each log monitor can check Redis and figure out
+        which log files it is reponsible for monitoring.
+
+        Args:
+            log_files: A list of file handles for the log files. If one of the
+                file handles is None, we ignore it.
+        """
+        assert self.redis_client is not None
+        for log_file in log_files:
+            if log_file is not None:
+                # The name of the key storing the list of log filenames for
+                # this IP address.
+                log_file_list_key = "LOG_FILENAMES:{}".format(node_ip_address)
+                self.redis_client.rpush(log_file_list_key, log_file.name)
+
+    @property
+    def redirect_worker_output(self):
+        redirect_worker_output_val = self.redis_client.get("RedirectOutput")
+        return (redirect_worker_output_val is not None
+                and int(redirect_worker_output_val) == 1)
+
+    @redirect_worker_output.setter
+    def redirect_worker_output(self, value):
+        # Put the redirect_worker_output bool in the Redis shard so that
+        # workers can access it and know whether or not to redirect
+        # their output.
+        self.redis_client.set("RedirectOutput", 1 if value else 0)
+
+    @property
+    def webui(self):
+        """Parsing for getting the url of the web UI.
+
+        Returns:
+            The URL of the web UI as a string.
+        """
+        result = self.redis_client.hmget("webui", "url")[0]
+        return ray.utils.decode(result) if result is not None else result
+
+    @webui.setter
+    def webui(self, value):
+        self.redis_client.hmset("webui", {"url": value})
+
+    @property
+    def num_redis_shards(self):
+        num_redis_shards = self.redis_client.get("NumRedisShards")
+        if num_redis_shards is not None:
+            return int(num_redis_shards)
+
+    @num_redis_shards.setter
+    def num_redis_shards(self, value):
+        assert isinstance(value, int)
+        self.redis_client.set("NumRedisShards", str(value))
+
+    @property
+    def version_info(self):
+        redis_reply = self.redis_client.get("VERSION_INFO")
+
+        # Don't do the check if there is no version information in Redis. This
+        # is to make it easier to do things like start the processes by hand.
+        if redis_reply is None:
+            return
+
+        return tuple(json.loads(ray.utils.decode(redis_reply)))
+
+    @version_info.setter
+    def version_info(self, value):
+        self.redis_client.set("VERSION_INFO", json.dumps(value))
+
+    def check_version_info(self):
+        """Check if various version info of this process is correct.
+
+        This will be used to detect if workers or drivers are started using
+        different versions of Python, pyarrow, or Ray. If the version
+        information is not present in Redis, then no check is done.
+
+        Raises:
+            Exception: An exception is raised if there is a version mismatch.
+        """
+        true_version_info = self.version_info
+
+        # Don't do the check if there is no version information in Redis. This
+        # is to make it easier to do things like start the processes by hand.
+        if true_version_info is None:
+            return
+
+        version_info = ray.utils.get_version_info()
+        if version_info != true_version_info:
+            node_ip_address = ray.utils.get_node_ip_address()
+            error_message = """Version mismatch: The cluster was started with:
+                Ray: {}
+                Python: {}
+                Pyarrow: {}
+            This process on node {} was started with:
+                Ray: {}
+                Python: {}
+                Pyarrow: {} 
+            """.format(true_version_info[0], true_version_info[1],
+                       true_version_info[2], node_ip_address, version_info[0],
+                       version_info[1], version_info[2])
+            if version_info[:2] != true_version_info[:2]:
+                raise Exception(error_message)
+            else:
+                logger.warning(error_message)
+
+    def check_no_existing_redis_clients(self, node_ip_address):
+        """Check that there aren't already Redis clients with the same IP
+        address connected with this Redis instance. This raises an exception
+        if the Redis server already has clients on this node.
+
+        Args:
+            node_ip_address (str): The IP address of this node.
+
+        Raises:
+            Exception: An exception is raised if there exists a client.
+        """
+        # The client table prefix must be kept in sync with the file
+        # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
+        REDIS_CLIENT_TABLE_PREFIX = "CL:"
+        client_keys = self.redis_client.keys(
+            "{}*".format(REDIS_CLIENT_TABLE_PREFIX))
+        # Filter to clients on the same node and do some basic checking.
+        for key in client_keys:
+            info = self.redis_client.hgetall(key)
+            assert b"ray_client_id" in info
+            assert b"node_ip_address" in info
+            assert b"client_type" in info
+            assert b"deleted" in info
+            # Clients that ran on the same node but that are marked dead can be
+            # ignored.
+            deleted = info[b"deleted"]
+            deleted = bool(int(deleted))
+            if deleted:
+                continue
+
+            if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
+                raise Exception("This Redis instance is already connected to "
+                                "clients with this IP address.")
+
+    def get_redis_shards(self):
+        # Get redis shards from primary redis instance.
+        redis_shards = self.redis_client.lrange("RedisShards", start=0, end=-1)
+        return [ray.utils.decode(shard) for shard in redis_shards]
+
+    def append_redis_shards(self, redis_shards):
+        # Store redis shard information in the primary redis shard.
+        self.redis_client.rpush("RedisShards", *redis_shards)
+
+    def get_client_info(self, node_ip_address, redis_address,
+                        only_current_node=True):
+        redis_ip_address = ray.utils.get_ip_address(redis_address)
+        true_node_ip_address = ray.utils.get_node_ip_address()
+
+        # In the raylet code path, all client data is stored in a zset at the
+        # key for the nil client.
+        client_key = b"CLIENT" + NIL_CLIENT_ID
+        # Only get the first one.
+        clients = self.redis_client.zrange(client_key, 0, -1)
+        if only_current_node:
+            raylets = []
+            for client_message in clients:
+                client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+                    client_message, 0)
+                client_node_ip_address = ray.utils.decode(
+                    client.NodeManagerAddress())
+                if (client_node_ip_address == node_ip_address or
+                        (client_node_ip_address == "127.0.0.1"
+                         and redis_ip_address == true_node_ip_address)):
+                    raylets.append(client)
+            return raylets
+        else:
+            return clients
+
+    def register_driver(self, worker_id, name, node_ip_address,
+                        plasma_store_socket_name, raylet_socket_name,
+                        webui_url):
+        # The concept of a driver is the same as the concept of a "job".
+        # Register the driver/job with Redis here.
+        driver_info = {
+            "name": name,
+            "node_ip_address": node_ip_address,
+            "driver_id": worker_id,
+            "start_time": time.time(),
+            "plasma_store_socket": plasma_store_socket_name,
+            "raylet_socket": raylet_socket_name,
+        }
+        self.redis_client.hmset(b"Drivers:" + worker_id, driver_info)
+        if not self.redis_client.exists("webui") and webui_url is not None:
+            self.webui = webui_url
+
+    def register_worker(self, worker_id, node_ip_address,
+                        plasma_store_socket_name, stdout_file, stderr_file):
+        # Register the worker with Redis.
+        worker_dict = {
+            "node_ip_address": node_ip_address,
+            "plasma_store_socket": plasma_store_socket_name,
+        }
+        if stdout_file is not None:
+            worker_dict["stdout_file"] = os.path.abspath(stdout_file.name)
+            worker_dict["stderr_file"] = os.path.abspath(stderr_file.name)
+        self.redis_client.hmset(b"Workers:" + worker_id, worker_dict)
+
     def _profile_table(self, batch_id):
-        """Get the profile events for a given batch of profile events.
+        """Get the profile events for a given component.
 
         Args:
             batch_id: An identifier for a batch of profile events.

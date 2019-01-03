@@ -3,24 +3,31 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import errno
 import functools
 import hashlib
 import inspect
 import logging
+import multiprocessing
 import numpy as np
 import os
+import socket
 import subprocess
 import sys
 import threading
 import time
 import uuid
 
+import pyarrow
+
 import ray.gcs_utils
 import ray.raylet
 import ray.ray_constants as ray_constants
 
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray configures it by default automatically
+# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
-
 
 def _random_string():
     id_hash = hashlib.sha1()
@@ -236,6 +243,20 @@ def set_cuda_visible_devices(gpu_ids):
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
 
 
+def autodetect_num_gpus():
+    """Attempt to detect the number of GPUs on this machine.
+
+    TODO(rkn): This currently assumes Nvidia GPUs and Linux.
+
+    Returns:
+        The number of GPUs if any were detected, otherwise 0.
+    """
+    proc_gpus_path = "/proc/driver/nvidia/gpus"
+    if os.path.isdir(proc_gpus_path):
+        return len(os.listdir(proc_gpus_path))
+    return 0
+
+
 def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
                                       default_resources, runtime_num_cpus,
                                       runtime_num_gpus, runtime_resources):
@@ -361,6 +382,56 @@ def get_system_memory():
         return memory_in_bytes
 
 
+def check_and_update_resources(resources):
+    """Sanity check a resource dictionary and add sensible defaults.
+
+    Args:
+        resources: A dictionary mapping resource names to resource quantities.
+
+    Returns:
+        A new resource dictionary.
+    """
+    if resources is None:
+        resources = {}
+    resources = resources.copy()
+    if "CPU" not in resources:
+        # By default, use the number of hardware execution threads for the
+        # number of cores.
+        resources["CPU"] = multiprocessing.cpu_count()
+
+    # See if CUDA_VISIBLE_DEVICES has already been set.
+    gpu_ids = get_cuda_visible_devices()
+
+    # Check that the number of GPUs that the local scheduler wants doesn't
+    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+    if ("GPU" in resources and gpu_ids is not None
+            and resources["GPU"] > len(gpu_ids)):
+        raise Exception("Attempting to start local scheduler with {} GPUs, "
+                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
+                            resources["GPU"], gpu_ids))
+
+    if "GPU" not in resources:
+        # Try to automatically detect the number of GPUs.
+        resources["GPU"] = autodetect_num_gpus()
+        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
+        if gpu_ids is not None:
+            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
+
+    # Check types.
+    for _, resource_quantity in resources.items():
+        assert (isinstance(resource_quantity, int)
+                or isinstance(resource_quantity, float))
+        if (isinstance(resource_quantity, float)
+                and not resource_quantity.is_integer()):
+            raise ValueError("Resource quantities must all be whole numbers.")
+
+        if resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY:
+            raise ValueError("Resource quantities must be at most {}.".format(
+                ray.ray_constants.MAX_RESOURCE_QUANTITY))
+
+    return resources
+
+
 def get_shared_memory_bytes():
     """Get the size of the shared memory file system.
 
@@ -464,3 +535,133 @@ def thread_safe_client(client, lock=None):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+# Address utils
+
+def address(ip_address, port):
+    return ip_address + ":" + str(port)
+
+
+def get_ip_address(address):
+    assert type(address) == str, "Address must be a string"
+    ip_address = address.split(":")[0]
+    return ip_address
+
+
+def get_port(address):
+    try:
+        port = int(address.split(":")[1])
+    except Exception:
+        raise Exception("Unable to parse port from address {}".format(address))
+    return port
+
+
+def address_to_ip(address):
+    """Convert a hostname to a numerical IP addresses in an address.
+
+    This should be a no-op if address already contains an actual numerical IP
+    address.
+
+    Args:
+        address: This can be either a string containing a hostname (or an IP
+            address) and a port or it can be just an IP address.
+
+    Returns:
+        The same address but with the hostname replaced by a numerical IP
+            address.
+    """
+    address_parts = address.split(":")
+    ip_address = socket.gethostbyname(address_parts[0])
+    # Make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1":
+        ip_address = get_node_ip_address()
+    return ":".join([ip_address] + address_parts[1:])
+
+
+def get_node_ip_address(address="8.8.8.8:53"):
+    """Determine the IP address of the local node.
+
+    Args:
+        address (str): The IP address and port of any known live service on the
+            network you care about.
+
+    Returns:
+        The IP address of the current node.
+    """
+    ip_address, port = address.split(":")
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # This command will raise an exception if there is no internet
+        # connection.
+        s.connect((ip_address, int(port)))
+        node_ip_address = s.getsockname()[0]
+    except Exception as e:
+        node_ip_address = "127.0.0.1"
+        # [Errno 101] Network is unreachable
+        if e.errno == 101:
+            try:
+                # try get node ip address from host name
+                host_name = socket.getfqdn(socket.gethostname())
+                node_ip_address = socket.gethostbyname(host_name)
+            except Exception:
+                pass
+
+    return node_ip_address
+
+
+def get_usable_port(inital_port):
+    port = inital_port
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
+    return port
+
+
+def get_version_info():
+    """Compute the versions of Python, pyarrow, and Ray.
+
+    Returns:
+        A tuple containing the version information.
+    """
+    ray_version = ray.__version__
+    python_version = ".".join(map(str, sys.version_info[:3]))
+    pyarrow_version = pyarrow.__version__
+    return ray_version, python_version, pyarrow_version
+
+
+def try_to_create_directory(directory_path):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+    """
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != os.errno.EEXIST:
+                raise e
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
