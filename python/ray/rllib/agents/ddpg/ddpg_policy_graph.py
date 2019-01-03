@@ -40,6 +40,7 @@ class PNetwork(object):
         # shape of action_scores is [batch_size, dim_actions]
         self.action_scores = layers.fully_connected(
             action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+        self.model = model
 
 
 class ActionNetwork(object):
@@ -207,8 +208,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
         # Actor: P (policy) network
         with tf.variable_scope(P_SCOPE) as scope:
-            p_values = self._build_p_network(self.cur_observations,
-                                             observation_space)
+            p_values, self.p_model = self._build_p_network(
+                self.cur_observations, observation_space)
             self.p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -241,14 +242,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            self.p_t = self._build_p_network(self.obs_t, observation_space)
+            self.p_t, _ = self._build_p_network(self.obs_t, observation_space)
             p_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
 
         # target p network evaluation
         with tf.variable_scope(P_TARGET_SCOPE) as scope:
-            p_tp1 = self._build_p_network(self.obs_tp1, observation_space)
+            p_tp1, _ = self._build_p_network(self.obs_tp1, observation_space)
             target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -267,15 +268,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
         # q network evaluation
         prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
         with tf.variable_scope(Q_SCOPE) as scope:
-            q_t, model = self._build_q_network(self.obs_t, observation_space,
-                                               self.act_t)
+            q_t, self.q_model = self._build_q_network(
+                self.obs_t, observation_space, self.act_t)
             self.q_func_vars = _scope_vars(scope.name)
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
                                              output_actions)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
-                twin_q_t, twin_model = self._build_q_network(
+                twin_q_t, self.twin_q_model = self._build_q_network(
                     self.obs_t, observation_space, self.act_t)
                 self.twin_q_func_vars = _scope_vars(scope.name)
         q_batchnorm_update_ops = list(
@@ -313,6 +314,9 @@ class DDPGPolicyGraph(TFPolicyGraph):
                         self.loss.critic_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
+        # Model self-supervised losses
+        self.model_loss = self.q_model.loss() + self.p_model.loss()
+
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         self.tau_value = config.get("tau")
@@ -331,6 +335,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 update_target_expr.append(
                     var_target.assign(self.tau * var +
                                       (1.0 - self.tau) * var_target))
+            self.model_loss += self.twin_q_model.loss()
         for var, var_target in zip(
                 sorted(self.p_func_vars, key=lambda v: v.name),
                 sorted(target_p_func_vars, key=lambda v: v.name)):
@@ -355,7 +360,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=model.loss() + self.loss.total_loss,
+            loss=self.model_loss + self.loss.total_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + p_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
@@ -386,6 +391,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 var_list=self.q_func_vars + self.twin_q_func_vars
                 if self.config["twin_q"] else self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
+            model_grads_and_vars = optimizer.gradients(self.model.loss())
         else:
             actor_grads_and_vars = optimizer.compute_gradients(
                 self.loss.actor_loss, var_list=self.p_func_vars)
@@ -397,7 +403,12 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                 if g is not None]
         critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
                                  if g is not None]
-        grads_and_vars = actor_grads_and_vars + critic_grads_and_vars
+        model_grads_and_vars = [
+            (g, v) for (g, v) in optimizer.compute_gradients(self.model_loss)
+            if g is not None
+        ]
+        grads_and_vars = (actor_grads_and_vars + critic_grads_and_vars +
+                          model_grads_and_vars)
         return grads_and_vars
 
     @override(TFPolicyGraph)
@@ -448,13 +459,14 @@ class DDPGPolicyGraph(TFPolicyGraph):
         return q_net.value, q_net.model
 
     def _build_p_network(self, obs, obs_space):
-        return PNetwork(
+        policy_net = PNetwork(
             ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, 1, self.config["model"]), self.dim_actions,
             self.config["actor_hiddens"],
-            self.config["actor_hidden_activation"]).action_scores
+            self.config["actor_hidden_activation"])
+        return policy_net.action_scores, policy_net.model
 
     def _build_action_network(self, p_values, stochastic, eps,
                               is_target=False):
