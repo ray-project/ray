@@ -9,7 +9,8 @@ import yaml
 
 import ray
 from ray.test.cluster_utils import Cluster
-from ray.tune.config_parser import make_parser, resources_to_json
+from ray.tune.config_parser import make_parser
+from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
 EXAMPLE_USAGE = """
@@ -70,6 +71,10 @@ def create_parser(parser_creator=None):
         default="default",
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
@@ -138,7 +143,8 @@ def run(args, parser):
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials)
+        queue_trials=args.queue_trials,
+        resume=args.resume)
 
 
 if __name__ == "__main__":

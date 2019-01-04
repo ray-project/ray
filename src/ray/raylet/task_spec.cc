@@ -1,5 +1,7 @@
 #include "task_spec.h"
 
+#include <sstream>
+
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/util/logging.h"
@@ -137,6 +139,21 @@ int64_t TaskSpecification::ParentCounter() const {
 std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return string_vec_from_flatbuf(*message->function_descriptor());
+}
+
+std::string TaskSpecification::FunctionDescriptorString() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto list = string_vec_from_flatbuf(*message->function_descriptor());
+  std::ostringstream stream;
+  // The 4th is the code hash which is binary bits. No need to output it.
+  int size = std::min(static_cast<size_t>(3), list.size());
+  for (int i = 0; i < size; ++i) {
+    if (i != 0) {
+      stream << ",";
+    }
+    stream << list[i];
+  }
+  return stream.str();
 }
 
 int64_t TaskSpecification::NumArgs() const {

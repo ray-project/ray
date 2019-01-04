@@ -187,8 +187,6 @@ class PolicyEvaluator(EvaluatorInterface):
                     other metrics will be NaN.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
-                  - "counterfactual": use counterfactual policy evaluation to
-                    estimate performance.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
         """
@@ -309,8 +307,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 "Requested 'simulation' input evaluation method: "
                 "will discard all sampler outputs and keep only metrics.")
             sample_async = True
-        elif input_evaluation_method == "counterfactual":
-            raise NotImplementedError
         elif input_evaluation_method is None:
             pass
         else:
@@ -388,6 +384,10 @@ class PolicyEvaluator(EvaluatorInterface):
                 "samples": batch
             })
 
+        # Always do writes prior to compression for consistency and to allow
+        # for better compression inside the writer.
+        self.output_writer.write(batch)
+
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
                 for data in batch.policy_batches.values():
@@ -397,7 +397,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 batch["obs"] = [pack(o) for o in batch["obs"]]
                 batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
 
-        self.output_writer.write(batch)
         return batch
 
     @ray.method(num_return_vals=2)
