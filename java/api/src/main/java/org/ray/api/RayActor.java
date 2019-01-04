@@ -18,10 +18,4 @@ public interface RayActor<T> {
    */
   UniqueId getHandleId();
 
-  /**
-   * Create a handle with different ID. If `random` is false,
-   * new handle's ID will be generated deterministically.
-   * Otherwise, new handle's ID will be random.
-   */
-  RayActor<T> fork(boolean random);
 }

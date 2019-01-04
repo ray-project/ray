@@ -67,20 +67,13 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return taskCounter++;
   }
 
-  @Override
-  public RayActorImpl<T> fork(boolean random) {
+  public RayActorImpl<T> fork() {
     RayActorImpl<T> ret = new RayActorImpl<>();
     ret.id = this.id;
     ret.taskCounter = 0;
     ret.numForks = 0;
     ret.taskCursor = this.id;
-
-    if (random) {
-      ret.handleId = UniqueId.randomId();
-    } else {
-      ret.handleId = this.computeNextActorHandleId();
-    }
-
+    ret.handleId = this.computeNextActorHandleId();
     return ret;
   }
 

@@ -8,6 +8,7 @@ import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc2;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.RayActorImpl;
 
 public class ActorTest extends BaseTest {
 
@@ -79,10 +80,8 @@ public class ActorTest extends BaseTest {
   public void testForkingActorHandle() {
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
-    RayActor<Counter> counter2 = counter.fork(false);
+    RayActor<Counter> counter2 = ((RayActorImpl<Counter>) counter).fork();
     Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
-    RayActor<Counter> counter3 = counter2.fork(true);
-    Assert.assertEquals(Integer.valueOf(106), Ray.call(Counter::increase, counter3, 3).get());
   }
 
 }
