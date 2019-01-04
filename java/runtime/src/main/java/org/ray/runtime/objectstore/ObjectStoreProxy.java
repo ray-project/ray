@@ -3,6 +3,7 @@ package org.ray.runtime.objectstore;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
 import org.apache.arrow.plasma.PlasmaClient;
 import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
 import org.apache.commons.lang3.tuple.Pair;
@@ -87,6 +88,7 @@ public class ObjectStoreProxy {
   }
 
   public void put(UniqueId id, Object obj, Object metadata) {
+    //with DuplicateObjectException, print a log and ignore
     try {
       objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
     } catch (DuplicateObjectException e) {
