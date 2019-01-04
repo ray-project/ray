@@ -24,4 +24,3 @@ public class RayActorSerializer extends FSTBasicObjectSerializer {
     ((RayActorImpl) toRead).readExternal(in);
   }
 }
-
