@@ -52,8 +52,6 @@ MODEL_DEFAULTS = {
     "framestack": True,
     # Final resized frame dimension
     "dim": 84,
-    # Pytorch conv requires images to be channel-major
-    "channel_major": False,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
     "grayscale": False,
     # (deprecated) Changes frame to range from [-1, 1] if true
@@ -232,14 +230,17 @@ class ModelCatalog(object):
                                      options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options=None):
-        """Returns a PyTorch suitable model. This is currently only supported
-        in A3C.
+    def get_torch_model(obs_space,
+                        num_outputs,
+                        options=None,
+                        default_model_cls=None):
+        """Returns a custom model for PyTorch algorithms.
 
         Args:
-            input_shape (tuple): The input shape to the model.
+            obs_space (Space): The input observation space.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
+            default_model_cls (cls): Optional class to use if no custom model.
 
         Returns:
             model (models.Model): Neural network model.
@@ -250,21 +251,29 @@ class ModelCatalog(object):
                                                         PyTorchVisionNet)
 
         options = options or MODEL_DEFAULTS
+
         if options.get("custom_model"):
             model = options["custom_model"]
-            logger.info("Using custom torch model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(
-                input_shape, num_outputs, options)
+            logger.debug("Using custom torch model {}".format(model))
+            return _global_registry.get(RLLIB_MODEL,
+                                        model)(obs_space, num_outputs, options)
 
-        # TODO(alok): fix to handle Discrete(n) state spaces
-        obs_rank = len(input_shape) - 1
+        if options.get("use_lstm"):
+            raise NotImplementedError(
+                "LSTM auto-wrapping not implemented for torch")
+
+        if default_model_cls:
+            return default_model_cls(obs_space, num_outputs, options)
+
+        if isinstance(obs_space, gym.spaces.Discrete):
+            obs_rank = 1
+        else:
+            obs_rank = len(obs_space.shape)
 
         if obs_rank > 1:
-            return PyTorchVisionNet(input_shape, num_outputs, options)
+            return PyTorchVisionNet(obs_space, num_outputs, options)
 
-        # TODO(alok): overhaul PyTorchFCNet so it can just
-        # take input shape directly
-        return PyTorchFCNet(input_shape[0], num_outputs, options)
+        return PyTorchFCNet(obs_space, num_outputs, options)
 
     @staticmethod
     def get_preprocessor(env, options=None):

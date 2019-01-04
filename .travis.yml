@@ -69,6 +69,7 @@ matrix:
         - ./.travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
+        - ./.travis/install-with-cache-libs.sh
 
       script:
         - cd build

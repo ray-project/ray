@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch import nn
 
 import ray
-from ray.rllib.models.pytorch.misc import var_to_np
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -23,7 +22,7 @@ class A3CLoss(nn.Module):
         self.entropy_coeff = entropy_coeff
 
     def forward(self, observations, actions, advantages, value_targets):
-        logits, values = self.policy_model(observations)
+        logits, _, values, _ = self.policy_model({"obs": observations}, [])
         log_probs = F.log_softmax(logits, dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
@@ -46,8 +45,8 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
         self.config = config
         _, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
-        self.model = ModelCatalog.get_torch_model(
-            obs_space.shape, self.logit_dim, self.config["model"])
+        self.model = ModelCatalog.get_torch_model(obs_space, self.logit_dim,
+                                                  self.config["model"])
         loss = A3CLoss(self.model, self.config["vf_loss_coeff"],
                        self.config["entropy_coeff"])
         TorchPolicyGraph.__init__(
@@ -60,7 +59,7 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
-        return {"vf_preds": var_to_np(model_out[1])}
+        return {"vf_preds": model_out[2].numpy()}
 
     @override(TorchPolicyGraph)
     def optimizer(self):
@@ -82,7 +81,5 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
     def _value(self, obs):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0)
-            res = self.model.hidden_layers(obs)
-            res = self.model.value_branch(res)
-            res = res.squeeze()
-            return var_to_np(res)
+            _, _, vf, _ = self.model({"obs": obs}, [])
+            return vf.numpy().squeeze()
