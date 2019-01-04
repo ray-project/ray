@@ -24,8 +24,9 @@ from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import ModelCatalog
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-class SharedCartPoleEnv(CartPoleEnv):
+class SharedCartPoleEnv(CartPoleEnv, MultiAgentEnv):
     """
     Description:
         A pole is attached by an un-actuated joint to a cart, which moves along a frictionless track. The pendulum starts upright, and the goal is to prevent it from falling over by increasing and reducing the cart's velocity.
@@ -74,20 +75,16 @@ class SharedCartPoleEnv(CartPoleEnv):
         x, x_dot, theta, theta_dot = state
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
-        temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
+        temp = (
+               force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
-                    self.length * (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass))
+        self.length * (
+        4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass))
         xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
-        if self.kinematics_integrator == 'euler':
-            x = x + self.tau * x_dot
-            x_dot = x_dot + self.tau * xacc
-            theta = theta + self.tau * theta_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-        else:  # semi-implicit euler
-            x_dot = x_dot + self.tau * xacc
-            x = x + self.tau * x_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-            theta = theta + self.tau * theta_dot
+        x = x + self.tau * x_dot
+        x_dot = x_dot + self.tau * xacc
+        theta = theta + self.tau * theta_dot
+        theta_dot = theta_dot + self.tau * thetaacc
         self.state = (x, x_dot, theta, theta_dot)
         done = x < -self.x_threshold \
                or x > self.x_threshold \
@@ -113,19 +110,22 @@ class SharedCartPoleEnv(CartPoleEnv):
         states = {}
         rewards = {}
         dones = {}
+        infos = {}
+        dones["__all__"] = done
         for agent_id in actions.keys():
             states[agent_id] = np.array(self.state)
             rewards[agent_id] = reward
             dones[agent_id] = done
-        return states, rewards, dones, {}
+            infos[agent_id] = {}
+        return states, rewards, dones, infos
 
     def reset(self):
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
         self.steps_beyond_done = None
-        return {'agemt-0': np.array(self.state), 'agent-1': np.array(self.state)}
+        return {'agent-0': np.array(self.state), 'agent-1': np.array(self.state)}
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(num_cpus=1)
 
     # Simple environment with `num_agents` independent cartpole entities
     register_env("multi_cartpole", lambda _: SharedCartPoleEnv())
@@ -152,8 +152,11 @@ if __name__ == "__main__":
                 "training_iteration": 100
             },
             "config": {
+                "use_centralized_vf" : True,
+                "max_vf_agents" : 2,
                 "log_level": "DEBUG",
                 "num_sgd_iter": 10,
+                "num_workers" : 0,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(policy_mapping_fn),
