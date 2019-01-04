@@ -51,13 +51,16 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     default=ray_constants.LOGGER_LEVEL,
     type=str,
     help=ray_constants.LOGGER_LEVEL_HELP)
+@click.option("-v", "--verbose", required=False, is_flag=True)
 @click.option(
     "--logging-format",
     required=False,
     default=ray_constants.LOGGER_FORMAT,
     type=str,
     help=ray_constants.LOGGER_FORMAT_HELP)
-def cli(logging_level, logging_format):
+def cli(logging_level, verbose, logging_format):
+    if verbose:
+        logging_level = "DEBUG"
     level = logging.getLevelName(logging_level.upper())
     logging.basicConfig(level=level, format=logging_format)
     logger.setLevel(level)
