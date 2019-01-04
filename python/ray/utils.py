@@ -333,7 +333,8 @@ def get_system_memory():
     docker_limit = None
     memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(memory_limit_filename):
-        docker_limit = int(open(memory_limit_filename, "r").read())
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = None
