@@ -88,7 +88,6 @@ public class ObjectStoreProxy {
   }
 
   public void put(UniqueId id, Object obj, Object metadata) {
-    //with DuplicateObjectException, print a log and ignore
     try {
       objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
     } catch (DuplicateObjectException e) {
