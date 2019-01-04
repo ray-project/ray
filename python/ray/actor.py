@@ -604,7 +604,7 @@ class ActorHandle(object):
         self._ray_actor_cursor = object_ids.pop()
         # We have notified the backend of the new actor handles to expect since
         # the last task was submitted, so clear the list.
-        self._ray_new_actor_handles.clear()
+        self._ray_new_actor_handles = []
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]

@@ -68,9 +68,9 @@ ObjectID ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
 void ActorRegistration::AddHandle(const ActorHandleID &handle_id,
                                   const ObjectID &execution_dependency) {
   if (frontier_.find(handle_id) == frontier_.end()) {
-    frontier_[handle_id] = FrontierLeaf{
-        .task_counter = 0, .execution_dependency = execution_dependency,
-    };
+    auto &new_handle = frontier_[handle_id];
+    new_handle.task_counter = 0;
+    new_handle.execution_dependency = execution_dependency;
     dummy_objects_[execution_dependency]++;
   }
 }
