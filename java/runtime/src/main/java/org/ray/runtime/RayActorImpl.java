@@ -67,7 +67,24 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     return taskCounter++;
   }
 
-  private UniqueId computeNextActorHandleId() {
+  @Override
+  public RayActorImpl<T> fork(boolean random) {
+    RayActorImpl<T> ret = new RayActorImpl<>();
+    ret.id = this.id;
+    ret.taskCounter = 0;
+    ret.numForks = 0;
+    ret.taskCursor = this.id;
+
+    if (random) {
+      ret.handleId = UniqueId.randomId();
+    } else {
+      ret.handleId = this.computeNextActorHandleId();
+    }
+
+    return ret;
+  }
+
+  protected UniqueId computeNextActorHandleId() {
     byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
     return new UniqueId(bytes);
   }
@@ -75,8 +92,10 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.id);
-    out.writeObject(this.computeNextActorHandleId());
+    out.writeObject(this.handleId);
     out.writeObject(this.taskCursor);
+    out.writeObject(this.taskCounter);
+    out.writeObject(this.numForks);
   }
 
   @Override
@@ -84,5 +103,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.id = (UniqueId) in.readObject();
     this.handleId = (UniqueId) in.readObject();
     this.taskCursor = (UniqueId) in.readObject();
+    this.taskCounter = (int) in.readObject();
+    this.numForks = (int) in.readObject();
   }
 }

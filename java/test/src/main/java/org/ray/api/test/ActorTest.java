@@ -69,10 +69,20 @@ public class ActorTest extends BaseTest {
   @Test
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
-    RayFunc2<RayActor, Integer, Integer> f = ActorTest::testActorAsFirstParameter;
     Assert.assertEquals(Integer.valueOf(1),
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
     Assert.assertEquals(Integer.valueOf(11),
         Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
   }
+
+  @Test
+  public void testForkingActorHandle() {
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
+    RayActor<Counter> counter2 = counter.fork(false);
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
+    RayActor<Counter> counter3 = counter2.fork(true);
+    Assert.assertEquals(Integer.valueOf(106), Ray.call(Counter::increase, counter3, 3).get());
+  }
+
 }
