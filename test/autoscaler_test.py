@@ -331,7 +331,7 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         self.waitForNodes(0)
         autoscaler.update()
-        self.waitForNodes(5) # expected due to batch sizes and concurrency
+        self.waitForNodes(5)  # expected due to batch sizes and concurrency
         autoscaler.update()
         self.waitForNodes(10)
         autoscaler.update()
