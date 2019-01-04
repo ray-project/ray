@@ -327,20 +327,38 @@ def get_system_memory():
     Returns:
         The total amount of system memory in bytes.
     """
+    # Try to accurately figure out the memory limit if we are in a docker
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
+    docker_limit = None
+    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if os.path.exists(memory_limit_filename):
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+
     # Use psutil if it is available.
+    psutil_memory_in_bytes = None
     try:
         import psutil
-        return psutil.virtual_memory().total
+        psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
         pass
 
-    if sys.platform == "linux" or sys.platform == "linux2":
+    memory_in_bytes = None
+    if psutil_memory_in_bytes is not None:
+        memory_in_bytes = psutil_memory_in_bytes
+    elif sys.platform == "linux" or sys.platform == "linux2":
         # Handle Linux.
         bytes_in_kilobyte = 1024
-        return vmstat("total memory") * bytes_in_kilobyte
+        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
     else:
         # Handle MacOS.
-        return sysctl(["sysctl", "hw.memsize"])
+        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+
+    if docker_limit is not None:
+        return min(docker_limit, memory_in_bytes)
+    else:
+        return memory_in_bytes
 
 
 def get_shared_memory_bytes():
