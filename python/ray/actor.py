@@ -700,8 +700,10 @@ class ActorHandle(object):
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
+            # Actors in local mode don't have dummy objects.
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id(),
+            _ray_actor_creation_dummy_object_id.id()
+            if self._ray_actor_creation_dummy_object_id is not None else None,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
             "ray_forking": ray_forking
