@@ -72,7 +72,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     ret.id = this.id;
     ret.taskCounter = 0;
     ret.numForks = 0;
-    ret.taskCursor = this.id;
+    ret.taskCursor = this.taskCursor;
     ret.handleId = this.computeNextActorHandleId();
     return ret;
   }
