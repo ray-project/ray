@@ -76,22 +76,29 @@ Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
 * `Built-in Models and Preprocessors <rllib-models.html#built-in-models-and-preprocessors>`__
-* `Custom Models <rllib-models.html#custom-models>`__
+* `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
+* `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
-RLlib Development
------------------
+Offline Datasets
+----------------
+* `Working with Offline Datasets <rllib-offline.html>`__
+* `Input API <rllib-offline.html#input-api>`__
+* `Output API <rllib-offline.html#output-api>`__
+
+Development
+-----------
 
 * `Development Install <rllib-dev.html#development-install>`__
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
-RLlib Concepts
---------------
+Concepts
+--------
 * `Policy Graphs <rllib-concepts.html>`__
 * `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 * `Policy Optimization <rllib-concepts.html#policy-optimization>`__
