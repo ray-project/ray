@@ -1468,8 +1468,8 @@ bool NodeManager::AssignTask(const Task &task) {
     int64_t expected_task_counter =
         GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
     RAY_CHECK(spec.ActorCounter() == expected_task_counter)
-        << "Expected actor counter: " << expected_task_counter
-        << ", got: " << spec.ActorCounter();
+        << "Expected actor counter: " << expected_task_counter << ", task "
+        << spec.TaskId() << " has: " << spec.ActorCounter();
   }
 
   // Try to get an idle worker that can execute this task.

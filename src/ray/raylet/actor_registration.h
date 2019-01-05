@@ -131,28 +131,23 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
-
-  /// A map from all of the dummy object IDs stored for this actor to the
-  /// number of actor handles that have the object ID in scope. Each actor
-  /// handle will have one dummy object ID in scope, the execution dependency
-  /// for the next task submitted by that actor handle to be executed. If a
-  /// task submitted by this actor handle has been executed before, then this
-  /// is also the dummy object returned by the last task executed. Otherwise,
-  /// it's the dummy object returned by the last task submitted on the original
-  /// actor handle from which this handle was forked.
+  /// This map is used to track all the unreleased dummy objects for this
+  /// actor.  The map key is the dummy object ID, and the map value is the
+  /// number of actor handles that depend on that dummy object. When the map
+  /// value decreases to 0, the dummy object is safe to release from the object
+  /// manager, since this means that no actor handle will depend on that dummy
+  /// object again.
   ///
-  /// We release an actor handle's dummy object when a new task submitted by
-  /// that handle finishes, since this means that the handle will never submit
-  /// another task that depends on that object. We also acquire a reference to
-  /// the dummy object returned by the finished task, since this means that the
-  /// next task submitted by the handle will depend on that object. If new
-  /// actor handles are created, these will be included in the next task
-  /// submitted on the original actor handle and are given a reference to the
-  /// same dummy object as the original handle.
-  ///
-  /// Once all handles have released a dummy object, it will be removed from
-  /// this map. This object is safe to evict, since no handle will submit
-  /// another method dependent on that object.
+  /// An actor handle depends on a dummy object when its next unfinished task
+  /// depends on the dummy object. For a given dummy object (say D) created by
+  /// task (say T) that was submitted by an actor handle (say H), there could
+  /// be 2 types of such actor handles:
+  /// 1. T is the last task submitted by H that was executed. If the next task
+  /// submitted by H hasn't finished yet, then H still depends on D since D
+  /// will be in the next task's execution dependencies.
+  /// 2. Any handles that were forked from H after T finished, and before T's
+  /// next task finishes. Such handles depend on D until their first tasks
+  /// finish since D will be their first tasks' execution dependencies.
   std::unordered_map<ObjectID, int64_t> dummy_objects_;
 };
 
