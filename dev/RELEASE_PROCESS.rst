@@ -23,7 +23,7 @@ This document describes the process for creating new releases.
 
    .. code-block:: bash
 
-     NEW_VERSION=0.x.x
+     NEW_VERSION=0.x.x  # Change this
      OLD_VERSION=${$(git describe --tags --abbrev=0)#"ray-"}
      sed -i '' "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
      # sed -i "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py if on Linux
@@ -31,7 +31,7 @@ This document describes the process for creating new releases.
      git add python/ray/__init__.py && git commit -m "Bump version"
      git push -u [your fork]
 
-     # If you have ``hub`` installed, you can simply run:
+     # If you have ``hub`` installed, you can then run:
      # hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
