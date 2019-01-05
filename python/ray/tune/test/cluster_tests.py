@@ -62,7 +62,6 @@ def _start_new_cluster():
 @pytest.fixture
 def start_connected_cluster():
     # Start the Ray processes.
-    os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
     cluster = _start_new_cluster()
     yield cluster
     # The code after the yield will run as teardown code.
@@ -74,7 +73,6 @@ def start_connected_cluster():
 def start_connected_emptyhead_cluster():
     """Starts head with no resources."""
 
-    os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
     cluster = Cluster(
         initialize_head=True,
         connect=True,
