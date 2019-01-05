@@ -161,6 +161,8 @@ class TaskSpecification {
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
   std::vector<std::string> FunctionDescriptor() const;
+  // Output the function descriptor as a string for log purpose.
+  std::string FunctionDescriptorString() const;
   int64_t NumArgs() const;
   int64_t NumReturns() const;
   bool ArgByRef(int64_t arg_index) const;

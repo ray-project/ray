@@ -505,7 +505,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   ActorRegistration actor_registration(data);
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
                  << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                 << ", state = " << static_cast<int64_t>(actor_registration.GetState())
+                 << ", state = " << EnumNameActorState(actor_registration.GetState())
                  << ", remaining_reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
   // Update local registry.
@@ -632,10 +632,10 @@ void NodeManager::DispatchTasks(
 void NodeManager::ProcessClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
     const uint8_t *message_data) {
-  RAY_LOG(DEBUG) << "Message of type " << message_type;
-
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
+  RAY_LOG(DEBUG) << "Message of " << protocol::EnumNameMessageType(message_type_value)
+                 << "(" << message_type << ")";
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
@@ -1205,9 +1205,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
-  RAY_LOG(DEBUG) << "Submitting task: task_id = " << task_id
-                 << ", actor_id = " << spec.ActorId()
-                 << ", actor_creation_id = " << spec.ActorCreationId();
+  RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
+                 << ", actor_id=" << spec.ActorId()
+                 << ", actor_creation_id=" << spec.ActorCreationId()
+                 << ", actor_handle_id=" << spec.ActorHandleId()
+                 << ", actor_counter=" << spec.ActorCounter()
+                 << ", task_descriptor=" << spec.FunctionDescriptorString();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1482,7 +1485,8 @@ bool NodeManager::AssignTask(const Task &task) {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
+  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
+                 << worker->Pid();
   flatbuffers::FlatBufferBuilder fbb;
 
   // Resource accounting: acquire resources for the assigned task.
@@ -1565,9 +1569,8 @@ bool NodeManager::AssignTask(const Task &task) {
 
           // We started running the task, so the task is ready to write to GCS.
           if (!lineage_cache_.AddReadyTask(assigned_task)) {
-            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
-                                                            "This is most likely due to "
-                                                            "reconstruction.";
+            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache."
+                             << " This is most likely due to reconstruction.";
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
@@ -1915,9 +1918,8 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           // lineage cache since the receiving node is now responsible for writing
           // the task to the GCS.
           if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
-                                                      "cache. This is most likely due to "
-                                                      "reconstruction.";
+            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
+                             << " cache. This is most likely due to reconstruction.";
           }
           // Mark as forwarded so that the task and its lineage is not re-forwarded
           // in the future to the receiving node.

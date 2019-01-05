@@ -3,10 +3,13 @@ package org.ray.runtime.objectstore;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.apache.arrow.plasma.PlasmaClient;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayDevRuntime;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.util.Serializer;
 import org.ray.runtime.util.UniqueIdUtil;
 
@@ -19,11 +22,18 @@ public class ObjectStoreProxy {
   private static final int GET_TIMEOUT_MS = 1000;
 
   private final AbstractRayRuntime runtime;
-  private final ObjectStoreLink store;
 
-  public ObjectStoreProxy(AbstractRayRuntime runtime, ObjectStoreLink store) {
+  private static ThreadLocal<ObjectStoreLink> objectStore;
+
+  public ObjectStoreProxy(AbstractRayRuntime runtime, String storeSocketName) {
     this.runtime = runtime;
-    this.store = store;
+    objectStore = ThreadLocal.withInitial(() -> {
+      if (runtime.getRayConfig().runMode == RunMode.CLUSTER) {
+        return new PlasmaClient(storeSocketName, "", 0);
+      } else {
+        return ((RayDevRuntime) runtime).getObjectStore();
+      }
+    });
   }
 
   public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
@@ -33,10 +43,10 @@ public class ObjectStoreProxy {
 
   public <T> Pair<T, GetStatus> get(UniqueId id, int timeoutMs, boolean isMetadata)
       throws RayException {
-    byte[] obj = store.get(id.getBytes(), timeoutMs, isMetadata);
+    byte[] obj = objectStore.get().get(id.getBytes(), timeoutMs, isMetadata);
     if (obj != null) {
       T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
-      store.release(id.getBytes());
+      objectStore.get().release(id.getBytes());
       if (t instanceof RayException) {
         throw (RayException) t;
       }
@@ -53,13 +63,13 @@ public class ObjectStoreProxy {
 
   public <T> List<Pair<T, GetStatus>> get(List<UniqueId> ids, int timeoutMs, boolean isMetadata)
       throws RayException {
-    List<byte[]> objs = store.get(UniqueIdUtil.getIdBytes(ids), timeoutMs, isMetadata);
+    List<byte[]> objs = objectStore.get().get(UniqueIdUtil.getIdBytes(ids), timeoutMs, isMetadata);
     List<Pair<T, GetStatus>> ret = new ArrayList<>();
     for (int i = 0; i < objs.size(); i++) {
       byte[] obj = objs.get(i);
       if (obj != null) {
         T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
-        store.release(ids.get(i).getBytes());
+        objectStore.get().release(ids.get(i).getBytes());
         if (t instanceof RayException) {
           throw (RayException) t;
         }
@@ -72,11 +82,11 @@ public class ObjectStoreProxy {
   }
 
   public void put(UniqueId id, Object obj, Object metadata) {
-    store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
+    objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
   }
 
   public void putSerialized(UniqueId id, byte[] obj, byte[] metadata) {
-    store.put(id.getBytes(), obj, metadata);
+    objectStore.get().put(id.getBytes(), obj, metadata);
   }
 
   public enum GetStatus {

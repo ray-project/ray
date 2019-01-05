@@ -9,8 +9,11 @@ class InputReader(object):
     """Input object for loading experiences in policy evaluation."""
 
     def next(self):
-        """Return the next batch of experiences read."""
+        """Return the next batch of experiences read.
 
+        Returns:
+            SampleBatch or MultiAgentBatch read.
+        """
         raise NotImplementedError
 
 
