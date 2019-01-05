@@ -18,8 +18,8 @@ This document describes the process for creating new releases.
    by the script above, but they aren't yet.
 
 4. **Increment the Python version:** Create a PR that increments the Python
-   package version. See `this example`_. If you have ``hub`` installed, you can
-   use the following to get started, assuming you're on a clean master:
+   package version. See `this example`_. You can use the following to get started,
+   assuming you're on a clean master:
 
    .. code-block:: bash
 
@@ -30,7 +30,9 @@ This document describes the process for creating new releases.
      git checkout -b release_$NEW_VERSION
      git add python/ray/__init__.py && git commit -m "Bump version"
      git push -u [your fork]
-     hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
+
+     # If you have ``hub`` installed, you can simply run:
+     # hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
