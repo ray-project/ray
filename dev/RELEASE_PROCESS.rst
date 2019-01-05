@@ -27,6 +27,9 @@ This document describes the process for creating new releases.
      OLD_VERSION=${$(git describe --tags --abbrev=0)#"ray-"}
      sed -i '' "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
      # sed -i "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py if on Linux
+     git checkout -b release_$NEW_VERSION
+     git add python/ray/__init__.py && git commit -m "Bump version"
+     git push -u [your fork]
      hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
@@ -42,7 +45,7 @@ This document describes the process for creating new releases.
 6. **Python wheels:** The Python wheels will automatically be built on Travis
    and uploaded to the ``ray-wheels`` S3 bucket. Download these wheels (e.g.,
    using ``wget``) and install them with ``pip`` and run some simple Ray scripts
-   to verify that they work.
+   to verify that they work. Find `these wheels here`_.
 
 7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
@@ -92,4 +95,5 @@ This document describes the process for creating new releases.
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
 .. _`test/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_stress_tests.sh
 .. _`this example`: https://github.com/ray-project/ray/pull/3420
+.. _`these wheels here`: https://ray.readthedocs.io/en/latest/installation.html
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
