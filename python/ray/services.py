@@ -19,7 +19,7 @@ import redis
 
 import pyarrow
 # Ray modules
-import ray.ray_constants
+import ray.ray_constants as ray_constants
 import ray.plasma
 
 from ray.tempfile_services import (
@@ -35,9 +35,6 @@ PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
-
-# Max bytes to allocate to plasma unless overriden by the user
-MAX_DEFAULT_MEM = 20 * 1000 * 1000 * 1000
 
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
@@ -446,10 +443,11 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
+        redis_max_memory: The max amount of memory (in bytes) to allow each
+            redis shard to use. Once the limit is exceeded, redis will start
+            LRU eviction of entries. This only applies to the sharded redis
+            tables (task, object, and profile tables). By default, this is
+            capped at 10GB but can be set higher.
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -481,6 +479,8 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
             password=password,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
             redis_max_memory=None)
     else:
         assigned_port, _ = _start_redis_instance(
@@ -496,6 +496,8 @@ def start_redis(node_ip_address,
             # supplies.
             modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
             password=password,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
             redis_max_memory=None)
     if port is not None:
         assert assigned_port == port
@@ -515,6 +517,15 @@ def start_redis(node_ip_address,
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
+
+    # Cap the memory of the other redis shards if no limit is provided.
+    redis_max_memory = (redis_max_memory if redis_max_memory is not None else
+                        ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES)
+    if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
+        raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
+                         "but the minimum allowed is {} bytes.".format(
+                             redis_max_memory,
+                             ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
 
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
@@ -860,9 +871,9 @@ def check_and_update_resources(resources):
                 and not resource_quantity.is_integer()):
             raise ValueError("Resource quantities must all be whole numbers.")
 
-        if resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY:
+        if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
             raise ValueError("Resource quantities must be at most {}.".format(
-                ray.ray_constants.MAX_RESOURCE_QUANTITY))
+                ray_constants.MAX_RESOURCE_QUANTITY))
 
     return resources
 
@@ -934,12 +945,10 @@ def start_raylet(ray_params,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
-                            "--collect-profiling-data={} "
                             "--temp-dir={}".format(
                                 sys.executable, ray_params.worker_path,
                                 ray_params.node_ip_address, plasma_store_name,
-                                raylet_name, ray_params.redis_address, "1"
-                                if ray_params.collect_profiling_data else "0",
+                                raylet_name, ray_params.redis_address,
                                 get_temp_root()))
     if ray_params.redis_password:
         start_worker_command += " --redis-password {}".format(
@@ -1035,13 +1044,15 @@ def determine_plasma_store_config(object_store_memory=None,
     if object_store_memory is None:
         object_store_memory = int(system_memory * 0.4)
         # Cap memory to avoid memory waste and perf issues on large nodes
-        if object_store_memory > MAX_DEFAULT_MEM:
+        if (object_store_memory >
+                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
             logger.warning(
                 "Warning: Capping object memory store to {}GB. ".format(
-                    MAX_DEFAULT_MEM // 1e9) +
-                "To increase this further, specify `object_store_memory` "
+                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES // 1e9)
+                + "To increase this further, specify `object_store_memory` "
                 "when calling ray.init() or ray start.")
-            object_store_memory = MAX_DEFAULT_MEM
+            object_store_memory = (
+                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -1123,6 +1134,12 @@ def start_plasma_store(node_ip_address,
     """
     object_store_memory, plasma_directory = determine_plasma_store_config(
         object_store_memory, plasma_directory, huge_pages)
+
+    if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        raise ValueError("Attempting to cap object store memory usage at {} "
+                         "bytes, but the minimum allowed is {} bytes.".format(
+                             object_store_memory,
+                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
@@ -1498,8 +1515,8 @@ def start_ray_head(ray_params, cleanup=True):
             following parameters could be checked: address_info,
             object_manager_ports, node_manager_ports, node_ip_address,
             redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, collect_profiling_data,
-            worker_path, cleanup, redirect_worker_output, redirect_output,
+            object_store_memory, redis_max_memory, worker_path, cleanup,
+            redirect_worker_output, redirect_output,
             start_workers_from_local_scheduler, resources, num_redis_shards,
             redis_max_clients, redis_password, include_webui, huge_pages,
             plasma_directory, autoscaling_config, plasma_store_socket_name,
