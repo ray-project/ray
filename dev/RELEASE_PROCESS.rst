@@ -18,12 +18,26 @@ This document describes the process for creating new releases.
    by the script above, but they aren't yet.
 
 4. **Increment the Python version:** Create a PR that increments the Python
-   package version. See `this example`_.
+   package version. See `this example`_. If you have ``hub`` installed, you can
+   use the following to get started, assuming you're on a clean master:
+
+   .. code-block:: bash
+
+     NEW_VERSION=0.x.x
+     OLD_VERSION=${$(git describe --tags --abbrev=0)#"ray-"}
+     sed -i '' "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
+     # sed -i "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py if on Linux
+     hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
    step. This should include **release notes**. Copy the style and formatting
-   used by previous releases.
+   used by previous releases. Use the following to get started:
+
+   .. code-block:: bash
+
+     git pull origin master --tags
+     git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
 6. **Python wheels:** The Python wheels will automatically be built on Travis
    and uploaded to the ``ray-wheels`` S3 bucket. Download these wheels (e.g.,
