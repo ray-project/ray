@@ -76,6 +76,12 @@ matrix:
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
 
+        # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
+        # better be put in Jenkins. However, it fails frequently in Jenkins, but
+        # works well in Travis. We should consider moving it back to Jenkins once
+        # we figure out the reason.
+        - RAYLET_VALGRIND=1 python -m pytest -v --durations=10 test/object_manager_test.py
+
     # Build Linux wheels.
     - os: linux
       dist: trusty

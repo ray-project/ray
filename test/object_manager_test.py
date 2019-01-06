@@ -6,22 +6,27 @@ from collections import defaultdict
 import json
 import multiprocessing
 import numpy as np
+import os
 import pytest
+import signal
 import time
 import warnings
 
 import ray
 from ray.test.cluster_utils import Cluster
 
+RAYLET_VALGRIND = os.environ.get("RAYLET_VALGRIND") == "1"
+
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
 
-def create_cluster(num_nodes):
+def create_cluster(num_nodes, raylet_valgrind=False):
     cluster = Cluster()
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
+        cluster.add_node(resources={str(i): 100}, object_store_memory=10**9,
+                         raylet_valgrind=RAYLET_VALGRIND)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster
@@ -127,6 +132,10 @@ def test_object_broadcast(ray_start_cluster):
             send_counts[(event["pid"], event["tid"])] += 1
         assert all(value == 1 for value in send_counts.values())
 
+    if RAYLET_VALGRIND:
+        for node in cluster.list_all_nodes():
+            p = node.kill_raylet_and_check_valgrind()
+
 
 # When submitting an actor method, we try to pre-emptively push its arguments
 # to the actor's object manager. However, in the past we did not deduplicate
@@ -204,6 +213,10 @@ def test_actor_broadcast(ray_start_cluster):
             send_counts[(event["pid"], event["tid"])] += 1
         assert all(value == 1 for value in send_counts.values())
 
+    if RAYLET_VALGRIND:
+        for node in cluster.list_all_nodes():
+            p = node.kill_raylet_and_check_valgrind()
+
 
 # The purpose of this test is to make sure that an object that was already been
 # transferred to a node can be transferred again.
@@ -269,6 +282,10 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     time.sleep(repeated_push_delay)
     ray.get(x_ids)
 
+    if RAYLET_VALGRIND:
+        for node in cluster.list_all_nodes():
+            p = node.kill_raylet_and_check_valgrind()
+
 
 # The purpose of this test is to make sure we can transfer many objects. In the
 # past, this has caused failures in which object managers create too many open
@@ -305,3 +322,7 @@ def test_many_small_transfers(ray_start_cluster):
     do_transfers()
     do_transfers()
     do_transfers()
+
+    if RAYLET_VALGRIND:
+        for node in cluster.list_all_nodes():
+            p = node.kill_raylet_and_check_valgrind()

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import atexit
 import logging
+import signal
 import time
 
 import redis
@@ -209,6 +210,13 @@ class Node(object):
     def kill_raylet(self):
         self.process_dict[services.PROCESS_TYPE_RAYLET][0].kill()
         self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
+
+    def kill_raylet_and_check_valgrind(self):
+        self.process_dict[services.PROCESS_TYPE_RAYLET][0].send_signal(
+            signal.SIGTERM)
+        self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
+        if self.process_dict[services.PROCESS_TYPE_RAYLET][0].returncode != 0:
+            raise Exception("Valgrind detected some errors.")
 
     def kill_log_monitor(self):
         self.process_dict["log_monitor"][0].kill()
