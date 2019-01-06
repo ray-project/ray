@@ -53,6 +53,15 @@ def ray_start_empty_cluster():
     cluster.shutdown()
 
 
+def shutdown_and_check_valgrind(cluster):
+    # If we don't run ray.shutdown(), then we may end up trying to submit
+    # some actor termination tasks in the actor handle destructors and end
+    # up failing to submit a task to a dead raylet.
+    ray.shutdown()
+    for node in cluster.list_all_nodes():
+        p = node.kill_raylet_and_check_valgrind()
+
+
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
 def test_object_broadcast(ray_start_cluster):
@@ -133,8 +142,7 @@ def test_object_broadcast(ray_start_cluster):
         assert all(value == 1 for value in send_counts.values())
 
     if RAYLET_VALGRIND:
-        for node in cluster.list_all_nodes():
-            p = node.kill_raylet_and_check_valgrind()
+        shutdown_and_check_valgrind(cluster)
 
 
 # When submitting an actor method, we try to pre-emptively push its arguments
@@ -214,8 +222,7 @@ def test_actor_broadcast(ray_start_cluster):
         assert all(value == 1 for value in send_counts.values())
 
     if RAYLET_VALGRIND:
-        for node in cluster.list_all_nodes():
-            p = node.kill_raylet_and_check_valgrind()
+        shutdown_and_check_valgrind(cluster)
 
 
 # The purpose of this test is to make sure that an object that was already been
@@ -283,8 +290,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     ray.get(x_ids)
 
     if RAYLET_VALGRIND:
-        for node in cluster.list_all_nodes():
-            p = node.kill_raylet_and_check_valgrind()
+        shutdown_and_check_valgrind(cluster)
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the
@@ -324,5 +330,4 @@ def test_many_small_transfers(ray_start_cluster):
     do_transfers()
 
     if RAYLET_VALGRIND:
-        for node in cluster.list_all_nodes():
-            p = node.kill_raylet_and_check_valgrind()
+        shutdown_and_check_valgrind(cluster)
