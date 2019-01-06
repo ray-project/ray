@@ -181,8 +181,8 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitFor(self, condition):
-        for _ in range(50):
+    def waitFor(self, condition, num_retries=50):
+        for _ in range(num_checks):
             if condition():
                 return
             time.sleep(.1)
@@ -676,7 +676,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         num_calls = len(runner.calls)
         autoscaler.update()
-        self.waitFor(lambda: len(runner.calls) > num_calls)
+        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
