@@ -110,6 +110,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         ray.shutdown()
 
     def testAll(self):
+        return
         stats = {}
         check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support(
@@ -169,6 +170,24 @@ class ModelSupportedSpaces(unittest.TestCase):
         self.assertEqual(num_unexpected_errors, 0)
 
     def testMultiAgent(self):
+        check_support_multiagent(
+            "APEX", {
+                "num_workers": 2,
+                "timesteps_per_iteration": 1000,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "learning_starts": 1000,
+                "target_network_update_freq": 100,
+            })
+        check_support_multiagent(
+            "APEX_DDPG", {
+                "num_workers": 2,
+                "timesteps_per_iteration": 1000,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "learning_starts": 1000,
+                "target_network_update_freq": 100,
+            })
         check_support_multiagent("IMPALA", {"num_gpus": 0})
         check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
         check_support_multiagent("A3C", {
