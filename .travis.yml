@@ -75,7 +75,7 @@ matrix:
         - cd build
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
-        - python -m pytest -v --durations=10 test/actor_test.py
+        - python -m pytest -v -s --durations=10 test/actor_test.py
 
     # Build Linux wheels.
     - os: linux
