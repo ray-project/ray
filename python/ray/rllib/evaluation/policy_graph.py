@@ -98,18 +98,21 @@ class PolicyGraph(object):
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
+        episodes = None
         if prev_action is not None:
             prev_action_batch = [prev_action]
         if prev_reward is not None:
             prev_reward_batch = [prev_reward]
         if info is not None:
             info_batch = [info]
+        if episode is not None:
+            episodes = [episode]
         [action], state_out, info = self.compute_actions(
             [obs], [[s] for s in state],
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
-            episodes=[episode])
+            episodes=episodes)
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
