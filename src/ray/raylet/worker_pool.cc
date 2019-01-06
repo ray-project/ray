@@ -42,7 +42,9 @@ WorkerPool::WorkerPool(
     int maximum_startup_concurrency,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
-      maximum_startup_concurrency_(maximum_startup_concurrency) {
+      multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
+      last_warning_multiple_(0) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -248,6 +250,26 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   }
 
   return workers;
+}
+
+std::string WorkerPool::WarningAboutSize() {
+  int64_t num_workers_started_or_registered = starting_worker_processes_.size();
+  for (const auto &entry : states_by_lang_) {
+    num_workers_started_or_registered +=
+        static_cast<int64_t>(entry.second.registered_workers.size());
+  }
+  int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
+  std::stringstream warning_message;
+  if (multiple >= 3 && multiple > last_warning_multiple_) {
+    last_warning_multiple_ = multiple;
+    warning_message << "WARNING: " << num_workers_started_or_registered
+                    << " workers have been started. This could be a result of using "
+                    << "a large number of actors, or it could be a consequence of "
+                    << "using nested tasks "
+                    << "(see https://github.com/ray-project/ray/issues/3644) for "
+                    << "some a discussion of workarounds.";
+  }
+  return warning_message.str();
 }
 
 std::string WorkerPool::DebugString() const {

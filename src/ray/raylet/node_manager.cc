@@ -1472,6 +1472,13 @@ bool NodeManager::AssignTask(const Task &task) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
+      // Push an error message to the user if the worker pool tells us that it is
+      // getting too big.
+      const std::string warning_message = worker_pool_.WarningAboutSize();
+      if (warning_message != "") {
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            JobID::nil(), "worker_pool_large", warning_message, current_time_ms()));
+      }
     }
     // We couldn't assign this task, as no worker available.
     return false;

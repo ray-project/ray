@@ -122,8 +122,10 @@ def temporary_helper_function():
         return module.temporary_python_file()
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
-    assert "No module named" in ray.error_info()[0]["message"]
-    assert "No module named" in ray.error_info()[1]["message"]
+    errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
+    assert len(errors) == 2
+    assert "No module named" in errors[0]["message"]
+    assert "No module named" in errors[1]["message"]
 
     # Check that if we try to call the function it throws an exception and
     # does not hang.
@@ -145,10 +147,10 @@ def test_failed_function_to_run(ray_start_regular):
     ray.worker.global_worker.run_function_on_all_workers(f)
     wait_for_errors(ray_constants.FUNCTION_TO_RUN_PUSH_ERROR, 2)
     # Check that the error message is in the task info.
-    error_info = ray.error_info()
-    assert len(error_info) == 2
-    assert "Function to run failed." in error_info[0]["message"]
-    assert "Function to run failed." in error_info[1]["message"]
+    errors = relevant_errors(ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
+    assert len(errors) == 2
+    assert "Function to run failed." in errors[0]["message"]
+    assert "Function to run failed." in errors[1]["message"]
 
 
 def test_fail_importing_actor(ray_start_regular):
@@ -185,12 +187,14 @@ def temporary_helper_function():
 
     # Wait for the error to arrive.
     wait_for_errors(ray_constants.REGISTER_ACTOR_PUSH_ERROR, 1)
-    assert "No module named" in ray.error_info()[0]["message"]
+    errors = relevant_errors(ray_constants.REGISTER_ACTOR_PUSH_ERROR)
+    assert "No module named" in errors[0]["message"]
 
     # Wait for the error from when the __init__ tries to run.
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert ("failed to be imported, and so cannot execute this method" in
-            ray.error_info()[1]["message"])
+            errors[0]["message"])
 
     # Check that if we try to get the function it throws an exception and
     # does not hang.
@@ -199,8 +203,9 @@ def temporary_helper_function():
 
     # Wait for the error from when the call to get_val.
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert ("failed to be imported, and so cannot execute this method" in
-            ray.error_info()[2]["message"])
+            errors[1]["message"])
 
     f.close()
 
@@ -224,14 +229,16 @@ def test_failed_actor_init(ray_start_regular):
 
     # Make sure that we get errors from a failed constructor.
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-    assert len(ray.error_info()) == 1
-    assert error_message1 in ray.error_info()[0]["message"]
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 1
+    assert error_message1 in errors[0]["message"]
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-    assert len(ray.error_info()) == 2
-    assert error_message1 in ray.error_info()[1]["message"]
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 2
+    assert error_message1 in errors[1]["message"]
 
 
 def test_failed_actor_method(ray_start_regular):
@@ -250,8 +257,9 @@ def test_failed_actor_method(ray_start_regular):
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-    assert len(ray.error_info()) == 1
-    assert error_message2 in ray.error_info()[0]["message"]
+    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 1
+    assert error_message2 in errors[0]["message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
@@ -301,7 +309,6 @@ def test_worker_raising_exception(ray_start_regular):
 
     wait_for_errors(ray_constants.WORKER_CRASH_PUSH_ERROR, 1)
     wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
-    assert len(ray.error_info()) == 2
 
 
 def test_worker_dying(ray_start_regular):
@@ -314,9 +321,9 @@ def test_worker_dying(ray_start_regular):
 
     wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
-    error_info = ray.error_info()
-    assert len(error_info) == 1
-    assert "died or was killed while executing" in error_info[0]["message"]
+    errors = relevant_errors(ray_constants.WORKER_DIED_PUSH_ERROR)
+    assert len(errors) == 1
+    assert "died or was killed while executing" in errors[0]["message"]
 
 
 def test_actor_worker_dying(ray_start_regular):
@@ -571,6 +578,45 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     wait_for_errors(ray_constants.INFEASIBLE_TASK_ERROR, 1)
 
 
+def test_warning_for_too_many_actors(shutdown_only):
+    # Check that if we run a workload which requires too many workers to be
+    # started that we will receive a warning.
+    num_cpus = 2
+    ray.init(num_cpus=num_cpus)
+
+    @ray.remote
+    class Foo(object):
+        def __init__(self):
+            time.sleep(1000)
+
+    [Foo.remote() for _ in range(num_cpus * 3)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
+    [Foo.remote() for _ in range(num_cpus)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 2)
+
+
+def test_warning_for_too_many_nested_tasks(shutdown_only):
+    # Check that if we run a workload which requires too many workers to be
+    # started that we will receive a warning.
+    num_cpus = 2
+    ray.init(num_cpus=num_cpus)
+
+    @ray.remote
+    def f():
+        time.sleep(1000)
+        return 1
+
+    @ray.remote
+    def g():
+        # Sleep so that the f tasks all get submitted to the scheduler after
+        # the g tasks.
+        time.sleep(1)
+        ray.get(f.remote())
+
+    [g.remote() for _ in range(num_cpus * 4)]
+    wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
+
+
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
@@ -610,8 +656,8 @@ def test_warning_for_dead_node(ray_start_two_nodes):
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.
     warning_client_ids = {
-        item['message'].split(' ')[5]
-        for item in ray.error_info()
+        item["message"].split(" ")[5]
+        for item in relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     }
 
     assert client_ids == warning_client_ids

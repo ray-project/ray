@@ -337,6 +337,9 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def clear_checkpoint(self):
+        self._checkpoint.value = None
+
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
