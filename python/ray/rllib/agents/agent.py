@@ -394,7 +394,7 @@ class Agent(Trainable):
             policy_id (str): id of policy graph to return.
         """
 
-        return self.local_evaluator.policy_map.get(policy_id)
+        return self.local_evaluator.get_policy(policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
