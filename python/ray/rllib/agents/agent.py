@@ -344,6 +344,10 @@ class Agent(Trainable):
     def compute_action(self, observation, state=None, policy_id="default"):
         """Computes an action for the specified policy.
 
+        Note that you can also access the policy object through
+        self.local_evaluator.policy_map[policy_id] and call compute_actions()
+        on it directly.
+
         Arguments:
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
