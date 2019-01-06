@@ -1,13 +1,13 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: sgd-stress-tests
+cluster_name: <<<CLUSTER_NAME>>>
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 3
+min_workers: <<<MIN_WORKERS>>>
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 3
+max_workers: <<<MAX_WORKERS>>>
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
@@ -48,7 +48,7 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: p3.8xlarge
+    InstanceType: <<<HEAD_TYPE>>>
     ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
 
     # You can provision additional disk space with a conf as follows
@@ -64,7 +64,7 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: p3.8xlarge
+    InstanceType: <<<WORKER_TYPE>>>
     ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
 
     # Run workers on spot by default. Comment this out to use on-demand.
