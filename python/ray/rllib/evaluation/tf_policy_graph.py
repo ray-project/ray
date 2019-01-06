@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import logging
 import tensorflow as tf
 import numpy as np
@@ -198,6 +199,14 @@ class TFPolicyGraph(PolicyGraph):
                 self._sess, [tf.saved_model.tag_constants.SERVING],
                 signature_def_map=signature_def_map)
             builder.save()
+
+    @override(PolicyGraph)
+    def export_checkpoint(self, export_dir, filename_prefix="model"):
+        """Export tensorflow checkpoint to export_dir."""
+        save_path = os.path.join(export_dir, filename_prefix)
+        with self._sess.graph.as_default():
+            saver = tf.train.Saver()
+            saver.save(self._sess, save_path)
 
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders.

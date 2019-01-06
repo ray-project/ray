@@ -130,7 +130,8 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Offline Data Input / Output (Experimental) ===
+    # === Offline Data Input / Output ===
+    # __sphinx_doc_input_begin__
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
     #  - a local directory or file glob expression (e.g., "/tmp/*.json")
@@ -146,9 +147,14 @@ COMMON_CONFIG = {
     #    metrics will be NaN if using offline data.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    #  - "counterfactual": use counterfactual policy evaluation to estimate
-    #    performance (this option is not implemented yet).
     "input_evaluation": None,
+    # Whether to run postprocess_trajectory() on the trajectory fragments from
+    # offline inputs. Note that postprocessing will be done using the *current*
+    # policy, not the *behaviour* policy, which is typically undesirable for
+    # on-policy algorithms.
+    "postprocess_inputs": False,
+    # __sphinx_doc_input_end__
+    # __sphinx_doc_output_begin__
     # Specify where experiences should be saved:
     #  - None: don't save any experiences
     #  - "logdir" to save to the agent log dir
@@ -159,10 +165,7 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
-    # Whether to run postprocess_trajectory() on the trajectory fragments from
-    # offline inputs. Whether this makes sense is algorithm-specific.
-    # TODO(ekl) implement this and multi-agent batch handling
-    # "postprocess_inputs": False,
+    # __sphinx_doc_output_end__
 
     # === Multiagent ===
     "multiagent": {
@@ -201,7 +204,8 @@ class Agent(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent"
+        "tf_session_args", "env_config", "model", "optimizer", "multiagent",
+        "custom_resources_per_worker"
     ]
 
     def __init__(self, config=None, env=None, logger_creator=None):
@@ -443,6 +447,26 @@ class Agent(Trainable):
         """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
+    def export_policy_checkpoint(self,
+                                 export_dir,
+                                 filename_prefix="model",
+                                 policy_id=DEFAULT_POLICY_ID):
+        """Export tensorflow policy model checkpoint to local directory.
+
+        Arguments:
+            export_dir (string): Writable local directory.
+            filename_prefix (string): file name prefix of checkpoint files.
+            policy_id (string): Optional policy id to export.
+
+        Example:
+            >>> agent = MyAgent()
+            >>> for _ in range(10):
+            >>>     agent.train()
+            >>> agent.export_policy_checkpoint("/tmp/export_dir")
+        """
+        self.local_evaluator.export_policy_checkpoint(
+            export_dir, filename_prefix, policy_id)
+
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
@@ -482,9 +506,9 @@ class Agent(Trainable):
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: MixedInput(ioctx, config["input"]))
+            input_creator = (lambda ioctx: MixedInput(config["input"], ioctx))
         else:
-            input_creator = (lambda ioctx: JsonReader(ioctx, config["input"]))
+            input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -492,14 +516,14 @@ class Agent(Trainable):
             output_creator = (lambda ioctx: NoopOutput())
         elif config["output"] == "logdir":
             output_creator = (lambda ioctx: JsonWriter(
-                ioctx,
                 ioctx.log_dir,
+                ioctx,
                 max_file_size=config["output_max_file_size"],
                 compress_columns=config["output_compress_columns"]))
         else:
             output_creator = (lambda ioctx: JsonWriter(
-                    ioctx,
                     config["output"],
+                    ioctx,
                     max_file_size=config["output_max_file_size"],
                     compress_columns=config["output_compress_columns"]))
 

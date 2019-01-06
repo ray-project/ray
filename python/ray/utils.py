@@ -6,6 +6,7 @@ import binascii
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import subprocess
@@ -17,6 +18,8 @@ import uuid
 import ray.gcs_utils
 import ray.raylet
 import ray.ray_constants as ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 def _random_string():
@@ -69,6 +72,8 @@ def push_error_to_driver(worker,
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
+    logging.error("Pushing error to dirver, type: %s, message: %s.",
+                  error_type, message)
     worker.raylet_client.push_error(
         ray.ObjectID(driver_id), error_type, message, time.time())
 
@@ -165,10 +170,24 @@ def random_string():
     return random_id
 
 
-def decode(byte_str):
-    """Make this unicode in Python 3, otherwise leave it as bytes."""
+def decode(byte_str, allow_none=False):
+    """Make this unicode in Python 3, otherwise leave it as bytes.
+
+    Args:
+        byte_str: The byte string to decode.
+        allow_none: If true, then we will allow byte_str to be None in which
+            case we will return an empty string. TODO(rkn): Remove this flag.
+            This is only here to simplify upgrading to flatbuffers 1.10.0.
+
+    Returns:
+        A byte string in Python 2 and a unicode string in Python 3.
+    """
+    if byte_str is None and allow_none:
+        return ""
+
     if not isinstance(byte_str, bytes):
-        raise ValueError("The argument must be a bytes object.")
+        raise ValueError(
+            "The argument {} must be a bytes object.".format(byte_str))
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -308,20 +327,38 @@ def get_system_memory():
     Returns:
         The total amount of system memory in bytes.
     """
+    # Try to accurately figure out the memory limit if we are in a docker
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
+    docker_limit = None
+    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if os.path.exists(memory_limit_filename):
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+
     # Use psutil if it is available.
+    psutil_memory_in_bytes = None
     try:
         import psutil
-        return psutil.virtual_memory().total
+        psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
         pass
 
-    if sys.platform == "linux" or sys.platform == "linux2":
+    memory_in_bytes = None
+    if psutil_memory_in_bytes is not None:
+        memory_in_bytes = psutil_memory_in_bytes
+    elif sys.platform == "linux" or sys.platform == "linux2":
         # Handle Linux.
         bytes_in_kilobyte = 1024
-        return vmstat("total memory") * bytes_in_kilobyte
+        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
     else:
         # Handle MacOS.
-        return sysctl(["sysctl", "hw.memsize"])
+        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+
+    if docker_limit is not None:
+        return min(docker_limit, memory_in_bytes)
+    else:
+        return memory_in_bytes
 
 
 def get_shared_memory_bytes():

@@ -74,8 +74,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     kvStore = new RedisClient(rayConfig.getRedisAddress());
 
-    ObjectStoreLink store = new PlasmaClient(rayConfig.objectStoreSocketName, "", 0);
-    objectStoreProxy = new ObjectStoreProxy(this, store);
+    objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);
 
     rayletClient = new RayletClientImpl(
         rayConfig.rayletSocketName,

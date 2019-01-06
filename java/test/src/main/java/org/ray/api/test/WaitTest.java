@@ -1,6 +1,7 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
@@ -55,5 +56,19 @@ public class WaitTest extends BaseTest {
   public void testWaitInWorker() {
     RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
     res.get();
+  }
+
+  @Test
+  public void testWaitForEmpty() {
+    WaitResult<String> result = Ray.wait(new ArrayList<>());
+    Assert.assertTrue(result.getReady().isEmpty());
+    Assert.assertTrue(result.getUnready().isEmpty());
+
+    try {
+      Ray.wait(null);
+      Assert.fail();
+    } catch (NullPointerException e) {
+      Assert.assertTrue(true);
+    }
   }
 }

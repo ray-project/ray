@@ -366,12 +366,14 @@ class GlobalState(object):
             node_info[client_id] = {
                 "ClientID": client_id,
                 "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(client.NodeManagerAddress()),
+                "NodeManagerAddress": decode(
+                    client.NodeManagerAddress(), allow_none=True),
                 "NodeManagerPort": client.NodeManagerPort(),
                 "ObjectManagerPort": client.ObjectManagerPort(),
                 "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName()),
-                "RayletSocketName": decode(client.RayletSocketName()),
+                    client.ObjectStoreSocketName(), allow_none=True),
+                "RayletSocketName": decode(
+                    client.RayletSocketName(), allow_none=True),
                 "Resources": resources
             }
         return list(node_info.values())
@@ -404,20 +406,20 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def _profile_table(self, component_id):
-        """Get the profile events for a given component.
+    def _profile_table(self, batch_id):
+        """Get the profile events for a given batch of profile events.
 
         Args:
-            component_id: An identifier for a component.
+            batch_id: An identifier for a batch of profile events.
 
         Returns:
-            A list of the profile events for the specified process.
+            A list of the profile events for the specified batch.
         """
         # TODO(rkn): This method should support limiting the number of log
         # events and should also support returning a window of events.
-        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        component_id.id())
+                                        batch_id.id())
 
         if message is None:
             return []
@@ -433,7 +435,8 @@ class GlobalState(object):
 
             component_type = decode(profile_table_message.ComponentType())
             component_id = binary_to_hex(profile_table_message.ComponentId())
-            node_ip_address = decode(profile_table_message.NodeIpAddress())
+            node_ip_address = decode(
+                profile_table_message.NodeIpAddress(), allow_none=True)
 
             for j in range(profile_table_message.ProfileEventsLength()):
                 profile_event_message = profile_table_message.ProfileEvents(j)
@@ -456,16 +459,21 @@ class GlobalState(object):
     def profile_table(self):
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
-        component_identifiers_binary = [
+        batch_identifiers_binary = [
             key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
             for key in profile_table_keys
         ]
 
-        return {
-            binary_to_hex(component_id): self._profile_table(
-                binary_to_object_id(component_id))
-            for component_id in component_identifiers_binary
-        }
+        result = defaultdict(list)
+        for batch_id in batch_identifiers_binary:
+            profile_data = self._profile_table(binary_to_object_id(batch_id))
+            # Note that if keys are being evicted from Redis, then it is
+            # possible that the batch will be evicted before we get it.
+            if len(profile_data) > 0:
+                component_id = profile_data[0]["component_id"]
+                result[component_id].extend(profile_data)
+
+        return dict(result)
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""

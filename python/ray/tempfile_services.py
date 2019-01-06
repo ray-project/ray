@@ -66,8 +66,16 @@ def try_to_create_directory(directory_path):
         # important when multiple people are using the same machine.
     try:
         os.chmod(directory_path, 0o0777)
-    except PermissionError:
-        pass
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
 
 
 def get_temp_root():

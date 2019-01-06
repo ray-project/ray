@@ -123,6 +123,13 @@ class WorkerPool {
   /// \return string.
   std::string DebugString() const;
 
+  /// Generate a warning about the number of workers that have registered or
+  /// started if appropriate.
+  ///
+  /// \return An empty string if no warning should be generated and otherwise a
+  /// string with a warning message.
+  std::string WarningAboutSize();
+
  protected:
   /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.
@@ -150,10 +157,16 @@ class WorkerPool {
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
+  /// We'll push a warning to the user every time a multiple of this many
+  /// workers has been started.
+  int multiple_for_warning_;
   /// The maximum number of workers that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
+  /// The last size at which a warning about the number of registered workers
+  /// was generated.
+  int64_t last_warning_multiple_;
 };
 
 }  // namespace raylet

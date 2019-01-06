@@ -271,6 +271,10 @@ The ``log_action`` API of ExternalEnv can be used to ingest data from offline lo
 
 Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/env_context.py>`__ passed into the environment constructor.
 
+.. seealso::
+
+    `RLlib I/O <rllib-offline.html>`__ provides higher-level interfaces for working with offline experience datasets.
+
 Batch Asynchronous
 ------------------
 
