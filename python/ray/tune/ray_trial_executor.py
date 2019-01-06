@@ -234,10 +234,16 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
 
-    def _update_avail_resources(self):
-        resources = ray.global_state.cluster_resources()
+    def _update_avail_resources(self, num_retries=5):
+        for i in range(num_retries):
+            resources = ray.global_state.cluster_resources()
+            if not resources:
+                logger.warning("Cluster resources not detected. Retrying...")
+                time.sleep(0.5)
+
         num_cpus = resources["CPU"]
         num_gpus = resources["GPU"]
+
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
 
