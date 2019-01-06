@@ -6,6 +6,7 @@ import binascii
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import subprocess
@@ -17,6 +18,8 @@ import uuid
 import ray.gcs_utils
 import ray.raylet
 import ray.ray_constants as ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 def _random_string():
@@ -69,6 +72,8 @@ def push_error_to_driver(worker,
     if driver_id is None:
         driver_id = ray_constants.NIL_JOB_ID.id()
     data = {} if data is None else data
+    logging.error("Pushing error to dirver, type: %s, message: %s.",
+                  error_type, message)
     worker.raylet_client.push_error(
         ray.ObjectID(driver_id), error_type, message, time.time())
 
@@ -322,20 +327,38 @@ def get_system_memory():
     Returns:
         The total amount of system memory in bytes.
     """
+    # Try to accurately figure out the memory limit if we are in a docker
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
+    docker_limit = None
+    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if os.path.exists(memory_limit_filename):
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+
     # Use psutil if it is available.
+    psutil_memory_in_bytes = None
     try:
         import psutil
-        return psutil.virtual_memory().total
+        psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
         pass
 
-    if sys.platform == "linux" or sys.platform == "linux2":
+    memory_in_bytes = None
+    if psutil_memory_in_bytes is not None:
+        memory_in_bytes = psutil_memory_in_bytes
+    elif sys.platform == "linux" or sys.platform == "linux2":
         # Handle Linux.
         bytes_in_kilobyte = 1024
-        return vmstat("total memory") * bytes_in_kilobyte
+        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
     else:
         # Handle MacOS.
-        return sysctl(["sysctl", "hw.memsize"])
+        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+
+    if docker_limit is not None:
+        return min(docker_limit, memory_in_bytes)
+    else:
+        return memory_in_bytes
 
 
 def get_shared_memory_bytes():

@@ -15,6 +15,8 @@ try:
 except ImportError:
     smart_open = None
 
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack
@@ -26,21 +28,21 @@ class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
 
     def __init__(self,
-                 ioctx,
                  path,
+                 ioctx=None,
                  max_file_size=64 * 1024 * 1024,
                  compress_columns=frozenset(["obs", "new_obs"])):
         """Initialize a JsonWriter.
 
         Arguments:
-            ioctx (IOContext): current IO context object.
             path (str): a path/URI of the output directory to save files in.
+            ioctx (IOContext): current IO context object.
             max_file_size (int): max size of single files before rolling over.
             compress_columns (list): list of sample batch columns to compress.
         """
 
-        self.ioctx = ioctx
         self.path = path
+        self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
         if urlparse(path).scheme:
@@ -102,7 +104,19 @@ def _to_jsonable(v, compress):
 
 
 def _to_json(batch, compress_columns):
-    return json.dumps({
-        k: _to_jsonable(v, compress=k in compress_columns)
-        for k, v in batch.data.items()
-    })
+    out = {}
+    if isinstance(batch, MultiAgentBatch):
+        out["type"] = "MultiAgentBatch"
+        out["count"] = batch.count
+        policy_batches = {}
+        for policy_id, sub_batch in batch.policy_batches.items():
+            policy_batches[policy_id] = {}
+            for k, v in sub_batch.data.items():
+                policy_batches[policy_id][k] = _to_jsonable(
+                    v, compress=k in compress_columns)
+        out["policy_batches"] = policy_batches
+    else:
+        out["type"] = "SampleBatch"
+        for k, v in batch.data.items():
+            out[k] = _to_jsonable(v, compress=k in compress_columns)
+    return json.dumps(out)

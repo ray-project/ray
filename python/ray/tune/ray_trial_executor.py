@@ -38,6 +38,8 @@ class RayTrialExecutor(TrialExecutor):
             num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
 
         trial.init_logger()
+        # We checkpoint metadata here to try mitigating logdir duplication
+        self.try_checkpoint_metadata(trial)
         remote_logdir = trial.logdir
 
         def logger_creator(config):
@@ -59,11 +61,17 @@ class RayTrialExecutor(TrialExecutor):
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
+        """Starts trial and restores last result if trial was paused.
+
+        Raises:
+            ValueError if restoring from checkpoint fails.
+        """
         prior_status = trial.status
-        trial.status = Trial.RUNNING
+        self.set_status(trial, Trial.RUNNING)
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
-            return
+            if trial.status == Trial.ERROR:
+                raise RuntimeError("Restore from checkpoint failed.")
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
@@ -87,10 +95,13 @@ class RayTrialExecutor(TrialExecutor):
             stop_logger (bool): Whether to shut down the trial logger.
         """
 
+        if stop_logger:
+            trial.close_logger()
+
         if error:
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         else:
-            trial.status = Trial.TERMINATED
+            self.set_status(trial, Trial.TERMINATED)
 
         try:
             trial.write_error_log(error_msg)
@@ -103,12 +114,9 @@ class RayTrialExecutor(TrialExecutor):
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
             logger.exception("Error stopping runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
-
-        if stop_logger:
-            trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None):
         """Starts the trial.
@@ -125,12 +133,15 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint)
         except Exception:
-            logger.exception("Error stopping runner - retrying...")
+            logger.exception("Error starting runner. "
+                             "Trying again without checkpoint.")
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                self._start_trial(trial, checkpoint)
+                # This forces the trial to not start from checkpoint.
+                trial.clear_checkpoint()
+                self._start_trial(trial)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
@@ -308,7 +319,7 @@ class RayTrialExecutor(TrialExecutor):
             return True
         if trial.runner is None:
             logger.error("Unable to restore - no runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False
         try:
             value = checkpoint.value
@@ -322,5 +333,5 @@ class RayTrialExecutor(TrialExecutor):
             return True
         except Exception:
             logger.exception("Error restoring runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
             return False

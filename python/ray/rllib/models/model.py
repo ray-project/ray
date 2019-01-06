@@ -160,11 +160,14 @@ class Model(object):
                         self._num_outputs, shape))
 
 
-def _restore_original_dimensions(input_dict, obs_space):
+def _restore_original_dimensions(input_dict, obs_space, tensorlib=tf):
     if hasattr(obs_space, "original_space"):
         return dict(
             input_dict,
-            obs=_unpack_obs(input_dict["obs"], obs_space.original_space))
+            obs=_unpack_obs(
+                input_dict["obs"],
+                obs_space.original_space,
+                tensorlib=tensorlib))
     return input_dict
 
 

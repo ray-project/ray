@@ -18,6 +18,17 @@ ID_SIZE = 20
 NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 NIL_FUNCTION_ID = NIL_JOB_ID
 
+# The default maximum number of bytes to allocate to the object store unless
+# overridden by the user.
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
+# The smallest cap on the memory used by the object store that we allow.
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
+# The default maximum number of bytes that the non-primary Redis shards are
+# allowed to use unless overridden by the user.
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
+# The smallest cap on the memory used by Redis that we allow.
+REDIS_MINIMUM_MEMORY_BYTES = 10**7
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
@@ -41,6 +52,7 @@ CHECKPOINT_PUSH_ERROR = "checkpoint"
 REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
+WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
