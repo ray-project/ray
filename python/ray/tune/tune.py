@@ -101,16 +101,16 @@ def run_experiments(experiments=None,
         queue_trials=queue_trials,
         trial_executor=trial_executor)
 
-    logger.info(runner.debug_string(max_debug=99999))
+    print(runner.debug_string(max_debug=99999))
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            logger.info(runner.debug_string())
+            print(runner.debug_string())
             last_debug = time.time()
 
-    logger.info(runner.debug_string(max_debug=99999))
+    print(runner.debug_string(max_debug=99999))
 
     wait_for_log_sync()
 

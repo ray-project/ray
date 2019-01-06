@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import sys
 
 from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments
@@ -15,7 +14,7 @@ from ray.tune.suggest import grid_search, function, sample_from
 
 def _setup_logger():
     logger = logging.getLogger("ray.tune")
-    handler = logging.StreamHandler(stream=sys.stdout)
+    handler = logging.StreamHandler()
     handler.setFormatter(
         logging.Formatter(
             "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
