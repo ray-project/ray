@@ -15,7 +15,7 @@ from ray.tune.suggest import grid_search, function, sample_from
 
 def _setup_logger():
     logger = logging.getLogger("ray.tune")
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(
         logging.Formatter(
             "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
