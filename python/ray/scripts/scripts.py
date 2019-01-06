@@ -205,6 +205,11 @@ def cli(logging_level, logging_format):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
+    "--raylet-valgrind",
+    is_flag=True,
+    default=False,
+    help="Provide this argument if the raylet should be started in valgrind.")
+@click.option(
     "--internal-config",
     default=None,
     type=str,
@@ -216,7 +221,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          internal_config):
+          raylet_valgrind, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -248,6 +253,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        raylet_valgrind=raylet_valgrind,
         _internal_config=internal_config)
 
     if head:

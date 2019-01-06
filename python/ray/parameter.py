@@ -79,6 +79,8 @@ class RayParams(object):
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -117,6 +119,7 @@ class RayParams(object):
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
+                 raylet_valgrind=False,
                  _internal_config=None):
         self.address_info = address_info
         self.start_ray_local = start_ray_local
@@ -149,6 +152,7 @@ class RayParams(object):
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
+        self.raylet_valgrind = raylet_valgrind
         self._internal_config = _internal_config
         self._check_usage()
 

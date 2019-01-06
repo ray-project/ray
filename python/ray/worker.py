@@ -1403,6 +1403,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         raylet_valgrind=False,
          _internal_config=None,
          use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
@@ -1481,6 +1482,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        raylet_valgrind: True if the raylet should be started inside of
+            valgrind and false otherwise.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1548,6 +1551,7 @@ def init(redis_address=None,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        raylet_valgrind=raylet_valgrind,
         _internal_config=_internal_config,
     )
     ret = _init(ray_params, driver_id=driver_id)

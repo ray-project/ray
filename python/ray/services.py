@@ -1434,6 +1434,7 @@ def start_ray_processes(ray_params, cleanup=True):
             ray_params.raylet_socket_name or get_raylet_socket_name(),
             ray_params.address_info["object_store_address"],
             num_initial_workers=num_initial_workers,
+            use_valgrind=ray_params.raylet_valgrind,
             stdout_file=raylet_stdout_file,
             stderr_file=raylet_stderr_file,
             cleanup=cleanup,
