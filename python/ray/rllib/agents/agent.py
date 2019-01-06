@@ -345,8 +345,7 @@ class Agent(Trainable):
         """Computes an action for the specified policy.
 
         Note that you can also access the policy object through
-        self.local_evaluator.policy_map[policy_id] and call compute_actions()
-        on it directly.
+        self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Arguments:
             observation (obj): observation from the environment.
@@ -365,12 +364,10 @@ class Agent(Trainable):
         filtered_obs = self.local_evaluator.filters[policy_id](
             preprocessed, update=False)
         if state:
-            return self.local_evaluator.for_policy(
-                lambda p: p.compute_single_action(filtered_obs, state),
-                policy_id=policy_id)
-        return self.local_evaluator.for_policy(
-            lambda p: p.compute_single_action(filtered_obs, state)[0],
-            policy_id=policy_id)
+            return self.get_policy(policy_id).compute_single_action(
+                filtered_obs, state)
+        return self.get_policy(policy_id).compute_single_action(
+            filtered_obs, state)[0]
 
     @property
     def iteration(self):
@@ -389,6 +386,15 @@ class Agent(Trainable):
         """Subclasses should override this to declare their default config."""
 
         raise NotImplementedError
+
+    def get_policy(self, policy_id=DEFAULT_POLICY_ID):
+        """Return policy graph for the specified id, or None.
+
+        Arguments:
+            policy_id (str): id of policy graph to return.
+        """
+
+        return self.local_evaluator.policy_map.get(policy_id)
 
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
