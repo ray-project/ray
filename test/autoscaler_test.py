@@ -183,7 +183,7 @@ class AutoscalingTest(unittest.TestCase):
         ray.shutdown()
 
     def waitFor(self, condition, num_retries=50):
-        for _ in range(num_checks):
+        for _ in range(num_retries):
             if condition():
                 return
             time.sleep(.1)
