@@ -29,7 +29,7 @@ def create_cluster(num_nodes, raylet_valgrind=False):
             object_store_memory=10**9,
             raylet_valgrind=RAYLET_VALGRIND)
 
-    cluster.wait_for_nodes(num_nodes)
+    cluster.wait_for_nodes(num_retries=1000)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster
@@ -238,8 +238,12 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     config = json.dumps({
         "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000
     })
-    cluster.add_node(_internal_config=config)
-    cluster.add_node(num_gpus=1, _internal_config=config)
+    cluster.add_node(raylet_valgrind=RAYLET_VALGRIND, _internal_config=config)
+    cluster.add_node(
+        num_gpus=1,
+        raylet_valgrind=RAYLET_VALGRIND,
+        _internal_config=config)
+    cluster.wait_for_nodes(num_retries=1000)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(num_gpus=1)
