@@ -26,9 +26,9 @@ def parse_client_table(redis_client):
         A list of information about the nodes in the cluster.
     """
     NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-    message = redis_client.execute_command(
-        "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
-        NIL_CLIENT_ID)
+    message = redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                           ray.gcs_utils.TablePrefix.CLIENT,
+                                           "", NIL_CLIENT_ID)
 
     # Handle the case where no clients are returned. This should only
     # occur potentially immediately after the cluster is started.
@@ -36,8 +36,7 @@ def parse_client_table(redis_client):
         return []
 
     node_info = {}
-    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-        message, 0)
+    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
 
     # Since GCS entries are append-only, we override so that
     # only the latest entries are kept.
