@@ -301,8 +301,8 @@ class TFPolicyGraph(PolicyGraph):
             tf.saved_model.signature_def_utils.build_signature_def(
                 input_signature, output_signature,
                 tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
-        signature_def_key = \
-            tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # noqa: E501
+        signature_def_key = (tf.saved_model.signature_constants.
+                             DEFAULT_SERVING_SIGNATURE_DEF_KEY)
         signature_def_map = {signature_def_key: signature_def}
         return signature_def_map
 
@@ -314,8 +314,10 @@ class TFPolicyGraph(PolicyGraph):
                                prev_reward_batch=None,
                                episodes=None):
         state_batches = state_batches or []
-        assert len(self._state_inputs) == len(state_batches), \
-            (self._state_inputs, state_batches)
+        if len(self._state_inputs) != len(state_batches):
+            raise ValueError(
+                "Must pass in RNN state batches for placeholders {}, got {}".
+                format(self._state_inputs, state_batches))
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
@@ -339,7 +341,10 @@ class TFPolicyGraph(PolicyGraph):
         return fetches[0], fetches[1]
 
     def _build_apply_gradients(self, builder, gradients):
-        assert len(gradients) == len(self._grads), (gradients, self._grads)
+        if len(gradients) != len(self._grads):
+            raise ValueError(
+                "Unexpected number of gradients to apply, got {} for {}".
+                format(gradients, self._grads))
         builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(dict(zip(self._grads, gradients)))

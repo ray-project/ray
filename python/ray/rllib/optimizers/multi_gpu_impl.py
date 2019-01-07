@@ -161,8 +161,10 @@ class LocalSyncParallelOptimizer(object):
             seq_batch_size = make_divisible_by(
                 len(smallest_array), len(self.devices))
         if seq_batch_size < len(self.devices):
-            raise ValueError("Must load at least 1 tuple sequence per device, "
-                             "got only {} total.".format(len(smallest_array)))
+            raise ValueError(
+                "Must load at least 1 tuple sequence per device. Try "
+                "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
+                "to ensure that at least one sequence fits per device.")
         self._loaded_per_device_batch_size = (
             seq_batch_size // len(self.devices) * self._loaded_max_seq_len)
 
