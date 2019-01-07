@@ -29,6 +29,8 @@ def create_cluster(num_nodes, raylet_valgrind=False):
             object_store_memory=10**9,
             raylet_valgrind=RAYLET_VALGRIND)
 
+    cluster.wait_for_nodes(num_nodes)
+
     ray.init(redis_address=cluster.redis_address)
     return cluster
 
