@@ -8,7 +8,6 @@ import multiprocessing
 import numpy as np
 import os
 import pytest
-import signal
 import time
 import warnings
 
@@ -25,8 +24,10 @@ if (multiprocessing.cpu_count() < 40
 def create_cluster(num_nodes, raylet_valgrind=False):
     cluster = Cluster()
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 100}, object_store_memory=10**9,
-                         raylet_valgrind=RAYLET_VALGRIND)
+        cluster.add_node(
+            resources={str(i): 100},
+            object_store_memory=10**9,
+            raylet_valgrind=RAYLET_VALGRIND)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster
@@ -59,7 +60,7 @@ def shutdown_and_check_valgrind(cluster):
     # up failing to submit a task to a dead raylet.
     ray.shutdown()
     for node in cluster.list_all_nodes():
-        p = node.kill_raylet_and_check_valgrind()
+        node.kill_raylet_and_check_valgrind()
 
 
 # This test is here to make sure that when we broadcast an object to a bunch of
