@@ -182,6 +182,8 @@ class RayConfig {
         object_manager_default_chunk_size_ = pair.second;
       } else if (pair.first == "object_manager_repeated_push_delay_ms") {
         object_manager_repeated_push_delay_ms_ = pair.second;
+      } else if (pair.first == "max_task_lease_timeout_ms") {
+        max_task_lease_timeout_ms_ = pair.second;
       } else {
         RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
       }
