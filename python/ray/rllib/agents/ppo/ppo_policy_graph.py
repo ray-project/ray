@@ -63,11 +63,12 @@ class PPOLoss(object):
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
             use_central_vf (bool): If true, train a centralized value function
-            central_value_fn (Tensor): Current centralized value function output Tensor.
-            central_vf_preds (Placeholder): Placeholder for central value function output
-                from previous model evaluation.
-            central_value_targets (Placeholder): Placeholder for central value function
-                target values; used for GA
+            central_value_fn (Tensor): Current centralized value function
+                output Tensor.
+            central_vf_preds (Placeholder): Placeholder for central value
+                function output from previous model evaluation.
+            central_value_targets (Placeholder): Placeholder for central
+                value function target values; used for GA
         """
 
         def reduce_mean_valid(t):
@@ -106,9 +107,12 @@ class PPOLoss(object):
                 central_vf_loss1 = tf.square(central_value_fn
                                              - central_value_targets)
                 central_vf_clipped = central_vf_preds + tf.clip_by_value(
-                    central_value_fn - central_vf_preds, -vf_clip_param, vf_clip_param)
-                central_vf_loss2 = tf.square(central_vf_clipped - central_value_targets)
-                central_vf_loss = tf.maximum(central_vf_loss1, central_vf_loss2)
+                    central_value_fn - central_vf_preds, -vf_clip_param,
+                    vf_clip_param)
+                central_vf_loss2 = tf.square(central_vf_clipped -
+                                             central_value_targets)
+                central_vf_loss = tf.maximum(central_vf_loss1,
+                                             central_vf_loss2)
                 self.central_mean_vf_loss = reduce_mean_valid(central_vf_loss)
                 loss += vf_loss_coeff * central_vf_loss
         else:
@@ -144,11 +148,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         if existing_inputs:
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-            logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
+                logits_ph, vf_preds_ph, prev_actions_ph, prev_rewards_ph = \
                 existing_inputs[:8]
             if self.config["use_centralized_vf"]:
-                central_obs_ph, central_value_targets_ph, central_vf_preds_ph = \
-                    existing_inputs[8:11]
+                central_obs_ph, central_value_targets_ph, \
+                    central_vf_preds_ph = existing_inputs[8:11]
                 existing_state_in = existing_inputs[11:-1]
                 existing_seq_lens = existing_inputs[-1]
             else:
@@ -162,7 +166,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             if self.config["use_centralized_vf"]:
                 # TODO(ev) this assumes all observation spaces are the same
                 # import ipdb; ipdb.set_trace()
-                obs_shape = self.config["max_vf_agents"] * np.product(observation_space.shape)
+                obs_shape = self.config["max_vf_agents"] * \
+                            np.product(observation_space.shape)
                 central_obs_ph = tf.placeholder(
                     tf.float32,
                     name="central_obs",
@@ -191,7 +196,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_seq_lens = None
         self.observations = obs_ph
 
-
         self.loss_in = [
             ("obs", obs_ph),
             ("value_targets", value_targets_ph),
@@ -205,9 +209,10 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         if self.config["use_centralized_vf"]:
             self.loss_in.append(("central_obs", central_obs_ph))
-            self.loss_in.append(("central_value_targets", central_value_targets_ph))
+            self.loss_in.append(("central_value_targets",
+                                 central_value_targets_ph))
             self.loss_in.append(("central_vf_preds",
-                                central_vf_preds_ph))
+                                 central_vf_preds_ph))
 
         self.model = ModelCatalog.get_model(
             {
@@ -263,14 +268,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                             "prev_rewards": prev_rewards_ph,
                             "is_training": self._get_is_training_placeholder(),
                         }, observation_space, 1, vf_config).outputs
-                        self.central_value_function = tf.reshape(self.central_value_function,
-                                                         [-1])
-
-
+                        reshaped_val = tf.reshape(self.central_value_function,
+                                                  [-1])
+                        self.central_value_function = reshaped_val
         else:
             self.value_function = tf.zeros(shape=tf.shape(obs_ph)[:1])
             # TODO(ev) we need to place the global value function here as well
-            # TODO(ev) or later code will break if GAE is on, but central vf is off
+            # TODO(ev) or later code will break if GAE
+            # TODO(ev) is on, but central vf is off
 
         if self.model.state_in:
             max_seq_len = tf.reduce_max(self.model.seq_lens)
@@ -300,7 +305,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 central_value_fn=self.central_value_function,
                 central_vf_preds=central_vf_preds_ph,
                 central_value_targets=central_value_targets_ph,
-                )
+            )
         else:
             self.loss_obj = PPOLoss(
                 action_space,
@@ -352,7 +357,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "entropy": self.loss_obj.mean_entropy
         }
         if self.config["use_centralized_vf"]:
-            self.stats_fetches["central_vf_loss"] = self.loss_obj.central_mean_vf_loss
+            central_vf_loss = self.loss_obj.central_mean_vf_loss
+            self.stats_fetches["central_vf_loss"] = central_vf_loss
             # TODO(ev, kp) add central vf explained var
 
     @override(TFPolicyGraph)
@@ -380,8 +386,26 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # if needed, add a centralized value function to the sample batch
         if self.config["use_centralized_vf"]:
+            # TODO(ev) do we need to sort this?
+            time_span = (sample_batch['t'][0], sample_batch['t'][-1])
+            other_agent_times = {agent_id:
+                                 (other_agent_batches[agent_id][1]["t"][0],
+                                  other_agent_batches[agent_id][1]["t"][-1])
+                                 for agent_id in other_agent_batches.keys()}
+            rel_agents = {agent_id: other_agent_time for agent_id,
+                          other_agent_time in
+                          other_agent_times.items()
+                          if self.time_overlap(time_span, other_agent_time)}
+            other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"]
+                         for agent_id in rel_agents.keys()}
+            padded_agent_obs = {agent_id:
+                                self.overlap_and_pad_agent(time_span,
+                                                           rel_agent_time,
+                                                           other_obs[agent_id])
+                                for agent_id,
+                                rel_agent_time in rel_agents.items()}
             central_obs_batch = np.hstack(
-                [other_agent_batches[agent_id][1]["obs"] for agent_id in other_agent_batches.keys()])
+                [padded_obs for padded_obs in padded_agent_obs.values()])
             central_obs_batch = np.hstack(
                 (central_obs_batch, sample_batch["obs"]))
             # TODO(ev) this is almost certainly broken
@@ -390,14 +414,17 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             num_agents = len(other_agent_batches) + 1
             if num_agents < max_vf_agents:
                 for _ in range(max_vf_agents - num_agents):
-                    central_obs_batch = np.hstack((central_obs_batch, np.zeros(self.observation_space.shape)))
+                    zero_pad = np.zeros(self.observation_space.shape)
+                    central_obs_batch = np.hstack((central_obs_batch,
+                                                   zero_pad))
             elif num_agents > max_vf_agents:
                 print("Too many agents!")
 
             # add the central obs and central critic value
             sample_batch["central_obs"] = central_obs_batch
             sample_batch["central_vf_preds"] = self.sess.run(
-                self.central_value_function, feed_dict={self.central_observations: central_obs_batch})
+                self.central_value_function,
+                feed_dict={self.central_observations: central_obs_batch})
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -405,10 +432,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.config["lambda"],
             use_gae=self.config["use_gae"],
             use_centralized_vf=self.config["use_centralized_vf"])
-
-        # flatten the observation, compute the vf_preds, overwrite the advantages with these
-
-        # TODO(ev) write a new compute advantage function
         return batch
 
     @override(TFPolicyGraph)
@@ -436,6 +459,64 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.kl_coeff_val *= 0.5
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
+
+    def time_overlap(self, time_span, agent_time):
+        """Check if agent_time overlaps with time_span"""
+        if agent_time[0] <= time_span[1] and agent_time[1] >= time_span[0]:
+            return True
+        else:
+            return False
+
+    def overlap_and_pad_agent(self, time_span, agent_time, obs):
+        """returns only the portion of obs that overlaps with time_span and pads it
+        Arguments:
+            time_span (tuple): tuple of the first and last time that the agent
+                of interest is in the system
+            agent_time (tuple): tuple of the first and last time that the
+                agent whose obs we are padding is in the system
+            obs (np.ndarray): observations of the agent whose time is
+                agent_time
+        """
+        assert self.time_overlap(time_span, agent_time)
+        # no padding needed
+        if agent_time[0] == time_span[0] and agent_time[1] == time_span[1]:
+            return obs
+        # agent enters before time_span starts and exits before time_span end
+        if agent_time[0] <= time_span[0] and agent_time[1] <= time_span[1]:
+            non_overlap_time = time_span[0] - agent_time[0]
+            missing_time = time_span[1] - agent_time[1]
+            overlap_obs = obs[non_overlap_time:]
+            padding = np.zeros(missing_time, obs.shape[1])
+            return np.concatenate((overlap_obs, padding))
+        # agent enters after time_span starts and exits after time_span ends
+        elif agent_time[0] >= time_span[0] and agent_time[1] >= time_span[1]:
+            non_overlap_time = agent_time[1] - time_span[1]
+            overlap_obs = obs[:-non_overlap_time]
+            missing_time = agent_time[0] - time_span[0]
+            padding = np.zeros(missing_time, obs.shape[1])
+            return np.concatenate(((padding, overlap_obs)))
+        # agent time is entirely contained in time_span
+        elif agent_time[0] >= time_span[0] and agent_time[1] <= time_span[1]:
+            missing_left = agent_time[0] - time_span[0]
+            missing_right = time_span[1] - agent_time[1]
+            obs_concat = obs
+            if missing_left > 0:
+                padding = np.zeros(missing_left, obs.shape[1])
+                obs_concat = np.concatenate((padding, obs_concat))
+            if missing_right > 0:
+                padding = np.zeros(missing_right, obs.shape[1])
+                obs_concat = np.concatenate(((obs_concat, padding)))
+            return obs_concat
+        # agent time totally contains time_span
+        elif agent_time[0] <= time_span[0] and agent_time[1] >= time_span[1]:
+            non_overlap_left = time_span[0] - agent_time[0]
+            non_overlap_right = agent_time[1] - time_span[1]
+            overlap_obs = obs
+            if non_overlap_left > 0:
+                overlap_obs = overlap_obs[non_overlap_left:]
+            if non_overlap_right > 0:
+                overlap_obs = overlap_obs[:-non_overlap_right]
+            return overlap_obs
 
     def _value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
