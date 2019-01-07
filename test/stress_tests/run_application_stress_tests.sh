@@ -4,7 +4,11 @@
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 RAY_VERSION=$(git describe --tags --abbrev=0)
+RESULT_FILE="results-$(date '+%Y-%m-%d_%H-%M-%S').log"
+
 echo "Testing on latest version of Ray: $RAY_VERSION"
+echo "Logging to" $RESULT_FILE
+touch $RESULT_FILE
 
 # This function identifies the right string for the Ray wheel.
 _find_wheel_str(){
@@ -19,7 +23,8 @@ _find_wheel_str(){
     echo $wheel_str
 }
 
-
+# Total time is roughly 25 minutes.
+# Actual test runtime is roughly 10 minutes.
 test_impala(){
     local PYTHON_VERSION=$1
     local WHEEL_STR=$(_find_wheel_str $PYTHON_VERSION)
@@ -48,7 +53,9 @@ test_impala(){
             sleep 1
             ray exec $CLUSTER "
                 rllib train -f tuned_examples/atari-impala-large.yaml --redis-address='localhost:6379' --queue-trials"
-        } || echo "IMPALA Test Failed."
+
+            echo "PASS: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
+        } || echo "FAIL: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
 
         # Tear down cluster.
         if [ "$DEBUG_MODE" = "" ]; then
@@ -89,7 +96,9 @@ test_sgd(){
             sleep 1
             ray exec $CLUSTER "
                 python mnist_example.py --redis-address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu"
-        } || echo "SGD Test Failed."
+
+            echo "PASS: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
+        } || echo "FAIL: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
 
         # Tear down cluster.
         if [ "$DEBUG_MODE" = "" ]; then
