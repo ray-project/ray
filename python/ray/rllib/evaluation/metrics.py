@@ -24,7 +24,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[],
 
 def collect_episodes(local_evaluator,
                      remote_evaluators=[],
-                     timeout_seconds=180):
+                     timeout_seconds=180.0):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     pending = [
