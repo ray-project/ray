@@ -1,13 +1,13 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: rllib-stress-tests
+cluster_name: <<<CLUSTER_NAME>>>
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 6
+min_workers: <<<MIN_WORKERS>>>
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 6
+max_workers: <<<MAX_WORKERS>>>
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
@@ -48,8 +48,8 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: g3.16xlarge
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: <<<HEAD_TYPE>>>
+    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -64,8 +64,8 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.24xlarge
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: <<<WORKER_TYPE>>>
+    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -85,11 +85,10 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p27/bin:$PATH"' >> ~/.bashrc
-      #- ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.0-cp36-cp36m-manylinux1_x86_64.whl
-      #- ray || pip install -U ray-0.6.0-cp36-cp36m-manylinux1_x86_64.whl[rllib]
+    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
+    - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
+    - rllib || pip install -U <<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
     - pip install -U tensorflow-gpu
-    - ray || pip install -U ray[rllib]
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -105,9 +104,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64/ ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml 
+    - ulimit -n 65536; LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64/ ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64/ ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 
+    - ulimit -n 65536; LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64/ ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
