@@ -1834,10 +1834,21 @@ def test_multiple_local_schedulers(ray_start_cluster):
                 results.append(run_on_0_2.remote())
         return names, results
 
-    store_names = [
-        client["ObjectStoreSocketName"]
-        for client in ray.global_state.client_table()
+    client_table = ray.global_state.client_table()
+    store_names = []
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 0
     ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 5
+    ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 1
+    ]
+    assert len(store_names) == 3
 
     def validate_names_and_results(names, results):
         for name, result in zip(names, ray.get(results)):

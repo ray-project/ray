@@ -63,7 +63,7 @@ class Cluster(object):
 
         All nodes are by default started with the following settings:
             cleanup=True,
-            resources={"CPU": 1},
+            num_cpus=1,
             object_store_memory=100 * (2**20) # 100 MB
 
         Args:
