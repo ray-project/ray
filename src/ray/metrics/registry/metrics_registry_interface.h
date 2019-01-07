@@ -45,8 +45,7 @@ class MetricsRegistryInterface {
   ///
   /// \param metrics_name The name of the metric that we want to register.
   /// \param tags The tags that we want to attach to this metric.
-  void RegisterCounter(const std::string &metric_name,
-                       const Tags *tags = nullptr) {
+  void RegisterCounter(const std::string &metric_name, const Tags *tags = nullptr) {
     DoRegisterCounter(metric_name, tags);
   }
 
@@ -54,8 +53,7 @@ class MetricsRegistryInterface {
   ///
   /// \param metrics_name The name of the metric that we want to register.
   /// \param tags The tags that we want to attach to this metric.
-  void RegisterGauge(const std::string &metric_name,
-                     const Tags *tags = nullptr) {
+  void RegisterGauge(const std::string &metric_name, const Tags *tags = nullptr) {
     DoRegisterGauge(metric_name, tags);
   }
 
@@ -67,10 +65,8 @@ class MetricsRegistryInterface {
   /// \param min_value The minimum value that the metric could be.
   /// \param max_value The maximum value that the metric could be.
   /// \param tags The tags that we want to attach to this metric.
-  void RegisterHistogram(const std::string &metric_name,
-                         double min_value,
-                         double max_value,
-                         const Tags *tags = nullptr) {
+  void RegisterHistogram(const std::string &metric_name, double min_value,
+                         double max_value, const Tags *tags = nullptr) {
     DoRegisterHistogram(metric_name, min_value, max_value, tags);
   }
 
@@ -82,8 +78,7 @@ class MetricsRegistryInterface {
   /// \param metrics_name The name of the metric that we want to update.
   /// \param value The value that we want to update.
   /// \param tags The tags that attached to this value.
-  void UpdateValue(const std::string &metric_name,
-                   double value,
+  void UpdateValue(const std::string &metric_name, double value,
                    const Tags *tags = nullptr) {
     DoUpdateValue(metric_name, value, tags);
   }
@@ -93,37 +88,27 @@ class MetricsRegistryInterface {
   /// \param regex_filter Regex expression to filter the metrics.
   /// As we all known regex ".*" match all values.
   /// \param any_ptr Result after filter.
-  virtual void ExportMetrics(const std::string &regex_filter,
-                             AnyPtr *any_ptr) = 0;
+  virtual void ExportMetrics(const std::string &regex_filter, AnyPtr *any_ptr) = 0;
 
   /// Get global tags.
-  virtual const Tags &GetDefaultTags() {
-    return default_tags_;
-  }
+  virtual const Tags &GetDefaultTags() { return default_tags_; }
 
  protected:
   explicit MetricsRegistryInterface(const RegistryOption &options)
-      : default_tags_(options.default_tag_map_),
-        options_(options) {}
+      : default_tags_(options.default_tag_map_), options_(options) {}
 
-  virtual void DoRegisterCounter(const std::string &metric_name,
-                                 const Tags *tags) = 0;
+  virtual void DoRegisterCounter(const std::string &metric_name, const Tags *tags) = 0;
 
-  virtual void DoRegisterGauge(const std::string &metric_name,
-                               const Tags *tags) = 0;
+  virtual void DoRegisterGauge(const std::string &metric_name, const Tags *tags) = 0;
 
-  virtual void DoRegisterHistogram(const std::string &metric_name,
-                                   double min_value,
-                                   double max_value,
-                                   const Tags *tags) = 0;
+  virtual void DoRegisterHistogram(const std::string &metric_name, double min_value,
+                                   double max_value, const Tags *tags) = 0;
 
-  virtual void DoUpdateValue(const std::string &metric_name,
-                             double value,
+  virtual void DoUpdateValue(const std::string &metric_name, double value,
                              const Tags *tags) = 0;
 
   /// Divided range[min_value, max_value] into multiple buckets for histogram statistics.
-  std::vector<double> GenBucketBoundaries(double min_value,
-                                          double max_value,
+  std::vector<double> GenBucketBoundaries(double min_value, double max_value,
                                           size_t bucket_count) const;
 
   Tags default_tags_;

@@ -50,8 +50,7 @@ class MetricsReporterInterface {
   virtual bool Stop() = 0;
 
  protected:
-  explicit MetricsReporterInterface(const ReporterOption &options)
-      : options_(options) {}
+  explicit MetricsReporterInterface(const ReporterOption &options) : options_(options) {}
 
   ReporterOption options_;
 };

@@ -10,20 +10,15 @@ namespace metrics {
 class EmptyMetricsReporter : public MetricsReporterInterface {
  public:
   explicit EmptyMetricsReporter(const ReporterOption &options)
-  : MetricsReporterInterface(options) {}
+      : MetricsReporterInterface(options) {}
 
   virtual ~EmptyMetricsReporter() = default;
 
-  bool Start() override {
-    return true;
-  }
+  bool Start() override { return true; }
 
-  bool Stop() override {
-    return true;
-  }
+  bool Stop() override { return true; }
 
   void RegisterRegistry(MetricsRegistryInterface *registry) override {}
-
 };
 
 }  // namespace metrics

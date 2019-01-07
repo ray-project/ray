@@ -5,7 +5,6 @@
 
 #include "ray/metrics/metrics_conf.h"
 
-
 namespace ray {
 
 #define METRICS_UPDATE_COUNTER(metrics_name, value) \
@@ -20,15 +19,14 @@ namespace ray {
 #define METRICS_RESET_GAUGE_WITH_TAGS(metrics_name, value, tags) \
   metrics::PerfCounter::GetInstance()->UpdateGauge(metrics_name, value, tags)
 
-#define METRICS_UPDATE_HISTOGRAM( \
-  metrics_name, value, min_value, max_value) \
-  metrics::PerfCounter::GetInstance()->UpdateHistogram( \
-  metrics_name, value, min_value, max_value)
+#define METRICS_UPDATE_HISTOGRAM(metrics_name, value, min_value, max_value)            \
+  metrics::PerfCounter::GetInstance()->UpdateHistogram(metrics_name, value, min_value, \
+                                                       max_value)
 
-#define METRICS_UPDATE_HISTOGRAM_WITH_TAGS( \
-  metrics_name, value, min_value, max_value, tags) \
-  metrics::PerfCounter::GetInstance()->UpdateHistogram( \
-  metrics_name, value, min_value, max_value, tags)
+#define METRICS_UPDATE_HISTOGRAM_WITH_TAGS(metrics_name, value, min_value, max_value,  \
+                                           tags)                                       \
+  metrics::PerfCounter::GetInstance()->UpdateHistogram(metrics_name, value, min_value, \
+                                                       max_value, tags)
 
 namespace metrics {
 
@@ -36,7 +34,7 @@ class PerfCounter final {
  public:
   static PerfCounter *GetInstance();
 
-  // Deleted methods to avoid creating instance with out `GetInstance()`.
+  // Deleted methods to avoid creating instance without `GetInstance()`.
   PerfCounter(const PerfCounter &) = delete;
 
   PerfCounter &operator=(const PerfCounter &) = delete;
@@ -55,8 +53,7 @@ class PerfCounter final {
   /// \param metrics_name The name of the metric that we want to update.
   /// \param value The value that we want to update to.
   /// \param tags The tags that we want to attach to.
-  void UpdateCounter(const std::string &metrics_name,
-                     double value,
+  void UpdateCounter(const std::string &metrics_name, double value,
                      const Tags &tags = Tags{});
 
   /// Update gauge metric.
@@ -64,8 +61,7 @@ class PerfCounter final {
   /// \param metrics_name The name of the metric that we want to update.
   /// \param value The value that we want to update to.
   /// \param tags The tags that we want to attach to.
-  void UpdateGauge(const std::string &metrics_name,
-                   double value,
+  void UpdateGauge(const std::string &metrics_name, double value,
                    const Tags &tags = Tags{});
 
   /// Update histogram metric.
@@ -77,11 +73,8 @@ class PerfCounter final {
   /// \param min_value The minimum value that we can specified.
   /// \param max_value The maximum value that we can specified.
   /// \param tags The tags that we want to attach to.
-  void UpdateHistogram(const std::string &metrics_name,
-                       double value,
-                       double min_value,
-                       double max_value,
-                       const Tags &tags = Tags{});
+  void UpdateHistogram(const std::string &metrics_name, double value, double min_value,
+                       double max_value, const Tags &tags = Tags{});
 
   MetricsRegistryInterface *GetRegistry();
 

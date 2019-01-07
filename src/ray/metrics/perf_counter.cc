@@ -25,19 +25,12 @@ class PerfCounter::Impl {
   void Shutdown();
 
   // If not found, we should insert one.
-  void UpdateCounter(const std::string &metrics_name,
-                     double value,
-                     const Tags *tags);
+  void UpdateCounter(const std::string &metrics_name, double value, const Tags *tags);
 
-  void UpdateGauge(const std::string &metrics_name,
-                   double value,
-                   const Tags *tags);
+  void UpdateGauge(const std::string &metrics_name, double value, const Tags *tags);
 
-  void UpdateHistogram(const std::string &metrics_name,
-                       double value,
-                       double min_value,
-                       double max_value,
-                       const Tags *tags);
+  void UpdateHistogram(const std::string &metrics_name, double value, double min_value,
+                       double max_value, const Tags *tags);
 
   MetricsRegistryInterface *GetRegistry();
 
@@ -49,6 +42,6 @@ class PerfCounter::Impl {
   MetricsReporterInterface *reporter_{nullptr};
 };
 
-} // namespace metrics
+}  // namespace metrics
 
-} // namespace ray
+}  // namespace ray

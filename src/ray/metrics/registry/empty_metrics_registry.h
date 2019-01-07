@@ -14,24 +14,17 @@ class EmptyMetricsRegistry : public MetricsRegistryInterface {
 
   virtual ~EmptyMetricsRegistry() {}
 
-  void ExportMetrics(const std::string &regex_filter,
-                     AnyPtr *any_ptr) override {}
+  void ExportMetrics(const std::string &regex_filter, AnyPtr *any_ptr) override {}
 
  protected:
-  void DoRegisterCounter(
-    const std::string &metric_name, const Tags *tags) override {}
+  void DoRegisterCounter(const std::string &metric_name, const Tags *tags) override {}
 
-  void DoRegisterGauge(
-    const std::string &metric_name, const Tags *tags) override {}
+  void DoRegisterGauge(const std::string &metric_name, const Tags *tags) override {}
 
+  void DoRegisterHistogram(const std::string &metric_name, double min_value,
+                           double max_value, const Tags *tags) override {}
 
-  void DoRegisterHistogram(const std::string &metric_name,
-                           double min_value,
-                           double max_value,
-                           const Tags *tags) override {}
-
-  void DoUpdateValue(const std::string &metric_name,
-                     double value,
+  void DoUpdateValue(const std::string &metric_name, double value,
                      const Tags *tags) override {}
 };
 

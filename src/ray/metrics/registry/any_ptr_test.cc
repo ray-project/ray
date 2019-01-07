@@ -1,6 +1,6 @@
+#include "ray/metrics/registry/any_ptr.h"
 #include <vector>
 #include "gtest/gtest.h"
-#include "ray/metrics/registry/any_ptr.h"
 
 namespace ray {
 

@@ -25,16 +25,12 @@ class TagKeys {
   /// Get the set of tag keys.
   ///
   /// \return The set of tag keys.
-  const std::set<std::string> &GetTagKeys() const {
-    return keys_;
-  }
+  const std::set<std::string> &GetTagKeys() const { return keys_; }
 
   /// Get the id of this TagKeys object.
   ///
   /// \return The id of this TagKeys.
-  size_t GetID() const {
-    return id_;
-  }
+  size_t GetID() const { return id_; }
 
  private:
   void DoHash();
@@ -50,7 +46,6 @@ class TagKeys {
 /// All of the members cannot be changed after creating.
 class Tags {
  public:
-
   /// Create a Tags object from the given map.
   ///
   /// \param tag_map The map of k-v tags.
@@ -61,23 +56,17 @@ class Tags {
   /// Get the tags with a map.
   ///
   /// \return The map that contains k-v tags.
-  const std::map<std::string, std::string> &GetTags() const {
-    return tag_map_;
-  }
+  const std::map<std::string, std::string> &GetTags() const { return tag_map_; }
 
   /// get the keys of this Tags object.
   ///
   /// \return The TagKeys object that contains all of the keys of this Tags object.
-  const TagKeys &GetTagKeys() const {
-    return keys_;
-  }
+  const TagKeys &GetTagKeys() const { return keys_; }
 
   /// Get the id of this Tags object.
   ///
   /// \return The id of this Tags object.
-  size_t GetID() const {
-    return id_;
-  }
+  size_t GetID() const { return id_; }
 
  private:
   void DoHash();

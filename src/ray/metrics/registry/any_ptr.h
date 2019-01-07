@@ -11,14 +11,9 @@ namespace metrics {
 /// TODO(micafan) public function Swap
 class AnyPtr {
  public:
-  AnyPtr()
-      : object_ptr_(nullptr),
-        type_info_(&typeid(void*)),
-        deleter_(nullptr) {}
+  AnyPtr() : object_ptr_(nullptr), type_info_(&typeid(void *)), deleter_(nullptr) {}
 
-  ~AnyPtr() {
-    Destroy();
-  }
+  ~AnyPtr() { Destroy(); }
 
   // noncopyable
   AnyPtr(const AnyPtr &) = delete;
@@ -48,12 +43,12 @@ class AnyPtr {
 
  private:
   void Destroy() {
-    if (object_ptr_ != nullptr && deleter_ !=nullptr) {
+    if (object_ptr_ != nullptr && deleter_ != nullptr) {
       deleter_(object_ptr_);
 
       object_ptr_ = nullptr;
       deleter_ = nullptr;
-      type_info_ = &typeid(void*);
+      type_info_ = &typeid(void *);
     }
   }
 
