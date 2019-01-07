@@ -24,7 +24,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[],
 
 def collect_episodes(local_evaluator,
                      remote_evaluators=[],
-                     timeout_seconds=180.0):
+                     timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     pending = [
@@ -32,7 +32,7 @@ def collect_episodes(local_evaluator,
         for a in remote_evaluators
     ]
     collected, _ = ray.wait(
-        pending, num_returns=len(pending), timeout=timeout_seconds)
+        pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
     num_metric_batches_dropped = len(pending) - len(collected)
 
     metric_lists = ray.get(collected)
