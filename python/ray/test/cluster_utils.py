@@ -63,7 +63,7 @@ class Cluster(object):
 
         All nodes are by default started with the following settings:
             cleanup=True,
-            resources={"CPU": 1},
+            num_cpus=1,
             object_store_memory=100 * (2**20) # 100 MB
 
         Args:
@@ -74,9 +74,7 @@ class Cluster(object):
             Node object of the added Ray node.
         """
         node_kwargs = {
-            "resources": {
-                "CPU": 1
-            },
+            "num_cpus": 1,
             "object_store_memory": 100 * (2**20)  # 100 MB
         }
         node_kwargs.update(override_kwargs)
@@ -103,7 +101,7 @@ class Cluster(object):
             node = Node(address_info, process_dict_copy)
             self.worker_nodes[node] = address_info
         logger.info("Starting Node with raylet socket {}".format(
-            address_info["raylet_socket_names"]))
+            address_info["raylet_socket_name"]))
 
         return node
 
@@ -125,10 +123,10 @@ class Cluster(object):
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self, retries=30):
+    def wait_for_nodes(self, retries=100):
         """Waits for all nodes to be registered with global state.
 
-        By default, waits for 3 seconds.
+        By default, waits for 10 seconds.
 
         Args:
             retries (int): Number of times to retry checking client table.
@@ -239,4 +237,4 @@ class Node(object):
         Assuming one plasma store per raylet, this may be used as a unique
         identifier for a node.
         """
-        return self.address_info['object_store_addresses'][0]
+        return self.address_info['object_store_address']
