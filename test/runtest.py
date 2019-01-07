@@ -1772,7 +1772,7 @@ def test_multiple_local_schedulers(ray_start_cluster):
     cluster.add_node(num_cpus=5, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=1)
     ray.init(redis_address=cluster.redis_address)
-    cluster.wait_for_nodes(3)
+    cluster.wait_for_nodes()
 
     # Define a bunch of remote functions that all return the socket name of
     # the plasma store. Since there is a one-to-one correspondence between

@@ -1185,33 +1185,28 @@ def get_address_info_from_redis_helper(redis_address,
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=redis_password)
 
-    # In the raylet code path, all client data is stored in a zset at the
-    # key for the nil client.
-    client_key = b"CLIENT" + NIL_CLIENT_ID
-    clients = redis_client.zrange(client_key, 0, -1)
-    raylets = []
-    for client_message in clients:
-        client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-            client_message, 0)
-        client_node_ip_address = ray.utils.decode(client.NodeManagerAddress())
-        if (client_node_ip_address == node_ip_address or
-            (client_node_ip_address == "127.0.0.1"
-             and redis_ip_address == ray.services.get_node_ip_address())):
-            raylets.append(client)
-    # Make sure that at least one raylet has started locally.
-    # This handles a race condition where Redis has started but
-    # the raylet has not connected.
-    if len(raylets) == 0:
+    client_table = ray.experimental.state.parse_client_table(redis_client)
+    if len(client_table) == 0:
         raise Exception(
             "Redis has started but no raylets have registered yet.")
 
-    object_store_address = ray.utils.decode(raylets[0].ObjectStoreSocketName())
-    raylet_socket_name = ray.utils.decode(raylets[0].RayletSocketName())
+    relevant_client = None
+    for client_info in client_table:
+        client_node_ip_address = client_info["NodeManagerAddress"]
+        if (client_node_ip_address == node_ip_address or
+            (client_node_ip_address == "127.0.0.1"
+             and redis_ip_address == ray.services.get_node_ip_address())):
+            relevant_client = client_info
+            break
+    if relevant_client is None:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
     return {
         "node_ip_address": node_ip_address,
         "redis_address": redis_address,
-        "object_store_address": object_store_address,
-        "raylet_socket_name": raylet_socket_name,
+        "object_store_address": relevant_client["ObjectStoreSocketName"],
+        "raylet_socket_name": relevant_client["RayletSocketName"],
         # Web UI should be running.
         "webui_url": _webui_url_helper(redis_client)
     }

@@ -5,6 +5,7 @@ from __future__ import print_function
 import json
 import logging
 import pytest
+import time
 
 import ray
 import ray.services as services
@@ -82,10 +83,10 @@ def test_internal_config(start_connected_longer_cluster):
     cluster.wait_for_nodes()
 
     cluster.remove_node(worker)
-    cluster.wait_for_nodes(retries=10)
+    time.sleep(1)
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
-    cluster.wait_for_nodes(retries=20)
+    time.sleep(2)
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
 

@@ -639,7 +639,7 @@ def ray_start_two_nodes():
 # the monitor to detect enough missed heartbeats.
 def test_warning_for_dead_node(ray_start_two_nodes):
     cluster = ray_start_two_nodes
-    cluster.wait_for_nodes(2)
+    cluster.wait_for_nodes()
 
     client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
 
