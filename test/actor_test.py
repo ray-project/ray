@@ -759,7 +759,7 @@ def test_actors_on_nodes_with_no_cpus(ray_start_regular):
             pass
 
     f = Foo.remote()
-    ready_ids, _ = ray.wait([f.method.remote()], timeout=100)
+    ready_ids, _ = ray.wait([f.method.remote()], timeout=0.1)
     assert ready_ids == []
 
 
@@ -843,7 +843,7 @@ def test_actor_gpus(ray_start_cluster):
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor1.remote()
-    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
 
 
@@ -884,7 +884,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor1.remote()
-    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
 
     # We should be able to create more actors that use only a single GPU.
@@ -913,7 +913,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor2.remote()
-    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
 
 
@@ -953,7 +953,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor1.remote()
-    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
 
 
@@ -1030,7 +1030,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 
     # All the GPUs should be used up now.
     a = Actor.remote()
-    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+    ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
 
 
@@ -1165,7 +1165,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     # Now if we run some GPU tasks, they should not be scheduled.
     results = [f1.remote() for _ in range(30)]
-    ready_ids, remaining_ids = ray.wait(results, timeout=1000)
+    ready_ids, remaining_ids = ray.wait(results, timeout=1.0)
     assert len(ready_ids) == 0
 
 
@@ -1274,7 +1274,7 @@ def test_blocking_actor_task(shutdown_only):
     # block.
     actor = CPUFoo.remote()
     x_id = actor.blocking_method.remote()
-    ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
+    ready_ids, remaining_ids = ray.wait([x_id], timeout=1.0)
     assert ready_ids == []
     assert remaining_ids == [x_id]
 
@@ -1289,7 +1289,7 @@ def test_blocking_actor_task(shutdown_only):
     # Make sure that GPU resources are not released when actors block.
     actor = GPUFoo.remote()
     x_id = actor.blocking_method.remote()
-    ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
+    ready_ids, remaining_ids = ray.wait([x_id], timeout=1.0)
     assert ready_ids == []
     assert remaining_ids == [x_id]
 
@@ -2010,7 +2010,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
     actor2s = [Actor2.remote() for _ in range(2)]
     results = [a.method.remote() for a in actor2s]
     ready_ids, remaining_ids = ray.wait(
-        results, num_returns=len(results), timeout=1000)
+        results, num_returns=len(results), timeout=1.0)
     assert len(ready_ids) == 1
 
 
@@ -2066,7 +2066,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.wait([result2])
     actor3 = ResourceActor1.remote()
     result3 = actor3.method.remote()
-    ready_ids, _ = ray.wait([result3], timeout=200)
+    ready_ids, _ = ray.wait([result3], timeout=0.2)
     assert len(ready_ids) == 0
 
     # By deleting actor1, we free up resources to create actor3.

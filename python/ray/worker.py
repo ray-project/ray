@@ -2278,8 +2278,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
-        timeout (int): The maximum amount of time in milliseconds to wait
-            before returning.
+        timeout (float): The maximum amount of time in seconds to wait before
+            returning.
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
@@ -2293,6 +2293,15 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     if not isinstance(object_ids, list):
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
             type(object_ids)))
+
+    if isinstance(timeout, int) and timeout != 0:
+        logger.warning("The 'timeout' argument now requires seconds instead "
+                       "of milliseconds. This message can be suppressed by "
+                       "passing in a float.")
+
+    if timeout is not None and timeout < 0:
+        raise ValueError("The 'timeout' argument must be nonnegative. "
+                         "Received {}".format(timeout))
 
     if worker.mode != LOCAL_MODE:
         for object_id in object_ids:
@@ -2328,9 +2337,11 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         with worker.state_lock:
             current_task_id = worker.get_current_thread_task_id()
 
-        timeout = timeout if timeout is not None else 2**30
+        timeout = timeout if timeout is not None else 10**6
+        timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.raylet_client.wait(
-            object_ids, num_returns, timeout, False, current_task_id)
+            object_ids, num_returns, timeout_milliseconds, False,
+            current_task_id)
         return ready_ids, remaining_ids
 
 
