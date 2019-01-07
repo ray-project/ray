@@ -24,10 +24,8 @@ import ray.gcs_utils
 import ray.raylet
 import ray.ray_constants as ray_constants
 
-# Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
 
 def _random_string():
     id_hash = hashlib.sha1()

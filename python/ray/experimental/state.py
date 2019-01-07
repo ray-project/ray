@@ -620,7 +620,7 @@ class GlobalState(object):
         self.redis_client.hmset(b"Workers:" + worker_id, worker_dict)
 
     def _profile_table(self, batch_id):
-        """Get the profile events for a given component.
+        """Get the profile events for a given batch of profile events.
 
         Args:
             batch_id: An identifier for a batch of profile events.

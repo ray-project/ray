@@ -50,7 +50,6 @@ DEFAULT_PLASMA_STORE_MEMORY = 10**9
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 
-
 # Location of the raylet executables.
 RAYLET_MONITOR_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),

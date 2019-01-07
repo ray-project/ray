@@ -266,9 +266,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                ray_params.redis_address, " --redis-password "
+                session.redis_address, " --redis-password "
                 if redis_password else "", redis_password if redis_password
-                else "", ray_params.redis_address, "\", redis_password=\""
+                else "", session.redis_address, "\", redis_password=\""
                 if redis_password else "", redis_password
                 if redis_password else ""))
     else:
@@ -297,6 +297,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")
+
+    # Set it as the current session
+    services.current_session = session
 
     if block:
         import time

@@ -1172,7 +1172,7 @@ def _normalize_resource_arguments(num_cpus, num_gpus, resources):
             dictionaries of resource mappings.
 
     Returns:
-        A list of dictionaries of resources of length num_local_schedulers.
+        A dictionary of resources.
     """
     new_resources = {} if resources is None else resources.copy()
 
@@ -1234,6 +1234,9 @@ def _init(ray_params, driver_id=None):
         session = services.start_ray_head(ray_params)
     else:
         session = services.connect_cluster(ray_params)
+
+    # Set it as the current session
+    services.current_session = session
 
     # Connect this driver to Redis, the object store, and the local scheduler.
     # Choose the first object store and local scheduler if there are multiple.
@@ -2249,7 +2252,6 @@ def remote(*args, **kwargs):
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
-    _normalize_resource_arguments()
     if not isinstance(resources, dict) and resources is not None:
         raise Exception("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(

@@ -18,8 +18,6 @@ from ray.utils import address, try_to_create_directory
 from ray import runner
 from ray.experimental import state
 
-NIL_CLIENT_ID = ray.ray_constants.ID_SIZE * b"\xff"
-
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_WORKER = "worker"

@@ -9,6 +9,9 @@ import time
 import ray
 from ray.parameter import RayParams
 import ray.services as services
+import ray.session
+from ray.session import (PROCESS_TYPE_LOG_MONITOR, PROCESS_TYPE_PLASMA_STORE,
+                         PROCESS_TYPE_RAYLET)
 
 logger = logging.getLogger(__name__)
 
@@ -85,25 +88,17 @@ class Cluster(object):
 
         if self.head_node is None:
             ray_params.update(include_webui=False)
-            services.start_ray_head(ray_params, cleanup=True)
-            self.redis_address = ray_params.redis_address
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(ray_params.address_info, process_dict_copy)
+            session = services.start_ray_head(ray_params, cleanup=True)
+            self.redis_address = session.redis_address
+            node = Node(session)
             self.head_node = node
         else:
             ray_params.update(redis_address=self.redis_address)
-            address_info = services.start_ray_node(ray_params, cleanup=True)
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
-            self.worker_nodes[node] = address_info
+            session = services.start_ray_node(ray_params, cleanup=True)
+            node = Node(session)
+            self.worker_nodes[node] = session
         logger.info("Starting Node with raylet socket {}".format(
-            ray_params.raylet_socket_name))
+            session.raylet_socket_name))
 
         return node
 
@@ -145,9 +140,9 @@ class Cluster(object):
         return False
 
     def _check_registered_nodes(self):
+        clients = self.head_node.session.global_state.client_table()
         registered = len([
-            client for client in ray.global_state.client_table()
-            if client["IsInsertion"]
+            client for client in clients if client["IsInsertion"]
         ])
         expected = len(self.list_all_nodes())
         if registered == expected:
@@ -189,42 +184,49 @@ class Cluster(object):
 class Node(object):
     """Abstraction for a Ray node."""
 
-    def __init__(self, address_info, process_dict):
+    def __init__(self, session):
+        self.session = session
         # TODO(rliaw): Is there a unique identifier for a node?
-        self.address_info = address_info
-        self.process_dict = process_dict
 
     def kill_plasma_store(self):
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].kill()
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].wait()
+        process_dict = self.session.all_processes
+        process_dict[PROCESS_TYPE_PLASMA_STORE][0].kill()
+        process_dict[PROCESS_TYPE_PLASMA_STORE][0].wait()
 
     def kill_raylet(self):
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].kill()
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
+        process_dict = self.session.all_processes
+        process_dict[PROCESS_TYPE_RAYLET][0].kill()
+        process_dict[PROCESS_TYPE_RAYLET][0].wait()
 
     def kill_log_monitor(self):
-        self.process_dict["log_monitor"][0].kill()
-        self.process_dict["log_monitor"][0].wait()
+        process_dict = self.session.all_processes
+        process_dict[PROCESS_TYPE_LOG_MONITOR][0].kill()
+        process_dict[PROCESS_TYPE_LOG_MONITOR][0].wait()
 
     def kill_all_processes(self):
-        for process_name, process_list in self.process_dict.items():
+        process_dict = self.session.all_processes
+        for process_name, process_list in process_dict.items():
             logger.info("Killing all {}(s)".format(process_name))
             for process in process_list:
                 # Kill the process if it is still alive.
                 if process.poll() is None:
                     process.kill()
 
-        for process_name, process_list in self.process_dict.items():
+        for process_name, process_list in process_dict.items():
             logger.info("Waiting all {}(s)".format(process_name))
             for process in process_list:
                 process.wait()
 
     def live_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
+        process_dict = self.session.all_processes
+
+        return [(p_name, proc) for p_name, p_list in process_dict.items()
                 for proc in p_list if proc.poll() is None]
 
     def dead_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
+        process_dict = self.session.all_processes
+
+        return [(p_name, proc) for p_name, p_list in process_dict.items()
                 for proc in p_list if proc.poll() is not None]
 
     def any_processes_alive(self):
@@ -239,4 +241,4 @@ class Node(object):
         Assuming one plasma store per raylet, this may be used as a unique
         identifier for a node.
         """
-        return self.address_info['object_store_addresses'][0]
+        return self.session.plasma_store_socket_name

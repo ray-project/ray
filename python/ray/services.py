@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # The current Ray session
 current_session = None
 
+
 def cleanup():
     """When running in local mode, shutdown the Ray processes.
 
@@ -34,8 +35,9 @@ def cleanup():
 
 
 def check_orphan_processes():
-    # If this is not a driver, make sure there are no orphan processes,
-    # besides possibly the worker itself.
+    """ If this is not a driver, make sure there are no orphan processes,
+    besides possibly the worker itself.
+    """
     if current_session is not None:
         for process_type, processes in current_session.all_processes.items():
             if process_type == PROCESS_TYPE_WORKER:
@@ -63,9 +65,35 @@ def start_ray_node(ray_params, cleanup=True):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: node_ip_address,
             redis_address, object_manager_port, node_manager_port,
-            num_workers, num_local_schedulers, object_store_memory,
-            redis_password, worker_path, cleanup, redirect_worker_output,
-            redirect_output, resources, plasma_directory, huge_pages,
+            num_workers, object_store_memory, redis_password, worker_path,
+            redirect_worker_output, redirect_output, resources,
+            plasma_directory, huge_pages, plasma_store_socket_name,
+            raylet_socket_name, temp_dir, _internal_config
+        cleanup (bool): If cleanup is true, then the processes started here
+            will be killed by services.cleanup() when the Python process that
+            called this method exits.
+
+    Returns:
+        A dictionary of the address information for the processes that were
+            started.
+    """
+    ray_params.update(include_log_monitor=True)
+    session = RayNodeSession(ray_params)
+    session.start_ray_processes(cleanup=cleanup)
+    return session
+
+
+def start_ray_head(ray_params, cleanup=True):
+    """Start Ray in local mode.
+
+    Args:
+        ray_params (ray.params.RayParams): The RayParams instance. The
+            following parameters could be checked: object_manager_port,
+            node_manager_port, node_ip_address, redis_port, redis_shard_ports,
+            num_workers, object_store_memory, redis_max_memory, worker_path,
+            redirect_worker_output, redirect_output, resources,
+            num_redis_shards, redis_max_clients, redis_password, include_webui,
+            huge_pages, plasma_directory, autoscaling_config,
             plasma_store_socket_name, raylet_socket_name, temp_dir,
             _internal_config
         cleanup (bool): If cleanup is true, then the processes started here
@@ -76,42 +104,10 @@ def start_ray_node(ray_params, cleanup=True):
         A dictionary of the address information for the processes that were
             started.
     """
-    global current_session
-    ray_params.update(include_log_monitor=True)
-    session = RayNodeSession(ray_params)
-    session.start_ray_processes(cleanup=cleanup)
-    current_session = session
-    return session
-
-
-def start_ray_head(ray_params, cleanup=True):
-    """Start Ray in local mode.
-
-    Args:
-        ray_params (ray.params.RayParams): The RayParams instance. The
-            following parameters could be checked: address_info,
-            object_manager_port, node_manager_port, node_ip_address,
-            redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, worker_path, cleanup,
-            redirect_worker_output, redirect_output,
-            start_workers_from_local_scheduler, resources, num_redis_shards,
-            redis_max_clients, redis_password, include_webui, huge_pages,
-            plasma_directory, autoscaling_config, plasma_store_socket_name,
-            raylet_socket_name, temp_dir, _internal_config
-        cleanup (bool): If cleanup is true, then the processes started here
-            will be killed by services.cleanup() when the Python process that
-            called this method exits.
-
-    Returns:
-        A dictionary of the address information for the processes that were
-            started.
-    """
-    global current_session
     ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
     ray_params.update(include_log_monitor=True)
     session = RayNodeSession(ray_params)
     session.start_ray_processes(cleanup=cleanup)
-    current_session = session
     return session
 
 
@@ -122,9 +118,6 @@ def connect_cluster(ray_params, num_retries=5):
     if ray_params.num_workers is not None:
         raise Exception("When connecting to an existing cluster, "
                         "num_workers must not be provided.")
-    if ray_params.num_local_schedulers is not None:
-        raise Exception("When connecting to an existing cluster, "
-                        "num_local_schedulers must not be provided.")
     if ray_params.num_cpus is not None or ray_params.num_gpus is not None:
         raise Exception("When connecting to an existing cluster, num_cpus "
                         "and num_gpus must not be provided.")
@@ -184,6 +177,4 @@ def connect_cluster(ray_params, num_retries=5):
             time.sleep(1)
         counter += 1
 
-    global current_session
-    current_session = session
     return session

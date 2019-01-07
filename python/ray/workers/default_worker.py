@@ -74,6 +74,7 @@ if __name__ == "__main__":
 
     session = ray.session.RayNodeSession(ray_params)
     session.connect_cluster()
+    # Set it as the current session
     ray.services.current_session = session
     ray.worker.connect(session, mode=ray.WORKER_MODE)
 
