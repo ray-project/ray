@@ -1205,8 +1205,6 @@ def get_address_info_from_redis_helper(redis_address,
         raise Exception(
             "Redis has started but no raylets have registered yet.")
 
-    # REDO THIS TO USE GLOBAL STATE CLIENT TABLE..................................................
-
     object_store_address = ray.utils.decode(raylets[0].ObjectStoreSocketName())
     raylet_socket_name = ray.utils.decode(raylets[0].RayletSocketName())
     return {
