@@ -1,5 +1,5 @@
-# Runs on a g3.16xl node with 7 m5.24xl workers
-# See https://github.com/ray-project/rl-experiments for results
+# Runs on a g3.16xl node with 5 m5.24xl workers
+# Used for stress testing.
 atari-impala:
     env:
         grid_search:
