@@ -107,6 +107,8 @@ class RayConfig {
 
   int num_workers_per_process() const { return num_workers_per_process_; }
 
+  int64_t max_task_lease_timeout_ms() const { return max_task_lease_timeout_ms_; }
+
   void initialize(const std::unordered_map<std::string, int> &config_map) {
     RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
@@ -224,6 +226,7 @@ class RayConfig {
         object_manager_repeated_push_delay_ms_(60000),
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1),
+        max_task_lease_timeout_ms_(60 * 1000),
         initialized_(false) {}
 
   ~RayConfig() {}
@@ -351,6 +354,9 @@ class RayConfig {
 
   /// Number of workers per process
   int num_workers_per_process_;
+
+  // Maximum timeout in milliseconds within which a task lease must be renewed.
+  int64_t max_task_lease_timeout_ms_;
 
   /// Whether the initialization of the instance has been called before.
   /// The RayConfig instance can only (and must) be initialized once.
