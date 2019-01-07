@@ -7,8 +7,10 @@ import logging
 import sys
 import threading
 
+import ray.cloudpickle as cloudpickle
 from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.suggest import BasicVariantGenerator
+from ray.utils import binary_to_hex, hex_to_binary
 
 if sys.version_info[0] == 2:
     from SimpleHTTPServer import SimpleHTTPRequestHandler
@@ -24,6 +26,11 @@ except ImportError:
     requests = None
     logger.exception("Couldn't import `requests` library. "
                      "Be sure to install it on the client side.")
+
+
+def load_trial_info(trial_info):
+    trial_info["config"] = cloudpickle.loads(
+        hex_to_binary(trial_info["config"]))
 
 
 class TuneClient(object):
@@ -71,6 +78,13 @@ class TuneClient(object):
         payload = json.dumps(data).encode()
         response = requests.get(self._path, data=payload)
         parsed = response.json()
+
+        if "trial_info" in parsed:
+            load_trial_info(parsed["trial_info"])
+        elif "trials" in parsed:
+            for trial_info in parsed["trials"]:
+                load_trial_info(trial_info)
+
         return parsed
 
 
@@ -96,7 +110,7 @@ def RunnerHandler(runner):
             info_dict = {
                 "id": trial.trial_id,
                 "trainable_name": trial.trainable_name,
-                "config": trial.config,
+                "config": binary_to_hex(cloudpickle.dumps(trial.config)),
                 "status": trial.status,
                 "result": result
             }

@@ -6,6 +6,7 @@ import unittest
 import socket
 
 import ray
+from ray import tune
 from ray.rllib import _register_all
 from ray.tune.trial import Trial, Resources
 from ray.tune.web_server import TuneClient
@@ -86,6 +87,27 @@ class TuneServerSuite(unittest.TestCase):
         client.get_trial(tid)
         runner.step()
         self.assertEqual(len(all_trials), 2)
+
+    def testGetTrialsWithFunction(self):
+        runner, client = self.basicSetup()
+        test_trial = Trial(
+            "__fake",
+            trial_id="function_trial",
+            stopping_criterion={"training_iteration": 3},
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda x: None)
+                }
+            })
+        runner.add_trial(test_trial)
+
+        for i in range(3):
+            runner.step()
+        all_trials = client.get_all_trials()["trials"]
+        self.assertEqual(len(all_trials), 3)
+        client.get_trial("function_trial")
+        runner.step()
+        self.assertEqual(len(all_trials), 3)
 
     def testStopTrial(self):
         """Check if Stop Trial works."""
