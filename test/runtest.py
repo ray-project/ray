@@ -18,7 +18,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
@@ -302,22 +301,6 @@ def test_putting_object_that_closes_over_object_id(ray_start):
     f = Foo()
     with pytest.raises(ray.raylet.common_error):
         ray.put(f)
-
-
-def test_python_workers(shutdown_only):
-    # Test the codepath for starting workers from the Python script,
-    # instead of the local scheduler. This codepath is for debugging
-    # purposes only.
-    num_workers = 4
-    ray_params = RayParams(num_cpus=num_workers, start_ray_local=True)
-    ray.worker._init(ray_params)
-
-    @ray.remote
-    def f(x):
-        return x
-
-    values = ray.get([f.remote(1) for i in range(num_workers * 2)])
-    assert values == [1] * (num_workers * 2)
 
 
 def test_put_get(shutdown_only):
@@ -1074,7 +1057,6 @@ def test_object_transfer_dump(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
-
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -1249,7 +1231,7 @@ def test_multithreading(shutdown_only):
     ray.get(a.join.remote())
 
 
-def test_free_objects_multi_node(shutdown_only):
+def test_free_objects_multi_node(ray_start_cluster):
     # This test will do following:
     # 1. Create 3 raylets that each hold an actor.
     # 2. Each actor creates an object which is the deletion target.
@@ -1261,20 +1243,14 @@ def test_free_objects_multi_node(shutdown_only):
     # tasks, so the flushing operations may be executed in different
     # workers and the plasma client holding the deletion target
     # may not be flushed.
+    cluster = ray_start_cluster
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=3,
-        num_cpus=[1, 1, 1],
-        resources=[{
-            "Custom0": 1
-        }, {
-            "Custom1": 1
-        }, {
-            "Custom2": 1
-        }],
-        _internal_config=config)
-    ray.worker._init(ray_params)
+    for i in range(3):
+        cluster.add_node(
+            num_cpus=1,
+            resources={"Custom{}".format(i): 1},
+            _internal_config=config)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(resources={"Custom0": 1})
     class ActorOnNode0(object):
@@ -1718,10 +1694,11 @@ def test_zero_cpus(shutdown_only):
     ray.get(f.remote())
 
 
-def test_zero_cpus_actor(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
-    ray.worker._init(ray_params)
+def test_zero_cpus_actor(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    ray.init(redis_address=cluster.redis_address)
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1786,16 +1763,16 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
-def test_multiple_local_schedulers(shutdown_only):
+def test_multiple_local_schedulers(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific local schedulers, and we will check that they are assigned
     # to the correct local schedulers.
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=3,
-        num_cpus=[11, 5, 10],
-        num_gpus=[0, 5, 1])
-    address_info = ray.worker._init(ray_params)
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=11, num_gpus=0)
+    cluster.add_node(num_cpus=5, num_gpus=5)
+    cluster.add_node(num_cpus=10, num_gpus=1)
+    ray.init(redis_address=cluster.redis_address)
+    cluster.wait_for_nodes(3)
 
     # Define a bunch of remote functions that all return the socket name of
     # the plasma store. Since there is a one-to-one correspondence between
@@ -1857,7 +1834,21 @@ def test_multiple_local_schedulers(shutdown_only):
                 results.append(run_on_0_2.remote())
         return names, results
 
-    store_names = address_info["object_store_addresses"]
+    client_table = ray.global_state.client_table()
+    store_names = []
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 0
+    ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 5
+    ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 1
+    ]
+    assert len(store_names) == 3
 
     def validate_names_and_results(names, results):
         for name, result in zip(names, ray.get(results)):
@@ -1898,17 +1889,11 @@ def test_multiple_local_schedulers(shutdown_only):
     validate_names_and_results(names, results)
 
 
-def test_custom_resources(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_cpus=[3, 3],
-        resources=[{
-            "CustomResource": 0
-        }, {
-            "CustomResource": 1
-        }])
-    ray.worker._init(ray_params)
+def test_custom_resources(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
+    cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f():
@@ -1940,19 +1925,19 @@ def test_custom_resources(shutdown_only):
     ray.get([h.remote() for _ in range(5)])
 
 
-def test_two_custom_resources(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_cpus=[3, 3],
-        resources=[{
+def test_two_custom_resources(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=3, resources={
             "CustomResource1": 1,
             "CustomResource2": 2
-        }, {
+        })
+    cluster.add_node(
+        num_cpus=3, resources={
             "CustomResource1": 3,
             "CustomResource2": 4
-        }])
-    ray.worker._init(ray_params)
+        })
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -2131,7 +2116,7 @@ def test_max_call_tasks(shutdown_only):
 def attempt_to_load_balance(remote_function,
                             args,
                             total_tasks,
-                            num_local_schedulers,
+                            num_nodes,
                             minimum_count,
                             num_attempts=100):
     attempts = 0
@@ -2141,43 +2126,41 @@ def attempt_to_load_balance(remote_function,
         names = set(locations)
         counts = [locations.count(name) for name in names]
         logger.info("Counts are {}.".format(counts))
-        if (len(names) == num_local_schedulers
+        if (len(names) == num_nodes
                 and all(count >= minimum_count for count in counts)):
             break
         attempts += 1
     assert attempts < num_attempts
 
 
-def test_load_balancing(shutdown_only):
+def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner.
-    num_local_schedulers = 3
+    cluster = ray_start_cluster
+    num_nodes = 3
     num_cpus = 7
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=num_cpus)
-    ray.worker._init(ray_params)
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpus)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f():
         time.sleep(0.01)
         return ray.worker.global_worker.plasma_client.store_socket_name
 
-    attempt_to_load_balance(f, [], 100, num_local_schedulers, 10)
-    attempt_to_load_balance(f, [], 1000, num_local_schedulers, 100)
+    attempt_to_load_balance(f, [], 100, num_nodes, 10)
+    attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
-def test_load_balancing_with_dependencies(shutdown_only):
+def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
-    num_local_schedulers = 3
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=1)
-    ray.worker._init(ray_params)
+    cluster = ray_start_cluster
+    num_nodes = 3
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f(x):
@@ -2189,7 +2172,7 @@ def test_load_balancing_with_dependencies(shutdown_only):
     # schedulers.
     x = ray.put(np.zeros(1000000))
 
-    attempt_to_load_balance(f, [x], 100, num_local_schedulers, 25)
+    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
 def wait_for_num_tasks(num_tasks, timeout=10):
