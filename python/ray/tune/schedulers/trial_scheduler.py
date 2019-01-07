@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from ray.tune.trial import Trial
 
 
@@ -64,6 +66,12 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
+    def __getstate__(self):
+        raise NotImplementedError
+
+    def __setstate__(self, state):
+        raise NotImplementedError
+
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
@@ -96,3 +104,9 @@ class FIFOScheduler(TrialScheduler):
 
     def debug_string(self):
         return "Using FIFO scheduling algorithm."
+
+    def __getstate__(self):
+        return copy.deepcopy(self.__dict__)
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
