@@ -1204,17 +1204,16 @@ def get_address_info_from_redis_helper(redis_address,
     if len(raylets) == 0:
         raise Exception(
             "Redis has started but no raylets have registered yet.")
-    object_store_addresses = [
-        ray.utils.decode(raylet.ObjectStoreSocketName()) for raylet in raylets
-    ]
-    raylet_socket_names = [
-        ray.utils.decode(raylet.RayletSocketName()) for raylet in raylets
-    ]
+
+    # REDO THIS TO USE GLOBAL STATE CLIENT TABLE..................................................
+
+    object_store_address = ray.utils.decode(raylets[0].ObjectStoreSocketName())
+    raylet_socket_name = ray.utils.decode(raylets[0].RayletSocketName())
     return {
         "node_ip_address": node_ip_address,
         "redis_address": redis_address,
-        "object_store_addresses": object_store_addresses,
-        "raylet_socket_names": raylet_socket_names,
+        "object_store_address": object_store_address,
+        "raylet_socket_name": raylet_socket_name,
         # Web UI should be running.
         "webui_url": _webui_url_helper(redis_client)
     }
@@ -1242,44 +1241,6 @@ def get_address_info_from_redis(redis_address,
         counter += 1
 
 
-def _normalize_resource_arguments(num_cpus, num_gpus, resources,
-                                  num_local_schedulers):
-    """Stick the CPU and GPU arguments into the resources dictionary.
-
-    This also checks that the arguments are well-formed.
-
-    Args:
-        num_cpus: Either a number of CPUs or a list of numbers of CPUs.
-        num_gpus: Either a number of CPUs or a list of numbers of CPUs.
-        resources: Either a dictionary of resource mappings or a list of
-            dictionaries of resource mappings.
-        num_local_schedulers: The number of local schedulers.
-
-    Returns:
-        A list of dictionaries of resources of length num_local_schedulers.
-    """
-    if resources is None:
-        resources = {}
-    if not isinstance(num_cpus, list):
-        num_cpus = num_local_schedulers * [num_cpus]
-    if not isinstance(num_gpus, list):
-        num_gpus = num_local_schedulers * [num_gpus]
-    if not isinstance(resources, list):
-        resources = num_local_schedulers * [resources]
-
-    new_resources = [r.copy() for r in resources]
-
-    for i in range(num_local_schedulers):
-        assert "CPU" not in new_resources[i], "Use the 'num_cpus' argument."
-        assert "GPU" not in new_resources[i], "Use the 'num_gpus' argument."
-        if num_cpus[i] is not None:
-            new_resources[i]["CPU"] = num_cpus[i]
-        if num_gpus[i] is not None:
-            new_resources[i]["GPU"] = num_gpus[i]
-
-    return new_resources
-
-
 def _init(ray_params, driver_id=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
@@ -1291,8 +1252,8 @@ def _init(ray_params, driver_id=None):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: address_info,
             start_ray_local, object_id_seed, num_workers,
-            num_local_schedulers, object_store_memory, redis_max_memory,
-            local_mode, redirect_worker_output, driver_mode, redirect_output,
+            object_store_memory, redis_max_memory, local_mode,
+            redirect_worker_output, driver_mode, redirect_output,
             start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
             num_redis_shards, redis_max_clients, redis_password,
             plasma_directory, huge_pages, include_webui, driver_id,
@@ -1333,17 +1294,8 @@ def _init(ray_params, driver_id=None):
         # are already registered in address_info.
         ray_params.update_if_absent(
             node_ip_address=ray.services.get_node_ip_address())
-        # Use 1 local scheduler if num_local_schedulers is not provided. If
-        # existing local schedulers are provided, use that count as
-        # num_local_schedulers.
-        ray_params.update_if_absent(num_local_schedulers=1)
         # Use 1 additional redis shard if num_redis_shards is not provided.
         ray_params.update_if_absent(num_redis_shards=1)
-
-        # Stick the CPU and GPU resources into the resource dictionary.
-        ray_params.resources = _normalize_resource_arguments(
-            ray_params.num_cpus, ray_params.num_gpus, ray_params.resources,
-            ray_params.num_local_schedulers)
 
         # Start the scheduler, object store, and some workers. These will be
         # killed by the call to shutdown(), which happens when the Python
@@ -1356,9 +1308,6 @@ def _init(ray_params, driver_id=None):
         if ray_params.num_workers is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_workers must not be provided.")
-        if ray_params.num_local_schedulers is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_local_schedulers must not be provided.")
         if ray_params.num_cpus is not None or ray_params.num_gpus is not None:
             raise Exception("When connecting to an existing cluster, num_cpus "
                             "and num_gpus must not be provided.")
@@ -1417,11 +1366,11 @@ def _init(ray_params, driver_id=None):
             "node_ip_address": ray_params.node_ip_address,
             "redis_address": ray_params.address_info["redis_address"],
             "store_socket_name": ray_params.address_info[
-                "object_store_addresses"][0],
+                "object_store_address"],
             "webui_url": ray_params.address_info["webui_url"],
         }
         driver_address_info["raylet_socket_name"] = (
-            ray_params.address_info["raylet_socket_names"][0])
+            ray_params.address_info["raylet_socket_name"])
 
     # We only pass `temp_dir` to a worker (WORKER_MODE).
     # It can't be a worker here.
