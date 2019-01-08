@@ -727,13 +727,13 @@ void NodeManager::ProcessActivateEventSocketRequestMessage(
 
   event_client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ActivateEventSocketReply),
-      fbb.GetSize(), fbb.GetBufferPointer(), [](const ray::Status &status) {
+      fbb.GetSize(), fbb.GetBufferPointer(),
+      [this, &event_client](const ray::Status &status) {
         if (!status.ok()) {
-          // We failed to write to the client, so disconnect the client.
+          // We failed to write to the event client, so deactivate the client.
           RAY_LOG(WARNING) << "Failed to send ActivateEventSocketReply to client, so "
-                              "disconnecting client";
-          // We failed to send the reply to the client, so disconnect the worker.
-          // ProcessDisconnectClientMessage(event_client);
+                              "deactivate client";
+          raylet_events_.DeactivateEventConnection(event_client);
         }
       });
 }
@@ -749,9 +749,8 @@ void NodeManager::ProcessEventSocketMessage(
   } break;
   case protocol::MessageType::DisconnectClient:
   case protocol::MessageType::IntentionalDisconnectClient: {
-    // ProcessDisconnectClientMessage(event_client, /* intentional_disconnect = */ true);
-    // We don't need to receive future messages from this client,
-    // because it's already disconnected.
+    // Deactivate the event client.
+    raylet_events_.DeactivateEventConnection(event_client);
     return;
   } break;
 
@@ -870,7 +869,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
   // Remove the client from the client mapping.
   // TODO(Ryans): Check if all dead/disconnected clients will be deactivated.
-  raylet_events_.DeactivateEventConnection(client->GetClientId());
+  raylet_events_.DeactivateEventConnection(client);
 
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;

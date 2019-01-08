@@ -147,11 +147,30 @@ class RayletEvents {
     }
   }
 
+  /// Deactivate event socket connection.
+  ///
+  /// \param events_client The event socket connection to be deactivated.
+  /// \return Void
+  void DeactivateEventConnection(
+      const std::shared_ptr<LocalClientConnection> &events_client) {
+    DeactivateEventConnection(events_client->GetClientId());
+  }
+
   /// Cancel a subscription.
   ///
   /// \param subscription_id The subscription ID to cancel.
   /// \return Void
   void Unsubscribe(const SubscriptionID &subscription_id);
+
+  /// Push events to client.
+  ///
+  /// \param client_id The ID of the client we want to push events to.
+  /// \param type The type of the event message.
+  /// \param fbb The builder for the event message.
+  /// \param callback The callback for the event push result.
+  void PushEvent(const ClientID &client_id, MessageType type,
+      flatbuffers::FlatBufferBuilder &fbb,
+      std::function<void(const ray::Status &)> callback);
 
   /// Subscribe the ObjectLocal event.
   ///

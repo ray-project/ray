@@ -35,10 +35,11 @@ class RayletConnection {
   /// \param client_id A unique ID to represent the client.
   /// \param raylet_socket The name of the socket for raylet connection.
   /// \param num_retries The maximum num of retries to connect to the raylet socket.
-  /// \param timeout The timeout used to reconnect to the raylet socket.
+  /// \param timeout_milliseconds The timeout (in millisecond)
+  /// used to reconnect to the raylet socket.
   /// \return The connection information.
   RayletConnection(const ClientID &client_id, const std::string &raylet_socket,
-                   int num_retries, int64_t timeout);
+                   int num_retries, int64_t timeout_milliseconds);
 
   ~RayletConnection() { close(conn_); }
 

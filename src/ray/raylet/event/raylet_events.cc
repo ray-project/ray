@@ -16,10 +16,8 @@ void ObjectLocalEndpoint::Finish() {
   auto object_ready_event = protocol::CreateObjectLocalEvent(
       fbb, to_flatbuf(fbb, subscription_id_), to_flatbuf(fbb, object_id_));
   fbb.Finish(object_ready_event);
-
-  event_client_->WriteMessageAsync(
-      static_cast<int64_t>(MessageType::ObjectLocalEvent), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this](const ray::Status &status) {
+  raylet_events_.PushEvent(event_client_->GetClientId(), MessageType::ObjectLocalEvent,
+      fbb, [this](const ray::Status &status) {
         // The null ID means the client has been deactivated,
         // so we just ignore errors here.
         if (!status.ok() && !event_client_->GetClientId().is_nil()) {
@@ -83,6 +81,20 @@ std::shared_ptr<LocalClientConnection> RayletEvents::GetEventConnection(
   } else {
     return nullptr;
   }
+}
+
+void RayletEvents::PushEvent(const ClientID &client_id, MessageType type,
+    flatbuffers::FlatBufferBuilder &fbb,
+    std::function<void(const ray::Status &)> callback) {
+  auto search = event_socket_connections_.find(client_id);
+  if (search != event_socket_connections_.end()) {
+    auto events_client = search->second;
+    RAY_CHECK(client_id == events_client->GetClientId());
+    events_client->WriteMessageAsync(static_cast<int64_t>(type), fbb.GetSize(),
+      fbb.GetBufferPointer(), callback);
+  }
+  // If we could not found the client, it means the client has been disconnected,
+  // we just ignore it in this case.
 }
 
 };  // namespace events

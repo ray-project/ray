@@ -145,7 +145,6 @@ void Raylet::DoAccept() {
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
-    // TODO: typedef these handlers.
     ClientHandler<boost::asio::local::stream_protocol> client_handler =
         [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::local::stream_protocol> message_handler = [this](
@@ -170,7 +169,6 @@ void Raylet::DoAcceptEventSocket() {
 
 void Raylet::HandleAcceptEventSocket(const boost::system::error_code &error) {
   if (!error) {
-    // TODO: typedef these handlers.
     ClientHandler<boost::asio::local::stream_protocol> client_handler =
         [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::local::stream_protocol> message_handler = [this](
