@@ -107,7 +107,8 @@ class RayLog : public RayLogBase {
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;
-  /// The directory where the log files are stored. If this is empty, logs are printed to stdout.
+  /// The directory where the log files are stored. 
+  /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
 
  protected:
