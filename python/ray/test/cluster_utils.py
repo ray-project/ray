@@ -156,8 +156,11 @@ class Cluster(object):
 
             expected = len(self.list_all_nodes())
             if len(live_clients) == expected:
+                logger.info("All nodes registered as expected.")
                 return
             else:
+                logger.info("{} nodes are currently registered, but we are "
+                            "expecting {}".format(len(live_clients), expected))
                 time.sleep(0.1)
         raise Exception("Timed out while waiting for nodes to join.")
 
