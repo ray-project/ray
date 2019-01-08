@@ -679,6 +679,11 @@ def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
     def add_content_hashes(path):
+        def add_hash_of_file(fpath):
+            with open(fpath, "rb") as f:
+                for chunk in iter(lambda: f.read(2**20), b''):
+                    hasher.update(chunk)
+
         path = os.path.expanduser(path)
         if os.path.isdir(path):
             dirs = []
@@ -688,18 +693,12 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 hasher.update(dirpath.encode("utf-8"))
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
-                    with open(os.path.join(dirpath, name), "rb") as f:
-                        if os.path.getsize(os.path.join(dirpath,
-                                                        name)) < 1000000000:
-                            hasher.update(binascii.hexlify(f.read()))
-                        else:
-                            for chunk in iter(lambda: f.read(8192), b''):
-                                hasher.update(binascii.hexlify(chunk))
+                    fpath = os.path.join(dirpath, name)
+                    add_hash_of_file(fpath)
         else:
-            with open(path, "rb") as f:
-                hasher.update(binascii.hexlify(f.read()))
+            add_hash_of_file(path)
 
-    hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
+    hasher.update(json.dumps(file_mounts, sort_keys=True).encode("utf-8"))
     hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
     for local_path in sorted(file_mounts.values()):
         add_content_hashes(local_path)
