@@ -26,6 +26,7 @@ import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
+import ray.node
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
@@ -37,7 +38,7 @@ import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
-from ray.parameter import RayParams
+import ray.parameter
 from ray.utils import (
     check_oversized_pickle,
     is_cython,
@@ -1071,6 +1072,9 @@ per worker process.
 
 global_state = state.GlobalState()
 
+_global_node = None
+"""ray.node.Node: The global node object that is created by ray.init()."""
+
 
 class RayConnectionError(Exception):
     pass
@@ -1250,148 +1254,6 @@ def get_address_info_from_redis(redis_address,
         counter += 1
 
 
-def _init(ray_params, driver_id=None):
-    """Helper method to connect to an existing Ray cluster or start a new one.
-
-    This method handles two cases. Either a Ray cluster already exists and we
-    just attach this driver to it, or we start all of the processes associated
-    with a Ray cluster and attach to the newly started cluster.
-
-    Args:
-        ray_params (ray.params.RayParams): The RayParams instance. The
-            following parameters could be checked: address_info,
-            start_ray_local, object_id_seed, num_workers,
-            object_store_memory, redis_max_memory, local_mode,
-            redirect_worker_output, driver_mode, redirect_output,
-            start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
-            num_redis_shards, redis_max_clients, redis_password,
-            plasma_directory, huge_pages, include_webui, driver_id,
-            plasma_store_socket_name, temp_dir, raylet_socket_name,
-            _internal_config
-        driver_id: The ID of driver.
-
-    Returns:
-        Address information about the started processes.
-
-    Raises:
-        Exception: An exception is raised if an inappropriate combination of
-            arguments is passed in.
-    """
-    if ray_params.driver_mode is not None:
-        raise Exception("The 'driver_mode' argument has been deprecated. "
-                        "To run Ray in local mode, pass in local_mode=True.")
-    if ray_params.local_mode:
-        ray_params.driver_mode = LOCAL_MODE
-    else:
-        ray_params.driver_mode = SCRIPT_MODE
-
-    # Get addresses of existing services.
-    if ray_params.address_info is None:
-        ray_params.address_info = {}
-    else:
-        assert isinstance(ray_params.address_info, dict)
-    ray_params.node_ip_address = ray_params.address_info.get("node_ip_address")
-    ray_params.redis_address = ray_params.address_info.get("redis_address")
-
-    # Start any services that do not yet exist.
-    if ray_params.driver_mode == LOCAL_MODE:
-        # If starting Ray in LOCAL_MODE, don't start any other processes.
-        pass
-    elif ray_params.start_ray_local:
-        # In this case, we launch a scheduler, a new object store, and some
-        # workers, and we connect to them. We do not launch any processes that
-        # are already registered in address_info.
-        ray_params.update_if_absent(
-            node_ip_address=ray.services.get_node_ip_address())
-        # Use 1 additional redis shard if num_redis_shards is not provided.
-        ray_params.update_if_absent(num_redis_shards=1)
-
-        # Start the scheduler, object store, and some workers. These will be
-        # killed by the call to shutdown(), which happens when the Python
-        # script exits.
-        ray_params.address_info = services.start_ray_head(ray_params)
-    else:
-        if ray_params.redis_address is None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_address must be provided.")
-        if ray_params.num_workers is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_workers must not be provided.")
-        if ray_params.num_cpus is not None or ray_params.num_gpus is not None:
-            raise Exception("When connecting to an existing cluster, num_cpus "
-                            "and num_gpus must not be provided.")
-        if ray_params.resources is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "resources must not be provided.")
-        if ray_params.num_redis_shards is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_redis_shards must not be provided.")
-        if ray_params.redis_max_clients is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_clients must not be provided.")
-        if ray_params.object_store_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory must not be provided.")
-        if ray_params.redis_max_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory must not be provided.")
-        if ray_params.plasma_directory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_directory must not be provided.")
-        if ray_params.huge_pages:
-            raise Exception("When connecting to an existing cluster, "
-                            "huge_pages must not be provided.")
-        if ray_params.temp_dir is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "temp_dir must not be provided.")
-        if ray_params.plasma_store_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_store_socket_name must not be provided.")
-        if ray_params.raylet_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "raylet_socket_name must not be provided.")
-        if ray_params._internal_config is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "_internal_config must not be provided.")
-
-        # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(
-                ray_params.redis_address))
-        # Get the address info of the processes to connect to from Redis.
-        ray_params.address_info = get_address_info_from_redis(
-            ray_params.redis_address,
-            ray_params.node_ip_address,
-            redis_password=ray_params.redis_password)
-
-    # Connect this driver to Redis, the object store, and the local scheduler.
-    # Choose the first object store and local scheduler if there are multiple.
-    # The corresponding call to disconnect will happen in the call to
-    # shutdown() when the Python script exits.
-    if ray_params.driver_mode == LOCAL_MODE:
-        driver_address_info = {}
-    else:
-        driver_address_info = {
-            "node_ip_address": ray_params.node_ip_address,
-            "redis_address": ray_params.address_info["redis_address"],
-            "store_socket_name": ray_params.address_info[
-                "object_store_address"],
-            "webui_url": ray_params.address_info["webui_url"],
-        }
-        driver_address_info["raylet_socket_name"] = (
-            ray_params.address_info["raylet_socket_name"])
-
-    # We only pass `temp_dir` to a worker (WORKER_MODE).
-    # It can't be a worker here.
-    connect(
-        ray_params,
-        driver_address_info,
-        mode=ray_params.driver_mode,
-        worker=global_worker,
-        driver_id=driver_id)
-    return ray_params.address_info
-
-
 def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
@@ -1520,6 +1382,14 @@ def init(redis_address=None,
             raise DeprecationWarning("The use_raylet argument is deprecated. "
                                      "Please remove it.")
 
+    if driver_mode is not None:
+        raise Exception("The 'driver_mode' argument has been deprecated. "
+                        "To run Ray in local mode, pass in local_mode=True.")
+    if local_mode:
+        driver_mode = LOCAL_MODE
+    else:
+        driver_mode = SCRIPT_MODE
+
     if setproctitle is None:
         logger.warning(
             "WARNING: Not updating worker name since `setproctitle` is not "
@@ -1532,7 +1402,10 @@ def init(redis_address=None,
                          "called.")
             return
         else:
-            raise Exception("Perhaps you called ray.init twice by accident?")
+            raise Exception("Perhaps you called ray.init twice by accident? "
+                            "This error can be suppressed by passing in "
+                            "'ignore_reinit_error=True' or by calling "
+                            "'ray.shutdown()' prior to 'ray.init()'.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -1540,36 +1413,132 @@ def init(redis_address=None,
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
 
-    info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
-    ray_params = RayParams(
-        address_info=info,
-        start_ray_local=(redis_address is None),
-        num_workers=num_workers,
-        object_id_seed=object_id_seed,
-        local_mode=local_mode,
-        driver_mode=driver_mode,
-        redirect_worker_output=redirect_worker_output,
-        redirect_output=redirect_output,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
-        num_redis_shards=num_redis_shards,
-        redis_max_clients=redis_max_clients,
+    address_info = {
+        "node_ip_address": node_ip_address,
+        "redis_address": redis_address
+    }
+
+    if driver_mode == LOCAL_MODE:
+        # If starting Ray in LOCAL_MODE, don't start any other processes.
+        pass
+    elif redis_address is None:
+        if node_ip_address is None:
+            node_ip_address = ray.services.get_node_ip_address()
+        if num_redis_shards is None:
+            num_redis_shards = 1
+        # In this case, we need to start a new cluster.
+        ray_params = ray.parameter.RayParams(
+            redis_address=redis_address,
+            node_ip_address=node_ip_address,
+            num_workers=num_workers,
+            object_id_seed=object_id_seed,
+            local_mode=local_mode,
+            driver_mode=driver_mode,
+            redirect_worker_output=redirect_worker_output,
+            redirect_output=redirect_output,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
+            num_redis_shards=num_redis_shards,
+            redis_max_clients=redis_max_clients,
+            redis_password=redis_password,
+            plasma_directory=plasma_directory,
+            huge_pages=huge_pages,
+            include_webui=include_webui,
+            object_store_memory=object_store_memory,
+            redis_max_memory=redis_max_memory,
+            plasma_store_socket_name=plasma_store_socket_name,
+            raylet_socket_name=raylet_socket_name,
+            temp_dir=temp_dir,
+            _internal_config=_internal_config,
+        )
+        # Start the Ray processes. We set shutdown_at_exit=False because we
+        # shutdown the node in the ray.shutdown call that happens in the atexit
+        # handler.
+        global _global_node
+        _global_node = ray.node.Node(
+            head=True, shutdown_at_exit=False, ray_params=ray_params)
+        address_info["redis_address"] = _global_node.redis_address
+        address_info[
+            "object_store_address"] = _global_node.plasma_store_socket_name
+        address_info["webui_url"] = _global_node.webui_url
+        address_info["raylet_socket_name"] = _global_node.raylet_socket_name
+    else:
+        # In this case, we are connecting to an existing cluster.
+        if num_workers is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "num_workers must not be provided.")
+        if num_cpus is not None or num_gpus is not None:
+            raise Exception("When connecting to an existing cluster, num_cpus "
+                            "and num_gpus must not be provided.")
+        if resources is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "resources must not be provided.")
+        if num_redis_shards is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "num_redis_shards must not be provided.")
+        if redis_max_clients is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "redis_max_clients must not be provided.")
+        if object_store_memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "object_store_memory must not be provided.")
+        if redis_max_memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "redis_max_memory must not be provided.")
+        if plasma_directory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "plasma_directory must not be provided.")
+        if huge_pages:
+            raise Exception("When connecting to an existing cluster, "
+                            "huge_pages must not be provided.")
+        if temp_dir is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "temp_dir must not be provided.")
+        if plasma_store_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "plasma_store_socket_name must not be provided.")
+        if raylet_socket_name is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "raylet_socket_name must not be provided.")
+        if _internal_config is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "_internal_config must not be provided.")
+
+        # Get the node IP address if one is not provided.
+
+        if node_ip_address is None:
+            node_ip_address = services.get_node_ip_address(redis_address)
+        # Get the address info of the processes to connect to from Redis.
+        address_info = get_address_info_from_redis(
+            redis_address, node_ip_address, redis_password=redis_password)
+
+    if driver_mode == LOCAL_MODE:
+        driver_address_info = {}
+    else:
+        driver_address_info = {
+            "node_ip_address": node_ip_address,
+            "redis_address": address_info["redis_address"],
+            "store_socket_name": address_info["object_store_address"],
+            "webui_url": address_info["webui_url"],
+        }
+        driver_address_info["raylet_socket_name"] = (
+            address_info["raylet_socket_name"])
+
+    # We only pass `temp_dir` to a worker (WORKER_MODE).
+    # It can't be a worker here.
+    connect(
+        driver_address_info,
         redis_password=redis_password,
-        plasma_directory=plasma_directory,
-        huge_pages=huge_pages,
-        include_webui=include_webui,
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
-        temp_dir=temp_dir,
-        _internal_config=_internal_config,
-    )
-    ret = _init(ray_params, driver_id=driver_id)
+        object_id_seed=object_id_seed,
+        mode=driver_mode,
+        worker=global_worker,
+        driver_id=driver_id)
+
     for hook in _post_init_hooks:
         hook()
-    return ret
+
+    return address_info
 
 
 # Functions to run as callback after a successful ray init
@@ -1601,16 +1570,11 @@ def shutdown(worker=global_worker):
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
-    if worker.mode == SCRIPT_MODE:
-        services.cleanup()
-    else:
-        # If this is not a driver, make sure there are no orphan processes,
-        # besides possibly the worker itself.
-        for process_type, processes in services.all_processes.items():
-            if process_type == services.PROCESS_TYPE_WORKER:
-                assert len(processes) <= 1
-            else:
-                assert len(processes) == 0
+    # Shut down the Ray processes.
+    global _global_node
+    if _global_node is not None:
+        _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
+        _global_node = None
 
     worker.set_mode(None)
 
@@ -1767,19 +1731,23 @@ def print_error_messages(worker):
         pass
 
 
-def connect(ray_params,
-            info,
+def connect(info,
+            redis_password=None,
+            object_id_seed=None,
             mode=WORKER_MODE,
             worker=global_worker,
             driver_id=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
-        ray_params (ray.params.RayParams): The RayParams instance. The
-            following parameters could be checked: object_id_seed,
-            redis_password
         info (dict): A dictionary with address of the Redis server and the
             sockets of the plasma store and raylet.
+        redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
+        object_id_seed (int): Used to seed the deterministic generation of
+            object IDs. The same value can be used across multiple runs of the
+            same job in order to generate the object IDs in a consistent
+            manner. However, the same ID should not be used for different jobs.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
         worker: The ray.Worker instance.
@@ -1839,7 +1807,7 @@ def connect(ray_params,
         redis.StrictRedis(
             host=redis_ip_address,
             port=int(redis_port),
-            password=ray_params.redis_password))
+            password=redis_password))
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1877,13 +1845,11 @@ def connect(ray_params,
             services.record_log_files_in_redis(
                 info["redis_address"],
                 info["node_ip_address"], [log_stdout_file, log_stderr_file],
-                password=ray_params.redis_password)
+                password=redis_password)
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(
-        redis_ip_address,
-        int(redis_port),
-        redis_password=ray_params.redis_password)
+        redis_ip_address, int(redis_port), redis_password=redis_password)
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
@@ -1932,8 +1898,8 @@ def connect(ray_params,
         # the user's random number generator). Otherwise, set the current task
         # ID randomly to avoid object ID collisions.
         numpy_state = np.random.get_state()
-        if ray_params.object_id_seed is not None:
-            np.random.seed(ray_params.object_id_seed)
+        if object_id_seed is not None:
+            np.random.seed(object_id_seed)
         else:
             # Try to use true randomness.
             np.random.seed(None)

@@ -2,15 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import logging
 import time
 
 import redis
 
 import ray
-from ray.parameter import RayParams
-import ray.services as services
+import ray.node
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +33,11 @@ class Cluster(object):
                 for shutting down all started processes.
         """
         self.head_node = None
-        self.worker_nodes = {}
+        self.worker_nodes = set()
         self.redis_address = None
         self.redis_password = None
         self.connected = False
+        self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -47,8 +46,6 @@ class Cluster(object):
             self.add_node(**head_node_args)
             if connect:
                 self.connect(head_node_args)
-        if shutdown_at_exit:
-            atexit.register(self.shutdown)
 
     def connect(self, head_node_args):
         assert self.redis_address is not None
@@ -61,7 +58,7 @@ class Cluster(object):
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, **override_kwargs):
+    def add_node(self, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
@@ -76,35 +73,25 @@ class Cluster(object):
         Returns:
             Node object of the added Ray node.
         """
-        node_kwargs = {
+        default_kwargs = {
             "num_cpus": 1,
-            "object_store_memory": 100 * (2**20)  # 100 MB
+            "object_store_memory": 100 * (2**20),  # 100 MB
         }
-        node_kwargs.update(override_kwargs)
-        ray_params = RayParams(
-            node_ip_address=services.get_node_ip_address(), **node_kwargs)
-
+        ray_params = ray.parameter.RayParams(**node_args)
+        ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
-            ray_params.update(include_webui=False)
-            address_info = services.start_ray_head(ray_params, cleanup=True)
-            self.redis_address = address_info["redis_address"]
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
+            node = ray.node.Node(
+                ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
             self.head_node = node
+            self.redis_address = self.head_node.redis_address
+            self.webui_url = self.head_node.webui_url
         else:
-            ray_params.update(redis_address=self.redis_address)
-            address_info = services.start_ray_node(ray_params, cleanup=True)
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
-            self.worker_nodes[node] = address_info
-        logger.info("Starting Node with raylet socket {}".format(
-            address_info["raylet_socket_name"]))
+            ray_params.update_if_absent(redis_address=self.redis_address)
+            node = ray.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=self._shutdown_at_exit)
+            self.worker_nodes.add(node)
 
         return node
 
@@ -116,12 +103,12 @@ class Cluster(object):
                 will be removed.
         """
         if self.head_node == node:
-            self.head_node.kill_all_processes()
+            self.head_node.kill_all_processes(check_alive=False)
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_all_processes()
-            self.worker_nodes.pop(node)
+            node.kill_all_processes(check_alive=False)
+            self.worker_nodes.remove(node)
 
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
@@ -179,6 +166,18 @@ class Cluster(object):
             nodes = [self.head_node] + nodes
         return nodes
 
+    def remaining_processes_alive(self):
+        """Returns a bool indicating whether all processes are alive or not.
+
+        Note that this ignores processes that have been explicitly killed,
+        e.g., via a command like node.kill_raylet().
+
+        Returns:
+            True if all processes are alive and false otherwise.
+        """
+        return all(
+            node.remaining_processes_alive() for node in self.list_all_nodes())
+
     def shutdown(self):
         """Removes all nodes."""
 
@@ -188,63 +187,5 @@ class Cluster(object):
         for node in all_nodes:
             self.remove_node(node)
 
-        if self.head_node:
+        if self.head_node is not None:
             self.remove_node(self.head_node)
-        else:
-            logger.warning("No headnode exists!")
-
-
-class Node(object):
-    """Abstraction for a Ray node."""
-
-    def __init__(self, address_info, process_dict):
-        # TODO(rliaw): Is there a unique identifier for a node?
-        self.address_info = address_info
-        self.process_dict = process_dict
-
-    def kill_plasma_store(self):
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].kill()
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].wait()
-
-    def kill_raylet(self):
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].kill()
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
-
-    def kill_log_monitor(self):
-        self.process_dict["log_monitor"][0].kill()
-        self.process_dict["log_monitor"][0].wait()
-
-    def kill_all_processes(self):
-        for process_name, process_list in self.process_dict.items():
-            logger.info("Killing all {}(s)".format(process_name))
-            for process in process_list:
-                # Kill the process if it is still alive.
-                if process.poll() is None:
-                    process.kill()
-
-        for process_name, process_list in self.process_dict.items():
-            logger.info("Waiting all {}(s)".format(process_name))
-            for process in process_list:
-                process.wait()
-
-    def live_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-                for proc in p_list if proc.poll() is None]
-
-    def dead_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-                for proc in p_list if proc.poll() is not None]
-
-    def any_processes_alive(self):
-        return any(self.live_processes())
-
-    def all_processes_alive(self):
-        return not any(self.dead_processes())
-
-    def get_plasma_store_name(self):
-        """Return the plasma store name.
-
-        Assuming one plasma store per raylet, this may be used as a unique
-        identifier for a node.
-        """
-        return self.address_info['object_store_address']

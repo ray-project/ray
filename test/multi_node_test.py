@@ -181,7 +181,6 @@ print("success")
         out = run_string_as_driver(driver_script2)
         # Make sure the first driver ran to completion.
         assert "success" in out
-        assert ray.services.all_processes_alive()
 
 
 @pytest.fixture
