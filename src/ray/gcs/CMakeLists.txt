@@ -30,7 +30,16 @@ add_custom_command(
   TARGET gen_gcs_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${GCS_FBS_SRC}
   DEPENDS ${FBS_DEPENDS}
-  COMMENT "Running flatc compiler on ${GCS_FBS_SRC}"
+  COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for python"
+  VERBATIM)
+
+# Generate Java bindings for the flatbuffers objects.
+set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../java/runtime/src/main/java/org/ray/runtime/generated/)
+add_custom_command(
+  TARGET gen_gcs_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -j -o ${JAVA_OUTPUT_DIR} ${GCS_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for Java"
   VERBATIM)
 
 ADD_RAY_TEST(client_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
