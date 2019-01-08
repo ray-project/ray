@@ -28,6 +28,7 @@ def create_cluster(num_nodes, raylet_valgrind=False):
             resources={str(i): 100},
             object_store_memory=10**9,
             raylet_valgrind=RAYLET_VALGRIND)
+    cluster.wait_for_nodes(timeout=60)
 
     ray.init(redis_address=cluster.redis_address)
     return cluster
@@ -79,8 +80,9 @@ def test_object_broadcast(ray_start_cluster):
         return np.zeros(10**8, dtype=np.uint8)
 
     object_ids = []
+    num_trials = 3 if not RAYLET_VALGRIND else 1
 
-    for _ in range(3):
+    for _ in range(num_trials):
         # Broadcast an object to all machines.
         x_id = ray.put(x)
         object_ids.append(x_id)
@@ -89,7 +91,7 @@ def test_object_broadcast(ray_start_cluster):
             for i in range(10 * num_nodes)
         ])
 
-    for _ in range(3):
+    for _ in range(num_trials):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
         object_ids.append(x_id)
@@ -172,7 +174,8 @@ def test_actor_broadcast(ray_start_cluster):
     object_ids = []
 
     # Broadcast a large object to all actors.
-    for _ in range(10):
+    num_trials = 10 if not RAYLET_VALGRIND else 1
+    for _ in range(num_trials):
         x_id = ray.put(np.zeros(10**7, dtype=np.uint8))
         object_ids.append(x_id)
         # Pass the object into a method for every actor.
@@ -239,6 +242,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     cluster.add_node(raylet_valgrind=RAYLET_VALGRIND, _internal_config=config)
     cluster.add_node(
         num_gpus=1, raylet_valgrind=RAYLET_VALGRIND, _internal_config=config)
+    cluster.wait_for_nodes(timeout=60)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(num_gpus=1)
@@ -326,10 +330,9 @@ def test_many_small_transfers(ray_start_cluster):
         # Wait for all of the transfers to finish.
         ray.get(ids)
 
-    do_transfers()
-    do_transfers()
-    do_transfers()
-    do_transfers()
+    num_trials = 4 if not RAYLET_VALGRIND else 1
+    for _ in range(num_trials):
+        do_transfers()
 
     if RAYLET_VALGRIND:
         shutdown_and_check_valgrind(cluster)
