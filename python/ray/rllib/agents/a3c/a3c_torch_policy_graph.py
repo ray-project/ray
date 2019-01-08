@@ -82,4 +82,4 @@ class A3CTorchPolicyGraph(TorchPolicyGraph):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0)
             _, _, vf, _ = self.model({"obs": obs}, [])
-            return vf.numpy().squeeze()
+            return vf.detach().numpy().squeeze()

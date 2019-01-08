@@ -47,7 +47,12 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     """
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
-        if isinstance(distribution, list):
+        if isinstance(distribution, dict):
+            new_config.update({
+                key: explore(config[key], mutations[key], resample_probability,
+                             None)
+            })
+        elif isinstance(distribution, list):
             if random.random() < resample_probability or \
                     config[key] not in distribution:
                 new_config[key] = random.choice(distribution)
@@ -213,8 +218,8 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
-            logger.warning("[pbt]: no checkpoint for trial"
-                           "skip exploit for Trial {}".format(trial))
+            logger.warning("[pbt]: no checkpoint for trial."
+                           " Skip exploit for Trial {}".format(trial))
             return
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,

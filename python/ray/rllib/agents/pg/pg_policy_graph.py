@@ -89,3 +89,7 @@ class PGPolicyGraph(TFPolicyGraph):
     @override(PolicyGraph)
     def get_initial_state(self):
         return self.model.state_init
+
+    @override(TFPolicyGraph)
+    def optimizer(self):
+        return tf.train.AdamOptimizer(learning_rate=self.config["lr"])
