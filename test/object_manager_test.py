@@ -69,6 +69,8 @@ def shutdown_and_check_valgrind(cluster):
 def test_object_broadcast(ray_start_cluster):
     cluster, num_nodes = ray_start_cluster
 
+    num_trials = 3 if not RAYLET_VALGRIND else 1
+
     @ray.remote
     def f(x):
         return
@@ -80,7 +82,6 @@ def test_object_broadcast(ray_start_cluster):
         return np.zeros(10**8, dtype=np.uint8)
 
     object_ids = []
-    num_trials = 3 if not RAYLET_VALGRIND else 1
 
     for _ in range(num_trials):
         # Broadcast an object to all machines.
@@ -155,6 +156,8 @@ def test_object_broadcast(ray_start_cluster):
 def test_actor_broadcast(ray_start_cluster):
     cluster, num_nodes = ray_start_cluster
 
+    num_trials = 10 if not RAYLET_VALGRIND else 1
+
     @ray.remote
     class Actor(object):
         def ready(self):
@@ -174,7 +177,6 @@ def test_actor_broadcast(ray_start_cluster):
     object_ids = []
 
     # Broadcast a large object to all actors.
-    num_trials = 10 if not RAYLET_VALGRIND else 1
     for _ in range(num_trials):
         x_id = ray.put(np.zeros(10**7, dtype=np.uint8))
         object_ids.append(x_id)
@@ -305,6 +307,9 @@ def test_object_transfer_retry(ray_start_empty_cluster):
 def test_many_small_transfers(ray_start_cluster):
     cluster, num_nodes = ray_start_cluster
 
+    num_objects = 1000 if not RAYLET_VALGRIND else 100
+    num_trials = 4 if not RAYLET_VALGRIND else 1
+
     @ray.remote
     def f(*args):
         pass
@@ -316,7 +321,7 @@ def test_many_small_transfers(ray_start_cluster):
         for i in range(num_nodes):
             id_lists.append([
                 f._remote(args=[], kwargs={}, resources={str(i): 1})
-                for _ in range(1000)
+                for _ in range(num_objects)
             ])
         ids = []
         for i in range(num_nodes):
@@ -330,7 +335,6 @@ def test_many_small_transfers(ray_start_cluster):
         # Wait for all of the transfers to finish.
         ray.get(ids)
 
-    num_trials = 4 if not RAYLET_VALGRIND else 1
     for _ in range(num_trials):
         do_transfers()
 
