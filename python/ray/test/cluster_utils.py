@@ -6,6 +6,8 @@ import atexit
 import logging
 import time
 
+import redis
+
 import ray
 from ray.parameter import RayParams
 import ray.services as services
@@ -35,6 +37,7 @@ class Cluster(object):
         self.head_node = None
         self.worker_nodes = {}
         self.redis_address = None
+        self.redis_password = None
         self.connected = False
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
@@ -50,11 +53,11 @@ class Cluster(object):
     def connect(self, head_node_args):
         assert self.redis_address is not None
         assert not self.connected
-        redis_password = head_node_args.get("redis_password")
+        self.redis_password = head_node_args.get("redis_password")
         output_info = ray.init(
             ignore_reinit_error=True,
             redis_address=self.redis_address,
-            redis_password=redis_password)
+            redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 
@@ -123,37 +126,44 @@ class Cluster(object):
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self, retries=100):
-        """Waits for all nodes to be registered with global state.
+    def wait_for_nodes(self, timeout=30):
+        """Waits for correct number of nodes to be registered.
 
-        By default, waits for 10 seconds.
+        This will wait until the number of live nodes in the client table
+        exactly matches the number of "add_node" calls minus the number of
+        "remove_node" calls that have been made on this cluster. This means
+        that if a node dies without "remove_node" having been called, this will
+        raise an exception.
 
         Args:
-            retries (int): Number of times to retry checking client table.
+            timeout (float): The number of seconds to wait for nodes to join
+                before failing.
 
-        Returns:
-            True if successfully registered nodes as expected.
+        Raises:
+            Exception: An exception is raised if we time out while waiting for
+                nodes to join.
         """
+        ip_address, port = self.redis_address.split(":")
+        redis_client = redis.StrictRedis(
+            host=ip_address, port=int(port), password=self.redis_password)
 
-        for i in range(retries):
-            if not ray.is_initialized() or not self._check_registered_nodes():
-                time.sleep(0.1)
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            clients = ray.experimental.state.parse_client_table(redis_client)
+            live_clients = [
+                client for client in clients if client["IsInsertion"]
+            ]
+
+            expected = len(self.list_all_nodes())
+            if len(live_clients) == expected:
+                logger.debug("All nodes registered as expected.")
+                return
             else:
-                return True
-        return False
-
-    def _check_registered_nodes(self):
-        registered = len([
-            client for client in ray.global_state.client_table()
-            if client["IsInsertion"]
-        ])
-        expected = len(self.list_all_nodes())
-        if registered == expected:
-            logger.info("All nodes registered as expected.")
-        else:
-            logger.info("Currently registering {} but expecting {}".format(
-                registered, expected))
-        return registered == expected
+                logger.debug(
+                    "{} nodes are currently registered, but we are expecting "
+                    "{}".format(len(live_clients), expected))
+                time.sleep(0.1)
+        raise Exception("Timed out while waiting for nodes to join.")
 
     def list_all_nodes(self):
         """Lists all nodes.
