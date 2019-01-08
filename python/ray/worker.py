@@ -1084,8 +1084,8 @@ def error_applies_to_driver(error_key, worker=global_worker):
     """Return True if the error is for this driver and false otherwise."""
     # TODO(rkn): Should probably check that this is only called on a driver.
     # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE +
-                              1 + ray_constants.ID_SIZE), error_key
+    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
+                              + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
     driver_id = error_key[len(ERROR_KEY_PREFIX):(

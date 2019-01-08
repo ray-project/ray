@@ -768,7 +768,8 @@ class ActorHandle(object):
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.ObjectID(state["actor_creation_dummy_object_id"]),
+            ray.ObjectID(state["actor_creation_dummy_object_id"])
+            if state["actor_creation_dummy_object_id"] is not None else None,
             state["actor_method_cpus"],
             actor_driver_id,
             actor_handle_id=actor_handle_id)
