@@ -26,7 +26,7 @@ from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
-from ray.autoscaler.updater import NodeUpdaterProcess
+from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
@@ -223,17 +223,13 @@ class LoadMetrics(object):
 
 
 class NodeLauncher(threading.Thread):
-    def __init__(self, queue, pending, *args, **kwargs):
+    def __init__(self, provider, queue, pending, *args, **kwargs):
         self.queue = queue
         self.pending = pending
-        self.provider = None
+        self.provider = provider
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
-        if self.provider is None:
-            self.provider = get_node_provider(config["provider"],
-                                              config["cluster_name"])
-
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
@@ -306,7 +302,6 @@ class StandardAutoscaler(object):
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
                  verbose_updates=True,
-                 node_updater_cls=NodeUpdaterProcess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
@@ -319,7 +314,6 @@ class StandardAutoscaler(object):
         self.max_concurrent_launches = max_concurrent_launches
         self.verbose_updates = verbose_updates
         self.process_runner = process_runner
-        self.node_updater_cls = node_updater_cls
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -337,6 +331,7 @@ class StandardAutoscaler(object):
             max_concurrent_launches / float(max_launch_batch))
         for i in range(int(max_batches)):
             node_launcher = NodeLauncher(
+                provider=self.provider,
                 queue=self.launch_queue, pending=self.num_launches_pending)
             node_launcher.daemon = True
             node_launcher.start()
@@ -515,9 +510,10 @@ class StandardAutoscaler(object):
         logger.warning("StandardAutoscaler: No heartbeat from node "
                        "{} in {} seconds, restarting Ray to recover...".format(
                            node_id, delta))
-        updater = self.node_updater_cls(
+        updater = NodeUpdaterThread(
             node_id,
             self.config["provider"],
+            self.provider,
             self.config["auth"],
             self.config["cluster_name"], {},
             with_head_node_ip(self.config["worker_start_ray_commands"]),
@@ -544,9 +540,10 @@ class StandardAutoscaler(object):
                              self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
 
-        updater = self.node_updater_cls(
+        updater = NodeUpdaterThread(
             node_id,
             self.config["provider"],
+            self.provider,
             self.config["auth"],
             self.config["cluster_name"],
             self.config["file_mounts"],

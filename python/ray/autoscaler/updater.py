@@ -13,7 +13,6 @@ import sys
 import tempfile
 import time
 
-from multiprocessing import Process
 from threading import Thread
 
 from ray.autoscaler.node_provider import get_node_provider
@@ -52,6 +51,7 @@ class NodeUpdater(object):
     def __init__(self,
                  node_id,
                  provider_config,
+                 provider,
                  auth_config,
                  cluster_name,
                  file_mounts,
@@ -65,7 +65,7 @@ class NodeUpdater(object):
         self.node_id = node_id
         self.use_internal_ip = (use_internal_ip or provider_config.get(
             "use_internal_ips", False))
-        self.provider = get_node_provider(provider_config, cluster_name)
+        self.provider = provider
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_ip = None
@@ -163,6 +163,8 @@ class NodeUpdater(object):
             })
         self.logger.info("NodeUpdater: Applied config {} to node {}".format(
             self.runtime_hash, self.node_id))
+
+        self.exitcode = 0
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -283,16 +285,8 @@ class NodeUpdater(object):
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)
 
-
-class NodeUpdaterProcess(NodeUpdater, Process):
-    def __init__(self, *args, **kwargs):
-        Process.__init__(self)
-        NodeUpdater.__init__(self, *args, **kwargs)
-
-
-# Single-threaded version for unit tests
 class NodeUpdaterThread(NodeUpdater, Thread):
     def __init__(self, *args, **kwargs):
         Thread.__init__(self)
         NodeUpdater.__init__(self, *args, **kwargs)
-        self.exitcode = 0
+        self.exitcode = -1

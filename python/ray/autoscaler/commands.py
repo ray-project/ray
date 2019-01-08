@@ -24,7 +24,7 @@ from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
-from ray.autoscaler.updater import NodeUpdaterProcess
+from ray.autoscaler.updater import NodeUpdaterThread
 
 logger = logging.getLogger(__name__)
 
@@ -197,9 +197,11 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             config["setup_commands"] + config["head_setup_commands"] +
             config["head_start_ray_commands"])
 
-    updater = NodeUpdaterProcess(
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    updater = NodeUpdaterThread(
         head_node,
         config["provider"],
+        provider,
         config["auth"],
         config["cluster_name"],
         config["file_mounts"],
@@ -287,9 +289,12 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
     config = _bootstrap_config(config)
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
-    updater = NodeUpdaterProcess(
+
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    updater = NodeUpdaterThread(
         head_node,
         config["provider"],
+        provider,
         config["auth"],
         config["cluster_name"],
         config["file_mounts"], [],
@@ -347,9 +352,12 @@ def rsync(config_file, source, target, override_cluster_name, down):
     config = _bootstrap_config(config)
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
-    updater = NodeUpdaterProcess(
+
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    updater = NodeUpdaterThread(
         head_node,
         config["provider"],
+        provider,
         config["auth"],
         config["cluster_name"],
         config["file_mounts"], [],
