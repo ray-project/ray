@@ -34,10 +34,12 @@ add_custom_command(
   VERBATIM)
 
 # Generate Java bindings for the flatbuffers objects.
-set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../java/runtime/src/main/java/org/ray/runtime/generated/)
+set(RAY_HOME ${CMAKE_CURRENT_LIST_DIR}/../../..)
+set(JAVA_OUTPUT_DIR ${RAY_HOME}/java/runtime/src/main/java/org/ray/runtime/generated/)
 add_custom_command(
   TARGET gen_gcs_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -j -o ${JAVA_OUTPUT_DIR} ${GCS_FBS_SRC}
+  COMMAND python ${RAY_HOME}/auto_gen_tool.py ${RAY_HOME}
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for Java"
   VERBATIM)

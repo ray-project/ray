@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import re
+import sys
 
 
 def add_new_line(file, line_num, text):
@@ -29,20 +30,23 @@ def add_package_declarations(generated_root_path):
 def get_offset(file, field):
     with open(file, "r") as file_handler:
         lines = file_handler.readlines()
+
         for line in lines:
-            if line.startswith('public String %s(int j)' % field):
-                offset = re.findall(".*__offset\((.*)\);.*", line)
-                if len(offset) == 1:
-                    return int(offset[0])
-                else:
-                    return -1
+            re_str = '.*%s\(int j\) \{ int o = __offset\((.*)\);.*' % field
+            results = re.findall(re_str, line)
+            if len(results) == 0:
+                continue
+            elif len(results) == 1:
+                return int(results[0])
+            else:
+                return -1
 
         return -1
 
 
 template = '''
-  public ByteBuffer {}(int j) {
-    int o = __offset({});
+  public ByteBuffer %s(int j) {
+    int o = __offset(%d);
     if (o == 0) {
       return null;
     }
@@ -63,22 +67,22 @@ def generate_and_insert_method(file, field, method_name):
     with open(file, 'r') as file_handler:
         lines = file_handler.readlines()
 
-        for index in range(len(line), -1, -1):
+        for index in range(len(lines) - 1, -1, -1):
             if lines[index] == '}\n':
                 index_to_be_inserted = index
 
     if index_to_be_inserted >= 0:
         offset = get_offset(file, field)
-        text = template.format(method_name, offset)
-        add_new_line(file, index_to_be_inserted, text)
+        text = template % (method_name, offset)
+        add_new_line(file, index_to_be_inserted + 1, text)
 
 
 if __name__ == '__main__':
-    ray_home = os.getcwd()
-    root_path = ('%s/java/runtime/src/main/java/org/ray/runtime/generated' % ray_home)
+    ray_home = sys.argv[1]
+    root_path = '%s/java/runtime/src/main/java/org/ray/runtime/generated' % ray_home
 
     add_package_declarations(root_path)
-    generate_and_insert_method('%sTaskInfo.java' % root_path,
+    generate_and_insert_method('%s/TaskInfo.java' % root_path,
                                'returns', 'returnsAsByteBuffer')
     generate_and_insert_method('%s/Arg.java' % root_path,
                                'objectIds', 'objectIdAsByteBuffer')
