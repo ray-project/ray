@@ -1230,7 +1230,7 @@ def get_address_info_from_redis(redis_address,
                 "Some processes that the driver needs to connect to have "
                 "not registered with Redis, so retrying. Have you run "
                 "'ray start' on this node?")
-            time.sleep(1)
+            time.sleep(2)
         counter += 1
 
 
