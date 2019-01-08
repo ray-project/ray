@@ -62,7 +62,7 @@ class WorkerPool {
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> worker);
+  void RegisterDriver(std::shared_ptr<Worker> worker);
 
   /// Get the client connection's registered worker.
   ///
