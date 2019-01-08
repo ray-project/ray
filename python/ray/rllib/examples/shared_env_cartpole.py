@@ -106,10 +106,6 @@ if __name__ == "__main__":
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
-    # Each policy can have a different configuration (including custom model)
-    def gen_policy(i):
-        return (PPOPolicyGraph, obs_space, act_space, {})
-
     # Setup PPO with an ensemble of `num_policies` different policy graphs
     policy_graphs = {'shared': (PPOPolicyGraph, obs_space, act_space, {})}
 
@@ -123,15 +119,17 @@ if __name__ == "__main__":
             "stop": {
                 "training_iteration": 100
             },
+            'checkpoint_freq': 1,
             "config": {
                 "use_centralized_vf": True,
-                "max_vf_agents": 2,
+                "max_vf_agents": 3,
                 "log_level": "DEBUG",
-                "num_sgd_iter": 10,
+                "num_sgd_iter": 1,
                 "num_workers": 0,
                 "multiagent": {
                     "policy_graphs": policy_graphs,
                     "policy_mapping_fn": tune.function(policy_mapping_fn),
+                    "policies_to_train": ["shared"]
                 },
             },
         }

@@ -114,7 +114,7 @@ class PPOLoss(object):
                 central_vf_loss = tf.maximum(central_vf_loss1,
                                              central_vf_loss2)
                 self.central_mean_vf_loss = reduce_mean_valid(central_vf_loss)
-                loss += vf_loss_coeff * central_vf_loss
+                loss += reduce_mean_valid(vf_loss_coeff * central_vf_loss)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             loss = reduce_mean_valid(-surrogate_loss +
@@ -396,7 +396,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                           other_agent_time in
                           other_agent_times.items()
                           if self.time_overlap(time_span, other_agent_time)}
-            other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"]
+            other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"].copy()
                          for agent_id in rel_agents.keys()}
             padded_agent_obs = {agent_id:
                                 self.overlap_and_pad_agent(time_span,
@@ -411,12 +411,13 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             # TODO(ev) this is almost certainly broken
             # TODO(ev) pad with zeros as needed
             max_vf_agents = self.config["max_vf_agents"]
-            num_agents = len(other_agent_batches) + 1
+            num_agents = len(rel_agents) + 1
             if num_agents < max_vf_agents:
-                for _ in range(max_vf_agents - num_agents):
-                    zero_pad = np.zeros(self.observation_space.shape)
-                    central_obs_batch = np.hstack((central_obs_batch,
-                                                   zero_pad))
+                diff = max_vf_agents - num_agents
+                zero_pad = np.zeros((central_obs_batch.shape[0],
+                                     self.observation_space.shape[0]*diff))
+                central_obs_batch = np.hstack((central_obs_batch,
+                                               zero_pad))
             elif num_agents > max_vf_agents:
                 print("Too many agents!")
 
@@ -478,34 +479,35 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 agent_time
         """
         assert self.time_overlap(time_span, agent_time)
+        # FIXME(ev) some of these conditions can be combined
         # no padding needed
         if agent_time[0] == time_span[0] and agent_time[1] == time_span[1]:
             return obs
         # agent enters before time_span starts and exits before time_span end
-        if agent_time[0] <= time_span[0] and agent_time[1] <= time_span[1]:
+        if agent_time[0] < time_span[0] and agent_time[1] < time_span[1]:
             non_overlap_time = time_span[0] - agent_time[0]
             missing_time = time_span[1] - agent_time[1]
             overlap_obs = obs[non_overlap_time:]
-            padding = np.zeros(missing_time, obs.shape[1])
+            padding = np.zeros((missing_time, obs.shape[1]))
             return np.concatenate((overlap_obs, padding))
         # agent enters after time_span starts and exits after time_span ends
-        elif agent_time[0] >= time_span[0] and agent_time[1] >= time_span[1]:
+        elif agent_time[0] > time_span[0] and agent_time[1] > time_span[1]:
             non_overlap_time = agent_time[1] - time_span[1]
             overlap_obs = obs[:-non_overlap_time]
             missing_time = agent_time[0] - time_span[0]
-            padding = np.zeros(missing_time, obs.shape[1])
-            return np.concatenate(((padding, overlap_obs)))
+            padding = np.zeros((missing_time, obs.shape[1]))
+            return np.concatenate((padding, overlap_obs))
         # agent time is entirely contained in time_span
         elif agent_time[0] >= time_span[0] and agent_time[1] <= time_span[1]:
             missing_left = agent_time[0] - time_span[0]
             missing_right = time_span[1] - agent_time[1]
             obs_concat = obs
             if missing_left > 0:
-                padding = np.zeros(missing_left, obs.shape[1])
+                padding = np.zeros((missing_left, obs.shape[1]))
                 obs_concat = np.concatenate((padding, obs_concat))
             if missing_right > 0:
-                padding = np.zeros(missing_right, obs.shape[1])
-                obs_concat = np.concatenate(((obs_concat, padding)))
+                padding = np.zeros((missing_right, obs.shape[1]))
+                obs_concat = np.concatenate((obs_concat, padding))
             return obs_concat
         # agent time totally contains time_span
         elif agent_time[0] <= time_span[0] and agent_time[1] >= time_span[1]:
