@@ -238,9 +238,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     })
     cluster.add_node(raylet_valgrind=RAYLET_VALGRIND, _internal_config=config)
     cluster.add_node(
-        num_gpus=1,
-        raylet_valgrind=RAYLET_VALGRIND,
-        _internal_config=config)
+        num_gpus=1, raylet_valgrind=RAYLET_VALGRIND, _internal_config=config)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(num_gpus=1)
