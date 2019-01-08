@@ -39,7 +39,7 @@ set(JAVA_OUTPUT_DIR ${RAY_HOME}/java/runtime/src/main/java/org/ray/runtime/gener
 add_custom_command(
   TARGET gen_gcs_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -j -o ${JAVA_OUTPUT_DIR} ${GCS_FBS_SRC}
-  COMMAND python ${RAY_HOME}/java/auto_gen_tool.py ${RAY_HOME}
+  COMMAND python ${RAY_HOME}/java/modify_generated_java_flatbuffers_files.py ${RAY_HOME}
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for Java"
   VERBATIM)
