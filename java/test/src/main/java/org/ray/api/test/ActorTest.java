@@ -8,6 +8,7 @@ import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc2;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.RayActorImpl;
 
 public class ActorTest extends BaseTest {
 
@@ -69,10 +70,18 @@ public class ActorTest extends BaseTest {
   @Test
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
-    RayFunc2<RayActor, Integer, Integer> f = ActorTest::testActorAsFirstParameter;
     Assert.assertEquals(Integer.valueOf(1),
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
     Assert.assertEquals(Integer.valueOf(11),
         Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
   }
+
+  @Test
+  public void testForkingActorHandle() {
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
+    RayActor<Counter> counter2 = ((RayActorImpl<Counter>) counter).fork();
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
+  }
+
 }

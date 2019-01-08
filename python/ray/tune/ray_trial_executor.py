@@ -61,11 +61,17 @@ class RayTrialExecutor(TrialExecutor):
         self._running[remote] = trial
 
     def _start_trial(self, trial, checkpoint=None):
+        """Starts trial and restores last result if trial was paused.
+
+        Raises:
+            ValueError if restoring from checkpoint fails.
+        """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
-            return
+            if trial.status == Trial.ERROR:
+                raise RuntimeError("Restore from checkpoint failed.")
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
@@ -127,12 +133,15 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint)
         except Exception:
-            logger.exception("Error stopping runner - retrying...")
+            logger.exception("Error starting runner. "
+                             "Trying again without checkpoint.")
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
-                self._start_trial(trial, checkpoint)
+                # This forces the trial to not start from checkpoint.
+                trial.clear_checkpoint()
+                self._start_trial(trial)
             except Exception:
                 logger.exception("Error starting runner, aborting!")
                 error_msg = traceback.format_exc()
@@ -225,10 +234,16 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
 
-    def _update_avail_resources(self):
-        resources = ray.global_state.cluster_resources()
+    def _update_avail_resources(self, num_retries=5):
+        for i in range(num_retries):
+            resources = ray.global_state.cluster_resources()
+            if not resources:
+                logger.warning("Cluster resources not detected. Retrying...")
+                time.sleep(0.5)
+
         num_cpus = resources["CPU"]
         num_gpus = resources["GPU"]
+
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
 
