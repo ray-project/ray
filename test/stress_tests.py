@@ -41,9 +41,7 @@ def ray_start_combination(request):
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
-            "resources": {
-                "CPU": 10
-            },
+            "num_cpus": 10,
             "redis_max_memory": 10**7
         })
     for i in range(num_nodes - 1):
@@ -200,9 +198,7 @@ def ray_start_reconstruction(request):
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
-            "resources": {
-                "CPU": 1
-            },
+            "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
             "redirect_output": True,

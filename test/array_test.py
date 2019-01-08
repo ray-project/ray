@@ -10,7 +10,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
-from ray.parameter import RayParams
+import ray.test.cluster_utils
 
 if sys.version_info >= (3, 0):
     from importlib import reload
@@ -75,12 +75,15 @@ def ray_start_two_nodes():
     ]:
         reload(module)
     # Start the Ray processes.
-    ray_params = RayParams(
-        start_ray_local=True, num_local_schedulers=2, num_cpus=[10, 10])
-    ray.worker._init(ray_params)
+    cluster = ray.test.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=10)
+    ray.init(redis_address=cluster.redis_address)
     yield None
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    cluster.shutdown()
 
 
 def test_distributed_array_methods(ray_start_two_nodes):

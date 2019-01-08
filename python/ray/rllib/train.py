@@ -52,7 +52,7 @@ def create_parser(parser_creator=None):
         type=int,
         help="--num-gpus to use if starting a new cluster.")
     parser.add_argument(
-        "--ray-num-local-schedulers",
+        "--ray-num-nodes",
         default=None,
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
@@ -122,9 +122,9 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    if args.ray_num_local_schedulers:
+    if args.ray_num_nodes:
         cluster = Cluster()
-        for _ in range(args.ray_num_local_schedulers):
+        for _ in range(args.ray_num_nodes):
             cluster.add_node(
                 resources={
                     "num_cpus": args.ray_num_cpus or 1,
