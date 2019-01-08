@@ -104,7 +104,7 @@ class RayLog : public RayLogBase {
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   /// True if log messages should be stored in log file.
-  static bool is_stored_;
+  static bool log_dir_;
   static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
@@ -123,6 +123,8 @@ class Voidify {
   // higher than ?:
   void operator&(RayLogBase &) {}
 };
+
+
 
 }  // namespace ray
 

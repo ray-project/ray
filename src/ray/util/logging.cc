@@ -67,7 +67,7 @@ typedef ray::CerrLog LoggingProvider;
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
-bool RayLog::is_stored_ = false;
+bool RayLog::log_dir_ = false;
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -123,7 +123,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   google::SetStderrLogging(mapped_severity_threshold);
   // Enable log file if log_dir is not empty.
   if (!log_dir.empty()) {
-    is_stored_ = true;
+    log_dir_ = true;
     auto dir_ends_with_slash = log_dir;
     if (log_dir[log_dir.length() - 1] != '/') {
       dir_ends_with_slash += "/";
@@ -168,7 +168,7 @@ void RayLog::UninstallSignalAction() {
 void RayLog::ShutDownRayLog() {
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
-  if (is_stored_) {
+  if (log_dir_) {
     google::ShutdownGoogleLogging();
   }
 #endif
