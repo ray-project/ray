@@ -124,8 +124,6 @@ class Voidify {
   void operator&(RayLogBase &) {}
 };
 
-
-
 }  // namespace ray
 
 #endif  // RAY_UTIL_LOGGING_H
