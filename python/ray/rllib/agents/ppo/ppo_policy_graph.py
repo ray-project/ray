@@ -262,6 +262,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 if self.config["use_centralized_vf"]:
                     with tf.variable_scope("central_value_function"):
                         # TODO(ev) do we need to remove observation space
+                        # FIXME(ev) prev_actions_ph and prev_rewards must be extended
                         self.central_value_function = ModelCatalog.get_model({
                             "obs": central_obs_ph,
                             "prev_actions": prev_actions_ph,
@@ -411,8 +412,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     (central_obs_batch, sample_batch["obs"]))
             else:
                 central_obs_batch = sample_batch["obs"]
-            # TODO(ev) this is almost certainly broken
-            # TODO(ev) pad with zeros as needed
             max_vf_agents = self.config["max_vf_agents"]
             num_agents = len(rel_agents) + 1
             if num_agents < max_vf_agents:
@@ -472,7 +471,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             return False
 
     def overlap_and_pad_agent(self, time_span, agent_time, obs):
-        """returns only the portion of obs that overlaps with time_span and pads it
+        """take the part of obs that overlaps, pad to length time_span
         Arguments:
             time_span (tuple): tuple of the first and last time that the agent
                 of interest is in the system
