@@ -103,12 +103,12 @@ class RayLog : public RayLogBase {
   void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
-  /// True if log messages should be stored in log file.
-  static bool log_dir_;
   static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;
+  /// The directory where the log files are stored. If this is empty, logs are printed to stdout.
+  static std::string log_dir_;
 
  protected:
   virtual std::ostream &Stream();
