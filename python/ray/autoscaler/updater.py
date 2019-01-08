@@ -22,6 +22,22 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
+SSH_CONTROL_PATH = "/tmp/ray_ssh_sockets"
+
+def get_default_ssh_options(private_key, connect_timeout):
+    OPTS = [
+        ("ConnectTimeout", "{}s".format(connect_timeout)),
+        ("StrictHostKeyChecking", "no"),
+        ("ControlMaster", "auto"),
+        ("ControlPath", "{}/%C".format(SSH_CONTROL_PATH)),
+        ("ControlPersist", "yes"),
+    ]
+
+    return ["-i", private_key] + [
+        x
+        for y in ( ["-o", "{}={}".format(k, v)] for k, v in OPTS )
+        for x in y
+    ]
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +91,12 @@ class NodeUpdater(object):
             self.stdout = sys.stdout
             self.stderr = sys.stderr
 
+    def get_caller(self, check_error):
+        if check_error:
+            return self.process_runner.call
+        else:
+            return self.process_runner.check_call
+
     def get_node_ip(self):
         if self.use_internal_ip:
             return self.provider.internal_ip(self.node_id)
@@ -98,6 +120,20 @@ class NodeUpdater(object):
             time.sleep(10)
 
         assert self.ssh_ip is not None, "Unable to find IP of node"
+
+        # This should run before any SSH commands and therefore ensure that
+        #   the ControlPath directory exists, allowing SSH to maintain
+        #   persistent sessions later on.
+        with open("/dev/null", "w") as redirect:
+            self.get_caller(False)(
+                ["mkdir", "-p", SSH_CONTROL_PATH],
+                stdout=redirect,
+                stderr=redirect)
+
+            self.get_caller(False)(
+                ["chmod", "0700", SSH_CONTROL_PATH],
+                stdout=redirect,
+                stderr=redirect)
 
     def run(self):
         self.logger.info(
@@ -185,35 +221,24 @@ class NodeUpdater(object):
             self.ssh_cmd(cmd, verbose=True)
 
     def rsync_up(self, source, target, check_error=True):
-        if check_error:
-            call = self.process_runner.call
-        else:
-            call = self.process_runner.check_call
-
         self.set_ssh_ip_if_required()
-
-        call(
+        self.get_caller(check_error)(
             [
-                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
-                "--delete", "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
+                "rsync", "-e", " ".join(["ssh"] +
+                    get_default_ssh_options(self.ssh_private_key, 120)),
+                "--delete", "-avz", source,
+                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
             stdout=self.stdout,
             stderr=self.stderr)
 
     def rsync_down(self, source, target, check_error=True):
-        if check_error:
-            call = self.process_runner.call
-        else:
-            call = self.process_runner.check_call
-
         self.set_ssh_ip_if_required()
-
-        call(
+        self.get_caller(check_error)(
             [
-                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no", "-avz",
+                "rsync", "-e", " ".join(["ssh"] +
+                    get_default_ssh_options(self.ssh_private_key, 120)),
+                "-avz",
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
             ],
             stdout=self.stdout,
@@ -242,20 +267,17 @@ class NodeUpdater(object):
                 "set -i || true && source ~/.bashrc && "
                 "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
             cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
-        if expect_error:
-            call = self.process_runner.call
-        else:
-            call = self.process_runner.check_call
+
         if port_forward is None:
             ssh_opt = []
         else:
             ssh_opt = [
                 "-L", "{}:localhost:{}".format(port_forward, port_forward)
             ]
-        call(
-            ssh + ssh_opt + [
-                "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
-                "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+
+        self.get_caller(expect_error)(
+            ssh + ssh_opt +
+            get_default_ssh_options(self.ssh_private_key, connect_timeout) + [
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ],
             stdout=redirect or self.stdout,
