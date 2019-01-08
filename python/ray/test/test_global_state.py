@@ -95,14 +95,14 @@ def test_add_remove_cluster_resources(cluster_start):
     assert ray.global_state.cluster_resources()["CPU"] == 1
     nodes = []
     nodes += [cluster.add_node(num_cpus=1)]
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 2
 
     cluster.remove_node(nodes.pop())
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 1
 
     for i in range(5):
         nodes += [cluster.add_node(num_cpus=1)]
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 6

@@ -85,17 +85,17 @@ def test_counting_resources(start_connected_cluster):
 
     runner.step()  # run 1
     nodes += [cluster.add_node(num_cpus=1)]
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 2
     cluster.remove_node(nodes.pop())
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 1
     runner.step()  # run 2
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 1
 
     for i in range(5):
         nodes += [cluster.add_node(num_cpus=1)]
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     assert ray.global_state.cluster_resources()["CPU"] == 6
 
     runner.step()  # 1 result
@@ -106,7 +106,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     """Tune continues when node is removed before trial returns."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
@@ -145,7 +145,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     """
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
@@ -164,7 +164,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     assert t.last_result is not None
     node2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     runner.step()  # Recovery step
 
     # TODO(rliaw): This assertion is not critical but will not pass
@@ -185,7 +185,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     assert t2.has_checkpoint()
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     runner.step()  # Recovery step
     assert t2.last_result["training_iteration"] == 2
     for i in range(1):
@@ -200,7 +200,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     runner.step()  # 1 result
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node3)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     runner.step()  # Error handling step
     assert t3.status == Trial.ERROR
 
@@ -216,7 +216,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
@@ -235,7 +235,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
     runner.step()  # 1 result
 
     cluster.remove_node(node)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     runner.step()
     assert all(t.status == Trial.PENDING for t in trials)
 
@@ -247,7 +247,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     """Test checks that trial restarts if checkpoint is lost w/ node fail."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
 
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
@@ -267,7 +267,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     assert t1.has_checkpoint()
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
     shutil.rmtree(os.path.dirname(t1._checkpoint.value))
 
     runner.step()  # Recovery step
@@ -281,7 +281,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
     cluster.add_node(num_cpus=1)
-    assert cluster.wait_for_nodes()
+    cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
     runner = TrialRunner(
