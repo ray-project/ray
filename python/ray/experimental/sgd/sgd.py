@@ -185,7 +185,6 @@ class DistributedSGD(object):
 
     def restore_checkpoint(self, path):
         filename = os.path.join(path, "model.npy")
-        assert os.path.exists(filename), "No model present at %s" % filename
         w0 = np.load(filename)
         self.foreach_model(lambda m: m.set_weights(w0))
 
