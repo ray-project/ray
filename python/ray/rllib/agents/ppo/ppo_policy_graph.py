@@ -99,8 +99,8 @@ class PPOLoss(object):
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
             loss = reduce_mean_valid(
-                -surrogate_loss + cur_kl_coeff * action_kl +
-                vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
+                -surrogate_loss + cur_kl_coeff * action_kl
+                - entropy_coeff * curr_entropy)
 
             # TODO(ev) add a centralized value function loss
             if use_central_vf:
@@ -113,8 +113,12 @@ class PPOLoss(object):
                                              central_value_targets)
                 central_vf_loss = tf.maximum(central_vf_loss1,
                                              central_vf_loss2)
-                self.central_mean_vf_loss = reduce_mean_valid(central_vf_loss)
+                self.mean_vf_loss = reduce_mean_valid(central_vf_loss)
                 loss += reduce_mean_valid(vf_loss_coeff * central_vf_loss)
+            else:
+                self.mean_vf_loss = reduce_mean_valid(vf_loss)
+                loss += reduce_mean_valid(vf_loss_coeff * vf_loss)
+
         else:
             self.mean_vf_loss = tf.constant(0.0)
             loss = reduce_mean_valid(-surrogate_loss +
@@ -357,10 +361,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "kl": self.loss_obj.mean_kl,
             "entropy": self.loss_obj.mean_entropy
         }
-        if self.config["use_centralized_vf"]:
-            central_vf_loss = self.loss_obj.central_mean_vf_loss
-            self.stats_fetches["central_vf_loss"] = central_vf_loss
-            # TODO(ev, kp) add central vf explained var
 
     @override(TFPolicyGraph)
     def copy(self, existing_inputs):
@@ -422,7 +422,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                                zero_pad))
             elif num_agents > max_vf_agents:
                 print("Too many agents!")
-
             # add the central obs and central critic value
             sample_batch["central_obs"] = central_obs_batch
             sample_batch["central_vf_preds"] = self.sess.run(
