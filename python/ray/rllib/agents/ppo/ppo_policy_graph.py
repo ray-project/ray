@@ -396,18 +396,21 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                           other_agent_time in
                           other_agent_times.items()
                           if self.time_overlap(time_span, other_agent_time)}
-            other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"].copy()
-                         for agent_id in rel_agents.keys()}
-            padded_agent_obs = {agent_id:
-                                self.overlap_and_pad_agent(time_span,
-                                                           rel_agent_time,
-                                                           other_obs[agent_id])
-                                for agent_id,
-                                rel_agent_time in rel_agents.items()}
-            central_obs_batch = np.hstack(
-                [padded_obs for padded_obs in padded_agent_obs.values()])
-            central_obs_batch = np.hstack(
-                (central_obs_batch, sample_batch["obs"]))
+            if len(rel_agents) > 0:
+                other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"].copy()
+                             for agent_id in rel_agents.keys()}
+                padded_agent_obs = {agent_id:
+                                    self.overlap_and_pad_agent(time_span,
+                                                               rel_agent_time,
+                                                               other_obs[agent_id])
+                                    for agent_id,
+                                    rel_agent_time in rel_agents.items()}
+                central_obs_batch = np.hstack(
+                    [padded_obs for padded_obs in padded_agent_obs.values()])
+                central_obs_batch = np.hstack(
+                    (central_obs_batch, sample_batch["obs"]))
+            else:
+                central_obs_batch = sample_batch["obs"]
             # TODO(ev) this is almost certainly broken
             # TODO(ev) pad with zeros as needed
             max_vf_agents = self.config["max_vf_agents"]
