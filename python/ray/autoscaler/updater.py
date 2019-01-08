@@ -52,7 +52,7 @@ class NodeUpdater(object):
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
-        self.ssh_ip = self.get_node_ip()
+        self.ssh_ip = None
         self.file_mounts = {
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
@@ -80,6 +80,24 @@ class NodeUpdater(object):
             return self.provider.internal_ip(self.node_id)
         else:
             return self.provider.external_ip(self.node_id)
+
+    def set_ssh_ip_if_required(self):
+        if self.ssh_ip is not None:
+            return
+
+        # We assume that this never changes.
+        #   I think that's reasonable.
+        deadline = time.time() + NODE_START_WAIT_S
+        while time.time() < deadline and \
+                not self.provider.is_terminated(self.node_id):
+            self.logger.info("NodeUpdater: Waiting for IP of {}...".format(
+                self.node_id))
+            self.ssh_ip = self.get_node_ip()
+            if self.ssh_ip is not None:
+                break
+            time.sleep(10)
+
+        assert self.ssh_ip is not None, "Unable to find IP of node"
 
     def run(self):
         self.logger.info(
@@ -113,18 +131,9 @@ class NodeUpdater(object):
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
-        deadline = time.time() + NODE_START_WAIT_S
 
-        # Wait for external IP
-        while time.time() < deadline and \
-                not self.provider.is_terminated(self.node_id):
-            self.logger.info("NodeUpdater: Waiting for IP of {}...".format(
-                self.node_id))
-            self.ssh_ip = self.get_node_ip()
-            if self.ssh_ip is not None:
-                break
-            time.sleep(10)
-        assert self.ssh_ip is not None, "Unable to find IP of node"
+        deadline = time.time() + NODE_START_WAIT_S
+        self.set_ssh_ip_if_required()
 
         # Wait for SSH access
         ssh_ok = False
@@ -180,6 +189,9 @@ class NodeUpdater(object):
             call = self.process_runner.call
         else:
             call = self.process_runner.check_call
+
+        self.set_ssh_ip_if_required()
+
         call(
             [
                 "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
@@ -195,6 +207,9 @@ class NodeUpdater(object):
             call = self.process_runner.call
         else:
             call = self.process_runner.check_call
+
+        self.set_ssh_ip_if_required()
+
         call(
             [
                 "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
@@ -213,6 +228,9 @@ class NodeUpdater(object):
                 emulate_interactive=True,
                 expect_error=False,
                 port_forward=None):
+
+        self.set_ssh_ip_if_required()
+
         if verbose:
             self.logger.info("NodeUpdater: running {} on {}...".format(
                 pretty_cmd(cmd), self.ssh_ip))
