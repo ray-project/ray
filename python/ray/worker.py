@@ -2259,6 +2259,11 @@ def put(value, worker=global_worker):
 def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
+    .. warning::
+
+        The **timeout** argument used to be in **milliseconds** (up through
+        ``ray==0.6.1``) and now it is in **seconds**.
+
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
