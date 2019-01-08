@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import os
 import random
 import time
 
@@ -176,6 +177,16 @@ class DistributedSGD(object):
         logger.info("Warming up object store of worker actors")
         ray.get([w.warmup.remote() for w in self.workers])
         logger.info("Warmup complete")
+
+    def save_checkpoint(self, path):
+        w0 = self.for_model(lambda m: m.get_weights())
+        filename = os.path.join(path, "model.npy")
+        np.save(filename, w0)
+
+    def restore_checkpoint(self, path):
+        filename = os.path.join(path, "model.npy")
+        w0 = np.load(filename)
+        self.foreach_model(lambda m: m.set_weights(w0))
 
 
 def _average_gradients(grads):
