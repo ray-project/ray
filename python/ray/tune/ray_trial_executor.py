@@ -328,7 +328,7 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
                 current_runner_ip = ray.get(trial.runner.current_ip.remote())
-                trial.update_location(current_runner_ip)
+                trial.update_logger_location(current_runner_ip)
                 ray.get(trial.runner.restore.remote(value))
 
             trial.last_result = checkpoint.last_result
