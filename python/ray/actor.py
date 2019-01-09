@@ -485,6 +485,10 @@ class ActorHandle(object):
         _ray_actor_driver_id: The driver ID of the job that created the actor
             (it is possible that this ActorHandle exists on a driver with a
             different driver ID).
+        _ray_new_actor_handles: The new actor handles that were created from
+            this handle since the last task on this handle was submitted. This
+            is used to garbage-collect dummy objects that are no longer
+            necessary in the backend.
     """
 
     def __init__(self,
@@ -520,6 +524,7 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
+        self._ray_new_actor_handles = []
 
     def _actor_method_call(self,
                            method_name,
@@ -585,6 +590,7 @@ class ActorHandle(object):
             actor_creation_dummy_object_id=(
                 self._ray_actor_creation_dummy_object_id),
             execution_dependencies=execution_dependencies,
+            new_actor_handles=self._ray_new_actor_handles,
             # We add one for the dummy return ID.
             num_return_vals=num_return_vals + 1,
             resources={"CPU": self._ray_actor_method_cpus},
@@ -596,6 +602,9 @@ class ActorHandle(object):
         # The last object returned is the dummy object that should be
         # passed in to the next actor method. Do not return it to the user.
         self._ray_actor_cursor = object_ids.pop()
+        # We have notified the backend of the new actor handles to expect since
+        # the last task was submitted, so clear the list.
+        self._ray_new_actor_handles = []
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -702,6 +711,19 @@ class ActorHandle(object):
 
         if ray_forking:
             self._ray_actor_forks += 1
+            new_actor_handle_id = actor_handle_id
+        else:
+            # The execution dependency for a pickled actor handle is never safe
+            # to release, since it could be unpickled and submit another
+            # dependent task at any time. Therefore, we notify the backend of a
+            # random handle ID that will never actually be used.
+            new_actor_handle_id = ray.ObjectID(_random_string())
+        # Notify the backend to expect this new actor handle. The backend will
+        # not release the cursor for any new handles until the first task for
+        # each of the new handles is submitted.
+        # NOTE(swang): There is currently no garbage collection for actor
+        # handles until the actor itself is removed.
+        self._ray_new_actor_handles.append(new_actor_handle_id)
 
         return state
 

@@ -753,7 +753,7 @@ def test_defining_remote_functions(shutdown_only):
                 args=[], num_cpus=1, num_gpus=1,
                 resources={"Custom": 1})) == [0]
         infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
+        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
         assert len(ready_ids) == 0
         assert len(remaining_ids) == 1
 
@@ -828,14 +828,14 @@ def test_wait(shutdown_only):
 
     objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=1750, num_returns=4)
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
     assert time.time() - start_time < 2
     assert len(ready_ids) == 3
     assert len(remaining_ids) == 1
     ray.wait(objectids)
     objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=5000)
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=5.0)
     assert time.time() - start_time < 5
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
@@ -1302,13 +1302,13 @@ def test_free_objects_multi_node(ray_start_cluster):
     ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
     (a, b, c) = run_one_test(actors, False)
-    (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=1)
+    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
     # All the objects are deleted.
     assert len(l1) == 0
     assert len(l2) == 3
     # Case 2: run this local_only=True. Only 1 object will be deleted.
     (a, b, c) = run_one_test(actors, True)
-    (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=3)
+    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
     # One object is deleted and 2 objects are not.
     assert len(l1) == 2
     assert len(l2) == 1
@@ -1740,7 +1740,7 @@ def test_fractional_resources(shutdown_only):
     # custom resource. TODO(rkn): Re-enable this once ray.wait is
     # implemented.
     f2 = Foo2._remote([], {}, resources={"Custom": 0.7})
-    ready, _ = ray.wait([f2.method.remote()], timeout=500)
+    ready, _ = ray.wait([f2.method.remote()], timeout=0.5)
     assert len(ready) == 0
     # Make sure we can start an actor that requries only 0.3 of the custom
     # resource.
@@ -1977,7 +1977,7 @@ def test_two_custom_resources(ray_start_cluster):
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
-    ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()], timeout=500)
+    ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()], timeout=0.5)
     assert ready_ids == []
 
 
