@@ -78,6 +78,8 @@ for _ in range(100000):
 ray.get(x_ids)
 logger.info("Finished after {} seconds.".format(time.time() - start_time))
 
+# TODO(rkn): The test below is commented out because it currently does not
+# pass.
 # # Submit a bunch of actor tasks with all-to-all communication.
 # start_time = time.time()
 # logger.info("Submitting actor tasks with all-to-all communication.")
