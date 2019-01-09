@@ -146,7 +146,7 @@ public class RayletClientImpl implements RayletClient {
       if (arg.objectIdsLength() > 0) {
         Preconditions.checkArgument(arg.objectIdsLength() == 1,
             "This arg has more than one id: {}", arg.objectIdsLength());
-        UniqueId id = UniqueId.fromByteBuffer(arg.objectIdAsByteBuffer(0));
+        UniqueId id = UniqueId.fromByteBuffer(arg.objectIdsAsByteBuffer(0));
         args[i] = FunctionArg.passByReference(id);
       } else {
         ByteBuffer lbb = arg.dataAsByteBuffer();
