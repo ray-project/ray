@@ -13,7 +13,7 @@ set(GCS_FBS_OUTPUT_FILES
 
 add_custom_command(
   OUTPUT ${GCS_FBS_OUTPUT_FILES}
-  # The --gen-object-api flag generates a C++ cscrilass MessageT for each
+  # The --gen-object-api flag generates a C++ class MessageT for each
   # flatbuffers message Message, which can be used to store deserialized
   # messages in data structures. This is currently used for ObjectInfo for
   # example.
