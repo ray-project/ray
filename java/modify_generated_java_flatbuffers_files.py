@@ -36,7 +36,10 @@ def add_package_declarations(generated_root_path):
         if not file_name.endswith(".java"):
             continue
         full_name = generated_root_path + "/" + file_name
-        add_new_line(full_name, 2, "package org.ray.runtime.generated;")
+        success = add_new_line(full_name, 2, "package org.ray.runtime.generated;")
+        if not success:
+            raise RuntimeError("Failed to add package declarations,"
+                               " file name is %s" % full_name)
 
 
 def get_offset(file, field):
@@ -88,7 +91,11 @@ def generate_and_insert_method(file, field, method_name):
         if offset == -1:
             raise RuntimeError("Failed to get offset: field is %s" % field)
         text = template_for_byte_buffer_getter % (method_name, offset)
-        add_new_line(file, index_to_be_inserted + 1, text)
+        success = add_new_line(file, index_to_be_inserted + 1, text)
+        if not success:
+            raise RuntimeError("Failed to generate and insert method,"
+                               " file is %s, field is %s, and method is %s."
+                               % (file, field, method_name))
 
 
 def modify_generated_java_flatbuffers_files(ray_home, tuples):
