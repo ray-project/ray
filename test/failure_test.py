@@ -11,8 +11,8 @@ import tempfile
 import threading
 import time
 
-from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
+import ray.test.cluster_utils
 from ray.utils import _random_string
 import pytest
 
@@ -620,25 +620,26 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_cpus=0,
-        _internal_config=json.dumps({
-            "num_heartbeats_timeout": 40
-        }))
-    ray.worker._init(ray_params)
-    yield None
+    cluster = ray.test.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(
+            num_cpus=0,
+            _internal_config=json.dumps({
+                "num_heartbeats_timeout": 40
+            }))
+    ray.init(redis_address=cluster.redis_address)
+
+    yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    cluster.shutdown()
 
 
 # Note that this test will take at least 10 seconds because it must wait for
 # the monitor to detect enough missed heartbeats.
 def test_warning_for_dead_node(ray_start_two_nodes):
-    # Wait for the raylet to appear in the client table.
-    while len(ray.global_state.client_table()) < 2:
-        time.sleep(0.1)
+    cluster = ray_start_two_nodes
+    cluster.wait_for_nodes()
 
     client_ids = {item["ClientID"] for item in ray.global_state.client_table()}
 
@@ -647,8 +648,8 @@ def test_warning_for_dead_node(ray_start_two_nodes):
     time.sleep(0.5)
 
     # Kill both raylets.
-    ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][1].kill()
-    ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
+    cluster.list_all_nodes()[1].kill_raylet()
+    cluster.list_all_nodes()[0].kill_raylet()
 
     # Check that we get warning messages for both raylets.
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=40)
