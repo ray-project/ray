@@ -181,8 +181,6 @@ class NodeUpdater(object):
                 self.logger.info(
                     "NodeUpdater: Waiting for SSH to {}...".format(
                         self.node_id))
-                if not self.provider.is_running(self.node_id):
-                    raise Exception("Node not running yet...")
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5,

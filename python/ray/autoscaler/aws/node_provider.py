@@ -44,10 +44,6 @@ class AWSNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
-        # Cache of ip lookups. We assume IPs never change once assigned.
-        self.internal_ip_cache = {}
-        self.external_ip_cache = {}
-
     def nodes(self, tag_filters):
         tag_filters = to_aws_format(tag_filters)
         filters = [
@@ -86,22 +82,10 @@ class AWSNodeProvider(NodeProvider):
         return from_aws_format(tags)
 
     def external_ip(self, node_id):
-        if node_id in self.external_ip_cache:
-            return self.external_ip_cache[node_id]
-        node = self._node(node_id)
-        ip = node.public_ip_address
-        if ip:
-            self.external_ip_cache[node_id] = ip
-        return ip
+        return self._node(node_id).public_ip_address
 
     def internal_ip(self, node_id):
-        if node_id in self.internal_ip_cache:
-            return self.internal_ip_cache[node_id]
-        node = self._node(node_id)
-        ip = node.private_ip_address
-        if ip:
-            self.internal_ip_cache[node_id] = ip
-        return ip
+        return self._node(node_id).private_ip_address
 
     def set_node_tags(self, node_id, tags):
         tags = to_aws_format(tags)
@@ -167,8 +151,8 @@ class AWSNodeProvider(NodeProvider):
         node.terminate()
 
     def _node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
-        return matches[0]
+        if node_id not in self.cached_nodes:
+            self.nodes({})  # Side effect: should cache it.
+
+        assert node_id in self.cached_nodes, "Invalid instance id {}".format(node_id)
+        return self.cached_nodes[node_id]
