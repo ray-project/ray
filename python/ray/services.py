@@ -1404,42 +1404,38 @@ def start_ray_processes(ray_params, cleanup=True):
     object_store_address = ray_params.address_info.get("object_store_address")
     raylet_socket_name = ray_params.address_info.get("raylet_socket_name")
 
-    # Start an object store if it does not yet exist.
-    if object_store_address is None:
-        # Start Plasma.
-        plasma_store_stdout_file, plasma_store_stderr_file = (
-            new_plasma_store_log_file(ray_params.redirect_output))
+    # Start the object store.
+    assert object_store_address is None
+    # Start Plasma.
+    plasma_store_stdout_file, plasma_store_stderr_file = (
+        new_plasma_store_log_file(ray_params.redirect_output))
 
-        ray_params.address_info["object_store_address"] = start_plasma_store(
-            ray_params.node_ip_address,
-            ray_params.redis_address,
-            store_stdout_file=plasma_store_stdout_file,
-            store_stderr_file=plasma_store_stderr_file,
-            object_store_memory=ray_params.object_store_memory,
-            cleanup=cleanup,
-            plasma_directory=ray_params.plasma_directory,
-            huge_pages=ray_params.huge_pages,
-            plasma_store_socket_name=ray_params.plasma_store_socket_name,
-            redis_password=ray_params.redis_password)
-        time.sleep(0.1)
-    else:
-        raise Exception("JUST CHECKING IF THIS CODE GETS HIT.")
+    ray_params.address_info["object_store_address"] = start_plasma_store(
+        ray_params.node_ip_address,
+        ray_params.redis_address,
+        store_stdout_file=plasma_store_stdout_file,
+        store_stderr_file=plasma_store_stderr_file,
+        object_store_memory=ray_params.object_store_memory,
+        cleanup=cleanup,
+        plasma_directory=ray_params.plasma_directory,
+        huge_pages=ray_params.huge_pages,
+        plasma_store_socket_name=ray_params.plasma_store_socket_name,
+        redis_password=ray_params.redis_password)
+    time.sleep(0.1)
 
-    # Start any raylets that do not exist yet.
-    if raylet_socket_name is None:
-        raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
-            redirect_output=ray_params.redirect_worker_output)
-        ray_params.address_info["raylet_socket_name"] = start_raylet(
-            ray_params,
-            ray_params.raylet_socket_name or get_raylet_socket_name(),
-            ray_params.address_info["object_store_address"],
-            num_initial_workers=num_initial_workers,
-            stdout_file=raylet_stdout_file,
-            stderr_file=raylet_stderr_file,
-            cleanup=cleanup,
-            config=config)
-    else:
-        raise Exception("JUST CHECKING IF THIS CODE GETS HIT.")
+    # Start the raylet.
+    assert raylet_socket_name is None
+    raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
+        redirect_output=ray_params.redirect_worker_output)
+    ray_params.address_info["raylet_socket_name"] = start_raylet(
+        ray_params,
+        ray_params.raylet_socket_name or get_raylet_socket_name(),
+        ray_params.address_info["object_store_address"],
+        num_initial_workers=num_initial_workers,
+        stdout_file=raylet_stdout_file,
+        stderr_file=raylet_stderr_file,
+        cleanup=cleanup,
+        config=config)
 
     # Try to start the web UI.
     if ray_params.include_webui:
