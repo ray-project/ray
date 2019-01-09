@@ -79,7 +79,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         plasma::PlasmaClient &store_client);
 
   ~ObjectManager();
 
@@ -380,6 +381,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Runs the receive service, which handle
   /// all incoming object transfers.
   std::vector<std::thread> receive_threads_;
+
+  /// Reference to Plasma Store.
+  plasma::PlasmaClient &store_client_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;

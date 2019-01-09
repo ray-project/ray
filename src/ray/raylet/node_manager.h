@@ -59,7 +59,8 @@ class NodeManager {
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              plasma::PlasmaClient &store_client);
 
   /// Process a new client connection.
   ///
@@ -400,7 +401,7 @@ class NodeManager {
   /// A Plasma object store client. This is used exclusively for creating new
   /// objects in the object store (e.g., for actor tasks that can't be run
   /// because the actor died).
-  plasma::PlasmaClient store_client_;
+  plasma::PlasmaClient &store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.

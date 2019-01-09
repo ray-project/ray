@@ -25,7 +25,7 @@ class MockServer {
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_), store_client_) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -77,6 +77,7 @@ class MockServer {
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  plasma::PlasmaClient store_client_;
   ObjectManager object_manager_;
 };
 

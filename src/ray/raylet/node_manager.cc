@@ -40,9 +40,11 @@ namespace raylet {
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         plasma::PlasmaClient &store_client)
     : io_service_(io_service),
       object_manager_(object_manager),
+      store_client_(store_client),
       gcs_client_(std::move(gcs_client)),
       object_directory_(std::move(object_directory)),
       heartbeat_timer_(io_service),
@@ -87,8 +89,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
-
-  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
 ray::Status NodeManager::RegisterGcs() {

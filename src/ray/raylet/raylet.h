@@ -73,6 +73,8 @@ class Raylet {
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  /// Reference to Plasma Store.
+  plasma::PlasmaClient store_client_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.

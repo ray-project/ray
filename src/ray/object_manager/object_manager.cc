@@ -10,13 +10,15 @@ namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                             plasma::PlasmaClient &store_client)
     : config_(config),
       object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       send_work_(send_service_),
       receive_work_(receive_service_),
+      store_client_(store_client),
       connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);

@@ -119,12 +119,16 @@ table FunctionTableData {
 table ObjectTableData {
   // The size of the object.
   object_size: long;
+  // Is object in-lined?
+  inline_object_flag: bool;
   // The node manager ID that this object appeared on or was evicted by.
   manager: string;
   // Whether this entry is an addition or a deletion.
   is_eviction: bool;
   // The number of times this object has been evicted from this node so far.
   num_evictions: int;
+  // In-line object data.
+  inline_object_data: string;
 }
 
 table TaskReconstructionData {

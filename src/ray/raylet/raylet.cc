@@ -19,9 +19,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-      object_manager_(main_service, object_manager_config, object_directory_),
+      object_manager_(main_service, object_manager_config, object_directory_, store_client_),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
-                    object_directory_),
+                    object_directory_, store_client_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
@@ -34,6 +34,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                boost::asio::ip::tcp::v4(),
                                                node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
+
+  ARROW_CHECK_OK(store_client_.Connect(node_manager_config.store_socket_name.c_str()));
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
