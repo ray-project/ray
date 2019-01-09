@@ -150,6 +150,11 @@ class AWSNodeProvider(NodeProvider):
         node = self._node(node_id)
         node.terminate()
 
+    def terminate_nodes(self, node_ids):
+        self.ec2.meta.client.terminate_instances(
+            InstanceIds=node_ids
+        )
+
     def _node(self, node_id):
         if node_id not in self.cached_nodes:
             self.nodes({})  # Side effect: should cache it.
