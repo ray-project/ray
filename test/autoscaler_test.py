@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from flaky import flaky
 import shutil
 import tempfile
 import threading
@@ -674,6 +675,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert len(self.provider.nodes({})) == 0
 
+    @flaky(max_runs=4)
     def testRecoverUnhealthyWorkers(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
