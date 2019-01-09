@@ -12,6 +12,7 @@ import sys
 import click
 import logging
 import random
+import threading
 
 import yaml
 try:  # py3
@@ -81,18 +82,46 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
 
-    if not workers_only:
-        for node in provider.nodes({TAG_RAY_NODE_TYPE: "head"}):
-            logger.info("Terminating head node {}".format(node))
-            provider.terminate_node(node)
+    def remaining_nodes():
+        if workers_only:
+            A = []
+        else:
+            A = [
+                ("head", node_id)
+                for node_id in provider.nodes({TAG_RAY_NODE_TYPE: "head"})
+            ]
 
-    nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
-    while nodes:
-        for node in nodes:
-            logger.info("Terminating worker {}".format(node))
-            provider.terminate_node(node)
+        A += [
+            ("worker", node_id)
+            for node_id in provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+        ]
+
+        return A
+
+    def terminate_node(variant, node_id):
+        logger.info("Terminating {} node {}".format(variant, node_id))
+        provider.terminate_node(node_id)
+
+    # Loop here to check that both the head and worker nodes are actually
+    #   really gone
+    A = remaining_nodes()
+    while A:
+        T = [
+            threading.Thread(
+                target=terminate_node,
+                args=(variant, node_id)
+            )
+            for variant, node_id in A
+        ]
+
+        for t in T:
+            t.start()
+
+        for t in T:
+            t.join()
+
         time.sleep(5)
-        nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+        A = remaining_nodes()
 
 
 def kill_node(config_file, yes, override_cluster_name):
