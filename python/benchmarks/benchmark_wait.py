@@ -19,7 +19,7 @@ def sleep(x):
 
 
 class WaitSuite(object):
-    timeout = 10
+    timeout = 0.01
     timer = time.time
 
     def time_wait_task(self):
@@ -35,5 +35,5 @@ class WaitSuite(object):
     def time_wait_timeout(self, timeout):
         ray.wait([sleep.remote(0.5)], timeout=timeout)
 
-    time_wait_timeout.params = [200, 800]
-    time_wait_timeout.param_names = ["timeout_ms"]
+    time_wait_timeout.params = [0.2, 0.8]
+    time_wait_timeout.param_names = ["timeout"]
