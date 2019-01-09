@@ -337,7 +337,7 @@ def test_actor_worker_dying(ray_start_regular):
         pass
 
     a = Actor.remote()
-    [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
+    [obj], _ = ray.wait([a.kill.remote()], timeout=5.0)
     with pytest.raises(Exception):
         ray.get(obj)
     with pytest.raises(Exception):

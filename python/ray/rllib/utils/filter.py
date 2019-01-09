@@ -20,7 +20,8 @@ class Filter(object):
         """Creates a new object with same state as self.
 
         Returns:
-            copy (Filter): Copy of self"""
+            A copy of self.
+        """
         raise NotImplementedError
 
     def sync(self, other):
