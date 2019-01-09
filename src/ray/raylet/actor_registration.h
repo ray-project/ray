@@ -89,7 +89,9 @@ class ActorRegistration {
   const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
-  const std::vector<ObjectID> &GetDummyObjects() const { return dummy_objects_; }
+  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
+    return dummy_objects_;
+  }
 
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
@@ -97,8 +99,20 @@ class ActorRegistration {
   /// \param handle_id The ID of the handle that submitted the task.
   /// \param execution_dependency The object representing the actor's new
   /// state. This is the execution dependency returned by the task.
-  void ExtendFrontier(const ActorHandleID &handle_id,
-                      const ObjectID &execution_dependency);
+  /// \return The dummy object that can be released as a result of the executed
+  /// task. If no dummy object can be released, then this is nil.
+  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
+                          const ObjectID &execution_dependency);
+
+  /// Add a new handle to the actor frontier. This does nothing if the actor
+  /// handle already exists.
+  ///
+  /// \param handle_id The ID of the handle to add.
+  /// \param execution_dependency This is the expected execution dependency for
+  /// the first task submitted on the new handle. If the new handle hasn't been
+  /// seen yet, then this dependency will be added to the actor frontier and is
+  /// not safe to release until the first task has been submitted.
+  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
@@ -117,9 +131,24 @@ class ActorRegistration {
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
   std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
-
-  /// All of the dummy object IDs from this actor's tasks.
-  std::vector<ObjectID> dummy_objects_;
+  /// This map is used to track all the unreleased dummy objects for this
+  /// actor.  The map key is the dummy object ID, and the map value is the
+  /// number of actor handles that depend on that dummy object. When the map
+  /// value decreases to 0, the dummy object is safe to release from the object
+  /// manager, since this means that no actor handle will depend on that dummy
+  /// object again.
+  ///
+  /// An actor handle depends on a dummy object when its next unfinished task
+  /// depends on the dummy object. For a given dummy object (say D) created by
+  /// task (say T) that was submitted by an actor handle (say H), there could
+  /// be 2 types of such actor handles:
+  /// 1. T is the last task submitted by H that was executed. If the next task
+  /// submitted by H hasn't finished yet, then H still depends on D since D
+  /// will be in the next task's execution dependencies.
+  /// 2. Any handles that were forked from H after T finished, and before T's
+  /// next task finishes. Such handles depend on D until their first tasks
+  /// finish since D will be their first tasks' execution dependencies.
+  std::unordered_map<ObjectID, int64_t> dummy_objects_;
 };
 
 }  // namespace raylet

@@ -191,6 +191,12 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
+    // Serialize the new actor handles.
+    int[] newActorHandlesOffsets = new int[task.newActorHandles.length];
+    for (int i = 0; i < newActorHandlesOffsets.length; i++) {
+      newActorHandlesOffsets[i] = fbb.createString(task.newActorHandles[i].toByteBuffer());
+    }
+    int newActorHandlesOffset = fbb.createVectorOfTables(newActorHandlesOffsets);
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
@@ -252,6 +258,7 @@ public class RayletClientImpl implements RayletClient {
         actorHandleIdOffset,
         actorCounter,
         false,
+        newActorHandlesOffset,
         argsOffset,
         returnsOffset,
         requiredResourcesOffset,

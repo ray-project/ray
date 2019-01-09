@@ -524,6 +524,7 @@ class Worker(object):
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
                     execution_dependencies=None,
+                    new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
@@ -594,6 +595,9 @@ class Worker(object):
             if execution_dependencies is None:
                 execution_dependencies = []
 
+            if new_actor_handles is None:
+                new_actor_handles = []
+
             if driver_id is None:
                 driver_id = self.task_driver_id
 
@@ -628,8 +632,8 @@ class Worker(object):
                 num_return_vals, self.current_task_id, task_index,
                 actor_creation_id, actor_creation_dummy_object_id,
                 max_actor_reconstructions, actor_id, actor_handle_id,
-                actor_counter, execution_dependencies, resources,
-                placement_resources)
+                actor_counter, new_actor_handles, execution_dependencies,
+                resources, placement_resources)
             self.raylet_client.submit_task(task)
 
             return task.returns()
@@ -1944,7 +1948,7 @@ def connect(ray_params,
             worker.current_task_id, worker.task_index,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID), 0,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            nil_actor_counter, [], {"CPU": 0}, {})
+            nil_actor_counter, [], [], {"CPU": 0}, {})
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
