@@ -380,33 +380,35 @@ class StandardAutoscaler(object):
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
-        num_terminated = 0
+
+        nodes_to_terminate = []
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - num_terminated > target_workers:
-                num_terminated += 1
+                    len(nodes) - len(nodes_to_terminate) > target_workers:
                 logger.info("StandardAutoscaler: Terminating idle node: "
                             "{}".format(node_id))
-                self.provider.terminate_node(node_id)
+                nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
-                num_terminated += 1
                 logger.info("StandardAutoscaler: Terminating outdated node: "
                             "{}".format(node_id))
-                self.provider.terminate_node(node_id)
-        if num_terminated > 0:
+                nodes_to_terminate.append(node_id)
+
+        if nodes_to_terminate:
+            self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
             logger.info(self.info_string(nodes))
 
         # Terminate nodes if there are too many
-        num_terminated = 0
+        nodes_to_terminate = []
         while len(nodes) > self.config["max_workers"]:
-            num_terminated += 1
             logger.info("StandardAutoscaler: Terminating unneeded node: "
                         "{}".format(nodes[-1]))
-            self.provider.terminate_node(nodes[-1])
+            nodes_to_terminate.append(nodes[-1])
             nodes = nodes[:-1]
-        if num_terminated > 0:
+
+        if nodes_to_terminate:
+            self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
             logger.info(self.info_string(nodes))
 
