@@ -13,7 +13,7 @@ set(GCS_FBS_OUTPUT_FILES
 
 add_custom_command(
   OUTPUT ${GCS_FBS_OUTPUT_FILES}
-  # The --gen-object-api flag generates a C++ class MessageT for each
+  # The --gen-object-api flag generates a C++ cscrilass MessageT for each
   # flatbuffers message Message, which can be used to store deserialized
   # messages in data structures. This is currently used for ObjectInfo for
   # example.
@@ -35,11 +35,20 @@ add_custom_command(
   VERBATIM)
 
 # Generate Java bindings for the flatbuffers objects.
+# This command will modify the auto-generated Java flatbuffer files for 2 reasons:
+#
+# 1) We have 2D array fields in Table TaskInfo and Arg in `gcs.fbs`, and we
+#    have no better approach to get the element from 2D array field in flatbuffer.
+#    See https://github.com/google/flatbuffers/issues/5092 for more details.
+#
+# 2) The package declaration in Java is different from python and C++, and there is
+#    no approach to specify package(namepsace) for Java specially.
+
 set(JAVA_OUTPUT_DIR ${RAY_HOME}/java/runtime/src/main/java/org/ray/runtime/generated/)
 add_custom_command(
   TARGET gen_gcs_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -j -o ${JAVA_OUTPUT_DIR} ${GCS_FBS_SRC}
-  COMMAND python ${RAY_HOME}/java/modify_generated_java_flatbuffers_files.py ${RAY_HOME}
+  COMMAND ${PYTHON_EXECUTABLE} ${RAY_HOME}/java/modify_generated_java_flatbuffers_files.py ${RAY_HOME}
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for Java"
   VERBATIM)

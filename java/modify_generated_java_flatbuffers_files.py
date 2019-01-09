@@ -1,6 +1,19 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import re
 import sys
+
+"""
+This script is used for modifying the generated java flatbuffer files.
+
+USAGE:
+    python modify_generated_java_flatbuffers_file.py RAY_HOME
+
+RAY_HOME: The root directory of Ray project.
+"""
 
 
 def add_new_line(file, line_num, text):
@@ -20,10 +33,10 @@ def add_new_line(file, line_num, text):
 def add_package_declarations(generated_root_path):
     file_names = os.listdir(generated_root_path)
     for file_name in file_names:
-        if not file_name.endswith('.java'):
+        if not file_name.endswith(".java"):
             continue
-        full_name = generated_root_path + '/' + file_name
-        add_new_line(full_name, 2, 'package org.ray.runtime.generated;')
+        full_name = generated_root_path + "/" + file_name
+        add_new_line(full_name, 2, "package org.ray.runtime.generated;")
 
 
 def get_offset(file, field):
@@ -31,7 +44,7 @@ def get_offset(file, field):
         lines = file_handler.readlines()
 
         for line in lines:
-            re_str = '.*%s\(int j\) \{ int o = __offset\((.*)\);.*' % field
+            re_str = ".*%s\(int j\) \{ int o = __offset\((.*)\);.*" % field
             results = re.findall(re_str, line)
             if len(results) == 0:
                 continue
@@ -43,7 +56,7 @@ def get_offset(file, field):
         return -1
 
 
-template_for_byte_buffer_getter = '''
+template_for_byte_buffer_getter = """
   public ByteBuffer %s(int j) {
     int o = __offset(%d);
     if (o == 0) {
@@ -58,42 +71,43 @@ template_for_byte_buffer_getter = '''
     src.limit(offset + 4 + length);
     return src;
   }
-'''
+"""
 
 
 def generate_and_insert_method(file, field, method_name):
     index_to_be_inserted = -1
-    with open(file, 'r') as file_handler:
+    with open(file, "r") as file_handler:
         lines = file_handler.readlines()
 
         for index in range(len(lines) - 1, -1, -1):
-            if lines[index] == '}\n':
+            if lines[index] == "}\n":
                 index_to_be_inserted = index
 
     if index_to_be_inserted >= 0:
         offset = get_offset(file, field)
         if offset == -1:
-            raise RuntimeError('Failed to get offset: field is %s' % field)
+            raise RuntimeError("Failed to get offset: field is %s" % field)
         text = template_for_byte_buffer_getter % (method_name, offset)
         add_new_line(file, index_to_be_inserted + 1, text)
 
 
 def modify_generated_java_flatbuffers_files(ray_home, tuples):
-    root_path = '%s/java/runtime/src/main/java/org/ray/runtime/generated' % ray_home
+    root_path = os.path.join(ray_home,
+                             "java/runtime/src/main/java/org/ray/runtime/generated")
     add_package_declarations(root_path)
 
     for tuple in tuples:
-        file_name = '%s/%s.java' % (root_path, tuple[0])
+        file_name = os.path.join(root_path, "%s.java" % tuple[0])
         generate_and_insert_method(file_name,
                                    tuple[1],
                                    tuple[2])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     tuples = [
-        ('TaskInfo', 'returns', 'returnsAsByteBuffer'),
-        ('Arg', 'objectIds', 'objectIdsAsByteBuffer'),
+        ("TaskInfo", "returns", "returnsAsByteBuffer"),
+        ("Arg", "objectIds", "objectIdsAsByteBuffer"),
     ]
 
     modify_generated_java_flatbuffers_files(sys.argv[1], tuples)
