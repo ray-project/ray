@@ -55,7 +55,7 @@ class TrialExecutor(object):
             logger.debug("Saving trial metadata.")
             self._cached_trial_state[trial.trial_id] = trial.__getstate__()
         except Exception:
-            logger.exception("Error checkpointing trial metadata.")
+            logger.error("Error checkpointing trial metadata.")
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""

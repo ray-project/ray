@@ -154,8 +154,8 @@ class _LogSyncer(object):
                 local_to_remote_sync_cmd = None
                 try:
                     self.sync_func(self.local_dir, self.remote_dir)
-                except Exception:
-                    logger.exception("Sync function failed.")
+                except Exception as e:
+                    logger.error("Sync function failed: {}".format(e))
             else:
                 local_to_remote_sync_cmd = self.get_remote_sync_cmd()
         else:

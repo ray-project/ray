@@ -100,7 +100,7 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
-                logger.exception("Could not instantiate {} - skipping.".format(
+                logger.error("Could not instantiate {} - skipping.".format(
                     str(cls)))
         self._log_syncer = get_syncer(
             self.logdir, self.uri, sync_function=self._sync_function)

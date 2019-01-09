@@ -223,8 +223,8 @@ class TrialRunner(object):
 
         try:
             self.checkpoint()
-        except Exception:
-            logger.exception("Trial Runner checkpointing failed.")
+        except Exception as e:
+            logger.info("Trial Runner checkpointing failed: {}".format(e))
         self._iteration += 1
 
         if self._server:
