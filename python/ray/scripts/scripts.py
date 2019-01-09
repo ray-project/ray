@@ -9,9 +9,9 @@ import os
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import (attach_cluster, exec_cluster,
-                                     create_or_update_cluster, rsync,
-                                     teardown_cluster, get_head_node_ip)
+from ray.autoscaler.commands import (
+    attach_cluster, exec_cluster, create_or_update_cluster, rsync,
+    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -274,8 +274,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
+        logger.info("Using IP address {} for this node.".format(
+            ray_params.node_ip_address))
         ray_params.update_if_absent(
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -342,8 +342,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
+        logger.info("Using IP address {} for this node.".format(
+            ray_params.node_ip_address))
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
@@ -484,6 +484,25 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name):
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Don't ask for confirmation.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def kill(cluster_config_file, yes, cluster_name):
+    click.echo("Killed node with IP " +
+               kill_node(cluster_config_file, yes, cluster_name))
 
 
 @cli.command()
@@ -665,6 +684,19 @@ def get_head_ip(cluster_config_file, cluster_name):
 
 
 @cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def get_worker_ips(cluster_config_file, cluster_name):
+    click.echo('\n'.join(
+        get_worker_node_ips(cluster_config_file, cluster_name)))
+
+
+@cli.command()
 def stack():
     COMMAND = """
 pyspy=`which py-spy`
@@ -700,7 +732,9 @@ cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
+cli.add_command(kill, name="kill_node")
 cli.add_command(get_head_ip, name="get_head_ip")
+cli.add_command(get_worker_ips)
 cli.add_command(stack)
 
 

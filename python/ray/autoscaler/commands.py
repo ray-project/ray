@@ -11,6 +11,7 @@ import time
 import sys
 import click
 import logging
+import random
 
 import yaml
 try:  # py3
@@ -92,6 +93,33 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
             provider.terminate_node(node)
         time.sleep(5)
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+
+
+def kill_node(config_file, yes, override_cluster_name):
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+
+    confirm("This will kill a node in your cluster", yes)
+
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+    node = nodes[random.randint(0, len(nodes))]
+    logger.info("Terminating worker {}".format(node))
+    updater = NodeUpdaterProcess(
+        node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"], [],
+        "",
+        redirect_output=False)
+
+    _exec(updater, "ray stop", False, False)
+
+    time.sleep(5)
+    return provider.external_ip(node)
 
 
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
@@ -341,6 +369,15 @@ def get_head_node_ip(config_file, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_head_node(config, config_file, override_cluster_name)
     return provider.external_ip(head_node)
+
+
+def get_worker_node_ips(config_file, override_cluster_name):
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+    return [provider.external_ip(node) for node in nodes]
 
 
 def _get_head_node(config,
