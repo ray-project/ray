@@ -31,6 +31,8 @@ except ImportError:
 def load_trial_info(trial_info):
     trial_info["config"] = cloudpickle.loads(
         hex_to_binary(trial_info["config"]))
+    trial_info["result"] = cloudpickle.loads(
+        hex_to_binary(trial_info["result"]))
 
 
 class TuneClient(object):
@@ -112,7 +114,7 @@ def RunnerHandler(runner):
                 "trainable_name": trial.trainable_name,
                 "config": binary_to_hex(cloudpickle.dumps(trial.config)),
                 "status": trial.status,
-                "result": result
+                "result": binary_to_hex(cloudpickle.dumps(result))
             }
             return info_dict
 
