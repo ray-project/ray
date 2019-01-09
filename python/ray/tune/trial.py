@@ -196,8 +196,8 @@ class Trial(object):
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
-        self.location = None
         self.logdir = None
+        self.runner = None
         self.result_logger = None
         self.last_debug = 0
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -240,6 +240,14 @@ class Trial(object):
                 upload_uri=self.upload_dir,
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
+
+    def update_logger_location(self, worker_ip):
+        """Updates the logger location.
+
+        Also pushes logdir to worker_ip, allowing for cross-node recovery.
+        """
+        if self.result_logger:
+            self.result_logger.update_location(worker_ip)
 
     def close_logger(self):
         """Close logger."""

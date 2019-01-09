@@ -327,9 +327,11 @@ class RayTrialExecutor(TrialExecutor):
                 assert type(value) != Checkpoint, type(value)
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
+                current_runner_ip = ray.get(trial.runner.current_ip.remote())
+                trial.update_location(current_runner_ip)
                 ray.get(trial.runner.restore.remote(value))
-            trial.last_result = checkpoint.last_result
 
+            trial.last_result = checkpoint.last_result
             return True
         except Exception:
             logger.exception("Error restoring runner.")

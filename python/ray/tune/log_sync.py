@@ -6,6 +6,7 @@ import distutils.spawn
 import logging
 import os
 import subprocess
+import tempfile
 import time
 import types
 
@@ -97,6 +98,8 @@ class _LogSyncer(object):
     def __init__(self, local_dir, remote_dir=None, sync_function=None):
         self.local_dir = local_dir
         self.remote_dir = remote_dir
+        self.logfile = tempfile.NamedTemporaryFile(
+            prefix="log_sync", dir=self.local_dir, suffix=".log", delete=False)
 
         # Resolve sync_function into template or function
         self.sync_func = None
@@ -115,12 +118,33 @@ class _LogSyncer(object):
 
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
-
         self.worker_ip = worker_ip
 
     def sync_if_needed(self):
         if time.time() - self.last_sync_time > 300:
             self.sync_now()
+
+    def sync_to_worker_if_needed(self):
+        if self.worker_ip == self.local_ip:
+            return
+        ssh_key = get_ssh_key()
+        ssh_user = get_ssh_user()
+        if ssh_key is None or ssh_user is None:
+            logger.error("Log sync requires cluster to be setup with "
+                         "`ray create_or_update`.")
+            return
+        if not distutils.spawn.find_executable("rsync"):
+            logger.error("Log sync requires rsync to be installed.")
+            return
+        source = '{}/'.format(self.local_dir)
+        target = '{}@{}:{}/'.format(ssh_user, self.worker_ip,
+                                    self.local_dir)
+        final_cmd = ((
+            """rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
+            """-o StrictHostKeyChecking=no" {} {}""").format(
+                quote(ssh_key), quote(source), quote(target)))
+        sync_process = subprocess.Popen(final_cmd, shell=True, stdout=self.logfile)
+        sync_process.wait()
 
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
@@ -179,7 +203,7 @@ class _LogSyncer(object):
                     final_cmd += " && "
                 final_cmd += local_to_remote_sync_cmd
             logger.debug("Running log sync: {}".format(final_cmd))
-            self.sync_process = subprocess.Popen(final_cmd, shell=True)
+            self.sync_process = subprocess.Popen(final_cmd, shell=True, stdout=self.logfile)
 
     def wait(self):
         if self.sync_process:
