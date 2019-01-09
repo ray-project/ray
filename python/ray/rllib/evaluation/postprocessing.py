@@ -20,9 +20,9 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True,
         last_r (float): Value estimation for last observation
         gamma (float): Discount factor.
         lambda_ (float): Parameter for GAE
-        use_gae (bool): Using Generalized Advantage Estamation
-        use_centralized_vf (bool): whether we should compute the advantages from a
-            centralized value function
+        use_gae (bool): Using Generalized Advantage Estimation
+        use_centralized_vf (bool): whether we should compute the
+            advantages using a centralized value function
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and
@@ -42,12 +42,15 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True,
 
         if use_centralized_vf:
             assert "central_vf_preds" in rollout, "Central values not found!"
-            central_vpred_t = np.concatenate([rollout["vf_preds"], np.array([last_r])])
-            central_delta_t = traj["rewards"] + gamma * central_vpred_t[1:] - central_vpred_t[:-1]
+            central_vpred_t = np.concatenate([rollout["vf_preds"],
+                                              np.array([last_r])])
+            central_delta_t = traj["rewards"] + gamma * central_vpred_t[1:] \
+                - central_vpred_t[:-1]
             central_advantages = discount(central_delta_t, gamma * lambda_)
             traj["advantages"] = central_advantages
             traj["central_value_targets"] = (
-                    central_advantages + traj["central_vf_preds"]).copy().astype(np.float32)
+                    central_advantages +
+                    traj["central_vf_preds"]).copy().astype(np.float32)
         else:
             traj["advantages"] = advantages
         # This formula for the advantage comes

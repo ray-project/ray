@@ -266,7 +266,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 if self.config["use_centralized_vf"]:
                     with tf.variable_scope("central_value_function"):
                         # TODO(ev) do we need to remove observation space
-                        # FIXME(ev) prev_actions_ph and prev_rewards must be extended
+                        # FIXME(ev) prev_actions_ph and prev_rewards
+                        # must be extended
                         self.central_value_function = ModelCatalog.get_model({
                             "obs": central_obs_ph,
                             "prev_actions": prev_actions_ph,
@@ -398,12 +399,14 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                           other_agent_times.items()
                           if self.time_overlap(time_span, other_agent_time)}
             if len(rel_agents) > 0:
-                other_obs = {agent_id: other_agent_batches[agent_id][1]["obs"].copy()
+                other_obs = {agent_id:
+                             other_agent_batches[agent_id][1]["obs"].copy()
                              for agent_id in rel_agents.keys()}
                 padded_agent_obs = {agent_id:
-                                    self.overlap_and_pad_agent(time_span,
-                                                               rel_agent_time,
-                                                               other_obs[agent_id])
+                                    self.overlap_and_pad_agent(
+                                        time_span,
+                                        rel_agent_time,
+                                        other_obs[agent_id])
                                     for agent_id,
                                     rel_agent_time in rel_agents.items()}
                 central_obs_batch = np.hstack(
