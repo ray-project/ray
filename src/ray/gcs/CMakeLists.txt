@@ -35,15 +35,6 @@ add_custom_command(
   VERBATIM)
 
 # Generate Java bindings for the flatbuffers objects.
-# This command will modify the auto-generated Java flatbuffer files for 2 reasons:
-#
-# 1) We have 2D array fields in Table TaskInfo and Arg in `gcs.fbs`, and we
-#    have no better approach to get the element from 2D array field in flatbuffer.
-#    See https://github.com/google/flatbuffers/issues/5092 for more details.
-#
-# 2) The package declaration in Java is different from python and C++, and there is
-#    no approach to specify package(namepsace) for Java specially.
-
 set(JAVA_OUTPUT_DIR ${RAY_HOME}/java/runtime/src/main/java/org/ray/runtime/generated/)
 add_custom_command(
   TARGET gen_gcs_fbs
