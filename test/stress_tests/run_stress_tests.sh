@@ -4,11 +4,12 @@
 set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-
+RESULT_FILE=$ROOT_DIR/results-$(date '+%Y-%m-%d_%H-%M-%S').log
+echo "Logging to" $RESULT_FILE
+touch $RESULT_FILE
 
 run_test(){
     local test_name=$1
-    local RESULT_FILE=$2
 
     local CLUSTER="stress_testing_config.yaml"
     echo "Try running $test_name."
@@ -28,14 +29,10 @@ run_test(){
 }
 
 pushd "$ROOT_DIR"
-    RESULT_FILE="results-$(date '+%Y-%m-%d_%H-%M-%S').log"
-    echo "Logging to" $RESULT_FILE
-    touch $RESULT_FILE
-
-    run_test test_many_tasks_and_transfers $RESULT_FILE &
-    run_test test_dead_actors $RESULT_FILE &
-
+    run_test test_many_tasks_and_transfers &
+    run_test test_dead_actors &
     wait
-    cat $RESULT_FILE
 popd
+
+cat $RESULT_FILE
 
