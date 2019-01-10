@@ -16,7 +16,8 @@ namespace {
 void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids,
-                           bool *inline_object_flag, std::vector<uint8_t> *inline_object_data,
+                           bool *inline_object_flag,
+                           std::vector<uint8_t> *inline_object_data,
                            bool *has_been_created) {
   // location_history contains the history of locations of the object (it is a log),
   // which might look like the following:
@@ -38,9 +39,11 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
       client_ids->erase(client_id);
     }
     if (object_table_data.inline_object_flag) {
+      // This is an inlined object. Read object's data from the object's GCS entry.
       *inline_object_flag = object_table_data.inline_object_flag;
       inline_object_data->assign(object_table_data.inline_object_data.begin(),
                                  object_table_data.inline_object_data.end());
+      // XXX: Ion: after we filter out the updates, we should just return here.
     }
   }
   // Filter out the removed clients from the object locations.
@@ -103,6 +106,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->object_size = object_info.data_size;
   data->inline_object_flag = inline_object_flag;
   if (inline_object_flag) {
+    // inline onject. Add object's data to its GCS entry.
     data->inline_object_data.assign(inline_object_data.begin(), inline_object_data.end());
   }
   ray::Status status =
@@ -237,9 +241,9 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                          const std::vector<ObjectTableDataT> &location_history) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          bool has_been_created = false;
           bool inline_object_flag = false;
           std::vector<uint8_t> inline_object_data;
+          bool has_been_created = false;
           UpdateObjectLocations(location_history, gcs_client_->client_table(),
                                 &client_ids, &inline_object_flag, &inline_object_data,
                                 &has_been_created);

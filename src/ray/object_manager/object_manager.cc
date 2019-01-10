@@ -72,11 +72,12 @@ void ObjectManager::HandleObjectAdded(
   bool inline_object_flag = false;
 
   if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
-    // Inline object, i.e., store it in the GCS entry.
+    // Inline object. Store the object's data in the object's GCS entry.
     std::vector<plasma::ObjectBuffer> object_buffers;
     ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
-    inline_object_data.assign(object_buffers[0].data->data(), object_buffers[0].data->data() + object_info.data_size);
+    inline_object_data.assign(object_buffers[0].data->data(),
+                              object_buffers[0].data->data() + object_info.data_size);
   }
 
   ray::Status status =
@@ -143,9 +144,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
              bool inline_object_flag, const std::vector<uint8_t> &inline_object_data,
              bool created) {
         if (inline_object_flag) {
+          // This is an inlined object. Store it in the Plasma store and return.
           ARROW_CHECK_OK(store_client_.CreateAndSeal(object_id.to_plasma_id(),
-                         std::string(inline_object_data.begin(), inline_object_data.end()),
-                         "")); /// XXX
+                         std::string(inline_object_data.begin(),
+                         inline_object_data.end()), "")); /// XXX Ion: need to add metadata.
           return;
         }
         // Exit if the Pull request has already been fulfilled or canceled.
