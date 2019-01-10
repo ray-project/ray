@@ -486,7 +486,7 @@ class Worker(object):
                     ray.ObjectID(unready_id)
                     for unready_id in unready_ids.keys()
                 ]
-                fetch_request_size = (ray._config.worker_fetch_request_size())
+                fetch_request_size = ray._config.worker_fetch_request_size()
                 for i in range(0, len(object_ids_to_fetch),
                                fetch_request_size):
                     self.raylet_client.fetch_or_reconstruct(
@@ -498,8 +498,9 @@ class Worker(object):
                     object_ids_to_fetch,
                     max([
                         ray._config.get_timeout_milliseconds(),
-                        int(0.01 * len(unready_ids))
-                    ]))
+                        int(0.01 * len(unready_ids)),
+                    ]),
+                )
                 # Remove any entries for objects we received during this
                 # iteration so we don't retrieve the same object twice.
                 for i, val in enumerate(results):

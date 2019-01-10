@@ -590,7 +590,8 @@ class ActorHandle(object):
                 num_return_vals=num_return_vals + 1,
                 resources={"CPU": self._ray_actor_method_cpus},
                 placement_resources={},
-                driver_id=self._ray_actor_driver_id)
+                driver_id=self._ray_actor_driver_id,
+            )
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
