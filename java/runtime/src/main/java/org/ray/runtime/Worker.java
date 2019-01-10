@@ -43,8 +43,7 @@ public class Worker {
       RayFunction rayFunction = runtime.getFunctionManager()
           .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
-      runtime.getWorkerContext().setCurrentTask(spec);
-      runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
+      runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
       Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
@@ -67,6 +66,7 @@ public class Worker {
       LOGGER.error("Error executing task " + spec, e);
       runtime.put(returnId, new RayException("Error executing task " + spec, e));
     } finally {
+      runtime.getWorkerContext().setCurrentTask(null, null);
       Thread.currentThread().setContextClassLoader(oldLoader);
     }
   }
