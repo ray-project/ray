@@ -3,7 +3,10 @@
 #ifndef _WIN32
 #include <execinfo.h>
 #endif
+
+#include <signal.h>
 #include <stdlib.h>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
@@ -64,6 +67,7 @@ typedef ray::CerrLog LoggingProvider;
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
+std::string RayLog::log_dir_ = "";
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -92,16 +96,36 @@ static int GetMappedSeverity(RayLogLevel severity) {
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
+  const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
+  if (var_value != nullptr) {
+    std::string data = var_value;
+    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
+    if (data == "debug") {
+      severity_threshold = RayLogLevel::DEBUG;
+    } else if (data == "info") {
+      severity_threshold = RayLogLevel::INFO;
+    } else if (data == "warning") {
+      severity_threshold = RayLogLevel::WARNING;
+    } else if (data == "error") {
+      severity_threshold = RayLogLevel::ERROR;
+    } else if (data == "fatal") {
+      severity_threshold = RayLogLevel::FATAL;
+    } else {
+      RAY_LOG(WARNING) << "Unrecognized setting of RAY_BACKEND_LOG_LEVEL=" << var_value;
+    }
+    RAY_LOG(INFO) << "Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL"
+                  << " to " << static_cast<int>(severity_threshold);
+  }
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
+  log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::InitGoogleLogging(app_name_.c_str());
   google::SetStderrLogging(mapped_severity_threshold);
-  // Enble log file if log_dir is not empty.
-  if (!log_dir.empty()) {
-    auto dir_ends_with_slash = log_dir;
-    if (log_dir[log_dir.length() - 1] != '/') {
+  // Enable log file if log_dir_ is not empty.
+  if (!log_dir_.empty()) {
+    auto dir_ends_with_slash = log_dir_;
+    if (log_dir_[log_dir_.length() - 1] != '/') {
       dir_ends_with_slash += "/";
     }
     auto app_name_without_path = app_name;
@@ -114,15 +138,39 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_name.substr(pos + 1);
       }
     }
+    google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    google::SetLogDestination(mapped_severity_threshold, log_dir.c_str());
+    for (int i = static_cast<int>(severity_threshold_);
+         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+      int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
+      google::SetLogDestination(level, dir_ends_with_slash.c_str());
+    }
+  }
+#endif
+}
+
+void RayLog::UninstallSignalAction() {
+#ifdef RAY_USE_GLOG
+  RAY_LOG(DEBUG) << "Uninstall signal handlers.";
+  // This signal list comes from glog's signalhandler.cc.
+  // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
+  static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+  struct sigaction sig_action;
+  memset(&sig_action, 0, sizeof(sig_action));
+  sigemptyset(&sig_action.sa_mask);
+  sig_action.sa_handler = SIG_DFL;
+  for (int signal_num : installed_signals) {
+    sigaction(signal_num, &sig_action, NULL);
   }
 #endif
 }
 
 void RayLog::ShutDownRayLog() {
 #ifdef RAY_USE_GLOG
-  google::ShutdownGoogleLogging();
+  UninstallSignalAction();
+  if (!log_dir_.empty()) {
+    google::ShutdownGoogleLogging();
+  }
 #endif
 }
 

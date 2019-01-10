@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 from types import FunctionType
 
 import ray
@@ -17,6 +18,8 @@ KNOWN_CATEGORIES = [
     TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR
 ]
 
+logger = logging.getLogger(__name__)
+
 
 def register_trainable(name, trainable):
     """Register a trainable function or class.
@@ -30,8 +33,16 @@ def register_trainable(name, trainable):
 
     from ray.tune.trainable import Trainable, wrap_function
 
-    if isinstance(trainable, FunctionType):
+    if isinstance(trainable, type):
+        logger.debug("Detected class for trainable.")
+    elif isinstance(trainable, FunctionType):
+        logger.debug("Detected function for trainable.")
         trainable = wrap_function(trainable)
+    elif callable(trainable):
+        logger.warning(
+            "Detected unknown callable for trainable. Converting to class.")
+        trainable = wrap_function(trainable)
+
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable",
                         trainable)

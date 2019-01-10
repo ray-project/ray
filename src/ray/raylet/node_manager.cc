@@ -11,31 +11,24 @@ namespace {
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
-/// A helper function to determine whether a given actor task has already been executed
-/// according to the given actor registry. Returns true if the task is a duplicate.
-bool CheckDuplicateActorTask(
+/// A helper function to return the expected actor counter for a given actor
+/// and actor handle, according to the given actor registry. If a task's
+/// counter is less than the returned value, then the task is a duplicate. If
+/// the task's counter is equal to the returned value, then the task should be
+/// the next to run.
+int64_t GetExpectedTaskCounter(
     const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
         &actor_registry,
-    const ray::raylet::TaskSpecification &spec) {
-  auto actor_entry = actor_registry.find(spec.ActorId());
+    const ray::ActorID &actor_id, const ray::ActorHandleID &actor_handle_id) {
+  auto actor_entry = actor_registry.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry.end());
   const auto &frontier = actor_entry->second.GetFrontier();
   int64_t expected_task_counter = 0;
-  auto frontier_entry = frontier.find(spec.ActorHandleId());
+  auto frontier_entry = frontier.find(actor_handle_id);
   if (frontier_entry != frontier.end()) {
     expected_task_counter = frontier_entry->second.task_counter;
   }
-  if (spec.ActorCounter() < expected_task_counter) {
-    // The assigned task counter is less than expected. The actor has already
-    // executed past this task, so do not assign the task again.
-    RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
-                     << "should only happen during reconstruction.";
-    return true;
-  }
-  RAY_CHECK(spec.ActorCounter() == expected_task_counter)
-      << "Expected actor counter: " << expected_task_counter
-      << ", got: " << spec.ActorCounter();
-  return false;
+  return expected_task_counter;
 };
 
 }  // namespace
@@ -405,7 +398,14 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   cluster_resource_map_.erase(client_id);
 
   // Remove the remote server connection.
-  remote_server_connections_.erase(client_id);
+  const auto connection_entry = remote_server_connections_.find(client_id);
+  if (connection_entry != remote_server_connections_.end()) {
+    connection_entry->second->Close();
+    remote_server_connections_.erase(connection_entry);
+  } else {
+    RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
+                     << client_id << ".";
+  }
 
   // For any live actors that were on the dead node, broadcast a notification
   // about the actor's death
@@ -505,7 +505,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   ActorRegistration actor_registration(data);
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
                  << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                 << ", state = " << static_cast<int64_t>(actor_registration.GetState())
+                 << ", state = " << EnumNameActorState(actor_registration.GetState())
                  << ", remaining_reconstructions = "
                  << actor_registration.GetRemainingReconstructions();
   // Update local registry.
@@ -632,10 +632,10 @@ void NodeManager::DispatchTasks(
 void NodeManager::ProcessClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
     const uint8_t *message_data) {
-  RAY_LOG(DEBUG) << "Message of type " << message_type;
-
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
+  RAY_LOG(DEBUG) << "Message of " << protocol::EnumNameMessageType(message_type_value)
+                 << "(" << message_type << ")";
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
@@ -741,8 +741,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   if (was_local) {
     // Clean up the dummy objects from this actor.
     RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
-    for (auto &id : actor_entry->second.GetDummyObjects()) {
-      HandleObjectMissing(id);
+    for (auto &dummy_object_pair : actor_entry->second.GetDummyObjects()) {
+      HandleObjectMissing(dummy_object_pair.first);
     }
   }
   // Update the actor's state.
@@ -1205,9 +1205,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
-  RAY_LOG(DEBUG) << "Submitting task: task_id = " << task_id
-                 << ", actor_id = " << spec.ActorId()
-                 << ", actor_creation_id = " << spec.ActorCreationId();
+  RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
+                 << ", actor_id=" << spec.ActorId()
+                 << ", actor_creation_id=" << spec.ActorCreationId()
+                 << ", actor_handle_id=" << spec.ActorHandleId()
+                 << ", actor_counter=" << spec.ActorCounter()
+                 << ", task_descriptor=" << spec.FunctionDescriptorString();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1240,9 +1243,25 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
-          // If this actor is local, queue the task for local execution, bypassing
-          // placement.
-          EnqueuePlaceableTask(task);
+          // The actor is local.
+          int64_t expected_task_counter = GetExpectedTaskCounter(
+              actor_registry_, spec.ActorId(), spec.ActorHandleId());
+          if (spec.ActorCounter() < expected_task_counter) {
+            // A task that has already been executed before has been found. The
+            // task will be treated as failed if at least one of the task's
+            // return values have been evicted, to prevent the application from
+            // hanging.
+            // TODO(swang): Clean up the task from the lineage cache? If the
+            // task is not marked as failed, then it may never get marked as
+            // ready to flush to the GCS.
+            RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
+                             << "should only happen during reconstruction.";
+            TreatTaskAsFailedIfLost(task);
+          } else {
+            // The task has not yet been executed. Queue the task for local
+            // execution, bypassing placement.
+            EnqueuePlaceableTask(task);
+          }
         } else {
           // The actor is remote. Forward the task to the node manager that owns
           // the actor.
@@ -1444,14 +1463,13 @@ bool NodeManager::AssignTask(const Task &task) {
 
   // If this is an actor task, check that the new task has the correct counter.
   if (spec.IsActorTask()) {
-    if (CheckDuplicateActorTask(actor_registry_, spec)) {
-      // The actor is alive, and a task that has already been executed before
-      // has been found. The task will be treated as failed if at least one of
-      // the task's return values have been evicted, to prevent the application
-      // from hanging.
-      TreatTaskAsFailedIfLost(task);
-      return true;
-    }
+    // An actor task should only be ready to be assigned if it matches the
+    // expected task counter.
+    int64_t expected_task_counter =
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
+    RAY_CHECK(spec.ActorCounter() == expected_task_counter)
+        << "Expected actor counter: " << expected_task_counter << ", task "
+        << spec.TaskId() << " has: " << spec.ActorCounter();
   }
 
   // Try to get an idle worker that can execute this task.
@@ -1462,12 +1480,20 @@ bool NodeManager::AssignTask(const Task &task) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
       worker_pool_.StartWorkerProcess(spec.GetLanguage());
+      // Push an error message to the user if the worker pool tells us that it is
+      // getting too big.
+      const std::string warning_message = worker_pool_.WarningAboutSize();
+      if (warning_message != "") {
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            JobID::nil(), "worker_pool_large", warning_message, current_time_ms()));
+      }
     }
     // We couldn't assign this task, as no worker available.
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
+  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
+                 << worker->Pid();
   flatbuffers::FlatBufferBuilder fbb;
 
   // Resource accounting: acquire resources for the assigned task.
@@ -1501,11 +1527,34 @@ bool NodeManager::AssignTask(const Task &task) {
           // We successfully assigned the task to the worker.
           worker->AssignTaskId(spec.TaskId());
           worker->AssignDriverId(spec.DriverId());
-          // If the task was an actor task, then record this execution to guarantee
-          // consistency in the case of reconstruction.
+          // Actor tasks require extra accounting to track the actor's state.
           if (spec.IsActorTask()) {
             auto actor_entry = actor_registry_.find(spec.ActorId());
             RAY_CHECK(actor_entry != actor_registry_.end());
+            // Process any new actor handles that were created since the
+            // previous task on this handle was executed. The first task
+            // submitted on a new actor handle will depend on the dummy object
+            // returned by the previous task, so the dependency will not be
+            // released until this first task is submitted.
+            for (auto &new_handle_id : spec.NewActorHandles()) {
+              // Get the execution dependency for the first task submitted on the new
+              // actor handle. Since the new actor handle was created after this task
+              // began and before this task finished, it must have the same execution
+              // dependency.
+              const auto &execution_dependencies =
+                  assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
+              // TODO(swang): We expect this task to have exactly 1 execution dependency,
+              // the dummy object returned by the previous actor task. However, this
+              // leaks information about the TaskExecutionSpecification implementation.
+              RAY_CHECK(execution_dependencies.size() == 1);
+              const ObjectID &execution_dependency = execution_dependencies.front();
+              // Add the new handle and give it a reference to the finished task's
+              // execution dependency.
+              actor_entry->second.AddHandle(new_handle_id, execution_dependency);
+            }
+
+            // If the task was an actor task, then record this execution to
+            // guarantee consistency in the case of reconstruction.
             auto execution_dependency = actor_entry->second.GetExecutionDependency();
             // The execution dependency is initialized to the actor creation task's
             // return value, and is subsequently updated to the assigned tasks'
@@ -1521,12 +1570,14 @@ bool NodeManager::AssignTask(const Task &task) {
             // (SetExecutionDependencies takes a non-const so copy task in a
             //  on-const variable.)
             assigned_task.SetExecutionDependencies({execution_dependency});
+          } else {
+            RAY_CHECK(spec.NewActorHandles().empty());
           }
+
           // We started running the task, so the task is ready to write to GCS.
           if (!lineage_cache_.AddReadyTask(assigned_task)) {
-            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache. "
-                                                            "This is most likely due to "
-                                                            "reconstruction.";
+            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache."
+                             << " This is most likely due to reconstruction.";
           }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
@@ -1560,8 +1611,36 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(task_id);
 
+  // Release task's resources. The worker's lifetime resources are still held.
+  auto const &task_resources = worker.GetTaskResourceIds();
+  local_available_resources_.Release(task_resources);
+  RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      task_resources.ToResourceSet()));
+  worker.ResetTaskResourceIds();
+
+  // If this was an actor or actor creation task, handle the actor's new state.
+  if (task.GetTaskSpecification().IsActorCreationTask() ||
+      task.GetTaskSpecification().IsActorTask()) {
+    FinishAssignedActorTask(worker, task);
+  }
+
+  // Notify the task dependency manager that this task has finished execution.
+  task_dependency_manager_.TaskCanceled(task_id);
+
+  // Unset the worker's assigned task.
+  worker.AssignTaskId(TaskID::nil());
+  // Unset the worker's assigned driver Id if this is not an actor.
+  if (!task.GetTaskSpecification().IsActorCreationTask() &&
+      !task.GetTaskSpecification().IsActorTask()) {
+    worker.AssignDriverId(DriverID::nil());
+  }
+}
+
+void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+  // If this was an actor creation task, then convert the worker to an actor
+  // and notify the other node managers.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
-    // If this was an actor creation task, then convert the worker to an actor.
+    // Convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
     // Publish the actor creation event to all other nodes so that methods for
@@ -1605,54 +1684,38 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
           // Only one node at a time should succeed at creating the actor.
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });
+  }
+
+  // Update the actor's frontier.
+  ActorID actor_id;
+  ActorHandleID actor_handle_id;
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    actor_id = task.GetTaskSpecification().ActorCreationId();
+    actor_handle_id = ActorHandleID::nil();
   } else {
-    // Release task's resources.
-    local_available_resources_.Release(worker.GetTaskResourceIds());
-    worker.ResetTaskResourceIds();
-
-    RAY_CHECK(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-            task.GetTaskSpecification().GetRequiredResources()));
+    actor_id = task.GetTaskSpecification().ActorId();
+    actor_handle_id = task.GetTaskSpecification().ActorHandleId();
   }
-
-  // If the finished task was an actor task, mark the returned dummy object as
-  // locally available. This is not added to the object table, so the update
-  // will be invisible to both the local object manager and the other nodes.
-  if (task.GetTaskSpecification().IsActorCreationTask() ||
-      task.GetTaskSpecification().IsActorTask()) {
-    ActorID actor_id;
-    ActorHandleID actor_handle_id;
-    if (task.GetTaskSpecification().IsActorCreationTask()) {
-      actor_id = task.GetTaskSpecification().ActorCreationId();
-      actor_handle_id = ActorHandleID::nil();
-    } else {
-      actor_id = task.GetTaskSpecification().ActorId();
-      actor_handle_id = task.GetTaskSpecification().ActorHandleId();
-    }
-    auto actor_entry = actor_registry_.find(actor_id);
-    RAY_CHECK(actor_entry != actor_registry_.end());
-    auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-    // Extend the actor's frontier to include the executed task.
-    actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
-    // Mark the dummy object as locally available to indicate that the actor's
-    // state has changed and the next method can run.
-    // NOTE(swang): The dummy objects must be marked as local whenever
-    // ExtendFrontier is called, and vice versa, so that we can clean up the
-    // dummy objects properly in case the actor fails and needs to be
-    // reconstructed.
-    HandleObjectLocal(dummy_object);
+  auto actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+  // Extend the actor's frontier to include the executed task.
+  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+  const ObjectID object_to_release =
+      actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+  if (!object_to_release.is_nil()) {
+    // If there were no new actor handles created, then no other actor task
+    // will depend on this execution dependency, so it safe to release.
+    HandleObjectMissing(object_to_release);
   }
-
-  // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.TaskCanceled(task_id);
-
-  // Unset the worker's assigned task.
-  worker.AssignTaskId(TaskID::nil());
-  // Unset the worker's assigned driver Id if this is not an actor.
-  if (!task.GetTaskSpecification().IsActorCreationTask() &&
-      !task.GetTaskSpecification().IsActorTask()) {
-    worker.AssignDriverId(DriverID::nil());
-  }
+  // Mark the dummy object as locally available to indicate that the actor's
+  // state has changed and the next method can run. This is not added to the
+  // object table, so the update will be invisible to both the local object
+  // manager and the other nodes.
+  // NOTE(swang): The dummy objects must be marked as local whenever
+  // ExtendFrontier is called, and vice versa, so that we can clean up the
+  // dummy objects properly in case the actor fails and needs to be
+  // reconstructed.
+  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
@@ -1862,9 +1925,8 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           // lineage cache since the receiving node is now responsible for writing
           // the task to the GCS.
           if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage "
-                                                      "cache. This is most likely due to "
-                                                      "reconstruction.";
+            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
+                             << " cache. This is most likely due to reconstruction.";
           }
           // Mark as forwarded so that the task and its lineage is not re-forwarded
           // in the future to the receiving node.

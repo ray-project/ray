@@ -34,7 +34,7 @@ class WorkerPoolMock : public WorkerPool {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(), io_service_() {}
+  WorkerPoolTest() : worker_pool_(), io_service_(), error_message_type_(1) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
@@ -46,14 +46,16 @@ class WorkerPoolTest : public ::testing::Test {
           HandleMessage(client, message_type, message);
         };
     boost::asio::local::stream_protocol::socket socket(io_service_);
-    auto client = LocalClientConnection::Create(client_handler, message_handler,
-                                                std::move(socket), "worker");
+    auto client =
+        LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
+                                      "worker", error_message_type_);
     return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
  protected:
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
+  int64_t error_message_type_;
 
  private:
   void HandleNewClient(LocalClientConnection &){};
@@ -64,9 +66,9 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::nil(),
     const Language &language = Language::PYTHON) {
   std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
-                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, 0,
-                           {{}}, {{}}, language, function_descriptor);
+  return TaskSpecification(UniqueID::nil(), TaskID::nil(), 0, ActorID::nil(),
+                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, {},
+                           0, {{}}, {{}}, language, function_descriptor);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {

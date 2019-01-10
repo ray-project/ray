@@ -16,6 +16,65 @@ from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
 
+def parse_client_table(redis_client):
+    """Read the client table.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+
+    Returns:
+        A list of information about the nodes in the cluster.
+    """
+    NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
+    message = redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                           ray.gcs_utils.TablePrefix.CLIENT,
+                                           "", NIL_CLIENT_ID)
+
+    # Handle the case where no clients are returned. This should only
+    # occur potentially immediately after the cluster is started.
+    if message is None:
+        return []
+
+    node_info = {}
+    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+
+    # Since GCS entries are append-only, we override so that
+    # only the latest entries are kept.
+    for i in range(gcs_entry.EntriesLength()):
+        client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+            gcs_entry.Entries(i), 0))
+
+        resources = {
+            decode(client.ResourcesTotalLabel(i)):
+            client.ResourcesTotalCapacity(i)
+            for i in range(client.ResourcesTotalLabelLength())
+        }
+        client_id = ray.utils.binary_to_hex(client.ClientId())
+
+        # If this client is being removed, then it must
+        # have previously been inserted, and
+        # it cannot have previously been removed.
+        if not client.IsInsertion():
+            assert client_id in node_info, "Client removed not found!"
+            assert node_info[client_id]["IsInsertion"], (
+                "Unexpected duplicate removal of client.")
+
+        node_info[client_id] = {
+            "ClientID": client_id,
+            "IsInsertion": client.IsInsertion(),
+            "NodeManagerAddress": decode(
+                client.NodeManagerAddress(), allow_none=True),
+            "NodeManagerPort": client.NodeManagerPort(),
+            "ObjectManagerPort": client.ObjectManagerPort(),
+            "ObjectStoreSocketName": decode(
+                client.ObjectStoreSocketName(), allow_none=True),
+            "RayletSocketName": decode(
+                client.RayletSocketName(), allow_none=True),
+            "Resources": resources
+        }
+    return list(node_info.values())
+
+
 class GlobalState(object):
     """A class used to interface with the Ray control state.
 
@@ -328,55 +387,7 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
-            NIL_CLIENT_ID)
-
-        # Handle the case where no clients are returned. This should only
-        # occur potentially immediately after the cluster is started.
-        if message is None:
-            return []
-
-        node_info = {}
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
-
-        # Since GCS entries are append-only, we override so that
-        # only the latest entries are kept.
-        for i in range(gcs_entry.EntriesLength()):
-            client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-                gcs_entry.Entries(i), 0))
-
-            resources = {
-                decode(client.ResourcesTotalLabel(i)):
-                client.ResourcesTotalCapacity(i)
-                for i in range(client.ResourcesTotalLabelLength())
-            }
-            client_id = ray.utils.binary_to_hex(client.ClientId())
-
-            # If this client is being removed, then it must
-            # have previously been inserted, and
-            # it cannot have previously been removed.
-            if not client.IsInsertion():
-                assert client_id in node_info, "Client removed not found!"
-                assert node_info[client_id]["IsInsertion"], (
-                    "Unexpected duplicate removal of client.")
-
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(
-                    client.NodeManagerAddress(), allow_none=True),
-                "NodeManagerPort": client.NodeManagerPort(),
-                "ObjectManagerPort": client.ObjectManagerPort(),
-                "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName(), allow_none=True),
-                "RayletSocketName": decode(
-                    client.RayletSocketName(), allow_none=True),
-                "Resources": resources
-            }
-        return list(node_info.values())
+        return parse_client_table(self.redis_client)
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.
@@ -406,20 +417,20 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def _profile_table(self, component_id):
-        """Get the profile events for a given component.
+    def _profile_table(self, batch_id):
+        """Get the profile events for a given batch of profile events.
 
         Args:
-            component_id: An identifier for a component.
+            batch_id: An identifier for a batch of profile events.
 
         Returns:
-            A list of the profile events for the specified process.
+            A list of the profile events for the specified batch.
         """
         # TODO(rkn): This method should support limiting the number of log
         # events and should also support returning a window of events.
-        message = self._execute_command(component_id, "RAY.TABLE_LOOKUP",
+        message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        component_id.id())
+                                        batch_id.id())
 
         if message is None:
             return []
@@ -459,16 +470,21 @@ class GlobalState(object):
     def profile_table(self):
         profile_table_keys = self._keys(
             ray.gcs_utils.TablePrefix_PROFILE_string + "*")
-        component_identifiers_binary = [
+        batch_identifiers_binary = [
             key[len(ray.gcs_utils.TablePrefix_PROFILE_string):]
             for key in profile_table_keys
         ]
 
-        return {
-            binary_to_hex(component_id): self._profile_table(
-                binary_to_object_id(component_id))
-            for component_id in component_identifiers_binary
-        }
+        result = defaultdict(list)
+        for batch_id in batch_identifiers_binary:
+            profile_data = self._profile_table(binary_to_object_id(batch_id))
+            # Note that if keys are being evicted from Redis, then it is
+            # possible that the batch will be evicted before we get it.
+            if len(profile_data) > 0:
+                component_id = profile_data[0]["component_id"]
+                result[component_id].extend(profile_data)
+
+        return dict(result)
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""

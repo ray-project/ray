@@ -12,6 +12,7 @@ import tensorflow as tf
 import unittest
 
 import ray
+from ray.rllib.agents.a3c import A2CAgent
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.env import MultiAgentEnv
@@ -19,6 +20,8 @@ from ray.rllib.env.async_vector_env import AsyncVectorEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
+from ray.rllib.models.pytorch.fcnet import FullyConnectedNetwork
+from ray.rllib.models.pytorch.model import TorchModel
 from ray.rllib.rollout import rollout
 from ray.rllib.test.test_external_env import SimpleServing
 from ray.tune.registry import register_env
@@ -127,6 +130,29 @@ class InvalidModel(Model):
 class InvalidModel2(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         return tf.constant(0), tf.constant(0)
+
+
+class TorchSpyModel(TorchModel):
+    capture_index = 0
+
+    def __init__(self, obs_space, num_outputs, options):
+        TorchModel.__init__(self, obs_space, num_outputs, options)
+        self.fc = FullyConnectedNetwork(
+            obs_space.original_space.spaces["sensors"].spaces["position"],
+            num_outputs, options)
+
+    def _forward(self, input_dict, hidden_state):
+        pos = input_dict["obs"]["sensors"]["position"].numpy()
+        front_cam = input_dict["obs"]["sensors"]["front_cam"][0].numpy()
+        task = input_dict["obs"]["inner_state"]["job_status"]["task"].numpy()
+        ray.experimental.internal_kv._internal_kv_put(
+            "torch_spy_in_{}".format(TorchSpyModel.capture_index),
+            pickle.dumps((pos, front_cam, task)),
+            overwrite=True)
+        TorchSpyModel.capture_index += 1
+        return self.fc({
+            "obs": input_dict["obs"]["sensors"]["position"]
+        }, hidden_state)
 
 
 class DictSpyModel(Model):
@@ -358,6 +384,36 @@ class NestedSpacesTest(unittest.TestCase):
 
         # Test rollout works on restore
         rollout(agent2, "nested", 100)
+
+    def testPyTorchModel(self):
+        ModelCatalog.register_custom_model("composite", TorchSpyModel)
+        register_env("nested", lambda _: NestedDictEnv())
+        a2c = A2CAgent(
+            env="nested",
+            config={
+                "num_workers": 0,
+                "use_pytorch": True,
+                "sample_batch_size": 5,
+                "train_batch_size": 5,
+                "model": {
+                    "custom_model": "composite",
+                },
+            })
+
+        a2c.train()
+
+        # Check that the model sees the correct reconstructed observations
+        for i in range(4):
+            seen = pickle.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    "torch_spy_in_{}".format(i)))
+            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
+            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
+            task_i = one_hot(
+                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            self.assertEqual(seen[0][0].tolist(), pos_i)
+            self.assertEqual(seen[1][0].tolist(), cam_i)
+            self.assertEqual(seen[2][0].tolist(), task_i)
 
 
 if __name__ == "__main__":

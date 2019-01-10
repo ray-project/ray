@@ -9,7 +9,8 @@ import yaml
 
 import ray
 from ray.test.cluster_utils import Cluster
-from ray.tune.config_parser import make_parser, resources_to_json
+from ray.tune.config_parser import make_parser
+from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
 EXAMPLE_USAGE = """
@@ -51,7 +52,7 @@ def create_parser(parser_creator=None):
         type=int,
         help="--num-gpus to use if starting a new cluster.")
     parser.add_argument(
-        "--ray-num-local-schedulers",
+        "--ray-num-nodes",
         default=None,
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
@@ -70,6 +71,10 @@ def create_parser(parser_creator=None):
         default="default",
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
@@ -117,9 +122,9 @@ def run(args, parser):
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    if args.ray_num_local_schedulers:
+    if args.ray_num_nodes:
         cluster = Cluster()
-        for _ in range(args.ray_num_local_schedulers):
+        for _ in range(args.ray_num_nodes):
             cluster.add_node(
                 resources={
                     "num_cpus": args.ray_num_cpus or 1,
@@ -138,7 +143,8 @@ def run(args, parser):
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials)
+        queue_trials=args.queue_trials,
+        resume=args.resume)
 
 
 if __name__ == "__main__":

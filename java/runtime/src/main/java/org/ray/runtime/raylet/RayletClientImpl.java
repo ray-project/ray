@@ -50,6 +50,11 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, UniqueId currentTaskId) {
+    Preconditions.checkNotNull(waitFor);
+    if (waitFor.isEmpty()) {
+      return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
+    }
+
     List<UniqueId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
@@ -186,6 +191,12 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
+    // Serialize the new actor handles.
+    int[] newActorHandlesOffsets = new int[task.newActorHandles.length];
+    for (int i = 0; i < newActorHandlesOffsets.length; i++) {
+      newActorHandlesOffsets[i] = fbb.createString(task.newActorHandles[i].toByteBuffer());
+    }
+    int newActorHandlesOffset = fbb.createVectorOfTables(newActorHandlesOffsets);
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
@@ -247,6 +258,7 @@ public class RayletClientImpl implements RayletClient {
         actorHandleIdOffset,
         actorCounter,
         false,
+        newActorHandlesOffset,
         argsOffset,
         returnsOffset,
         requiredResourcesOffset,
@@ -260,7 +272,7 @@ public class RayletClientImpl implements RayletClient {
       LOGGER.error(
           "Allocated buffer is not enough to transfer the task specification: {}vs {}",
               TASK_SPEC_BUFFER_SIZE, buffer.remaining());
-      assert (false);
+      throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
   }

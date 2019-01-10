@@ -69,25 +69,40 @@ static PyObject *PyRayletClient_GetTask(PyRayletClient *self) {
 }
 // clang-format on
 
+/// A helper function that converts a Python list of object ids to a vector.
+///
+/// \param py_list The Python list of object ids.
+/// \param output The output vector.
+/// \return True if an error occurred when parsing the Python object ids, false otherwise.
+bool py_object_id_list_to_vector(PyObject *py_list, std::vector<UniqueID> &output) {
+  Py_ssize_t n = PyList_Size(py_list);
+  for (int64_t i = 0; i < n; ++i) {
+    ObjectID object_id;
+    PyObject *py_object_id = PyList_GetItem(py_list, i);
+    if (!PyObjectToUniqueID(py_object_id, &object_id)) {
+      return true;
+    }
+    output.push_back(object_id);
+  }
+  return false;
+}
+
 static PyObject *PyRayletClient_FetchOrReconstruct(PyRayletClient *self, PyObject *args) {
   PyObject *py_object_ids;
   PyObject *py_fetch_only;
-  std::vector<ObjectID> object_ids;
   TaskID current_task_id;
   if (!PyArg_ParseTuple(args, "OO|O&", &py_object_ids, &py_fetch_only,
                         &PyObjectToUniqueID, &current_task_id)) {
     return NULL;
   }
   bool fetch_only = PyObject_IsTrue(py_fetch_only);
-  Py_ssize_t n = PyList_Size(py_object_ids);
-  for (int64_t i = 0; i < n; ++i) {
-    ObjectID object_id;
-    PyObject *py_object_id = PyList_GetItem(py_object_ids, i);
-    if (!PyObjectToUniqueID(py_object_id, &object_id)) {
-      return NULL;
-    }
-    object_ids.push_back(object_id);
+
+  // Convert object ids.
+  std::vector<ObjectID> object_ids;
+  if (py_object_id_list_to_vector(py_object_ids, object_ids)) {
+    return NULL;
   }
+
   auto status =
       self->raylet_client->FetchOrReconstruct(object_ids, fetch_only, current_task_id);
   if (status.ok()) {
@@ -165,22 +180,9 @@ static PyObject *PyRayletClient_Wait(PyRayletClient *self, PyObject *args) {
   bool wait_local = PyObject_IsTrue(py_wait_local);
 
   // Convert object ids.
-  PyObject *iter = PyObject_GetIter(py_object_ids);
-  if (!iter) {
-    return NULL;
-  }
   std::vector<ObjectID> object_ids;
-  while (true) {
-    PyObject *next = PyIter_Next(iter);
-    ObjectID object_id;
-    if (!next) {
-      break;
-    }
-    if (!PyObjectToUniqueID(next, &object_id)) {
-      // Error parsing object id.
-      return NULL;
-    }
-    object_ids.push_back(object_id);
+  if (py_object_id_list_to_vector(py_object_ids, object_ids)) {
+    return NULL;
   }
 
   // Invoke wait.
@@ -198,7 +200,7 @@ static PyObject *PyRayletClient_Wait(PyRayletClient *self, PyObject *args) {
   for (uint i = 0; i < result.second.size(); ++i) {
     PyList_SetItem(py_remaining, i, PyObjectID_make(result.second[i]));
   }
-  return Py_BuildValue("(OO)", py_found, py_remaining);
+  return Py_BuildValue("(NN)", py_found, py_remaining);
 }
 
 static PyObject *PyRayletClient_PushError(PyRayletClient *self, PyObject *args) {
@@ -325,22 +327,9 @@ static PyObject *PyRayletClient_FreeObjects(PyRayletClient *self, PyObject *args
   bool local_only = static_cast<bool>(PyObject_IsTrue(py_local_only));
 
   // Convert object ids.
-  PyObject *iter = PyObject_GetIter(py_object_ids);
-  if (!iter) {
-    return NULL;
-  }
   std::vector<ObjectID> object_ids;
-  while (true) {
-    PyObject *next = PyIter_Next(iter);
-    ObjectID object_id;
-    if (!next) {
-      break;
-    }
-    if (!PyObjectToUniqueID(next, &object_id)) {
-      // Error parsing object ID.
-      return NULL;
-    }
-    object_ids.push_back(object_id);
+  if (py_object_id_list_to_vector(py_object_ids, object_ids)) {
+    return NULL;
   }
 
   // Invoke raylet_FreeObjects.

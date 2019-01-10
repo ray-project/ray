@@ -56,5 +56,8 @@ def register_actor(name, actor_handle):
     # Add the actor to Redis if it does not already exist.
     already_exists = _internal_kv_put(actor_name, pickled_state)
     if already_exists:
+        # If the registration fails, then erase the new actor handle that
+        # was added when pickling the actor handle.
+        actor_handle._ray_new_actor_handles.pop()
         raise ValueError(
             "Error: the actor with name={} already exists".format(name))
