@@ -2,7 +2,11 @@ cartpole-marwil:
     env: CartPole-v0
     run: MARWIL
     stop:
-        episode_reward_mean: 100
+        episode_reward_mean: 150
     config:
         postprocess_inputs: True
         batch_mode: "complete_episodes"
+        input: /gruntdata/app_data/jones.wz/rl/cartpole_experience
+        input_evaluation: "simulation"
+        learning_starts: 300000
+        buffer_size: 1000000

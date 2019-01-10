@@ -52,6 +52,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": True,
+    # exploration_fraction
+    "schedule_max_timesteps": 100000,
 
     # === Optimization ===
     # Learning rate for adam optimizer
