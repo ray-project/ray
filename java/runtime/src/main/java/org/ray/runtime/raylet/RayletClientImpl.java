@@ -37,7 +37,7 @@ public class RayletClientImpl implements RayletClient {
   );
 
   /**
-   * Point to c++'s local scheduler client.
+   * The pointer to c++'s local scheduler client.
    */
   private long client = 0;
 

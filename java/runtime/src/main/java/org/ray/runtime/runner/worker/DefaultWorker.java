@@ -16,14 +16,9 @@ public class DefaultWorker {
     try {
       System.setProperty("ray.worker.mode", "WORKER");
       Ray.init();
-    } catch (Exception e) {
-      LOGGER.error("Worker failed to start.", e);
-    }
-    LOGGER.info("Worker started.");
-    try {
       ((AbstractRayRuntime)Ray.internal()).loop();
     } catch (Exception e) {
-      LOGGER.error("Error occurred in worker.", e);
+      LOGGER.error("Failed to start worker.", e);
     }
   }
 }

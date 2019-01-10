@@ -31,7 +31,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void resetLibaryPath() {
+  private void resetLibraryPath() {
     String path = System.getProperty("java.library.path");
     if (Strings.isNullOrEmpty(path)) {
       path = "";
@@ -60,7 +60,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   public void start() throws Exception {
     // Load native libraries.
     try {
-      resetLibaryPath();
+      resetLibraryPath();
       System.loadLibrary("raylet_library_java");
       System.loadLibrary("plasma_java");
     } catch (Exception e) {

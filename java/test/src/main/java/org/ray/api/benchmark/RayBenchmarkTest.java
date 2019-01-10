@@ -12,7 +12,6 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.test.BaseTest;
-import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

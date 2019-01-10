@@ -114,8 +114,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       int numObjectIds = objectIds.size();
 
       // Do an initial fetch for remote objects.
-      List<List<UniqueId>> fetchBatches =
-          splitIntoBatches(objectIds, FETCH_BATCH_SIZE);
+      List<List<UniqueId>> fetchBatches = splitIntoBatches(objectIds);
       for (List<UniqueId> batch : fetchBatches) {
         rayletClient.fetchOrReconstruct(batch, true, taskId);
       }
@@ -140,8 +139,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       while (unreadys.size() > 0) {
         retryCounter++;
         List<UniqueId> unreadyList = new ArrayList<>(unreadys.keySet());
-        List<List<UniqueId>> reconstructBatches =
-            splitIntoBatches(unreadyList, FETCH_BATCH_SIZE);
+        List<List<UniqueId>> reconstructBatches = splitIntoBatches(unreadyList);
 
         for (List<UniqueId> batch : reconstructBatches) {
           rayletClient.fetchOrReconstruct(batch, false, taskId);
@@ -198,12 +196,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     rayletClient.freePlasmaObjects(objectIds, localOnly);
   }
 
-  private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds, int batchSize) {
+  private List<List<UniqueId>> splitIntoBatches(List<UniqueId> objectIds) {
     List<List<UniqueId>> batches = new ArrayList<>();
     int objectsSize = objectIds.size();
 
-    for (int i = 0; i < objectsSize; i += batchSize) {
-      int endIndex = i + batchSize;
+    for (int i = 0; i < objectsSize; i += FETCH_BATCH_SIZE) {
+      int endIndex = i + FETCH_BATCH_SIZE;
       List<UniqueId> batchIds = (endIndex < objectsSize)
           ? objectIds.subList(i, endIndex)
           : objectIds.subList(i, objectsSize);
@@ -257,17 +255,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   /**
-   * Generate the return ids of a task.
-   */
-  private UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
-    UniqueId[] ret = new UniqueId[numReturns];
-    for (int i = 0; i < numReturns; i++) {
-      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
-    }
-    return ret;
-  }
-
-  /**
    * Create the task specification.
    * @param func The target remote function.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
@@ -281,7 +268,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     UniqueId taskId = rayletClient.generateTaskId(current.driverId,
         current.taskId, workerContext.nextCallIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
-    UniqueId[] returnIds = genReturnIds(taskId, numReturns);
+    UniqueId[] returnIds = UniqueIdUtil.genReturnIds(taskId, numReturns);
 
     UniqueId actorCreationId = UniqueId.NIL;
     if (isActorCreationTask) {
