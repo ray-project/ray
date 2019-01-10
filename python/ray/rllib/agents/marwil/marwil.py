@@ -139,6 +139,8 @@ class MARWILAgent(Agent):
             timeout_seconds=self.config["collect_metrics_timeout"])
 
         result.update(
-            timesteps_this_iter=max(self.optimizer.num_steps_sampled-start_sampled_timestep, self.optimizer.num_steps_trained-start_trained_timestep),
+            timesteps_this_iter=max(
+                self.optimizer.num_steps_sampled - start_sampled_timestep,
+                self.optimizer.num_steps_trained - start_trained_timestep),
             info=dict(**self.optimizer.stats()))
         return result
