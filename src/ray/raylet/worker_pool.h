@@ -57,12 +57,12 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(std::shared_ptr<Worker> worker);
+  void RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(std::shared_ptr<Worker> worker);
+  void RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -84,17 +84,17 @@ class WorkerPool {
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(std::shared_ptr<Worker> worker);
+  bool DisconnectWorker(const std::shared_ptr<Worker> &worker);
 
   /// Disconnect a registered driver.
   ///
   /// \param The driver to disconnect. The driver must be registered.
-  void DisconnectDriver(std::shared_ptr<Worker> driver);
+  void DisconnectDriver(const std::shared_ptr<Worker> &driver);
 
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
-  void PushWorker(std::shared_ptr<Worker> worker);
+  void PushWorker(const std::shared_ptr<Worker> &worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
