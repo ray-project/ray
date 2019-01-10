@@ -96,6 +96,8 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 
 
 def kill_node(config_file, yes, override_cluster_name):
+    """Kills a random Raylet worker."""
+
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
@@ -372,6 +374,8 @@ def get_head_node_ip(config_file, override_cluster_name):
 
 
 def get_worker_node_ips(config_file, override_cluster_name):
+    """Returns worker node IPs for given configuration file."""
+
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
