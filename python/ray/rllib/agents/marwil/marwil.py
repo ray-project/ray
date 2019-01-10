@@ -11,12 +11,22 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "sample_batch_size", "train_batch_size", "gamma"
+    "learning_starts", "buffer_size", "prioritized_replay",
+    "prioritized_replay_alpha", "prioritized_replay_beta",
+    "schedule_max_timesteps", "beta_annealing_fraction",
+    "final_prioritized_replay_beta", "prioritized_replay_eps",
+    "train_batch_size", "sample_batch_size"
 ]
 
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": False,
+    # GAE(lambda) parameter
+    "lambda": 1.0,
+
     # === Model ===
     "actor_hiddens": [64],
     "critic_hiddens": [64],
@@ -27,6 +37,19 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # If True prioritized replay buffer will be used.
+    "prioritized_replay": False,
+    # Alpha parameter for prioritized replay buffer.
+    "prioritized_replay_alpha": 0.6,
+    # Beta parameter for sampling from prioritized replay buffer.
+    "prioritized_replay_beta": 0.4,
+    # Fraction of entire training period over which the beta parameter is
+    # annealed
+    "beta_annealing_fraction": 0.2,
+    # Final value of beta
+    "final_prioritized_replay_beta": 0.4,
+    # Epsilon to add to the TD errors when updating priorities.
+    "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": True,
 
@@ -43,6 +66,8 @@ DEFAULT_CONFIG = with_common_config({
     # batch of this size.
     "train_batch_size": 64,
     "timesteps_per_iteration": 1000,
+    # How many steps of the model to sample before learning starts.
+    "learning_starts": 50000,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -50,7 +75,7 @@ DEFAULT_CONFIG = with_common_config({
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
     # Optimizer class to use.
-    "optimizer_class": "OfflineOptimizer",
+    "optimizer_class": "SyncReplayOptimizer",
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 })

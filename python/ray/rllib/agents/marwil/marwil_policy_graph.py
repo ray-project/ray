@@ -9,6 +9,7 @@ import tensorflow.contrib.layers as layers
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -192,3 +193,28 @@ class MARWILPolicyGraph(TFPolicyGraph):
         return ReweightedImitationLoss(
             state_values, cum_rwds,
              logits, actions, action_space, self.config["beta"])
+
+    @override(PolicyGraph)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            #next_state = []
+            #for i in range(len(self.model.state_in)):
+            #    next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            #last_r = self._value(sample_batch["new_obs"][-1], *next_state)
+            raise ValueError(
+                "last done mask in a batch should be True",
+                len(sample_batch["dones"]), sample_batch["done"][-1])
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            self.config["gamma"],
+            self.config["lambda"],
+            use_gae=self.config["use_gae"])
+        return batch
+

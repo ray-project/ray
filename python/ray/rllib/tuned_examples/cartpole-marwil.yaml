@@ -1,0 +1,8 @@
+cartpole-marwil:
+    env: CartPole-v0
+    run: MARWIL
+    stop:
+        episode_reward_mean: 100
+    config:
+        postprocess_inputs: True
+        batch_mode: "complete_episodes"
