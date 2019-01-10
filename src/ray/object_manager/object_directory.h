@@ -50,6 +50,7 @@ class ObjectDirectoryInterface {
   /// Callback for object location notifications.
   using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
                                               const std::unordered_set<ray::ClientID> &,
+                                              bool, const std::vector<uint8_t> &,
                                               bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
@@ -176,6 +177,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
+    /// Specify whether the object is inlined.
+    bool inline_object_flag;
+    /// Inlined object, if inline_object_flag == true.
+    std::vector<uint8_t> inline_object_data;
     /// This flag will get set to true if the object has ever been created. It
     /// should never go back to false once set to true. If this is true, and
     /// the current_object_locations is empty, then this means that the object

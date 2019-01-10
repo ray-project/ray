@@ -16,6 +16,7 @@ namespace {
 void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids,
+                           bool *inline_object_flag, std::vector<uint8_t> *inline_object_data,
                            bool *has_been_created) {
   // location_history contains the history of locations of the object (it is a log),
   // which might look like the following:
@@ -35,6 +36,11 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
+    }
+    if (object_table_data.inline_object_flag) {
+      *inline_object_flag = object_table_data.inline_object_flag;
+      inline_object_data->assign(object_table_data.inline_object_data.begin(),
+                                 object_table_data.inline_object_data.end());
     }
   }
   // Filter out the removed clients from the object locations.
@@ -62,6 +68,8 @@ void ObjectDirectory::RegisterBackend() {
     // Update entries for this object.
     UpdateObjectLocations(location_history, gcs_client_->client_table(),
                           &it->second.current_object_locations,
+                          &it->second.inline_object_flag,
+                          &it->second.inline_object_data,
                           &it->second.has_been_created);
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
@@ -74,6 +82,7 @@ void ObjectDirectory::RegisterBackend() {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
       callback_pair.second(object_id, it->second.current_object_locations,
+                           it->second.inline_object_flag, it->second.inline_object_data,
                            it->second.has_been_created);
     }
   };
@@ -154,6 +163,8 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
       // its locations with an empty log so that the location will be removed.
       UpdateObjectLocations({}, gcs_client_->client_table(),
                             &listener.second.current_object_locations,
+                            &listener.second.inline_object_flag,
+                            &listener.second.inline_object_data,
                             &listener.second.has_been_created);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
@@ -161,6 +172,8 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
         callback_pair.second(object_id, listener.second.current_object_locations,
+                             listener.second.inline_object_flag,
+                             listener.second.inline_object_data,
                              listener.second.has_been_created);
       }
     }
@@ -187,8 +200,11 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // immediately notify the caller of the current known locations.
   if (listener_state.has_been_created) {
     auto &locations = listener_state.current_object_locations;
-    io_service_.post([callback, locations, object_id]() {
-      callback(object_id, locations, /*has_been_created=*/true);
+    auto inline_object_flag = listener_state.inline_object_flag;
+    auto &inline_object_data = listener_state.inline_object_data;
+    io_service_.post([callback, locations, inline_object_flag, inline_object_data, object_id]() {
+      callback(object_id, locations, inline_object_flag,
+               inline_object_data, /*has_been_created=*/true);
     });
   }
   return status;
@@ -222,19 +238,27 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           bool has_been_created = false;
+          bool inline_object_flag = false;
+          std::vector<uint8_t> inline_object_data;
           UpdateObjectLocations(location_history, gcs_client_->client_table(),
-                                &client_ids, &has_been_created);
+                                &client_ids, &inline_object_flag, &inline_object_data,
+                                &has_been_created);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
-          callback(object_id, client_ids, has_been_created);
+          callback(object_id, client_ids, inline_object_flag,
+                   inline_object_data, has_been_created);
         });
   } else {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
     // call, call the callback immediately with the cached locations.
     auto &locations = it->second.current_object_locations;
     bool has_been_created = it->second.has_been_created;
-    io_service_.post([callback, object_id, locations, has_been_created]() {
-      callback(object_id, locations, has_been_created);
+    bool inline_object_flag = it->second.inline_object_flag;
+    std::vector<uint8_t> inline_object_data = it->second.inline_object_data;
+    io_service_.post([callback, object_id, locations, inline_object_flag,
+                      inline_object_data, has_been_created]() {
+      callback(object_id, locations, inline_object_flag,
+               inline_object_data, has_been_created);
     });
   }
   return status;

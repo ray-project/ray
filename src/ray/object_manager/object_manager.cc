@@ -68,7 +68,7 @@ void ObjectManager::HandleObjectAdded(
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
-  std::vector<uint8_t> data;
+  std::vector<uint8_t> inline_object_data;
   bool inline_object_flag = false;
 
   if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
@@ -77,11 +77,12 @@ void ObjectManager::HandleObjectAdded(
     std::vector<plasma::ObjectBuffer> object_buffers = {object_buffer};
     ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
-    data.assign(object_buffer.data->data(), object_buffer.data->data() + object_info.data_size);
+    inline_object_data.assign(object_buffer.data->data(), object_buffer.data->data() + object_info.data_size);
   }
 
   ray::Status status =
-      object_directory_->ReportObjectAdded(object_id, client_id_, object_info, inline_object_flag, data);
+      object_directory_->ReportObjectAdded(object_id, client_id_, object_info,
+                                           inline_object_flag, inline_object_data);
 
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
@@ -140,7 +141,14 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
+             bool inline_object_flag, const std::vector<uint8_t> &inline_object_data,
              bool created) {
+        if (inline_object_flag) {
+          ARROW_CHECK_OK(store_client_.CreateAndSeal(object_id.to_plasma_id(),
+                         std::string(inline_object_data.begin(), inline_object_data.end()),
+                         "")); /// XXX
+          return;
+        }
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -578,7 +586,10 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id,
           [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          bool inline_object_flag,
+                          const std::vector<uint8_t> inline_object_data,
+                          bool created) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
               wait_state.remaining.erase(lookup_object_id);
@@ -612,7 +623,10 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id,
           [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          bool inline_object_flag,
+                          const std::vector<uint8_t> inline_object_data,
+                          bool created) {
             if (!client_ids.empty()) {
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
               if (object_id_wait_state == active_wait_requests_.end()) {

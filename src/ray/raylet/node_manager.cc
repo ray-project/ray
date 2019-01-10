@@ -1185,7 +1185,10 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
         object_id,
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+            const std::unordered_set<ray::ClientID> &clients,
+            bool inline_object_flag,
+            const std::vector<uint8_t> inline_object_data,
+            bool has_been_created) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
