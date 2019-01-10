@@ -73,11 +73,10 @@ void ObjectManager::HandleObjectAdded(
 
   if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
     // Inline object, i.e., store it in the GCS entry.
-    plasma::ObjectBuffer object_buffer;
-    std::vector<plasma::ObjectBuffer> object_buffers = {object_buffer};
+    std::vector<plasma::ObjectBuffer> object_buffers;
     ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
-    inline_object_data.assign(object_buffer.data->data(), object_buffer.data->data() + object_info.data_size);
+    inline_object_data.assign(object_buffers[0].data->data(), object_buffers[0].data->data() + object_info.data_size);
   }
 
   ray::Status status =
