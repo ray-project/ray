@@ -456,6 +456,7 @@ def stop():
     help="Don't ask for confirmation.")
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                      restart_only, yes, cluster_name):
+    """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
@@ -483,6 +484,7 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     type=str,
     help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name):
+    """Tear down the Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
 
 
@@ -500,7 +502,8 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def kill(cluster_config_file, yes, cluster_name):
+def kill_random_node(cluster_config_file, yes, cluster_name):
+    """Kills a random Ray node. For testing purposes only."""
     click.echo("Killed node with IP " +
                kill_node(cluster_config_file, yes, cluster_name))
 
@@ -732,7 +735,7 @@ cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
-cli.add_command(kill, name="kill_node")
+cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(stack)

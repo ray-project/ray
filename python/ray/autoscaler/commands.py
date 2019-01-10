@@ -107,7 +107,7 @@ def kill_node(config_file, yes, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
-    node = nodes[random.randint(0, len(nodes))]
+    node = random.choice(nodes)
     logger.info("Terminating worker {}".format(node))
     updater = NodeUpdaterProcess(
         node,
