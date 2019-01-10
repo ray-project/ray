@@ -1772,6 +1772,28 @@ class TrialRunnerTest(unittest.TestCase):
         runner2.step()
         shutil.rmtree(tmpdir)
 
+    def testCheckpointWithFunction(self):
+        ray.init()
+        trial = Trial(
+            "__fake", config={
+            "callbacks": {
+                "on_episode_start": tune.function(lambda i: i),
+            }},
+            checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trial = runner2.get_trials()[0]
+        self.assertTrue("callbacks" in new_trial.config)
+        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
+        shutil.rmtree(tmpdir)
+
 
 class SearchAlgorithmTest(unittest.TestCase):
     def testNestedSuggestion(self):
