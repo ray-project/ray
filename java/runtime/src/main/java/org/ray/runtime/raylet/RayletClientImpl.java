@@ -143,10 +143,12 @@ public class RayletClientImpl implements RayletClient {
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
       Arg arg = info.args(i);
-      if (arg.objectIdsLength() > 0) {
-        Preconditions.checkArgument(arg.objectIdsLength() == 1,
-            "This arg has more than one id: {}", arg.objectIdsLength());
-        UniqueId id = UniqueId.fromByteBuffer(arg.objectIdsAsByteBuffer(0));
+
+      int objectIdsLength = arg.objectIdsAsByteBuffer().remaining() / UniqueId.LENGTH;
+      if (objectIdsLength > 0) {
+        Preconditions.checkArgument(objectIdsLength == 1,
+            "This arg has more than one id: {}", objectIdsLength);
+        UniqueId id = UniqueIdUtil.getUniqueIdsFromByteBuffer(arg.objectIdsAsByteBuffer())[0];
         args[i] = FunctionArg.passByReference(id);
       } else {
         ByteBuffer lbb = arg.dataAsByteBuffer();
@@ -157,10 +159,8 @@ public class RayletClientImpl implements RayletClient {
       }
     }
     // Deserialize return ids
-    UniqueId[] returnIds = new UniqueId[info.returnsLength()];
-    for (int i = 0; i < info.returnsLength(); i++) {
-      returnIds[i] = UniqueId.fromByteBuffer(info.returnsAsByteBuffer(i));
-    }
+    UniqueId[] returnIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(info.returnsAsByteBuffer());
+
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
     for (int i = 0; i < info.requiredResourcesLength(); i++) {
@@ -172,8 +172,8 @@ public class RayletClientImpl implements RayletClient {
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
-        maxActorReconstructions, actorId, actorHandleId, actorCounter, args, returnIds, resources,
-        functionDescriptor);
+        maxActorReconstructions, actorId, actorHandleId, actorCounter,
+        args, returnIds, resources, functionDescriptor);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -191,22 +191,21 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
+
     // Serialize the new actor handles.
-    int[] newActorHandlesOffsets = new int[task.newActorHandles.length];
-    for (int i = 0; i < newActorHandlesOffsets.length; i++) {
-      newActorHandlesOffsets[i] = fbb.createString(task.newActorHandles[i].toByteBuffer());
-    }
-    int newActorHandlesOffset = fbb.createVectorOfTables(newActorHandlesOffsets);
+    int newActorHandlesOffset
+        = fbb.createString(UniqueIdUtil.concatUniqueIds(task.newActorHandles));
+
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
     for (int i = 0; i < argsOffsets.length; i++) {
       int objectIdOffset = 0;
       int dataOffset = 0;
       if (task.args[i].id != null) {
-        int[] idOffsets = new int[]{fbb.createString(task.args[i].id.toByteBuffer())};
-        objectIdOffset = fbb.createVectorOfTables(idOffsets);
+        objectIdOffset = fbb.createString(
+          UniqueIdUtil.concatUniqueIds(new UniqueId[] {task.args[i].id}));
       } else {
-        objectIdOffset = fbb.createVectorOfTables(new int[0]);
+        objectIdOffset = fbb.createString("");
       }
       if (task.args[i].data != null) {
         dataOffset = fbb.createString(ByteBuffer.wrap(task.args[i].data));
@@ -214,13 +213,10 @@ public class RayletClientImpl implements RayletClient {
       argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
     }
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
+
     // Serialize returns
-    int returnCount = task.returnIds.length;
-    int[] returnsOffsets = new int[returnCount];
-    for (int k = 0; k < returnCount; k++) {
-      returnsOffsets[k] = fbb.createString(task.returnIds[k].toByteBuffer());
-    }
-    int returnsOffset = fbb.createVectorOfTables(returnsOffsets);
+    int returnsOffset = fbb.createString(UniqueIdUtil.concatUniqueIds(task.returnIds));
+
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different
     // resources required by this task. The index in this vector corresponds to

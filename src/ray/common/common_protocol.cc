@@ -24,6 +24,31 @@ const std::vector<ray::ObjectID> from_flatbuf(
   return object_ids;
 }
 
+const std::vector<ray::ObjectID> object_ids_from_flatbuf(
+    const flatbuffers::String &string) {
+  const auto &object_ids = string_from_flatbuf(string);
+  std::vector<ray::ObjectID> ret;
+  auto count = object_ids.size() / kUniqueIDSize;
+
+  for (int i = 0; i < count; ++i) {
+    auto pos = static_cast<size_t>(kUniqueIDSize * i);
+    const auto &id = object_ids.substr(pos, kUniqueIDSize);
+    ret.push_back(ray::ObjectID::from_binary(id));
+  }
+
+  return ret;
+}
+
+flatbuffers::Offset<flatbuffers::String>  object_ids_to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb,
+    const std::vector<ray::ObjectID> &object_ids) {
+  std::string result;
+  for (const auto &id : object_ids) {
+    result += id.binary();
+  }
+return fbb.CreateString(result);
+}
+
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ray::ObjectID object_ids[],
            int64_t num_objects) {

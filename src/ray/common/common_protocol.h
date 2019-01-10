@@ -28,6 +28,24 @@ ray::ObjectID from_flatbuf(const flatbuffers::String &string);
 const std::vector<ray::ObjectID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
 
+/// Convert a flatbuffer of string that concatenated
+/// object IDs to a vector of object IDs.
+///
+/// @param vector The flatbuffer vector.
+/// @return The vector of object IDs.
+const std::vector<ray::ObjectID> object_ids_from_flatbuf(
+    const flatbuffers::String &string);
+
+/// Convert a vector of object IDs to a flatbuffer string.
+/// The IDs are concatenated to a string with binary.
+///
+/// @param fbb Reference to the flatbuffer builder.
+/// @param object_ids The vector of object IDs.
+/// @return Flatbuffer string of concatenated IDs.
+flatbuffers::Offset<flatbuffers::String>  object_ids_to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb,
+    const std::vector<ray::ObjectID> &object_ids);
+
 /// Convert an array of object IDs to a flatbuffer vector of strings.
 ///
 /// @param fbb Reference to the flatbuffer builder.

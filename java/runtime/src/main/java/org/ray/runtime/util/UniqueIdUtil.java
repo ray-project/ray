@@ -1,10 +1,10 @@
 package org.ray.runtime.util;
 
+import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.List;
-
 import org.ray.api.id.UniqueId;
 
 
@@ -78,5 +78,45 @@ public class UniqueIdUtil {
       ids[i] = objectIds.get(i).getBytes();
     }
     return ids;
+  }
+
+  /**
+   * Get unique IDs from concatenated ByteBuffer.
+   *
+   * @param byteBufferOfIds The ByteBuffer concatenated from IDs.
+   * @return The array of unique IDs.
+   */
+  public static UniqueId[] getUniqueIdsFromByteBuffer(ByteBuffer byteBufferOfIds) {
+    Preconditions.checkArgument(byteBufferOfIds != null);
+
+    byte[] bytesOfIds = new byte[byteBufferOfIds.remaining()];
+    byteBufferOfIds.get(bytesOfIds, 0, byteBufferOfIds.remaining());
+
+    int count = bytesOfIds.length / UniqueId.LENGTH;
+    UniqueId[] uniqueIds = new UniqueId[count];
+
+    for (int i = 0; i < count; ++i) {
+      byte[] id = new byte[UniqueId.LENGTH];
+      System.arraycopy(bytesOfIds, i * UniqueId.LENGTH, id, 0, UniqueId.LENGTH);
+      uniqueIds[i] = UniqueId.fromByteBuffer(ByteBuffer.wrap(id));
+    }
+
+    return uniqueIds;
+  }
+
+  /**
+   * Concatenate IDs to a ByteBuffer.
+   *
+   * @param ids The array of IDs that will be concatenated.
+   * @return A ByteBuffer that contains bytes of concatenated IDs.
+   */
+  public static ByteBuffer concatUniqueIds(UniqueId[] ids) {
+    byte[] bytesOfIds = new byte[UniqueId.LENGTH * ids.length];
+    for (int i = 0; i < ids.length; ++i) {
+      System.arraycopy(ids[i].getBytes(), 0, bytesOfIds,
+          i * UniqueId.LENGTH, UniqueId.LENGTH);
+    }
+
+    return ByteBuffer.wrap(bytesOfIds);
   }
 }

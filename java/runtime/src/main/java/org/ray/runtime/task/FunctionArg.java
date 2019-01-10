@@ -4,7 +4,6 @@ import org.ray.api.id.UniqueId;
 
 /**
  * Represents a function argument in task spec.
- *
  * Either `id` or `data` should be null, when id is not null, this argument will be
  * passed by reference, otherwise it will be passed by value.
  */
