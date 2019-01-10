@@ -1775,10 +1775,12 @@ class TrialRunnerTest(unittest.TestCase):
     def testCheckpointWithFunction(self):
         ray.init()
         trial = Trial(
-            "__fake", config={
-            "callbacks": {
-                "on_episode_start": tune.function(lambda i: i),
-            }},
+            "__fake",
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda i: i),
+                }
+            },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(
