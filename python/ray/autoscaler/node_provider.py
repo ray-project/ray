@@ -184,3 +184,7 @@ class NodeProvider(object):
         for node_id in node_ids:
             logger.info("NodeProvider: Terminating node {}".format(node_id))
             self.terminate_node(node_id)
+
+    def cleanup(self):
+        """Clean-up when a Provider is no longer required."""
+        pass

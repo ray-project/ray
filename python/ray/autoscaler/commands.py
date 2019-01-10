@@ -106,6 +106,8 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         time.sleep(1)
         A = remaining_nodes()
 
+    provider.cleanup()
+
 
 def kill_node(config_file, yes, override_cluster_name):
     """Kills a random Raylet worker."""
@@ -209,7 +211,6 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             config["setup_commands"] + config["head_setup_commands"] +
             config["head_start_ray_commands"])
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
     updater = NodeUpdaterThread(
         head_node,
         config["provider"],
@@ -252,6 +253,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
           "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                        config["auth"]["ssh_user"],
                                        provider.external_ip(head_node)))
+
+    provider.cleanup()
 
 
 def attach_cluster(config_file, start, use_tmux, override_cluster_name, new):
@@ -323,6 +326,8 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
         expect_error=stop,
         port_forward=port_forward)
 
+    provider.cleanup()
+
 
 def _exec(updater, cmd, screen, tmux, expect_error=False, port_forward=None):
     if cmd:
@@ -381,6 +386,8 @@ def rsync(config_file, source, target, override_cluster_name, down):
         rsync = updater.rsync_up
     rsync(source, target, check_error=False)
 
+    provider.cleanup()
+
 
 def get_head_node_ip(config_file, override_cluster_name):
     """Returns head node IP for given configuration file if exists."""
@@ -388,9 +395,13 @@ def get_head_node_ip(config_file, override_cluster_name):
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
+
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node = _get_head_node(config, config_file, override_cluster_name)
-    return provider.external_ip(head_node)
+    ip = provider.external_ip(head_node)
+    provider.cleanup()
+
+    return ip
 
 
 def get_worker_node_ips(config_file, override_cluster_name):
@@ -413,6 +424,8 @@ def _get_head_node(config,
         TAG_RAY_NODE_TYPE: "head",
     }
     nodes = provider.nodes(head_node_tags)
+    provider.cleanup()
+
     if len(nodes) > 0:
         head_node = nodes[0]
         return head_node
