@@ -7,6 +7,16 @@
 #include <string>
 
 #include "plasma/common.h"
+// The "arrow/util/logging.h" will define some macros
+// that conflict with libraries like Google Log. Undefine them below.
+#undef DCHECK
+#undef DCHECK_NE
+#undef DCHECK_EQ
+#undef DCHECK_GE
+#undef DCHECK_GT
+#undef DCHECK_LE
+#undef DCHECK_LT
+
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 

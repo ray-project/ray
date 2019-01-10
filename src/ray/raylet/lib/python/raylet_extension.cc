@@ -5,8 +5,6 @@
 #include "config_extension.h"
 #include "ray/raylet/raylet_client.h"
 
-PyObject *LocalSchedulerError;
-
 // clang-format off
 typedef struct {
   PyObject_HEAD
