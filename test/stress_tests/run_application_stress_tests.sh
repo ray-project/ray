@@ -4,7 +4,7 @@
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 RAY_VERSION=$(git describe --tags --abbrev=0)
-RESULT_FILE="results-$(date '+%Y-%m-%d_%H-%M-%S').log"
+RESULT_FILE=$ROOT_DIR/"results-$(date '+%Y-%m-%d_%H-%M-%S').log"
 
 echo "Testing on latest version of Ray: $RAY_VERSION"
 echo "Logging to" $RESULT_FILE
@@ -30,13 +30,13 @@ test_impala(){
     local WHEEL_STR=$(_find_wheel_str $PYTHON_VERSION)
 
     pushd "$ROOT_DIR"
-
-        local CLUSTER="rllib_impala.yaml"
+        local TEST_NAME="rllib_impala_$PYTHON_VERSION"
+        local CLUSTER="$TEST_NAME.yaml"
         echo "Creating IMPALA cluster YAML from template."
-        echo "Current Directory:" $(pwd)
+
         cat application_cluster_template.yaml |
             sed -e "
-                s/<<<CLUSTER_NAME>>>/rllib-impala-testing/;
+                s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
                 s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/m5.24xlarge/;
@@ -73,12 +73,13 @@ test_sgd(){
     local WHEEL_STR=$(_find_wheel_str $PYTHON_VERSION)
 
     pushd "$ROOT_DIR"
-        local CLUSTER="sgd.yaml"
+        local TEST_NAME="sgd_$PYTHON_VERSION"
+        local CLUSTER="$TEST_NAME.yaml"
         echo "Creating SGD cluster YAML from template."
 
         cat application_cluster_template.yaml |
             sed -e "
-                s/<<<CLUSTER_NAME>>>/sgd-testing/;
+                s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
                 s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/g3.16xlarge/;
@@ -113,6 +114,9 @@ test_sgd(){
 # RUN TESTS
 for PYTHON_VERSION in "p27" "p36"
 do
-    test_impala $PYTHON_VERSION
-    test_sgd $PYTHON_VERSION
+    test_impala $PYTHON_VERSION &
+    test_sgd $PYTHON_VERSION &
 done
+wait
+
+cat $RESULT_FILE
