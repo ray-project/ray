@@ -79,8 +79,9 @@ table TaskInfo {
   new_actor_handles: [string];
   // Task arguments.
   args: [Arg];
-  // Object IDs of return values.
-  returns: [string];
+  // Object IDs of return values. This is a long string that concatenate
+  // all of the return object IDs of this task.
+  returns: string;
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];

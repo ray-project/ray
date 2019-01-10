@@ -88,11 +88,10 @@ TaskSpecification::TaskSpecification(
     arguments.push_back(argument->ToFlatbuffer(fbb));
   }
 
-  // Add return object IDs.
-  std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
-  for (int64_t i = 1; i < num_returns + 1; i++) {
-    ObjectID return_id = ComputeReturnId(task_id, i);
-    returns.push_back(to_flatbuf(fbb, return_id));
+  // Join the binary strings of return object IDs.
+  std::string returns;
+  for (int64_t i = 1; i < num_returns + 1; ++i) {
+    returns += ComputeReturnId(task_id, i).binary();
   }
 
   // Serialize the TaskSpecification.
@@ -102,7 +101,7 @@ TaskSpecification::TaskSpecification(
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
       to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
       to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources),
+      fbb.CreateString(returns), map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,
       string_vec_to_flatbuf(fbb, function_descriptor));
   fbb.Finish(spec);
@@ -164,12 +163,18 @@ int64_t TaskSpecification::NumArgs() const {
 
 int64_t TaskSpecification::NumReturns() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return message->returns()->size();
+  return (message->returns()->size() / kUniqueIDSize);
 }
 
 ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
-  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf(*message->returns()->Get(return_index));
+                auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  const auto &returns = string_from_flatbuf(*message->returns());
+  auto pos = static_cast<size_t>(kUniqueIDSize * return_index);
+  RAY_CHECK(pos + kUniqueIDSize <= returns.size()) << "return_index is out of bound: "
+      << "return_index is " << return_index << ", kUniqueIDSize is " << kUniqueIDSize
+      << ", returns.length is " << returns.size() << "returns is " << returns;
+  const auto &return_id = returns.substr(pos, kUniqueIDSize);
+  return UniqueID::from_binary(return_id);
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {

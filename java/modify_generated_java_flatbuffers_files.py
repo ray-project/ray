@@ -126,4 +126,4 @@ if __name__ == "__main__":
         ("Arg", "objectIds"),
     ]
 
-    modify_generated_java_flatbuffers_files(sys.argv[1], class_and_field_pairs)
+    # modify_generated_java_flatbuffers_files(sys.argv[1], class_and_field_pairs)
