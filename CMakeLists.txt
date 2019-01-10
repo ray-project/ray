@@ -4,8 +4,6 @@ project(ray)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
-include(FindCython)
-include(UseCython)
 
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
@@ -145,6 +143,8 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E
       copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_SOURCE_DIR}/python/ray/core/src/plasma/)
+
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/python)
 
 endif()
 
