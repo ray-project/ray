@@ -60,31 +60,38 @@ class VLoss(object):
 
 class ReweightedImitationLoss(object):
     def __init__(self, state_values, cummulative_rewards, logits, actions,
-                 action_space, beta):
+                 action_space, beta, objective):
 
-        ma_adv_norm = tf.get_variable(
-            name="moving_average_of_advantage_norm",
-            dtype=tf.float32,
-            initializer=100.0,
-            trainable=False)
-        # advantage estimation
-        adv = cummulative_rewards - state_values
-        # update averaged advantage norm
-        update_adv_norm = tf.assign_add(
-            ref=ma_adv_norm,
-            value=1e-6 * (tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
+        if objective == "IL":
+            # log\pi_\theta(a|s)
+            dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
+            action_dist = dist_cls(logits)
+            logprobs = action_dist.logp(actions)
+            self.loss = -1.0 * tf.reduce_mean(logprobs)
+        else:
+            ma_adv_norm = tf.get_variable(
+                name="moving_average_of_advantage_norm",
+                dtype=tf.float32,
+                initializer=100.0,
+                trainable=False)
+            # advantage estimation
+            adv = cummulative_rewards - state_values
+            # update averaged advantage norm
+            update_adv_norm = tf.assign_add(
+                ref=ma_adv_norm,
+                value=1e-6 * (tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
 
-        # exponentially weighted advantages
-        with tf.control_dependencies([update_adv_norm]):
-            exp_advs = tf.exp(
-                beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
+            # exponentially weighted advantages
+            with tf.control_dependencies([update_adv_norm]):
+                exp_advs = tf.exp(
+                    beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
 
-        # log\pi_\theta(a|s)
-        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-        action_dist = dist_cls(logits)
-        logprobs = action_dist.logp(actions)
+            # log\pi_\theta(a|s)
+            dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
+            action_dist = dist_cls(logits)
+            logprobs = action_dist.logp(actions)
 
-        self.loss = -1.0 * tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
+            self.loss = -1.0 * tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
 
 
 class MARWILPolicyGraph(TFPolicyGraph):
@@ -132,6 +139,12 @@ class MARWILPolicyGraph(TFPolicyGraph):
         self.p_loss = self._build_p_loss(state_values, self.rew_t, logits,
                                          self.act_t, action_space)
 
+        # objective to optimize
+        if self.config["objective"] == "IL":
+            objective = self.p_loss.loss
+        else:
+            objective = self.p_loss.loss + self.config["c"] * self.v_loss.loss
+
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
@@ -146,7 +159,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
-            loss=self.p_loss.loss + self.config["c"] * self.v_loss.loss,
+            loss=objective,
             loss_inputs=self.loss_inputs,
             update_ops=[])
         self.sess.run(tf.global_variables_initializer())
@@ -173,7 +186,8 @@ class MARWILPolicyGraph(TFPolicyGraph):
     def _build_p_loss(self, state_values, cum_rwds, logits, actions,
                       action_space):
         return ReweightedImitationLoss(state_values, cum_rwds, logits, actions,
-                                       action_space, self.config["beta"])
+                                       action_space, self.config["beta"],
+                                       self.config["objective"])
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,

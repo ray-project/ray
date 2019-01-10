@@ -56,6 +56,10 @@ DEFAULT_CONFIG = with_common_config({
     "schedule_max_timesteps": 100000,
 
     # === Optimization ===
+    # Which kind of objective to optimize:
+    #  - "IL": imitation learning
+    #  - "MARWIL": exponentially weighted IL
+    "objective": "MARWIL",
     # Learning rate for adam optimizer
     "lr": 1e-4,
     # If not None, clip gradients during optimization at this value
