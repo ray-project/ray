@@ -5,6 +5,7 @@ from __future__ import print_function
 import json
 import logging
 import os
+import random
 import re
 import setproctitle
 import string
@@ -13,6 +14,7 @@ import sys
 import threading
 import time
 from collections import defaultdict, namedtuple, OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -1176,59 +1178,137 @@ def test_multithreading(shutdown_only):
     # relase resources when joining the threads.
     ray.init(num_cpus=2)
 
+    def run_test_in_multi_threads(test_case, num_threads=20, num_repeats=50):
+        """A helper function that runs test cases in multiple threads."""
+
+        def wrapper():
+            for _ in range(num_repeats):
+                test_case()
+                time.sleep(random.randint(0, 10) / 1000.0)
+            return "ok"
+
+        executor = ThreadPoolExecutor(max_workers=num_threads)
+        futures = [executor.submit(wrapper) for _ in range(num_threads)]
+        for future in futures:
+            assert future.result() == "ok"
+
     @ray.remote
-    def f():
-        pass
+    def echo(value, delay_ms=0):
+        if delay_ms > 0:
+            time.sleep(delay_ms / 1000.0)
+        return value
 
-    def g(n):
-        for _ in range(1000 // n):
-            ray.get([f.remote() for _ in range(n)])
-        res = [ray.put(i) for i in range(1000 // n)]
-        ray.wait(res, len(res))
+    @ray.remote
+    class Echo(object):
+        def echo(self, value):
+            return value
 
-    def test_multi_threading():
-        threads = [
-            threading.Thread(target=g, args=(n, ))
-            for n in [1, 5, 10, 100, 1000]
+    def test_api_in_multi_threads():
+        """Test using Ray api in multiple threads."""
+
+        # Test calling remote functions in multiple threads.
+        def test_remote_call():
+            value = random.randint(0, 1000000)
+            result = ray.get(echo.remote(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_remote_call)
+
+        # Test multiple threads calling one actor.
+        actor = Echo.remote()
+
+        def test_call_actor():
+            value = random.randint(0, 1000000)
+            result = ray.get(actor.echo.remote(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_call_actor)
+
+        # Test put and get.
+        def test_put_and_get():
+            value = random.randint(0, 1000000)
+            result = ray.get(ray.put(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_put_and_get)
+
+        # Test multiple threads waiting for objects.
+        num_wait_objects = 10
+        objects = [
+            echo.remote(i, delay_ms=10) for i in range(num_wait_objects)
         ]
 
-        [thread.start() for thread in threads]
-        [thread.join() for thread in threads]
+        def test_wait():
+            ready, _ = ray.wait(
+                objects,
+                num_returns=len(objects),
+                timeout=1000,
+            )
+            assert len(ready) == num_wait_objects
+            assert ray.get(ready) == list(range(num_wait_objects))
 
+        run_test_in_multi_threads(test_wait, num_repeats=1)
+
+    # Run tests in a driver.
+    test_api_in_multi_threads()
+
+    # Run tests in a worker.
     @ray.remote
-    def test_multi_threading_in_worker():
-        test_multi_threading()
+    def run_tests_in_worker():
+        test_api_in_multi_threads()
+        return "ok"
 
-    def block(args, n):
-        ray.wait(args, num_returns=n)
-        ray.get(args[:n])
+    assert ray.get(run_tests_in_worker.remote()) == "ok"
 
+    # Test actor that runs background threads.
     @ray.remote
     class MultithreadedActor(object):
         def __init__(self):
-            pass
+            self.lock = threading.Lock()
+            self.thread_results = []
+
+        def background_thread(self, wait_objects):
+            try:
+                # Test wait
+                ready, _ = ray.wait(
+                    wait_objects,
+                    num_returns=len(wait_objects),
+                    timeout=1000,
+                )
+                assert len(ready) == len(wait_objects)
+                for _ in range(50):
+                    num = 20
+                    # Test remote call
+                    results = [echo.remote(i) for i in range(num)]
+                    assert ray.get(results) == list(range(num))
+                    # Test put and get
+                    objects = [ray.put(i) for i in range(num)]
+                    assert ray.get(objects) == list(range(num))
+                    time.sleep(random.randint(0, 10) / 1000.0)
+            except Exception as e:
+                with self.lock:
+                    self.thread_results.append(e)
+            else:
+                with self.lock:
+                    self.thread_results.append("ok")
 
         def spawn(self):
-            objects = [f.remote() for _ in range(1000)]
+            wait_objects = [echo.remote(i, delay_ms=10) for i in range(20)]
             self.threads = [
-                threading.Thread(target=block, args=(objects, n))
-                for n in [1, 5, 10, 100, 1000]
+                threading.Thread(
+                    target=self.background_thread, args=(wait_objects, ))
+                for _ in range(20)
             ]
-
             [thread.start() for thread in self.threads]
 
         def join(self):
             [thread.join() for thread in self.threads]
+            assert self.thread_results == ["ok"] * len(self.threads)
+            return "ok"
 
-    # test multi-threading in the driver
-    test_multi_threading()
-    # test multi-threading in the worker
-    ray.get(test_multi_threading_in_worker.remote())
-
-    # test multi-threading in the actor
-    a = MultithreadedActor.remote()
-    ray.get(a.spawn.remote())
-    ray.get(a.join.remote())
+    actor = MultithreadedActor.remote()
+    actor.spawn.remote()
+    ray.get(actor.join.remote()) == "ok"
 
 
 def test_free_objects_multi_node(ray_start_cluster):
