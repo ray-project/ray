@@ -409,7 +409,8 @@ class Trial(object):
             "_checkpoint": self._checkpoint,
             "config": self.config,
             "custom_loggers": self.custom_loggers,
-            "sync_function": self.sync_function
+            "sync_function": self.sync_function,
+            "last_result": self.last_result
         }
 
         for key, value in pickle_data.items():
