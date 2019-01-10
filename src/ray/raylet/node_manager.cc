@@ -808,34 +808,49 @@ void NodeManager::ProcessDisconnectClientMessage(
 
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
-  if (worker) {
-    while (!worker->GetBlockedTaskIds().empty()) {
-      // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
-      // not safe to pass in the iterator directly.
-      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-      HandleTaskUnblocked(client, task_id);
+  if (is_worker && worker->IsDead()) {
+    // Don't need to unblock the client if it's a worker and is already dead.
+    // Because in this case, its task is already cleaned up.
+    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
+  } else {
+    if (worker) {
+      while (!worker->GetBlockedTaskIds().empty()) {
+        // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
+        // not safe to pass in the iterator directly.
+        const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+        HandleTaskUnblocked(client, task_id);
+      }
     }
   }
 
-  // Remove the dead client from the pool and stop listening for messages.
   if (is_worker) {
-    // The client is a worker. Handle the case where the worker is killed
-    // while executing a task. Clean up the assigned task's resources, push
-    // an error to the driver.
-    // (See design_docs/task_states.rst for the state transition diagram.)
+    // The client is a worker.
+    if (worker->IsDead()) {
+      // If the worker was killed by us because the driver exists,
+      // treat it as intentionally disconnected.
+      intentional_disconnect = true;
+    }
+
+    const ActorID &actor_id = worker->GetActorId();
+    if (!actor_id.is_nil()) {
+      // If the worker was an actor, update actor state, reconstrut the actor if needed,
+      // and clean up actor's tasks if the actor is permanently dead.
+      HandleDisconnectedActor(actor_id, true, intentional_disconnect);
+    }
+
     const TaskID &task_id = worker->GetAssignedTaskId();
-    if (!task_id.is_nil() && !worker->IsDead()) {
-      // If the worker was killed intentionally, e.g., when the driver that created
-      // the task that this worker is currently executing exits, the task for this
-      // worker has already been removed from queue, so the following are skipped.
-      const Task &task = local_queues_.RemoveTask(task_id);
-      // Handle the task failure in order to raise an exception in the
-      // application.
-      TreatTaskAsFailed(task);
+    if (!task_id.is_nil()) {
+      // If the worker was running a task, we should clean up the task unless
+      // the worker is an actor or the worker was already killed because driver exited.
+      // In both cases, the task was alredy cleaned up.
+      if (actor_id.is_nil() && !worker->IsDead()) {
+        const Task &task = local_queues_.RemoveTask(task_id);
+        TreatTaskAsFailed(task);
+      }
 
-      const JobID &job_id = worker->GetAssignedDriverId();
-
-      if (!intentional_disconnect) {
+      if (!intentional_disconnect && !worker->IsDead()) {
+        // Push the error to driver.
+        const JobID &job_id = worker->GetAssignedDriverId();
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
@@ -846,15 +861,8 @@ void NodeManager::ProcessDisconnectClientMessage(
       }
     }
 
+    // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker);
-
-    // If the worker was an actor, add it to the list of dead actors.
-    const ActorID &actor_id = worker->GetActorId();
-    if (!actor_id.is_nil()) {
-      RAY_LOG(DEBUG) << "The actor with ID " << actor_id << " died on "
-                     << gcs_client_->client_table().GetLocalClientId();
-      HandleDisconnectedActor(actor_id, /*was_local=*/true, intentional_disconnect);
-    }
 
     const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
 
