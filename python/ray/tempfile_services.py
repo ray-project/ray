@@ -169,10 +169,6 @@ def new_log_files(name, redirect_output):
     logs_dir = get_logs_dir_path()
     # Create another directory that will be used by some of the RL algorithms.
 
-    # TODO(suquark): This is done by the old code.
-    # We should be able to control its path later.
-    try_to_create_directory("/tmp/ray")
-
     log_stdout = make_inc_temp(
         suffix=".out", prefix=name, directory_name=logs_dir)
     log_stderr = make_inc_temp(
@@ -194,11 +190,10 @@ def new_redis_log_file(redirect_output, shard_number=None):
     return redis_stdout_file, redis_stderr_file
 
 
-def new_raylet_log_file(local_scheduler_index, redirect_output):
+def new_raylet_log_file(redirect_output):
     """Create new logging files for raylet."""
     raylet_stdout_file, raylet_stderr_file = new_log_files(
-        "raylet_{}".format(local_scheduler_index),
-        redirect_output=redirect_output)
+        "raylet", redirect_output=redirect_output)
     return raylet_stdout_file, raylet_stderr_file
 
 
@@ -223,10 +218,10 @@ def new_log_monitor_log_file():
     return log_monitor_stdout_file, log_monitor_stderr_file
 
 
-def new_plasma_store_log_file(local_scheduler_index, redirect_output):
+def new_plasma_store_log_file(redirect_output):
     """Create new logging files for the plasma store."""
     plasma_store_stdout_file, plasma_store_stderr_file = new_log_files(
-        "plasma_store_{}".format(local_scheduler_index), redirect_output)
+        "plasma_store", redirect_output)
     return plasma_store_stdout_file, plasma_store_stderr_file
 
 

@@ -231,21 +231,17 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    assert "CPU" not in resources, "Use the --num-cpus argument."
-    assert "GPU" not in resources, "Use the --num-gpus argument."
-    if num_cpus is not None:
-        resources["CPU"] = num_cpus
-    if num_gpus is not None:
-        resources["GPU"] = num_gpus
     ray_params = RayParams(
         node_ip_address=node_ip_address,
-        object_manager_ports=[object_manager_port],
-        node_manager_ports=[node_manager_port],
+        object_manager_port=object_manager_port,
+        node_manager_port=node_manager_port,
         num_workers=num_workers,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
         redirect_worker_output=not no_redirect_worker_output,
         redirect_output=not no_redirect_output,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
         resources=resources,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,

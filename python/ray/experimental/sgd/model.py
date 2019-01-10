@@ -46,3 +46,27 @@ class Model(object):
             TensorFlow feed_dict to add to the gradient operation.
         """
         return {}
+
+    def get_weights(self):
+        """Return weights from the model.
+
+        Implementing `get_weights` is required for checkpointing and fault
+        tolerance.
+
+        Returns:
+            Numpy array of weights from the model.
+        """
+        raise NotImplementedError(
+            "get_weights of %s is not implemented" % self.__class__.__name__)
+
+    def set_weights(self, weights):
+        """Sets the model weights.
+
+        Implementing `set_weights` is required for checkpointing and fault
+        tolerance.
+
+        Args:
+            weights: numpy array of weights for the model.
+        """
+        raise NotImplementedError(
+            "set_weights of %s is not implemented" % self.__class__.__name__)
