@@ -107,6 +107,8 @@ class RayConfig {
 
   int num_workers_per_process() const { return num_workers_per_process_; }
 
+  int inline_object_max_size_bytes() const { return inline_object_max_size_bytes_; }
+
   void initialize(const std::unordered_map<std::string, int> &config_map) {
     RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
@@ -224,6 +226,7 @@ class RayConfig {
         object_manager_repeated_push_delay_ms_(60000),
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1),
+        inline_object_max_size_bytes_(512),
         initialized_(false) {}
 
   ~RayConfig() {}
@@ -349,8 +352,11 @@ class RayConfig {
   /// chunks exceeds the number of available sending threads.
   uint64_t object_manager_default_chunk_size_;
 
-  /// Number of workers per process
+  /// Number of workers per process.
   int num_workers_per_process_;
+
+  /// Maximum size of an inline object (bytes).
+  int inline_object_max_size_bytes_;
 
   /// Whether the initialization of the instance has been called before.
   /// The RayConfig instance can only (and must) be initialized once.

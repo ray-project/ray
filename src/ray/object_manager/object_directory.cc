@@ -84,13 +84,18 @@ void ObjectDirectory::RegisterBackend() {
 
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
+    const object_manager::protocol::ObjectInfoT &object_info,
+    bool inline_object_flag, const std::vector<uint8_t> &inline_object_data) {
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
   data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
+  data->inline_object_flag = inline_object_flag;
+  if (inline_object_flag) {
+    data->inline_object_data.assign(inline_object_data.begin(), inline_object_data.end());
+  }
   ray::Status status =
       gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
   return status;

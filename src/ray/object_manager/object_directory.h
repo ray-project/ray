@@ -102,7 +102,8 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+      const object_manager::protocol::ObjectInfoT &object_info,
+      bool inline_object_flag, const std::vector<uint8_t> &inline_object_data) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -156,7 +157,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
+      const object_manager::protocol::ObjectInfoT &object_info,
+      bool inline_object_flag, const std::vector<uint8_t> &inline_object_data) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
 

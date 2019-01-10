@@ -128,7 +128,7 @@ table ObjectTableData {
   // The number of times this object has been evicted from this node so far.
   num_evictions: int;
   // In-line object data.
-  inline_object_data: string;
+  inline_object_data: [ubyte];
 }
 
 table TaskReconstructionData {

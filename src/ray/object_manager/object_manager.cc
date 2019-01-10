@@ -68,8 +68,20 @@ void ObjectManager::HandleObjectAdded(
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
+  std::vector<uint8_t> data;
+  bool inline_object_flag = false;
+
+  if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
+    // Inline object, i.e., store it in the GCS entry.
+    plasma::ObjectBuffer object_buffer;
+    std::vector<plasma::ObjectBuffer> object_buffers = {object_buffer};
+    ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
+    inline_object_flag = true;
+    data.assign(object_buffer.data->data(), object_buffer.data->data() + object_info.data_size);
+  }
+
   ray::Status status =
-      object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+      object_directory_->ReportObjectAdded(object_id, client_id_, object_info, inline_object_flag, data);
 
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
