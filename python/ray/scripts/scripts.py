@@ -696,7 +696,7 @@ def get_head_ip(cluster_config_file, cluster_name):
     help="Override the configured cluster name.")
 def get_worker_ips(cluster_config_file, cluster_name):
     worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
-    click.echo('\n'.join(worker_ips))
+    click.echo("\n".join(worker_ips))
 
 
 @cli.command()
