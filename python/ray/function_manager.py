@@ -404,7 +404,7 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
                 traceback_str,
-                driver_id=driver_id,
+                driver_id=driver_id.id(),
                 data={
                     "function_id": function_id.id(),
                     "function_name": function_name

@@ -15,6 +15,8 @@ import ray.ray_constants as ray_constants
 from ray.utils import _random_string
 import pytest
 
+from ray.test.cluster_utils import Cluster
+
 
 def relevant_errors(error_type):
     return [info for info in ray.error_info() if info["type"] == error_type]
@@ -619,7 +621,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    cluster = ray.test.cluster_utils.Cluster()
+    cluster = Cluster()
     for _ in range(2):
         cluster.add_node(
             num_cpus=0,

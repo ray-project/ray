@@ -21,7 +21,6 @@ import pickle
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
 from ray.utils import _random_string

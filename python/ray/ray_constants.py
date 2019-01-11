@@ -5,8 +5,6 @@ from __future__ import print_function
 
 import os
 
-from ray.raylet import ObjectID
-
 
 def env_integer(key, default):
     if key in os.environ:

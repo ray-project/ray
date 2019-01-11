@@ -753,7 +753,7 @@ class Worker(object):
             The arguments object_ids and outputs should have the same length.
 
         Args:
-            object_ids (List[ray.ObjectID]): The object IDs that were assigned to
+            object_ids (List[ObjectID]): The object IDs that were assigned to
                 the outputs of the remote function call.
             outputs (Tuple): The value returned by the remote function. If the
                 remote function was supposed to only return one value, then its
@@ -1108,7 +1108,7 @@ def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
     return (global_state.error_messages(job_id=worker.task_driver_id) +
-            global_state.error_messages(job_id=ObjectID.nil_id().id()))
+            global_state.error_messages(job_id=ObjectID.nil_id()))
 
 
 def _initialize_serialization(driver_id, worker=global_worker):
@@ -2261,7 +2261,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     the remaining list.
 
     Args:
-        object_ids (List[ray.ObjectID]): List of object IDs for objects that may or
+        object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
