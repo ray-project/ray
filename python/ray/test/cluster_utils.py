@@ -93,6 +93,13 @@ class Cluster(object):
                 shutdown_at_exit=self._shutdown_at_exit)
             self.worker_nodes.add(node)
 
+        # Wait for the node to appear in the client table. We do this so that
+        # the nodes appears in the client table in the order that the
+        # corresponding calls to add_node were made. We do this because in the
+        # tests we assume that the driver is connected to the first node that
+        # is added.
+        self._wait_for_node(node)
+
         return node
 
     def remove_node(self, node):
@@ -112,6 +119,34 @@ class Cluster(object):
 
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
+
+    def _wait_for_node(self, node, timeout=30):
+        """Wait until this node has appeared in the client table.
+
+        Args:
+            node (ray.node.Node): The node to wait for.
+            timeout: The amount of time in seconds to wait before raising an
+                exception.
+
+        Raises:
+            Exception: An exception is raised if the timeout expires before the
+                node appears in the client table.
+        """
+        ip_address, port = self.redis_address.split(":")
+        redis_client = redis.StrictRedis(
+            host=ip_address, port=int(port), password=self.redis_password)
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            clients = ray.experimental.state.parse_client_table(redis_client)
+            object_store_socket_names = [
+                client["ObjectStoreSocketName"] for client in clients
+            ]
+            if node.plasma_store_socket_name in object_store_socket_names:
+                return
+            else:
+                time.sleep(0.1)
+        raise Exception("Timed out while waiting for nodes to join.")
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
