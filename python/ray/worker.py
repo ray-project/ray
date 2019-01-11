@@ -1567,7 +1567,7 @@ def init(redis_address=None,
     """
 
     if configure_logging:
-        _setup_logger(level=logging_level, format=logging_format)
+        _setup_logger(logging_level, logging_format)
 
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
