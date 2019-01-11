@@ -409,7 +409,8 @@ class Trial(object):
             "_checkpoint": self._checkpoint,
             "config": self.config,
             "custom_loggers": self.custom_loggers,
-            "sync_function": self.sync_function
+            "sync_function": self.sync_function,
+            "last_result": self.last_result
         }
 
         for key, value in pickle_data.items():
@@ -430,7 +431,8 @@ class Trial(object):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
         for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function"
+                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "last_result"
         ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
