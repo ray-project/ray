@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import sys
 
@@ -85,3 +86,17 @@ if hasattr(ctypes, "windll"):
     # by associating all child processes with a "job" object that imposes this
     # behavior.
     (lambda kernel32: (lambda job: (lambda n: kernel32.SetInformationJobObject(job, 9, "\0" * 17 + chr(0x8 | 0x4 | 0x20) + "\0" * (n - 18), n))(0x90 if ctypes.sizeof(ctypes.c_void_p) > ctypes.sizeof(ctypes.c_int) else 0x70) and kernel32.AssignProcessToJobObject(job, ctypes.c_void_p(kernel32.GetCurrentProcess())))(ctypes.c_void_p(kernel32.CreateJobObjectW(None, None))) if kernel32 is not None else None)(ctypes.windll.kernel32)  # noqa: E501
+
+
+def _setup_logger():
+    logger = logging.getLogger("ray")
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+        ))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+
+_setup_logger()
