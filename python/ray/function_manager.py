@@ -289,11 +289,11 @@ class FunctionActorManager(object):
         self.imported_actor_classes = set()
 
     def increase_task_counter(self, driver_id, function_descriptor):
-        function_id = function_descriptor.function_id.id()
+        function_id = function_descriptor.function_id
         self._num_task_executions[driver_id][function_id] += 1
 
     def get_task_counter(self, driver_id, function_descriptor):
-        function_id = function_descriptor.function_id.id()
+        function_id = function_descriptor.function_id
         return self._num_task_executions[driver_id][function_id]
 
     def export_cached(self):
@@ -371,13 +371,14 @@ class FunctionActorManager(object):
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (driver_id, function_id_str, function_name, serialized_function,
+        (driver_id_str, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self._worker.redis_client.hmget(key, [
              "driver_id", "function_id", "name", "function", "num_return_vals",
              "module", "resources", "max_calls"
          ])
         function_id = ray.ObjectID(function_id_str)
+        driver_id = ray.ObjectID(driver_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
@@ -387,10 +388,10 @@ class FunctionActorManager(object):
         def f():
             raise Exception("This function was not imported properly.")
 
-        self._function_execution_info[driver_id][function_id.id()] = (
+        self._function_execution_info[driver_id][function_id] = (
             FunctionExecutionInfo(
                 function=f, function_name=function_name, max_calls=max_calls))
-        self._num_task_executions[driver_id][function_id.id()] = 0
+        self._num_task_executions[driver_id][function_id] = 0
 
         try:
             function = pickle.loads(serialized_function)
@@ -415,7 +416,7 @@ class FunctionActorManager(object):
             # However in the worker process, the `__main__` module is a
             # different module, which is `default_worker.py`
             function.__module__ = module
-            self._function_execution_info[driver_id][function_id.id()] = (
+            self._function_execution_info[driver_id][function_id] = (
                 FunctionExecutionInfo(
                     function=function,
                     function_name=function_name,
@@ -434,7 +435,7 @@ class FunctionActorManager(object):
         Returns:
             A FunctionExecutionInfo object.
         """
-        function_id = function_descriptor.function_id.id()
+        function_id = function_descriptor.function_id
 
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
@@ -448,7 +449,7 @@ class FunctionActorManager(object):
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
                        "driver_id: %s, function_descriptor: %s. Message: %s" %
-                       (binary_to_hex(driver_id), function_descriptor, e))
+                       driver_id, function_descriptor, e)
             raise KeyError(message)
         return info
 
@@ -474,11 +475,11 @@ class FunctionActorManager(object):
         while True:
             with self._worker.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id.id() in
+                        and (function_descriptor.function_id in
                              self._function_execution_info[driver_id])):
                     break
                 elif not self._worker.actor_id.is_nil() and (
-                        self._worker.actor_id.id() in self._worker.actors):
+                        self._worker.actor_id in self._worker.actors):
                     break
                 if time.time() - start_time > timeout:
                     warning_message = ("This worker was asked to execute a "
@@ -490,7 +491,7 @@ class FunctionActorManager(object):
                             self._worker,
                             ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
-                            driver_id=driver_id)
+                            driver_id=driver_id.id())
                     warning_sent = True
             time.sleep(0.001)
 
@@ -555,7 +556,7 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        key = (b"ActorClass:" + driver_id + b":" +
+        key = (b"ActorClass:" + driver_id.id() + b":" +
                function_descriptor.function_id.id())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
@@ -577,8 +578,8 @@ class FunctionActorManager(object):
             actor_class_key: The key in Redis to use to fetch the actor.
             worker: The worker to use.
         """
-        actor_id_str = self._worker.actor_id.id()
-        (driver_id, class_name, module, pickled_class, checkpoint_interval,
+        actor_id = self._worker.actor_id
+        (driver_id_str, class_name, module, pickled_class, checkpoint_interval,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [
                  "driver_id", "class_name", "module", "class",
@@ -587,6 +588,7 @@ class FunctionActorManager(object):
 
         class_name = decode(class_name)
         module = decode(module)
+        driver_id = ray.ObjectID(driver_id_str)
         checkpoint_interval = int(checkpoint_interval)
         actor_method_names = json.loads(decode(actor_method_names))
 
@@ -605,7 +607,7 @@ class FunctionActorManager(object):
         class TemporaryActor(object):
             pass
 
-        self._worker.actors[actor_id_str] = TemporaryActor()
+        self._worker.actors[actor_id] = TemporaryActor()
         self._worker.actor_checkpoint_interval = checkpoint_interval
 
         def temporary_actor_method(*xs):
@@ -617,7 +619,7 @@ class FunctionActorManager(object):
         for actor_method_name in actor_method_names:
             function_descriptor = FunctionDescriptor(module, actor_method_name,
                                                      class_name)
-            function_id = function_descriptor.function_id.id()
+            function_id = function_descriptor.function_id
             temporary_executor = self._make_actor_method_executor(
                 actor_method_name,
                 temporary_actor_method,
@@ -642,15 +644,15 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
                 traceback_str,
-                driver_id,
-                data={"actor_id": actor_id_str})
+                driver_id.id(),
+                data={"actor_id": actor_id.id()})
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.
         else:
             # TODO(pcm): Why is the below line necessary?
             unpickled_class.__module__ = module
-            self._worker.actors[actor_id_str] = unpickled_class.__new__(
+            self._worker.actors[actor_id] = unpickled_class.__new__(
                 unpickled_class)
 
             actor_methods = inspect.getmembers(
@@ -658,7 +660,7 @@ class FunctionActorManager(object):
             for actor_method_name, actor_method in actor_methods:
                 function_descriptor = FunctionDescriptor(
                     module, actor_method_name, class_name)
-                function_id = function_descriptor.function_id.id()
+                function_id = function_descriptor.function_id
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method, actor_imported=True)
                 self._function_execution_info[driver_id][function_id] = (

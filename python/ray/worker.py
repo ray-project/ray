@@ -335,7 +335,7 @@ class Worker(object):
         local object store.
 
         Args:
-            object_id (object_id.ray.ObjectID): The object ID of the value to be
+            object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
 
@@ -438,7 +438,7 @@ class Worker(object):
         local object store.
 
         Args:
-            object_ids (List[object_id.ray.ObjectID]): A list of the object IDs
+            object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
         """
         # Make sure that the values are object IDs.
@@ -832,9 +832,9 @@ class Worker(object):
                     outputs = function_executor(*arguments)
                 else:
                     if not task.actor_id().is_nil():
-                        key = task.actor_id().id()
+                        key = task.actor_id()
                     else:
-                        key = task.actor_creation_id().id()
+                        key = task.actor_creation_id()
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
         except Exception as e:
@@ -895,7 +895,7 @@ class Worker(object):
         """
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
-        driver_id = task.driver_id().id()
+        driver_id = task.driver_id()
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
@@ -924,12 +924,12 @@ class Worker(object):
                     title = "ray_worker:{}()".format(function_name)
                     next_title = "ray_worker"
                 else:
-                    actor = self.actors[task.actor_creation_id().id()]
+                    actor = self.actors[task.actor_creation_id()]
                     title = "ray_{}:{}()".format(actor.__class__.__name__,
                                                  function_name)
                     next_title = "ray_{}".format(actor.__class__.__name__)
             else:
-                actor = self.actors[task.actor_id().id()]
+                actor = self.actors[task.actor_id()]
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
                 next_title = "ray_{}".format(actor.__class__.__name__)
@@ -1135,7 +1135,7 @@ def _initialize_serialization(driver_id, worker=global_worker):
     # works.
     serialization_context.register_type(
         ObjectID,
-        "ObjectID",
+        "ray.ObjectID",
         pickle=False,
         custom_serializer=object_id_custom_serializer,
         custom_deserializer=object_id_custom_deserializer)

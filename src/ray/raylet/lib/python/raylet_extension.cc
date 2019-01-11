@@ -31,6 +31,8 @@ static int PyRayletClient_init(PyRayletClient *self, PyObject *args, PyObject *k
   return 0;
 }
 
+PyObject *ray_common_error = nullptr;
+
 static void PyRayletClient_dealloc(PyRayletClient *self) {
   if (self->raylet_client != NULL) {
     delete self->raylet_client;

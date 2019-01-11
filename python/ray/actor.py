@@ -863,7 +863,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             checkpoint_resumed = False
             if checkpoint_index is not None:
                 # Load the actor state from the checkpoint.
-                worker.actors[worker.actor_id.id()] = (
+                worker.actors[worker.actor_id] = (
                     worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint))
                 # Set the number of tasks executed so far.
