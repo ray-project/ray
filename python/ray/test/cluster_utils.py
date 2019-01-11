@@ -35,7 +35,6 @@ class Cluster(object):
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
-        self.redis_password = None
         self.connected = False
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
@@ -45,12 +44,12 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                self.connect(head_node_args)
+                self.connect()
 
-    def connect(self, head_node_args):
+    def connect(self):
+        """Connect the driver to the cluster."""
         assert self.redis_address is not None
         assert not self.connected
-        self.redis_password = head_node_args.get("redis_password")
         output_info = ray.init(
             ignore_reinit_error=True,
             redis_address=self.redis_address,
@@ -84,6 +83,7 @@ class Cluster(object):
                 ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
             self.head_node = node
             self.redis_address = self.head_node.redis_address
+            self.redis_password = node_args.get("redis_password")
             self.webui_url = self.head_node.webui_url
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
