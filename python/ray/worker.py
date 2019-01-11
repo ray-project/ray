@@ -1242,6 +1242,23 @@ def get_address_info_from_redis(redis_address,
         counter += 1
 
 
+def _setup_logger(logging_level, logging_format):
+    """Setup default logging.
+
+    Args:
+        logging_level: Logging level, default will be logging.INFO.
+        logging_format: Logging format, default will contain a timestamp,
+            filename, line number, and message. See ray_constants.py
+    """
+    logger = logging.getLogger("ray")
+    logger.setLevel(logging_level)
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(logging_format))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+
 def _normalize_resource_arguments(num_cpus, num_gpus, resources,
                                   num_local_schedulers):
     """Stick the CPU and GPU arguments into the resources dictionary.
@@ -1531,8 +1548,8 @@ def init(redis_address=None,
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be logging.INFO.
-        logging_format: Logging format, default will be "%(message)s"
-            which means only contains the message.
+        logging_format: Logging format, default contains a timestamp,
+            filename, line number, and message. See ray_constants.py.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1551,7 +1568,7 @@ def init(redis_address=None,
     """
 
     if configure_logging:
-        logging.basicConfig(level=logging_level, format=logging_format)
+        _setup_logger(level=logging_level, format=logging_format)
 
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
