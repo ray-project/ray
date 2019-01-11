@@ -30,7 +30,7 @@ const std::vector<ray::ObjectID> object_ids_from_flatbuf(
   std::vector<ray::ObjectID> ret;
   auto count = object_ids.size() / kUniqueIDSize;
 
-  for (int i = 0; i < count; ++i) {
+  for (size_t i = 0; i < count; ++i) {
     auto pos = static_cast<size_t>(kUniqueIDSize * i);
     const auto &id = object_ids.substr(pos, kUniqueIDSize);
     ret.push_back(ray::ObjectID::from_binary(id));
