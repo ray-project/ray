@@ -30,8 +30,6 @@ using ray::UniqueID;
 using ray::FunctionID;
 using ray::TaskID;
 
-PyObject *CommonError;
-
 /* Initialize pickle module. */
 
 PyObject *pickle_module = NULL;
@@ -111,25 +109,22 @@ int PyListStringToStringVector(PyObject *object,
 }
 
 static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
-  const char *data = nullptr;
+  const char *data;
   int size;
-  if (!PyArg_ParseTuple(args, "|s#", &data, &size)) {
+  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
     return -1;
   }
-  if (data == nullptr) {
-    // Create the NIL object ID.
-    std::fill_n(self->object_id.mutable_data(), sizeof(ObjectID), 255);
-  } else if (size != sizeof(ObjectID)) {
-    PyErr_SetString(CommonError, "ObjectID: object id string needs to have length 20");
+  if (size != sizeof(ObjectID)) {
+    PyErr_SetString(PyExc_ValueError,
+                    "ObjectID: object id string needs to have length 20");
     return -1;
-  } else {
-    std::memcpy(self->object_id.mutable_data(), data, sizeof(self->object_id));
   }
+  std::memcpy(self->object_id.mutable_data(), data, sizeof(self->object_id));
   return 0;
 }
 
-static PyObject *PyObjectID_from_random(PyObject *cls) {
-  return PyObjectID_make(ray::UniqueID::from_random());
+static PyObject *PyObjectID_nil_id(PyObject *cls) {
+  return PyObjectID_make(ray::UniqueID());
 }
 
 /* Create a PyObjectID from C. */
@@ -285,7 +280,6 @@ static PyObject *PyObjectID_getstate(PyObjectID *self) {
 
 static PyObject *PyObjectID___reduce__(PyObjectID *self, PyObject *arg) {
   return Py_BuildValue("(ON)", Py_TYPE(self), PyObjectID_getstate(self));
-  return NULL;
 }
 
 static PyMethodDef PyObjectID_methods[] = {
@@ -299,7 +293,7 @@ static PyMethodDef PyObjectID_methods[] = {
      "Return whether the ObjectID is nil"},
     {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_VARARGS,
      "Provide a way to pickle this ObjectID."},
-    {"from_random", (PyCFunction)PyObjectID_from_random, METH_NOARGS | METH_CLASS,
+    {"nil_id", (PyCFunction)PyObjectID_nil_id, METH_NOARGS | METH_CLASS,
      "Create an instance of ray.ObjectID from random string"},
     {NULL} /* Sentinel */
 };

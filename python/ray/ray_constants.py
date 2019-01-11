@@ -15,7 +15,6 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.

@@ -24,6 +24,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
+from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
@@ -2310,12 +2311,14 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
+    nil_id_hex = ray.experimental.state.binary_to_hex(
+        ray.ObjectID.nil_id().id())
 
     assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
     assert task_spec["DriverID"] == driver_id
-    assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.global_state.client_table()
@@ -2341,7 +2344,7 @@ def test_global_state_api(shutdown_only):
 
     function_table = ray.global_state.function_table()
     task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
@@ -2459,15 +2462,13 @@ def test_object_id_properties():
     id_bytes = b"00112233445566778899"
     object_id = ray.ObjectID(id_bytes)
     assert object_id.id() == id_bytes
-    object_id = ray.ObjectID()
+    object_id = ray.ObjectID.nil_id()
     assert object_id.is_nil()
-    with pytest.raises(
-            ray.raylet.CommonError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(id_bytes + b"1234")
-    with pytest.raises(
-            ray.raylet.CommonError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID.from_random()
+    object_id = ray.ObjectID(_random_string())
     assert not object_id.is_nil()
     assert object_id.id() != id_bytes
     id_dumps = pickle.dumps(object_id)
@@ -2534,7 +2535,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ray_constants.NIL_JOB_ID.id()
+    driver_id = ray.ObjectID.nil_id().id()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 

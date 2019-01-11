@@ -25,7 +25,7 @@ def parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
+    NIL_CLIENT_ID = ray.ObjectID.nil_id().id()
     message = redis_client.execute_command("RAY.TABLE_LOOKUP",
                                            ray.gcs_utils.TablePrefix.CLIENT,
                                            "", NIL_CLIENT_ID)

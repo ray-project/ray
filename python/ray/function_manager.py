@@ -220,10 +220,10 @@ class FunctionDescriptor(object):
         descriptor.
 
         Returns:
-            bytes with length of ray_constants.ID_SIZE.
+            ray.ObjectID to represent the function descriptor.
         """
         if self.is_for_driver_task:
-            return ray.ObjectID()
+            return ray.ObjectID.nil_id()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.module_name.encode("ascii"))
@@ -232,7 +232,6 @@ class FunctionDescriptor(object):
         function_id_hash.update(self._function_source_hash)
         # Compute the function ID.
         function_id = function_id_hash.digest()
-        assert len(function_id) == ray_constants.ID_SIZE
         return ray.ObjectID(function_id)
 
     def get_function_descriptor_list(self):

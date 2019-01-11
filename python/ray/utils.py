@@ -70,7 +70,7 @@ def push_error_to_driver(worker,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
+        driver_id = ray.ObjectID.nil_id().id()
     data = {} if data is None else data
     logging.error("Pushing error to dirver, type: %s, message: %s.",
                   error_type, message)
@@ -101,7 +101,7 @@ def push_error_to_driver_through_redis(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
+        driver_id = ray.ObjectID.nil_id().id()
     data = {} if data is None else data
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
