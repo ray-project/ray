@@ -1253,8 +1253,7 @@ def _setup_logger(logging_level, logging_format):
     logger = logging.getLogger("ray")
     logger.setLevel(logging_level)
     handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter(logging_format))
+    handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
     logger.propagate = False
 
