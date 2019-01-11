@@ -148,7 +148,7 @@ container shell enter the following commands:
 
 .. code-block:: bash
 
-  python test/runtest.py # This tests basic functionality.
+  python -m pytest -v test/mini_test.py  # This tests some basic functionality.
 
 You are now ready to continue with the `tutorial`_.
 
