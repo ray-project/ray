@@ -43,7 +43,6 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
       *inline_object_flag = object_table_data.inline_object_flag;
       inline_object_data->assign(object_table_data.inline_object_data.begin(),
                                  object_table_data.inline_object_data.end());
-      // XXX: Ion: after we filter out the updates, we should just return here.
     }
   }
   // Filter out the removed clients from the object locations.
