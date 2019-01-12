@@ -427,7 +427,7 @@ class Worker(object):
                             self,
                             ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
-                            driver_id=self.task_driver_id.id())
+                            driver_id=self.task_driver_id)
                     warning_sent = True
 
     def get_object(self, object_ids):
@@ -876,7 +876,7 @@ class Worker(object):
             self,
             ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
-            driver_id=self.task_driver_id.id(),
+            driver_id=self.task_driver_id,
             data={
                 "function_id": function_id.id(),
                 "function_name": function_name,
@@ -1098,10 +1098,10 @@ def error_applies_to_driver(error_key, worker=global_worker):
                               + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)]
-    return (driver_id == worker.task_driver_id.id()
-            or driver_id == ObjectID.nil_id().id())
+    driver_id = ObjectID(error_key[len(ERROR_KEY_PREFIX):(
+        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)])
+    return (driver_id == worker.task_driver_id
+            or driver_id == ObjectID.nil_id())
 
 
 def error_info(worker=global_worker):
@@ -2141,9 +2141,7 @@ def register_custom_serializer(cls,
         class_id = ray.utils.binary_to_hex(class_id)
 
     if driver_id is None:
-        driver_id_bytes = worker.task_driver_id.id()
-    else:
-        driver_id_bytes = driver_id.id()
+        driver_id = worker.task_driver_id
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom
@@ -2153,7 +2151,7 @@ def register_custom_serializer(cls,
         # system.
 
         serialization_context = worker_info[
-            "worker"].get_serialization_context(ObjectID(driver_id_bytes))
+            "worker"].get_serialization_context(driver_id)
         serialization_context.register_type(
             cls,
             class_id,

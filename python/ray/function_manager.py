@@ -404,7 +404,7 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
                 traceback_str,
-                driver_id=driver_id.id(),
+                driver_id=driver_id,
                 data={
                     "function_id": function_id.id(),
                     "function_name": function_name
@@ -491,7 +491,7 @@ class FunctionActorManager(object):
                             self._worker,
                             ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
-                            driver_id=driver_id.id())
+                            driver_id=driver_id)
                     warning_sent = True
             time.sleep(0.001)
 
@@ -644,7 +644,7 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
                 traceback_str,
-                driver_id.id(),
+                driver_id,
                 data={"actor_id": actor_id.id()})
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if

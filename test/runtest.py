@@ -2534,7 +2534,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ObjectID.nil_id().id()
+    driver_id = ray.ObjectID.nil_id()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2544,13 +2544,13 @@ def test_duplicate_error_messages(shutdown_only):
     r = ray.worker.global_worker.redis_client
 
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
 
