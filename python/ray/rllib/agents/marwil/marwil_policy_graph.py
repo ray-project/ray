@@ -21,38 +21,7 @@ P_SCOPE = "p_func"
 V_SCOPE = "v_func"
 
 
-class PNetwork(object):
-    def __init__(self, model, num_actions, hiddens=[256]):
-        self.model = model
-        with tf.variable_scope("action_activation"):
-            action_out = model.last_layer
-            for i in range(len(hiddens)):
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hiddens[i],
-                    activation_fn=tf.nn.relu)
-            self.logits = layers.fully_connected(
-                action_out, num_outputs=num_actions, activation_fn=None)
-
-
-class VNetwork(object):
-    def __init__(self, model, hiddens=[256]):
-        self.model = model
-        with tf.variable_scope("state_value"):
-            if hiddens:
-                state_out = model.last_layer
-                for i in range(len(hiddens)):
-                    state_out = layers.fully_connected(
-                        state_out,
-                        num_outputs=hiddens[i],
-                        activation_fn=tf.nn.relu)
-                self.values = layers.fully_connected(
-                    state_out, num_outputs=1, activation_fn=None)
-            else:
-                self.values = model.outputs
-
-
-class VLoss(object):
+class ValueLoss(object):
     def __init__(self, state_values, cummulative_rewards):
         self.loss = 0.5 * tf.reduce_mean(
             tf.square(state_values - cummulative_rewards))
@@ -60,97 +29,82 @@ class VLoss(object):
 
 class ReweightedImitationLoss(object):
     def __init__(self, state_values, cummulative_rewards, logits, actions,
-                 action_space, beta, objective):
+                 action_space, beta):
+        ma_adv_norm = tf.get_variable(
+            name="moving_average_of_advantage_norm",
+            dtype=tf.float32,
+            initializer=100.0,
+            trainable=False)
+        # advantage estimation
+        adv = cummulative_rewards - state_values
+        # update averaged advantage norm
+        update_adv_norm = tf.assign_add(
+            ref=ma_adv_norm,
+            value=1e-6 * (tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
 
-        if objective == "IL":
-            # log\pi_\theta(a|s)
-            dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-            action_dist = dist_cls(logits)
-            logprobs = action_dist.logp(actions)
-            self.loss = -1.0 * tf.reduce_mean(logprobs)
-        else:
-            ma_adv_norm = tf.get_variable(
-                name="moving_average_of_advantage_norm",
-                dtype=tf.float32,
-                initializer=100.0,
-                trainable=False)
-            # advantage estimation
-            adv = cummulative_rewards - state_values
-            # update averaged advantage norm
-            update_adv_norm = tf.assign_add(
-                ref=ma_adv_norm,
-                value=1e-6 * (tf.reduce_mean(tf.square(adv)) - ma_adv_norm))
+        # exponentially weighted advantages
+        with tf.control_dependencies([update_adv_norm]):
+            exp_advs = tf.exp(
+                beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
 
-            # exponentially weighted advantages
-            with tf.control_dependencies([update_adv_norm]):
-                exp_advs = tf.exp(
-                    beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
+        # log\pi_\theta(a|s)
+        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
+        action_dist = dist_cls(logits)
+        logprobs = action_dist.logp(actions)
 
-            # log\pi_\theta(a|s)
-            dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-            action_dist = dist_cls(logits)
-            logprobs = action_dist.logp(actions)
-
-            self.loss = -1.0 * tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
+        self.loss = -1.0 * tf.reduce_mean(tf.stop_gradient(adv) * logprobs)
 
 
 class MARWILPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG, **config)
-        # TO DO: support hybrid action
-        if not isinstance(action_space, Discrete):
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for DQN.".format(
-                    action_space))
-
         self.config = config
-        self.cur_epsilon = 1.0
-        self.num_actions = action_space.n
+
+        dist_cls, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
 
         # Action inputs
         self.cur_observations = tf.placeholder(
             tf.float32, shape=(None, ) + observation_space.shape)
 
         with tf.variable_scope(P_SCOPE) as scope:
-            logits = self._build_p_network(self.cur_observations,
-                                           observation_space)
+            logits = self._build_policy_network(
+                self.cur_observations, observation_space, logit_dim)
             self.p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
-        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
         action_dist = dist_cls(logits)
         self.output_actions = action_dist.sample()
 
-        # Replay inputs
+        # Training inputs
         self.obs_t = tf.placeholder(
             tf.float32, shape=(None, ) + observation_space.shape)
         self.act_t = tf.placeholder(tf.int32, [None], name="action")
-        self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
+        self.cum_rew_t = tf.placeholder(tf.float32, [None], name="reward")
 
         # v network evaluation
         with tf.variable_scope(V_SCOPE) as scope:
-            state_values = self._build_v_network(self.obs_t, observation_space)
+            state_values = self._build_value_network(
+                self.obs_t, observation_space)
             self.v_func_vars = _scope_vars(scope.name)
-        self.v_loss = self._build_v_loss(state_values, self.rew_t)
+        self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
-            logits = self._build_p_network(self.obs_t, observation_space)
-        self.p_loss = self._build_p_loss(state_values, self.rew_t, logits,
-                                         self.act_t, action_space)
+            logits = self._build_policy_network(
+                self.obs_t, observation_space, logit_dim)
+        self.p_loss = self._build_policy_loss(
+            state_values, self.cum_rew_t, logits, self.act_t, action_space)
 
-        # objective to optimize
-        if self.config["objective"] == "IL":
-            objective = self.p_loss.loss
-        else:
-            objective = self.p_loss.loss + self.config["c"] * self.v_loss.loss
+        # which kind of objective to optimize
+        objective = self.p_loss.loss + self.config["c"] * self.v_loss.loss
 
         # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
             ("obs", self.obs_t),
             ("actions", self.act_t),
-            ("rewards", self.rew_t),
+            ("advantages", self.cum_rew_t),
         ]
         TFPolicyGraph.__init__(
             self,
@@ -164,30 +118,37 @@ class MARWILPolicyGraph(TFPolicyGraph):
             update_ops=[])
         self.sess.run(tf.global_variables_initializer())
 
-    def _build_p_network(self, obs, obs_space):
-        return PNetwork(
-            ModelCatalog.get_model({
+        self.stats_fetches = {
+            "total_loss": objective,
+            "policy_loss": self.p_loss.loss,
+            "vf_loss": self.v_loss.loss
+        }
+
+    def _build_policy_network(self, obs, obs_space, logit_dim):
+        policy_network = ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, 1, self.config["model"]), self.num_actions,
-            self.config["actor_hiddens"]).logits
+            }, obs_space, logit_dim, self.config["model"])
+        return policy_network.outputs
 
-    def _build_v_network(self, obs, obs_space):
-        return VNetwork(
-            ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, 1, self.config["model"]),
-            self.config["critic_hiddens"]).values
+    def _build_value_network(self, obs, obs_space):
+        value_model = ModelCatalog.get_model({
+            "obs": obs,
+            "is_training": self._get_is_training_placeholder(),
+        }, obs_space, 1, self.config["model"])
+        return value_model.outputs
 
-    def _build_v_loss(self, state_values, cum_rwds):
-        return VLoss(state_values, cum_rwds)
+    def _build_value_loss(self, state_values, cum_rwds):
+        return ValueLoss(state_values, cum_rwds)
 
-    def _build_p_loss(self, state_values, cum_rwds, logits, actions,
+    def _build_policy_loss(self, state_values, cum_rwds, logits, actions,
                       action_space):
         return ReweightedImitationLoss(state_values, cum_rwds, logits, actions,
-                                       action_space, self.config["beta"],
-                                       self.config["objective"])
+                                       action_space, self.config["beta"])
+
+    @override(TFPolicyGraph)
+    def extra_compute_grad_fetches(self):
+        return self.stats_fetches
 
     @override(PolicyGraph)
     def postprocess_trajectory(self,
@@ -198,17 +159,12 @@ class MARWILPolicyGraph(TFPolicyGraph):
         if completed:
             last_r = 0.0
         else:
-            #next_state = []
-            #for i in range(len(self.model.state_in)):
-            #    next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            #last_r = self._value(sample_batch["new_obs"][-1], *next_state)
             raise ValueError("last done mask in a batch should be True",
                              len(sample_batch["dones"]),
-                             sample_batch["done"][-1])
+                             sample_batch["dones"][-1])
         batch = compute_advantages(
             sample_batch,
             last_r,
-            self.config["gamma"],
-            self.config["lambda"],
-            use_gae=self.config["use_gae"])
+            gamma=self.config["gamma"],
+            use_gae=False)
         return batch
