@@ -1250,7 +1250,7 @@ def get_address_info_from_redis(redis_address,
         counter += 1
 
 
-def _setup_logger(logging_level, logging_format):
+def setup_logger(logging_level, logging_format):
     """Setup default logging.
 
     Args:
@@ -1525,7 +1525,7 @@ def init(redis_address=None,
     """
 
     if configure_logging:
-        _setup_logger(logging_level, logging_format)
+        setup_logger(logging_level, logging_format)
 
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
