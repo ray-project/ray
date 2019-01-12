@@ -2567,3 +2567,13 @@ def test_ray_stack(shutdown_only):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
+
+def test_pandas_parquet_serialization():
+    import numpy as np
+    import pandas as pd
+    import tempfile
+
+    filename = os.path.join(tempfile.mkdtemp(), 'parquet-test')
+    pd.DataFrame(
+        {"col1": np.arange(10), "col2": np.arange(10)}
+    ).to_parquet(filename)
