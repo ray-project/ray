@@ -105,7 +105,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->object_size = object_info.data_size;
   data->inline_object_flag = inline_object_flag;
   if (inline_object_flag) {
-    // inline onject. Add object's data to its GCS entry.
+    // Add object's data to its GCS entry.
     data->inline_object_data.assign(inline_object_data.begin(), inline_object_data.end());
   }
   ray::Status status =
