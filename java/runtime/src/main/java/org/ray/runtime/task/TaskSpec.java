@@ -41,6 +41,9 @@ public class TaskSpec {
   public final int actorCounter;
 
   // Task arguments.
+  public final UniqueId[] newActorHandles;
+
+  // Task arguments.
   public final FunctionArg[] args;
 
   // return ids
@@ -76,6 +79,8 @@ public class TaskSpec {
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
+    // TODO: Initialize the new actor handles.
+    this.newActorHandles = new UniqueId[] {};
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;

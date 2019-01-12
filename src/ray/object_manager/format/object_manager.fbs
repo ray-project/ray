@@ -27,6 +27,7 @@ table ObjectInfo {
 
 enum MessageType:int {
   ConnectClient = 1,
+  DisconnectClient,
   PushRequest,
   PullRequest,
   FreeRequest

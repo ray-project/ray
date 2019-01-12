@@ -57,12 +57,12 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(std::shared_ptr<Worker> worker);
+  void RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> worker);
+  void RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -84,17 +84,17 @@ class WorkerPool {
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(std::shared_ptr<Worker> worker);
+  bool DisconnectWorker(const std::shared_ptr<Worker> &worker);
 
   /// Disconnect a registered driver.
   ///
   /// \param The driver to disconnect. The driver must be registered.
-  void DisconnectDriver(std::shared_ptr<Worker> driver);
+  void DisconnectDriver(const std::shared_ptr<Worker> &driver);
 
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
-  void PushWorker(std::shared_ptr<Worker> worker);
+  void PushWorker(const std::shared_ptr<Worker> &worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -123,6 +123,13 @@ class WorkerPool {
   /// \return string.
   std::string DebugString() const;
 
+  /// Generate a warning about the number of workers that have registered or
+  /// started if appropriate.
+  ///
+  /// \return An empty string if no warning should be generated and otherwise a
+  /// string with a warning message.
+  std::string WarningAboutSize();
+
  protected:
   /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.
@@ -150,10 +157,16 @@ class WorkerPool {
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
+  /// We'll push a warning to the user every time a multiple of this many
+  /// workers has been started.
+  int multiple_for_warning_;
   /// The maximum number of workers that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
+  /// The last size at which a warning about the number of registered workers
+  /// was generated.
+  int64_t last_warning_multiple_;
 };
 
 }  // namespace raylet

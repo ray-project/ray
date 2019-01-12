@@ -107,6 +107,14 @@ def test_export(algo_name, failures):
         failures.append(algo_name)
     shutil.rmtree(export_dir)
 
+    print("Exporting checkpoint", algo_name, export_dir)
+    algo.export_policy_checkpoint(export_dir)
+    if not os.path.exists(os.path.join(export_dir, "model.meta")) \
+            or not os.path.exists(os.path.join(export_dir, "model.index")) \
+            or not os.path.exists(os.path.join(export_dir, "checkpoint")):
+        failures.append(algo_name)
+    shutil.rmtree(export_dir)
+
 
 if __name__ == "__main__":
     failures = []

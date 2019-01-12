@@ -394,6 +394,7 @@ def train_func(config, reporter):  # add a reporter arg
         time.sleep(0.1)
         reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
+os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
 ray.init(redis_address="{}")
 ray.tune.register_trainable("train_func", train_func)
 

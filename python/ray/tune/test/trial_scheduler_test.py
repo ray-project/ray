@@ -5,7 +5,7 @@ from __future__ import print_function
 import random
 import unittest
 import numpy as np
-
+import sys
 import ray
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -16,6 +16,11 @@ from ray.tune.trial_executor import TrialExecutor
 
 from ray.rllib import _register_all
 _register_all()
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import MagicMock
+else:
+    from mock import MagicMock
 
 
 def result(t, rew):
@@ -578,6 +583,7 @@ class _MockTrial(Trial):
         self.logger_running = False
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
+        self.trial_name = None
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -746,6 +752,104 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0,
                 lambda x: x),
             {10.0, 100.0})
+
+        def deep_add(seen, new_values):
+            for k, new_value in new_values.items():
+                if isinstance(new_value, dict):
+                    if k not in seen:
+                        seen[k] = {}
+                    seen[k].update(deep_add(seen[k], new_value))
+                else:
+                    if k not in seen:
+                        seen[k] = set()
+                    seen[k].add(new_value)
+
+            return seen
+
+        def assertNestedProduces(fn, values):
+            random.seed(0)
+            seen = {}
+            for _ in range(100):
+                new_config = fn()
+                seen = deep_add(seen, new_config)
+            self.assertEqual(seen, values)
+
+        # Nested mutation and spec
+        assertNestedProduces(
+            lambda: explore(
+                {
+                    "a": {
+                        "b": 4
+                    },
+                    "1": {
+                        "2": {
+                            "3": 100
+                        }
+                    },
+                },
+                {
+                    "a": {
+                        "b": [3, 4, 8, 10]
+                    },
+                    "1": {
+                        "2": {
+                            "3": lambda: random.choice([10, 100])
+                        }
+                    },
+                },
+                0.0,
+                lambda x: x),
+            {
+                "a": {
+                    "b": {3, 8}
+                },
+                "1": {
+                    "2": {
+                        "3": {80, 120}
+                    }
+                },
+            })
+
+        custom_explore_fn = MagicMock(side_effect=lambda x: x)
+
+        # Nested mutation and spec
+        assertNestedProduces(
+            lambda: explore(
+                {
+                    "a": {
+                        "b": 4
+                    },
+                    "1": {
+                        "2": {
+                            "3": 100
+                        }
+                    },
+                },
+                {
+                    "a": {
+                        "b": [3, 4, 8, 10]
+                    },
+                    "1": {
+                        "2": {
+                            "3": lambda: random.choice([10, 100])
+                        }
+                    },
+                },
+                0.0,
+                custom_explore_fn),
+            {
+                "a": {
+                    "b": {3, 8}
+                },
+                "1": {
+                    "2": {
+                        "3": {80, 120}
+                    }
+                },
+            })
+
+        # Expect call count to be 100 because we call explore 100 times
+        self.assertEqual(custom_explore_fn.call_count, 100)
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()

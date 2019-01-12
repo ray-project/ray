@@ -18,9 +18,9 @@ if(DEFINED ENV{RAY_FLATBUFFERS_HOME} AND EXISTS $ENV{RAY_FLATBUFFERS_HOME})
 
   add_custom_target(flatbuffers_ep)
 else()
-  set(flatbuffers_VERSION "1.9.0")
+  set(flatbuffers_VERSION "1.10.0")
   set(flatbuffers_URL "https://github.com/google/flatbuffers/archive/v${flatbuffers_VERSION}.tar.gz")
-  set(flatbuffers_URL_MD5 "8be7513bf960034f6873326d09521a4b")
+  set(flatbuffers_URL_MD5 "f7d19a3f021d93422b0bc287d7148cd2")
 
   set(FLATBUFFERS_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/flatbuffers-install")
 

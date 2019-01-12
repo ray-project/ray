@@ -64,15 +64,11 @@ class GenericPixelPreprocessor(Preprocessor):
         self._grayscale = options.get("grayscale")
         self._zero_mean = options.get("zero_mean")
         self._dim = options.get("dim")
-        self._channel_major = options.get("channel_major")
         if self._grayscale:
             shape = (self._dim, self._dim, 1)
         else:
             shape = (self._dim, self._dim, 3)
 
-        # channel_major requires (# in-channels, row dim, col dim)
-        if self._channel_major:
-            shape = shape[-1:] + shape[:-1]
         return shape
 
     @override(Preprocessor)
@@ -94,8 +90,6 @@ class GenericPixelPreprocessor(Preprocessor):
             scaled = (scaled - 128) / 128
         else:
             scaled *= 1.0 / 255.0
-        if self._channel_major:
-            scaled = np.reshape(scaled, self.shape)
         return scaled
 
 

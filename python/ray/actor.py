@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import logging
 import sys
+import threading
 import traceback
 
 import ray.cloudpickle as pickle
@@ -225,8 +226,7 @@ class ActorMethod(object):
             self._method_name,
             args=args,
             kwargs=kwargs,
-            num_return_vals=num_return_vals,
-            dependency=self._actor._ray_actor_cursor)
+            num_return_vals=num_return_vals)
 
 
 class ActorClass(object):
@@ -485,6 +485,10 @@ class ActorHandle(object):
         _ray_actor_driver_id: The driver ID of the job that created the actor
             (it is possible that this ActorHandle exists on a driver with a
             different driver ID).
+        _ray_new_actor_handles: The new actor handles that were created from
+            this handle since the last task on this handle was submitted. This
+            is used to garbage-collect dummy objects that are no longer
+            necessary in the backend.
     """
 
     def __init__(self,
@@ -520,13 +524,14 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
+        self._ray_new_actor_handles = []
+        self._ray_actor_lock = threading.Lock()
 
     def _actor_method_call(self,
                            method_name,
                            args=None,
                            kwargs=None,
-                           num_return_vals=None,
-                           dependency=None):
+                           num_return_vals=None):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
@@ -565,37 +570,34 @@ class ActorHandle(object):
             return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
-        # Add the execution dependency.
-        if dependency is None:
-            execution_dependencies = []
-        else:
-            execution_dependencies = [dependency]
-
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-        object_ids = worker.submit_task(
-            function_descriptor,
-            args,
-            actor_id=self._ray_actor_id,
-            actor_handle_id=self._ray_actor_handle_id,
-            actor_counter=self._ray_actor_counter,
-            is_actor_checkpoint_method=is_actor_checkpoint_method,
-            actor_creation_dummy_object_id=(
-                self._ray_actor_creation_dummy_object_id),
-            execution_dependencies=execution_dependencies,
-            # We add one for the dummy return ID.
-            num_return_vals=num_return_vals + 1,
-            resources={"CPU": self._ray_actor_method_cpus},
-            placement_resources={},
-            driver_id=self._ray_actor_driver_id)
-        # Update the actor counter and cursor to reflect the most recent
-        # invocation.
-        self._ray_actor_counter += 1
-        # The last object returned is the dummy object that should be
-        # passed in to the next actor method. Do not return it to the user.
-        self._ray_actor_cursor = object_ids.pop()
+        with self._ray_actor_lock:
+            object_ids = worker.submit_task(
+                function_descriptor,
+                args,
+                actor_id=self._ray_actor_id,
+                actor_handle_id=self._ray_actor_handle_id,
+                actor_counter=self._ray_actor_counter,
+                is_actor_checkpoint_method=is_actor_checkpoint_method,
+                actor_creation_dummy_object_id=(
+                    self._ray_actor_creation_dummy_object_id),
+                execution_dependencies=[self._ray_actor_cursor],
+                new_actor_handles=self._ray_new_actor_handles,
+                # We add one for the dummy return ID.
+                num_return_vals=num_return_vals + 1,
+                resources={"CPU": self._ray_actor_method_cpus},
+                placement_resources={},
+                driver_id=self._ray_actor_driver_id,
+            )
+            # Update the actor counter and cursor to reflect the most recent
+            # invocation.
+            self._ray_actor_counter += 1
+            # The last object returned is the dummy object that should be
+            # passed in to the next actor method. Do not return it to the user.
+            self._ray_actor_cursor = object_ids.pop()
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -702,6 +704,19 @@ class ActorHandle(object):
 
         if ray_forking:
             self._ray_actor_forks += 1
+            new_actor_handle_id = actor_handle_id
+        else:
+            # The execution dependency for a pickled actor handle is never safe
+            # to release, since it could be unpickled and submit another
+            # dependent task at any time. Therefore, we notify the backend of a
+            # random handle ID that will never actually be used.
+            new_actor_handle_id = ray.ObjectID(_random_string())
+        # Notify the backend to expect this new actor handle. The backend will
+        # not release the cursor for any new handles until the first task for
+        # each of the new handles is submitted.
+        # NOTE(swang): There is currently no garbage collection for actor
+        # handles until the actor itself is removed.
+        self._ray_new_actor_handles.append(new_actor_handle_id)
 
         return state
 

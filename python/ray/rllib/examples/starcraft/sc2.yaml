@@ -1,0 +1,32 @@
+## Adapted from `https://github.com/oxwhirl/pymarl_alpha`.
+
+env: sc2
+
+env_args:
+  map_name: "3m_3m"             # SC2 map name
+  difficulty: "7"               # Very hard
+  move_amount: 2                # How much units are ordered to move per step
+  step_mul: 8                   # How many frames are skiped per step
+  reward_sparse: False          # Only +1/-1 reward for win/defeat (the rest of reward configs are ignored if True)
+  reward_only_positive: True    # Reward is always positive
+  reward_negative_scale: 0.5    # How much to scale negative rewards, ignored if reward_only_positive=True
+  reward_death_value: 10        # Reward for killing an enemy unit and penalty for having an allied unit killed (if reward_only_poitive=False)
+  reward_scale: True            # Whether or not to scale rewards before returning to agents
+  reward_scale_rate: 20         # If reward_scale=True, the agents receive the reward of (max_reward / reward_scale_rate), where max_reward is the maximum possible reward per episode
+  reward_win: 200               # Reward for win
+  reward_defeat: 0              # Reward for defeat (should be nonpositive)
+  state_last_action: True       # Whether the last actions of units is a part of the state
+  obs_instead_of_state: False   # Use combination of all agnets' observations as state
+  obs_own_health: True          # Whether agents receive their own health as a part of observation
+  obs_all_health: True          # Whether agents receive the health of all units (in the sight range) as a part of observataion
+  continuing_episode: False     # Stop/continue episode after its termination
+  game_version: "4.1.2"         # Ignored for Mac/Windows
+  save_replay_prefix: ""        # Prefix of the replay to be saved
+  heuristic: False              # Whether or not use a simple nonlearning hearistic as a controller
+
+test_nepisode: 32
+test_interval: 10000
+log_interval: 2000
+runner_log_interval: 2000
+learner_log_interval: 2000
+t_max: 2000000

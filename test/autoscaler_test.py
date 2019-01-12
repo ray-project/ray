@@ -98,6 +98,7 @@ SMALL_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
     "max_workers": 2,
+    "initial_workers": 0,
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
     "provider": {
@@ -313,6 +314,27 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(6)
         autoscaler.update()
         self.waitForNodes(10)
+
+    def testInitialWorkers(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            update_interval_s=0)
+        self.waitForNodes(0)
+        autoscaler.update()
+        self.waitForNodes(5)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(10)
+        autoscaler.update()
 
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)

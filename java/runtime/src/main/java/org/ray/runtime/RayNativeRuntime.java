@@ -39,7 +39,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       path += ":";
     }
 
-    path += rayConfig.libraryPath.stream().collect(Collectors.joining(":"));
+    path += String.join(":", rayConfig.libraryPath);
 
     // This is a hack to reset library path at runtime,
     // see https://stackoverflow.com/questions/15409223/.
@@ -74,14 +74,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     kvStore = new RedisClient(rayConfig.getRedisAddress());
 
-    ObjectStoreLink store = new PlasmaClient(rayConfig.objectStoreSocketName, "", 0);
-    objectStoreProxy = new ObjectStoreProxy(this, store);
+    objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);
 
     rayletClient = new RayletClientImpl(
         rayConfig.rayletSocketName,
         workerContext.getCurrentWorkerId(),
         rayConfig.workerMode == WorkerMode.WORKER,
-        workerContext.getCurrentTask().taskId
+        workerContext.getCurrentDriverId()
     );
 
     // register

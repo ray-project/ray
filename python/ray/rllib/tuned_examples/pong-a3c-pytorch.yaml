@@ -14,7 +14,6 @@ pong-a3c-pytorch-cnn:
         observation_filter: NoFilter
         model:
             use_lstm: false
-            channel_major: true
             dim: 84
             grayscale: true
             zero_mean: false

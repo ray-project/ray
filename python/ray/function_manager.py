@@ -444,7 +444,14 @@ class FunctionActorManager(object):
         # the function from GCS.
         with profiling.profile("wait_for_function", worker=self._worker):
             self._wait_for_function(function_descriptor, driver_id)
-        return self._function_execution_info[driver_id][function_id]
+        try:
+            info = self._function_execution_info[driver_id][function_id]
+        except KeyError as e:
+            message = ("Error occurs in get_execution_info: "
+                       "driver_id: %s, function_descriptor: %s. Message: %s" %
+                       (binary_to_hex(driver_id), function_descriptor, e))
+            raise KeyError(message)
+        return info
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -502,19 +509,29 @@ class FunctionActorManager(object):
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        actor_class_info["driver_id"] = self._worker.task_driver_id.id()
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_method_names,
                            checkpoint_interval):
         function_descriptor = FunctionDescriptor.from_class(Class)
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        # `task_driver_id` shouldn't be NIL, unless:
+        # 1) This worker isn't an actor;
+        # 2) And a previous task started a background thread, which didn't
+        #    finish before the task finished, and still uses Ray API
+        #    after that.
+        assert not self._worker.task_driver_id.is_nil(), (
+            "You might have started a background thread in a non-actor task, "
+            "please make sure the thread finishes before the task finishes.")
+        driver_id = self._worker.task_driver_id
+        key = (b"ActorClass:" + driver_id.id() + b":" +
+               function_descriptor.function_id.id())
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
             "class": pickle.dumps(Class),
             "checkpoint_interval": checkpoint_interval,
+            "driver_id": driver_id.id(),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
@@ -539,7 +556,8 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        key = b"ActorClass:" + function_descriptor.function_id.id()
+        key = (b"ActorClass:" + driver_id + b":" +
+               function_descriptor.function_id.id())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to

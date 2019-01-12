@@ -707,25 +707,26 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
-  switch (message_type) {
-  case static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest): {
+  auto message_type_value =
+      static_cast<object_manager_protocol::MessageType>(message_type);
+  switch (message_type_value) {
+  case object_manager_protocol::MessageType::PushRequest: {
     ReceivePushRequest(conn, message);
     break;
   }
-  case static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest): {
+  case object_manager_protocol::MessageType::PullRequest: {
     ReceivePullRequest(conn, message);
     break;
   }
-  case static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient): {
+  case object_manager_protocol::MessageType::ConnectClient: {
     ConnectClient(conn, message);
     break;
   }
-  case static_cast<int64_t>(object_manager_protocol::MessageType::FreeRequest): {
+  case object_manager_protocol::MessageType::FreeRequest: {
     ReceiveFreeRequest(conn, message);
     break;
   }
-  case static_cast<int64_t>(protocol::MessageType::DisconnectClient): {
-    // TODO(hme): Disconnect without depending on the node manager protocol.
+  case object_manager_protocol::MessageType::DisconnectClient: {
     DisconnectClient(conn, message);
     break;
   }

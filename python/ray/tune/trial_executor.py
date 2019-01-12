@@ -25,6 +25,41 @@ class TrialExecutor(object):
                 automatic scale-up.
         """
         self._queue_trials = queue_trials
+        self._cached_trial_state = {}
+
+    def set_status(self, trial, status):
+        """Sets status and checkpoints metadata if needed.
+
+        Only checkpoints metadata if trial status is a terminal condition.
+        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
+        in the TrialRunner.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+            status (Trial.status): Status to set trial to.
+        """
+        trial.status = status
+        if status in [Trial.TERMINATED, Trial.ERROR]:
+            self.try_checkpoint_metadata(trial)
+
+    def try_checkpoint_metadata(self, trial):
+        """Checkpoints metadata.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+        """
+        if trial._checkpoint.storage == Checkpoint.MEMORY:
+            logger.debug("Not saving data for trial w/ memory checkpoint.")
+            return
+        try:
+            logger.debug("Saving trial metadata.")
+            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+        except Exception:
+            logger.exception("Error checkpointing trial metadata.")
+
+    def get_checkpoints(self):
+        """Returns a copy of mapping of the trial ID to pickled metadata."""
+        return self._cached_trial_state.copy()
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -71,15 +106,15 @@ class TrialExecutor(object):
         try:
             self.save(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
-            trial.status = Trial.PAUSED
+            self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")
-            trial.status = Trial.ERROR
+            self.set_status(trial, Trial.ERROR)
 
     def unpause_trial(self, trial):
         """Sets PAUSED trial to pending to allow scheduler to start."""
         assert trial.status == Trial.PAUSED, trial.status
-        trial.status = Trial.PENDING
+        self.set_status(trial, Trial.PENDING)
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""

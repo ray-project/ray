@@ -257,39 +257,13 @@ std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
 }
 
-Status ProfileTable::AddProfileEvent(const std::string &event_type,
-                                     const std::string &component_type,
-                                     const UniqueID &component_id,
-                                     const std::string &node_ip_address,
-                                     double start_time, double end_time,
-                                     const std::string &extra_data) {
-  auto data = std::make_shared<ProfileTableDataT>();
-
-  ProfileEventT profile_event;
-  profile_event.event_type = event_type;
-  profile_event.start_time = start_time;
-  profile_event.end_time = end_time;
-  profile_event.extra_data = extra_data;
-
-  data->component_type = component_type;
-  data->component_id = component_id.binary();
-  data->node_ip_address = node_ip_address;
-  data->profile_events.emplace_back(new ProfileEventT(profile_event));
-
-  return Append(JobID::nil(), component_id, data,
-                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
-                   const ProfileTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Profile message pushed callback";
-                });
-}
-
 Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
   auto data = std::make_shared<ProfileTableDataT>();
   // There is some room for optimization here because the Append function will just
   // call "Pack" and undo the "UnPack".
   profile_events.UnPackTo(data.get());
 
-  return Append(JobID::nil(), from_flatbuf(*profile_events.component_id()), data,
+  return Append(JobID::nil(), UniqueID::from_random(), data,
                 [](ray::gcs::AsyncGcsClient *client, const JobID &id,
                    const ProfileTableDataT &data) {
                   RAY_LOG(DEBUG) << "Profile message pushed callback";
