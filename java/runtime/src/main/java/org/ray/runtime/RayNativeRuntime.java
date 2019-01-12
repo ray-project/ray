@@ -5,11 +5,8 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.arrow.plasma.ObjectStoreLink;
-import org.apache.arrow.plasma.PlasmaClient;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
-import org.ray.runtime.gcs.KeyValueStoreLink;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
@@ -24,7 +21,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
 
-  private KeyValueStoreLink kvStore = null;
+  private RedisClient redisClient = null;
   private RunManager manager = null;
 
   public RayNativeRuntime(RayConfig rayConfig) {
@@ -72,7 +69,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager = new RunManager(rayConfig);
       manager.startRayProcesses(true);
     }
-    kvStore = new RedisClient(rayConfig.getRedisAddress());
+    redisClient = new RedisClient(rayConfig.getRedisAddress());
 
     objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);
 
@@ -108,13 +105,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
       workerInfo.put("name", System.getProperty("user.dir"));
       //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
-      kvStore.hmset("Drivers:" + workerId, workerInfo);
+      redisClient.hmset("Drivers:" + workerId, workerInfo);
     } else {
       workerInfo.put("node_ip_address", rayConfig.nodeIp);
       workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
       workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
       //TODO: b"Workers:" + worker.workerId,
-      kvStore.hmset("Workers:" + workerId, workerInfo);
+      redisClient.hmset("Workers:" + workerId, workerInfo);
     }
   }
 
