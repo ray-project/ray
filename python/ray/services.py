@@ -359,8 +359,9 @@ def start_redis(node_ip_address,
             capped at 10GB but can be set higher.
 
     Returns:
-        A tuple of the address for the primary Redis shard and a list of
-            addresses for the remaining shards.
+        A tuple of the address for the primary Redis shard, a list of
+            addresses for the remaining shards, and the processes that were
+            started.
     """
     redis_stdout_file, redis_stderr_file = new_redis_log_file(redirect_output)
 
@@ -651,6 +652,9 @@ def start_log_monitor(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+
+    Returns:
+        The process that was started.
     """
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
@@ -677,6 +681,9 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+
+    Returns:
+        A tuple of the web UI url and the process that was started.
     """
 
     port = 8888
@@ -829,7 +836,7 @@ def start_raylet(redis_address,
             override defaults in RayConfig.
 
     Returns:
-        The raylet socket name.
+        The process that was started.
     """
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
@@ -1033,8 +1040,8 @@ def start_plasma_store(node_ip_address,
             Store with hugetlbfs support. Requires plasma_directory.
         redis_password (str): The password of the redis server.
 
-    Return:
-        The Plasma store socket name.
+    Returns:
+        The process that was started.
     """
     object_store_memory, plasma_directory = determine_plasma_store_config(
         object_store_memory, plasma_directory, huge_pages)
@@ -1064,7 +1071,7 @@ def start_plasma_store(node_ip_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
 
-    return plasma_store_name, p
+    return p
 
 
 def start_worker(node_ip_address,
@@ -1088,6 +1095,9 @@ def start_worker(node_ip_address,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+
+    Returns:
+        The process that was started.
     """
     command = [
         sys.executable, "-u", worker_path,
@@ -1120,6 +1130,9 @@ def start_monitor(redis_address,
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
         redis_password (str): The password of the redis server.
+
+    Returns:
+        The process that was started.
     """
     monitor_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "monitor.py")
@@ -1155,6 +1168,9 @@ def start_raylet_monitor(redis_address,
         redis_password (str): The password of the redis server.
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
+
+    Returns:
+        The process that was started.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""

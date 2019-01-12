@@ -8,7 +8,6 @@ import time
 import redis
 
 import ray
-import ray.node
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +65,8 @@ class Cluster(object):
             object_store_memory=100 * (2**20) # 100 MB
 
         Args:
-            override_kwargs: Keyword arguments used in `start_ray_head`
-                and `start_ray_node`. Overrides defaults.
+            node_args: Keyword arguments used in `start_ray_head` and
+                `start_ray_node`. Overrides defaults.
 
         Returns:
             Node object of the added Ray node.
