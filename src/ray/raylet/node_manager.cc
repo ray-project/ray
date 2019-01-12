@@ -1192,6 +1192,9 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
+            if (inline_object_flag) {
+              return;
+            }
             if (clients.empty() && has_been_created) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to

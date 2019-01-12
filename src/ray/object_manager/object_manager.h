@@ -353,6 +353,11 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
+  /// Add inline object. If the object was already created from inlined data, do nothing.
+  void PutInlineObject(const ObjectID &object_id,
+                       const std::vector<uint8_t> &inline_object_data,
+                       const std::string &inline_object_metadata);
+
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -391,6 +396,9 @@ class ObjectManager : public ObjectManagerInterface {
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
   std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
+
+  /// Set of objects created from inlined data.
+  std::unordered_set<ObjectID> local_inlined_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to

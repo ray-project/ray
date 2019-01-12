@@ -149,7 +149,7 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
             bool inline_object_flag,
             const std::vector<uint8_t> inline_object_data,
             bool created) {
-          if (clients.empty()) {
+          if (clients.empty() && !inline_object_flag) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
             AttemptReconstruction(task_id, object_id, reconstruction_attempt, created);
