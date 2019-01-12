@@ -431,7 +431,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_sequential():
+def test_driver_lives_sequential(shutdown_only):
     ray.init(num_cpus=1)
     ray.worker._global_node.kill_raylet()
     ray.worker._global_node.kill_plasma_store()
@@ -439,14 +439,13 @@ def test_driver_lives_sequential():
     ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_raylet_monitor()
 
-    ray.shutdown()
     # If the driver can reach the tearDown method, then it is still alive.
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_parallel():
+def test_driver_lives_parallel(shutdown_only):
     ray.init(num_cpus=1)
     all_processes = ray.worker._global_node.all_processes
     process_infos = (all_processes[ray.node.PROCESS_TYPE_PLASMA_STORE] +
@@ -468,4 +467,3 @@ def test_driver_lives_parallel():
         process_info.process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
-    ray.shutdown()
