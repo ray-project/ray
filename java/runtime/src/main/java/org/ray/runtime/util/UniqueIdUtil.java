@@ -71,6 +71,21 @@ public class UniqueIdUtil {
     return new UniqueId(taskId);
   }
 
+  /**
+   * Generate the return ids of a task.
+   *
+   * @param taskId The ID of the task that generates returnsIds.
+   * @param numReturns The number of returnIds.
+   * @return The Return Ids of this task.
+   */
+  public static UniqueId[] genReturnIds(UniqueId taskId, int numReturns) {
+    UniqueId[] ret = new UniqueId[numReturns];
+    for (int i = 0; i < numReturns; i++) {
+      ret[i] = UniqueIdUtil.computeReturnId(taskId, i + 1);
+    }
+    return ret;
+  }
+
   public static byte[][] getIdBytes(List<UniqueId> objectIds) {
     int size = objectIds.size();
     byte[][] ids = new byte[size][];
