@@ -1,8 +1,6 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.util.HashMap;
-import java.util.Map;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.RayFunction;
