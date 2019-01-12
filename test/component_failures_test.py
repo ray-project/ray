@@ -433,8 +433,8 @@ def test_actor_creation_node_failure(ray_start_cluster):
     reason="Hanging with new GCS API.")
 def test_driver_lives_sequential():
     ray.init(num_cpus=1)
-    ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_raylet()
+    ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_raylet_monitor()
