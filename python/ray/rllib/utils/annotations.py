@@ -20,7 +20,7 @@ def override(cls):
     return check_override
 
 
-def PublicAPI(cls):
+def PublicAPI(obj):
     return obj
 
 
