@@ -598,6 +598,9 @@ class ActorHandle(object):
             # The last object returned is the dummy object that should be
             # passed in to the next actor method. Do not return it to the user.
             self._ray_actor_cursor = object_ids.pop()
+            # We have notified the backend of the new actor handles to expect
+            # since the last task was submitted, so clear the list.
+            self._ray_new_actor_handles = []
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
