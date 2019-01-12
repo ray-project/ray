@@ -255,6 +255,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
   } else {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
     // call, call the callback immediately with the cached locations.
+    // If object inlined, we already have the object's data.
     auto &locations = it->second.current_object_locations;
     bool has_been_created = it->second.has_been_created;
     bool inline_object_flag = it->second.inline_object_flag;

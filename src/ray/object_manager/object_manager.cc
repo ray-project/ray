@@ -80,7 +80,7 @@ void ObjectManager::HandleObjectAdded(
                               object_buffers[0].data->data() + object_info.data_size);
   }
 
-  // If this object was created from inlined data, it was already written to GCS,
+  // If this object was created from inlined data, this means it is already in GCS,
   // so no need to write it again.
   if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
     ray::Status status =
@@ -128,16 +128,17 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 void ObjectManager::PutInlineObject(const ObjectID &object_id,
-                          const std::vector<uint8_t> &inline_object_data,
-                          const std::string &inline_object_metadata) {
-    if (local_objects_.find(object_id) == local_objects_.end()) {
-      local_inlined_objects_.insert(object_id);
-      auto status = store_client_.CreateAndSeal(object_id.to_plasma_id(),
-                                                std::string(inline_object_data.begin(),
-                                                inline_object_data.end()),
-                                                inline_object_metadata);
-      RAY_CHECK(status.IsPlasmaObjectExists() || status.ok()) << status.message();
-    }
+                                    const std::vector<uint8_t> &inline_object_data,
+                                    const std::string &inline_object_metadata) {
+  // Called when the object is created from inlined data.                                    
+  if (local_objects_.find(object_id) == local_objects_.end()) {
+    local_inlined_objects_.insert(object_id);
+    auto status = store_client_.CreateAndSeal(object_id.to_plasma_id(),
+                                              std::string(inline_object_data.begin(),
+                                              inline_object_data.end()),
+                                              inline_object_metadata);
+    RAY_CHECK(status.IsPlasmaObjectExists() || status.ok()) << status.message();
+  }
 }
 
 

@@ -353,7 +353,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Add inline object. If the object was already created from inlined data, do nothing.
+  /// Add inline object to object store. Called when reading the object entry
+  /// from GCS or upon receiving a notification about an inline object.
   void PutInlineObject(const ObjectID &object_id,
                        const std::vector<uint8_t> &inline_object_data,
                        const std::string &inline_object_metadata);
