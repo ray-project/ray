@@ -32,12 +32,8 @@ class RayParams(object):
             ignored.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
             shards.
-        num_cpus (int): Number of cpus the user wishes all local schedulers to
-            be configured with.
-        num_gpus (int): Number of gpus the user wishes all local schedulers to
-            be configured with.
-        num_local_schedulers (int): The number of local schedulers to start.
-            This is only provided if start_ray_local is True.
+        num_cpus (int): Number of CPUs to configure the raylet with.
+        num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
         object_store_memory: The amount of memory (in bytes) to start the
@@ -46,12 +42,8 @@ class RayParams(object):
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
-        object_manager_ports (list): A list of the ports to use for the object
-            managers. There should be one per object manager being started on
-            this node (typically just one).
-        node_manager_ports (list): A list of the ports to use for the node
-            managers. There should be one per node manager being started on
-            this node (typically just one).
+        object_manager_port int: The port to use for the object manager.
+        node_manager_port: The port to use for the node manager.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -97,14 +89,13 @@ class RayParams(object):
                  redis_address=None,
                  num_cpus=None,
                  num_gpus=None,
-                 num_local_schedulers=None,
                  resources=None,
                  object_store_memory=None,
                  redis_max_memory=None,
                  redis_port=None,
                  redis_shard_ports=None,
-                 object_manager_ports=None,
-                 node_manager_ports=None,
+                 object_manager_port=None,
+                 node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
                  num_workers=None,
@@ -133,14 +124,13 @@ class RayParams(object):
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
-        self.num_local_schedulers = num_local_schedulers
         self.resources = resources
         self.object_store_memory = object_store_memory
         self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
-        self.object_manager_ports = object_manager_ports
-        self.node_manager_ports = node_manager_ports
+        self.object_manager_port = object_manager_port
+        self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
         self.num_workers = num_workers
         self.local_mode = local_mode
@@ -160,6 +150,7 @@ class RayParams(object):
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self._internal_config = _internal_config
+        self._check_usage()
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.
@@ -174,6 +165,8 @@ class RayParams(object):
                 raise ValueError("Invalid RayParams parameter in"
                                  " update: %s" % arg)
 
+        self._check_usage()
+
     def update_if_absent(self, **kwargs):
         """Update the settings when the target fields are None.
 
@@ -187,3 +180,14 @@ class RayParams(object):
             else:
                 raise ValueError("Invalid RayParams parameter in"
                                  " update_if_absent: %s" % arg)
+
+        self._check_usage()
+
+    def _check_usage(self):
+        if self.resources is not None:
+            assert "CPU" not in self.resources, (
+                "'CPU' should not be included in the resource dictionary. Use "
+                "num_cpus instead.")
+            assert "GPU" not in self.resources, (
+                "'GPU' should not be included in the resource dictionary. Use "
+                "num_gpus instead.")

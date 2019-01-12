@@ -143,13 +143,6 @@ class Worker(object):
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
         profiler: the profiler used to aggregate profiling information.
-        state_lock (Lock):
-            Used to lock worker's non-thread-safe internal states:
-            1) task_index increment: make sure we generate unique task ids;
-            2) Object reconstruction: because the node manager will
-            recycle/return the worker's resources before/after reconstruction,
-            it's unsafe for multiple threads to call object
-            reconstruction simultaneously.
     """
 
     def __init__(self):
@@ -169,42 +162,56 @@ class Worker(object):
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
-        self.state_lock = threading.Lock()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
-        # Reads/writes to the following fields must be protected by
-        # self.state_lock.
         # Identity of the driver that this worker is processing.
         self.task_driver_id = ray.ObjectID(NIL_ID)
-        self.current_task_id = ray.ObjectID(NIL_ID)
-        self.task_index = 0
-        self.put_index = 1
+        self._task_context = threading.local()
 
-    def get_current_thread_task_id(self):
-        """Get the current thread's task ID.
+    @property
+    def task_context(self):
+        """A thread-local that contains the following attributes.
 
-        This returns the assigned task ID if called on the main thread, else a
-        random task ID.  This method is not thread-safe and must be called with
-        self.state_lock acquired.
+        current_task_id: For the main thread, this field is the ID of this
+            worker's current running task; for other threads, this field is a
+            fake random ID.
+        task_index: The number of tasks that have been submitted from the
+            current task.
+        put_index: The number of objects that have been put from the current
+            task.
         """
-        current_task_id = self.current_task_id
-        if not ray.utils.is_main_thread():
-            # If this is running on a separate thread, then the mapping
-            # to the current task ID may not be correct. Generate a
-            # random task ID so that the backend can differentiate
-            # between different threads.
-            current_task_id = ray.ObjectID(random_string())
-            if not self.multithreading_warned:
-                logger.warning(
-                    "Calling ray.get or ray.wait in a separate thread "
-                    "may lead to deadlock if the main thread blocks on this "
-                    "thread and there are not enough resources to execute "
-                    "more tasks")
-                self.multithreading_warned = True
-        assert not current_task_id.is_nil()
-        return current_task_id
+        if not hasattr(self._task_context, 'initialized'):
+            # Initialize task_context for the current thread.
+            if ray.utils.is_main_thread():
+                # If this is running on the main thread, initialize it to
+                # NIL. The actual value will set when the worker receives
+                # a task from raylet backend.
+                self._task_context.current_task_id = ray.ObjectID(NIL_ID)
+            else:
+                # If this is running on a separate thread, then the mapping
+                # to the current task ID may not be correct. Generate a
+                # random task ID so that the backend can differentiate
+                # between different threads.
+                self._task_context.current_task_id = ray.ObjectID(
+                    random_string())
+                if getattr(self, '_multithreading_warned', False) is not True:
+                    logger.warning(
+                        "Calling ray.get or ray.wait in a separate thread "
+                        "may lead to deadlock if the main thread blocks on "
+                        "this thread and there are not enough resources to "
+                        "execute more tasks")
+                    self._multithreading_warned = True
+
+            self._task_context.task_index = 0
+            self._task_context.put_index = 1
+            self._task_context.initialized = True
+        return self._task_context
+
+    @property
+    def current_task_id(self):
+        return self.task_context.current_task_id
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
@@ -467,48 +474,45 @@ class Worker(object):
         }
 
         if len(unready_ids) > 0:
-            with self.state_lock:
-                # Get the task ID, to notify the backend which task is blocked.
-                current_task_id = self.get_current_thread_task_id()
+            # Try reconstructing any objects we haven't gotten yet. Try to
+            # get them until at least get_timeout_milliseconds
+            # milliseconds passes, then repeat.
+            while len(unready_ids) > 0:
+                object_ids_to_fetch = [
+                    plasma.ObjectID(unready_id)
+                    for unready_id in unready_ids.keys()
+                ]
+                ray_object_ids_to_fetch = [
+                    ray.ObjectID(unready_id)
+                    for unready_id in unready_ids.keys()
+                ]
+                fetch_request_size = ray._config.worker_fetch_request_size()
+                for i in range(0, len(object_ids_to_fetch),
+                               fetch_request_size):
+                    self.raylet_client.fetch_or_reconstruct(
+                        ray_object_ids_to_fetch[i:(i + fetch_request_size)],
+                        False,
+                        self.current_task_id,
+                    )
+                results = self.retrieve_and_deserialize(
+                    object_ids_to_fetch,
+                    max([
+                        ray._config.get_timeout_milliseconds(),
+                        int(0.01 * len(unready_ids)),
+                    ]),
+                )
+                # Remove any entries for objects we received during this
+                # iteration so we don't retrieve the same object twice.
+                for i, val in enumerate(results):
+                    if val is not plasma.ObjectNotAvailable:
+                        object_id = object_ids_to_fetch[i].binary()
+                        index = unready_ids[object_id]
+                        final_results[index] = val
+                        unready_ids.pop(object_id)
 
-                # Try reconstructing any objects we haven't gotten yet. Try to
-                # get them until at least get_timeout_milliseconds
-                # milliseconds passes, then repeat.
-                while len(unready_ids) > 0:
-                    object_ids_to_fetch = [
-                        plasma.ObjectID(unready_id)
-                        for unready_id in unready_ids.keys()
-                    ]
-                    ray_object_ids_to_fetch = [
-                        ray.ObjectID(unready_id)
-                        for unready_id in unready_ids.keys()
-                    ]
-                    fetch_request_size = (
-                        ray._config.worker_fetch_request_size())
-                    for i in range(0, len(object_ids_to_fetch),
-                                   fetch_request_size):
-                        self.raylet_client.fetch_or_reconstruct(
-                            ray_object_ids_to_fetch[i:(
-                                i + fetch_request_size)], False,
-                            current_task_id)
-                    results = self.retrieve_and_deserialize(
-                        object_ids_to_fetch,
-                        max([
-                            ray._config.get_timeout_milliseconds(),
-                            int(0.01 * len(unready_ids))
-                        ]))
-                    # Remove any entries for objects we received during this
-                    # iteration so we don't retrieve the same object twice.
-                    for i, val in enumerate(results):
-                        if val is not plasma.ObjectNotAvailable:
-                            object_id = object_ids_to_fetch[i].binary()
-                            index = unready_ids[object_id]
-                            final_results[index] = val
-                            unready_ids.pop(object_id)
-
-                # If there were objects that we weren't able to get locally,
-                # let the local scheduler know that we're now unblocked.
-                self.raylet_client.notify_unblocked(current_task_id)
+            # If there were objects that we weren't able to get locally,
+            # let the local scheduler know that we're now unblocked.
+            self.raylet_client.notify_unblocked(self.current_task_id)
 
         assert len(final_results) == len(object_ids)
         return final_results
@@ -524,6 +528,7 @@ class Worker(object):
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
                     execution_dependencies=None,
+                    new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
@@ -594,6 +599,9 @@ class Worker(object):
             if execution_dependencies is None:
                 execution_dependencies = []
 
+            if new_actor_handles is None:
+                new_actor_handles = []
+
             if driver_id is None:
                 driver_id = self.task_driver_id
 
@@ -612,24 +620,32 @@ class Worker(object):
             if placement_resources is None:
                 placement_resources = {}
 
-            with self.state_lock:
-                # Increment the worker's task index to track how many tasks
-                # have been submitted by the current task so far.
-                task_index = self.task_index
-                self.task_index += 1
-                # The parent task must be set for the submitted task.
-                if self.actor_id == NIL_ACTOR_ID:
-                    assert not self.current_task_id.is_nil()
+            # Increment the worker's task index to track how many tasks
+            # have been submitted by the current task so far.
+            self.task_context.task_index += 1
+            # The parent task must be set for the submitted task.
+            assert not self.current_task_id.is_nil()
             # Submit the task to local scheduler.
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             task = ray.raylet.Task(
-                driver_id, function_descriptor_list, args_for_local_scheduler,
-                num_return_vals, self.current_task_id, task_index,
-                actor_creation_id, actor_creation_dummy_object_id,
-                max_actor_reconstructions, actor_id, actor_handle_id,
-                actor_counter, execution_dependencies, resources,
-                placement_resources)
+                driver_id,
+                function_descriptor_list,
+                args_for_local_scheduler,
+                num_return_vals,
+                self.current_task_id,
+                self.task_context.task_index,
+                actor_creation_id,
+                actor_creation_dummy_object_id,
+                max_actor_reconstructions,
+                actor_id,
+                actor_handle_id,
+                actor_counter,
+                new_actor_handles,
+                execution_dependencies,
+                resources,
+                placement_resources,
+            )
             self.raylet_client.submit_task(task)
 
             return task.returns()
@@ -766,24 +782,23 @@ class Worker(object):
         (these will be retrieved by calls to get or by subsequent tasks that
         use the outputs of this task).
         """
-        with self.state_lock:
-            assert self.current_task_id.is_nil()
-            assert self.task_index == 0
-            assert self.put_index == 1
-            if task.actor_id().is_nil():
-                # If this worker is not an actor, check that `task_driver_id`
-                # was reset when the worker finished the previous task.
-                assert self.task_driver_id.is_nil()
-                # Set the driver ID of the current running task. This is
-                # needed so that if the task throws an exception, we propagate
-                # the error message to the correct driver.
-                self.task_driver_id = task.driver_id()
-            else:
-                # If this worker is an actor, task_driver_id wasn't reset.
-                # Check that current task's driver ID equals the previous one.
-                assert self.task_driver_id == task.driver_id()
+        assert self.current_task_id.is_nil()
+        assert self.task_context.task_index == 0
+        assert self.task_context.put_index == 1
+        if task.actor_id().is_nil():
+            # If this worker is not an actor, check that `task_driver_id`
+            # was reset when the worker finished the previous task.
+            assert self.task_driver_id.is_nil()
+            # Set the driver ID of the current running task. This is
+            # needed so that if the task throws an exception, we propagate
+            # the error message to the correct driver.
+            self.task_driver_id = task.driver_id()
+        else:
+            # If this worker is an actor, task_driver_id wasn't reset.
+            # Check that current task's driver ID equals the previous one.
+            assert self.task_driver_id == task.driver_id()
 
-            self.current_task_id = task.task_id()
+        self.task_context.current_task_id = task.task_id()
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
@@ -927,13 +942,14 @@ class Worker(object):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
-                with self.state_lock:
-                    if self.actor_id == NIL_ACTOR_ID:
-                        # We will keep task_driver_id unchanged for actor.
-                        self.task_driver_id = ray.ObjectID(NIL_ID)
-                    self.current_task_id = ray.ObjectID(NIL_ID)
-                    self.task_index = 0
-                    self.put_index = 1
+                self.task_context.current_task_id = ray.ObjectID(NIL_ID)
+                self.task_context.task_index = 0
+                self.task_context.put_index = 1
+                if self.actor_id == NIL_ACTOR_ID:
+                    # Don't need to reset task_driver_id if the worker is an
+                    # actor. Because the following tasks should all have the
+                    # same driver id.
+                    self.task_driver_id = ray.ObjectID(NIL_ID)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1185,36 +1201,28 @@ def get_address_info_from_redis_helper(redis_address,
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=redis_password)
 
-    # In the raylet code path, all client data is stored in a zset at the
-    # key for the nil client.
-    client_key = b"CLIENT" + NIL_CLIENT_ID
-    clients = redis_client.zrange(client_key, 0, -1)
-    raylets = []
-    for client_message in clients:
-        client = ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-            client_message, 0)
-        client_node_ip_address = ray.utils.decode(client.NodeManagerAddress())
+    client_table = ray.experimental.state.parse_client_table(redis_client)
+    if len(client_table) == 0:
+        raise Exception(
+            "Redis has started but no raylets have registered yet.")
+
+    relevant_client = None
+    for client_info in client_table:
+        client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address or
             (client_node_ip_address == "127.0.0.1"
              and redis_ip_address == ray.services.get_node_ip_address())):
-            raylets.append(client)
-    # Make sure that at least one raylet has started locally.
-    # This handles a race condition where Redis has started but
-    # the raylet has not connected.
-    if len(raylets) == 0:
+            relevant_client = client_info
+            break
+    if relevant_client is None:
         raise Exception(
             "Redis has started but no raylets have registered yet.")
-    object_store_addresses = [
-        ray.utils.decode(raylet.ObjectStoreSocketName()) for raylet in raylets
-    ]
-    raylet_socket_names = [
-        ray.utils.decode(raylet.RayletSocketName()) for raylet in raylets
-    ]
+
     return {
         "node_ip_address": node_ip_address,
         "redis_address": redis_address,
-        "object_store_addresses": object_store_addresses,
-        "raylet_socket_names": raylet_socket_names,
+        "object_store_address": relevant_client["ObjectStoreSocketName"],
+        "raylet_socket_name": relevant_client["RayletSocketName"],
         # Web UI should be running.
         "webui_url": _webui_url_helper(redis_client)
     }
@@ -1258,44 +1266,6 @@ def _setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def _normalize_resource_arguments(num_cpus, num_gpus, resources,
-                                  num_local_schedulers):
-    """Stick the CPU and GPU arguments into the resources dictionary.
-
-    This also checks that the arguments are well-formed.
-
-    Args:
-        num_cpus: Either a number of CPUs or a list of numbers of CPUs.
-        num_gpus: Either a number of CPUs or a list of numbers of CPUs.
-        resources: Either a dictionary of resource mappings or a list of
-            dictionaries of resource mappings.
-        num_local_schedulers: The number of local schedulers.
-
-    Returns:
-        A list of dictionaries of resources of length num_local_schedulers.
-    """
-    if resources is None:
-        resources = {}
-    if not isinstance(num_cpus, list):
-        num_cpus = num_local_schedulers * [num_cpus]
-    if not isinstance(num_gpus, list):
-        num_gpus = num_local_schedulers * [num_gpus]
-    if not isinstance(resources, list):
-        resources = num_local_schedulers * [resources]
-
-    new_resources = [r.copy() for r in resources]
-
-    for i in range(num_local_schedulers):
-        assert "CPU" not in new_resources[i], "Use the 'num_cpus' argument."
-        assert "GPU" not in new_resources[i], "Use the 'num_gpus' argument."
-        if num_cpus[i] is not None:
-            new_resources[i]["CPU"] = num_cpus[i]
-        if num_gpus[i] is not None:
-            new_resources[i]["GPU"] = num_gpus[i]
-
-    return new_resources
-
-
 def _init(ray_params, driver_id=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
@@ -1307,8 +1277,8 @@ def _init(ray_params, driver_id=None):
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: address_info,
             start_ray_local, object_id_seed, num_workers,
-            num_local_schedulers, object_store_memory, redis_max_memory,
-            local_mode, redirect_worker_output, driver_mode, redirect_output,
+            object_store_memory, redis_max_memory, local_mode,
+            redirect_worker_output, driver_mode, redirect_output,
             start_workers_from_local_scheduler, num_cpus, num_gpus, resources,
             num_redis_shards, redis_max_clients, redis_password,
             plasma_directory, huge_pages, include_webui, driver_id,
@@ -1349,17 +1319,8 @@ def _init(ray_params, driver_id=None):
         # are already registered in address_info.
         ray_params.update_if_absent(
             node_ip_address=ray.services.get_node_ip_address())
-        # Use 1 local scheduler if num_local_schedulers is not provided. If
-        # existing local schedulers are provided, use that count as
-        # num_local_schedulers.
-        ray_params.update_if_absent(num_local_schedulers=1)
         # Use 1 additional redis shard if num_redis_shards is not provided.
         ray_params.update_if_absent(num_redis_shards=1)
-
-        # Stick the CPU and GPU resources into the resource dictionary.
-        ray_params.resources = _normalize_resource_arguments(
-            ray_params.num_cpus, ray_params.num_gpus, ray_params.resources,
-            ray_params.num_local_schedulers)
 
         # Start the scheduler, object store, and some workers. These will be
         # killed by the call to shutdown(), which happens when the Python
@@ -1372,9 +1333,6 @@ def _init(ray_params, driver_id=None):
         if ray_params.num_workers is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_workers must not be provided.")
-        if ray_params.num_local_schedulers is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_local_schedulers must not be provided.")
         if ray_params.num_cpus is not None or ray_params.num_gpus is not None:
             raise Exception("When connecting to an existing cluster, num_cpus "
                             "and num_gpus must not be provided.")
@@ -1433,11 +1391,11 @@ def _init(ray_params, driver_id=None):
             "node_ip_address": ray_params.node_ip_address,
             "redis_address": ray_params.address_info["redis_address"],
             "store_socket_name": ray_params.address_info[
-                "object_store_addresses"][0],
+                "object_store_address"],
             "webui_url": ray_params.address_info["webui_url"],
         }
         driver_address_info["raylet_socket_name"] = (
-            ray_params.address_info["raylet_socket_names"][0])
+            ray_params.address_info["raylet_socket_name"])
 
     # We only pass `temp_dir` to a worker (WORKER_MODE).
     # It can't be a worker here.
@@ -1995,13 +1953,8 @@ def connect(ray_params,
         else:
             # Try to use true randomness.
             np.random.seed(None)
-        worker.current_task_id = ray.ObjectID(
-            np.random.bytes(ray_constants.ID_SIZE))
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
-        # Set other fields needed for computing task IDs.
-        worker.task_index = 0
-        worker.put_index = 1
 
         # Create an entry for the driver task in the task table. This task is
         # added immediately with status RUNNING. This allows us to push errors
@@ -2014,11 +1967,22 @@ def connect(ray_params,
         function_descriptor = FunctionDescriptor.for_driver_task()
         driver_task = ray.raylet.Task(
             worker.task_driver_id,
-            function_descriptor.get_function_descriptor_list(), [], 0,
-            worker.current_task_id, worker.task_index,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID), 0,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            nil_actor_counter, [], {"CPU": 0}, {})
+            function_descriptor.get_function_descriptor_list(),
+            [],  # arguments.
+            0,  # num_returns.
+            ray.ObjectID(random_string()),  # parent_task_id.
+            0,  # parent_counter.
+            ray.ObjectID(NIL_ACTOR_ID),  # actor_creation_id.
+            ray.ObjectID(NIL_ACTOR_ID),  # actor_creation_dummy_object_id.
+            0,  # max_actor_reconstructions.
+            ray.ObjectID(NIL_ACTOR_ID),  # actor_id.
+            ray.ObjectID(NIL_ACTOR_ID),  # actor_handle_id.
+            nil_actor_counter,  # actor_counter.
+            [],  # new_actor_handles.
+            [],  # execution_dependencies.
+            {"CPU": 0},  # resource_map.
+            {},  # placement_resource_map.
+        )
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
@@ -2029,16 +1993,14 @@ def connect(ray_params,
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
-        worker.current_task_id = driver_task.task_id()
-    else:
-        # A non-driver worker begins without an assigned task.
-        worker.current_task_id = ray.ObjectID(NIL_ID)
-    # A flag for making sure that we only print one warning message about
-    # multithreading per worker.
-    worker.multithreading_warned = False
+        worker.task_context.current_task_id = driver_task.task_id()
 
     worker.raylet_client = ray.raylet.RayletClient(
-        raylet_socket, worker.worker_id, is_worker, worker.current_task_id)
+        raylet_socket,
+        worker.worker_id,
+        is_worker,
+        worker.current_task_id,
+    )
 
     # Start the import thread
     import_thread.ImportThread(worker, mode).start()
@@ -2324,14 +2286,21 @@ def put(value, worker=global_worker):
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
         object_id = worker.raylet_client.compute_put_id(
-            worker.current_task_id, worker.put_index)
+            worker.current_task_id,
+            worker.task_context.put_index,
+        )
         worker.put_object(object_id, value)
-        worker.put_index += 1
+        worker.task_context.put_index += 1
         return object_id
 
 
 def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     """Return a list of IDs that are ready and a list of IDs that are not.
+
+    .. warning::
+
+        The **timeout** argument used to be in **milliseconds** (up through
+        ``ray==0.6.1``) and now it is in **seconds**.
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
@@ -2352,8 +2321,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
         num_returns (int): The number of object IDs that should be returned.
-        timeout (int): The maximum amount of time in milliseconds to wait
-            before returning.
+        timeout (float): The maximum amount of time in seconds to wait before
+            returning.
 
     Returns:
         A list of object IDs that are ready and a list of the remaining object
@@ -2367,6 +2336,15 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     if not isinstance(object_ids, list):
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
             type(object_ids)))
+
+    if isinstance(timeout, int) and timeout != 0:
+        logger.warning("The 'timeout' argument now requires seconds instead "
+                       "of milliseconds. This message can be suppressed by "
+                       "passing in a float.")
+
+    if timeout is not None and timeout < 0:
+        raise ValueError("The 'timeout' argument must be nonnegative. "
+                         "Received {}".format(timeout))
 
     if worker.mode != LOCAL_MODE:
         for object_id in object_ids:
@@ -2398,13 +2376,15 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
 
-        # Get the task ID, to notify the backend which task is blocked.
-        with worker.state_lock:
-            current_task_id = worker.get_current_thread_task_id()
-
-        timeout = timeout if timeout is not None else 2**30
+        timeout = timeout if timeout is not None else 10**6
+        timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.raylet_client.wait(
-            object_ids, num_returns, timeout, False, current_task_id)
+            object_ids,
+            num_returns,
+            timeout_milliseconds,
+            False,
+            worker.current_task_id,
+        )
         return ready_ids, remaining_ids
 
 

@@ -1,5 +1,5 @@
-RLlib Offline Data Input / Output
-=================================
+RLlib Offline Datasets
+======================
 
 Working with Offline Datasets
 -----------------------------

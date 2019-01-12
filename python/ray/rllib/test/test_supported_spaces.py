@@ -92,7 +92,7 @@ def check_support(alg, config, stats, check_bounds=False):
 def check_support_multiagent(alg, config):
     register_env("multi_mountaincar", lambda _: MultiMountainCar(2))
     register_env("multi_cartpole", lambda _: MultiCartpole(2))
-    if alg == "DDPG":
+    if "DDPG" in alg:
         a = get_agent_class(alg)(config=config, env="multi_mountaincar")
     else:
         a = get_agent_class(alg)(config=config, env="multi_cartpole")
@@ -169,6 +169,24 @@ class ModelSupportedSpaces(unittest.TestCase):
         self.assertEqual(num_unexpected_errors, 0)
 
     def testMultiAgent(self):
+        check_support_multiagent(
+            "APEX", {
+                "num_workers": 2,
+                "timesteps_per_iteration": 1000,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "learning_starts": 1000,
+                "target_network_update_freq": 100,
+            })
+        check_support_multiagent(
+            "APEX_DDPG", {
+                "num_workers": 2,
+                "timesteps_per_iteration": 1000,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "learning_starts": 1000,
+                "target_network_update_freq": 100,
+            })
         check_support_multiagent("IMPALA", {"num_gpus": 0})
         check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
         check_support_multiagent("A3C", {

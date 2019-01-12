@@ -110,7 +110,7 @@ class _LogSyncer(object):
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        logger.info("Created LogSyncer for {} -> {}".format(
+        logger.debug("Created LogSyncer for {} -> {}".format(
             local_dir, remote_dir))
 
     def set_worker_ip(self, worker_ip):
@@ -125,7 +125,7 @@ class _LogSyncer(object):
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
         if not self.worker_ip:
-            logger.info("Worker ip unknown, skipping log sync for {}".format(
+            logger.debug("Worker ip unknown, skipping log sync for {}".format(
                 self.local_dir))
             return
 
@@ -178,7 +178,7 @@ class _LogSyncer(object):
                 if final_cmd:
                     final_cmd += " && "
                 final_cmd += local_to_remote_sync_cmd
-            logger.info("Running log sync: {}".format(final_cmd))
+            logger.debug("Running log sync: {}".format(final_cmd))
             self.sync_process = subprocess.Popen(final_cmd, shell=True)
 
     def wait(self):

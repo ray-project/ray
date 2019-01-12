@@ -828,10 +828,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         return webui_url
 
 
-def check_and_update_resources(resources):
+def check_and_update_resources(num_cpus, num_gpus, resources):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
+        num_cpus: The number of CPUs.
+        num_gpus: The number of GPUs.
         resources: A dictionary mapping resource names to resource quantities.
 
     Returns:
@@ -840,6 +842,13 @@ def check_and_update_resources(resources):
     if resources is None:
         resources = {}
     resources = resources.copy()
+    assert "CPU" not in resources
+    assert "GPU" not in resources
+    if num_cpus is not None:
+        resources["CPU"] = num_cpus
+    if num_gpus is not None:
+        resources["GPU"] = num_gpus
+
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
@@ -879,10 +888,9 @@ def check_and_update_resources(resources):
 
 
 def start_raylet(ray_params,
-                 index,
                  raylet_name,
                  plasma_store_name,
-                 num_workers=0,
+                 num_initial_workers=0,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -894,15 +902,13 @@ def start_raylet(ray_params,
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: redis_address,
-            node_ip_address, worker_path, resources, object_manager_ports,
-            node_manager_ports, redis_password
-        index (int): Usually, this index is 0. When index > 0, it means
-            starting multiple raylet locally. The index will be used in
-            resources, object_manager_ports, node_manager_ports.
+            node_ip_address, worker_path, resources, num_cpus, num_gpus,
+            object_manager_port, node_manager_port, redis_password.
+            resources, object_manager_port, node_manager_port.
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
-        num_workers (int): The number of workers to start.
+        num_initial_workers (int): The number of workers to start initially.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -926,7 +932,8 @@ def start_raylet(ray_params,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    static_resources = check_and_update_resources(ray_params.resources[index])
+    static_resources = check_and_update_resources(
+        ray_params.num_cpus, ray_params.num_gpus, ray_params.resources)
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -956,23 +963,23 @@ def start_raylet(ray_params,
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
-    if ray_params.object_manager_ports[index] is None:
-        ray_params.object_manager_ports[index] = 0
+    if ray_params.object_manager_port is None:
+        ray_params.object_manager_port = 0
     # If the node manager port is None, then use 0 to cause the node manager
     # to choose its own port.
-    if ray_params.node_manager_ports[index] is None:
-        ray_params.node_manager_ports[index] = 0
+    if ray_params.node_manager_port is None:
+        ray_params.node_manager_port = 0
 
     command = [
         RAYLET_EXECUTABLE,
         raylet_name,
         plasma_store_name,
-        str(ray_params.object_manager_ports[index]),
-        str(ray_params.node_manager_ports[index]),
+        str(ray_params.object_manager_port),
+        str(ray_params.node_manager_port),
         ray_params.node_ip_address,
         gcs_ip_address,
         gcs_port,
-        str(num_workers),
+        str(num_initial_workers),
         str(maximum_startup_concurrency),
         resource_argument,
         config_str,
@@ -1289,9 +1296,8 @@ def start_ray_processes(ray_params, cleanup=True):
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters will be set to default values if it's None:
-            node_ip_address("127.0.0.1"), num_local_schedulers(1),
-            include_webui(False), worker_path(path of default_worker.py),
-            include_log_monitor(False)
+            node_ip_address("127.0.0.1"), include_webui(False),
+            worker_path(path of default_worker.py), include_log_monitor(False)
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
@@ -1312,23 +1318,16 @@ def start_ray_processes(ray_params, cleanup=True):
     ray_params.update_if_absent(
         include_log_monitor=False,
         resources={},
-        num_local_schedulers=1,
         include_webui=False,
         node_ip_address="127.0.0.1")
-    if not isinstance(ray_params.resources, list):
-        ray_params.resources = ray_params.num_local_schedulers * [
-            ray_params.resources
-        ]
 
     if ray_params.num_workers is not None:
         raise Exception("The 'num_workers' argument is deprecated. Please use "
                         "'num_cpus' instead.")
     else:
-        workers_per_local_scheduler = []
-        for resource_dict in ray_params.resources:
-            cpus = resource_dict.get("CPU")
-            workers_per_local_scheduler.append(cpus if cpus is not None else
-                                               multiprocessing.cpu_count())
+        num_initial_workers = (ray_params.num_cpus
+                               if ray_params.num_cpus is not None else
+                               multiprocessing.cpu_count())
 
     ray_params.update_if_absent(
         address_info={},
@@ -1402,66 +1401,41 @@ def start_ray_processes(ray_params, cleanup=True):
             redis_password=ray_params.redis_password)
 
     # Initialize with existing services.
-    if "object_store_addresses" not in ray_params.address_info:
-        ray_params.address_info["object_store_addresses"] = []
-    object_store_addresses = ray_params.address_info["object_store_addresses"]
-    if "raylet_socket_names" not in ray_params.address_info:
-        ray_params.address_info["raylet_socket_names"] = []
-    raylet_socket_names = ray_params.address_info["raylet_socket_names"]
+    object_store_address = ray_params.address_info.get("object_store_address")
+    raylet_socket_name = ray_params.address_info.get("raylet_socket_name")
 
-    # Get the ports to use for the object managers if any are provided.
-    if not isinstance(ray_params.object_manager_ports, list):
-        assert (ray_params.object_manager_ports is None
-                or ray_params.num_local_schedulers == 1)
-        ray_params.object_manager_ports = (ray_params.num_local_schedulers *
-                                           [ray_params.object_manager_ports])
-    assert len(
-        ray_params.object_manager_ports) == ray_params.num_local_schedulers
-    if not isinstance(ray_params.node_manager_ports, list):
-        assert (ray_params.node_manager_ports is None
-                or ray_params.num_local_schedulers == 1)
-        ray_params.node_manager_ports = (
-            ray_params.num_local_schedulers * [ray_params.node_manager_ports])
-    assert len(
-        ray_params.node_manager_ports) == ray_params.num_local_schedulers
+    # Start the object store.
+    assert object_store_address is None
+    # Start Plasma.
+    plasma_store_stdout_file, plasma_store_stderr_file = (
+        new_plasma_store_log_file(ray_params.redirect_output))
 
-    # Start any object stores that do not yet exist.
-    for i in range(ray_params.num_local_schedulers -
-                   len(object_store_addresses)):
-        # Start Plasma.
-        plasma_store_stdout_file, plasma_store_stderr_file = (
-            new_plasma_store_log_file(i, ray_params.redirect_output))
+    ray_params.address_info["object_store_address"] = start_plasma_store(
+        ray_params.node_ip_address,
+        ray_params.redis_address,
+        store_stdout_file=plasma_store_stdout_file,
+        store_stderr_file=plasma_store_stderr_file,
+        object_store_memory=ray_params.object_store_memory,
+        cleanup=cleanup,
+        plasma_directory=ray_params.plasma_directory,
+        huge_pages=ray_params.huge_pages,
+        plasma_store_socket_name=ray_params.plasma_store_socket_name,
+        redis_password=ray_params.redis_password)
+    time.sleep(0.1)
 
-        object_store_address = start_plasma_store(
-            ray_params.node_ip_address,
-            ray_params.redis_address,
-            store_stdout_file=plasma_store_stdout_file,
-            store_stderr_file=plasma_store_stderr_file,
-            object_store_memory=ray_params.object_store_memory,
-            cleanup=cleanup,
-            plasma_directory=ray_params.plasma_directory,
-            huge_pages=ray_params.huge_pages,
-            plasma_store_socket_name=ray_params.plasma_store_socket_name,
-            redis_password=ray_params.redis_password)
-        object_store_addresses.append(object_store_address)
-        time.sleep(0.1)
-
-    # Start any raylets that do not exist yet.
-    for raylet_index in range(
-            len(raylet_socket_names), ray_params.num_local_schedulers):
-        raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
-            raylet_index, redirect_output=ray_params.redirect_worker_output)
-        ray_params.address_info["raylet_socket_names"].append(
-            start_raylet(
-                ray_params,
-                raylet_index,
-                ray_params.raylet_socket_name or get_raylet_socket_name(),
-                object_store_addresses[raylet_index],
-                num_workers=workers_per_local_scheduler[raylet_index],
-                stdout_file=raylet_stdout_file,
-                stderr_file=raylet_stderr_file,
-                cleanup=cleanup,
-                config=config))
+    # Start the raylet.
+    assert raylet_socket_name is None
+    raylet_stdout_file, raylet_stderr_file = new_raylet_log_file(
+        redirect_output=ray_params.redirect_worker_output)
+    ray_params.address_info["raylet_socket_name"] = start_raylet(
+        ray_params,
+        ray_params.raylet_socket_name or get_raylet_socket_name(),
+        ray_params.address_info["object_store_address"],
+        num_initial_workers=num_initial_workers,
+        stdout_file=raylet_stdout_file,
+        stderr_file=raylet_stderr_file,
+        cleanup=cleanup,
+        config=config)
 
     # Try to start the web UI.
     if ray_params.include_webui:
@@ -1486,12 +1460,11 @@ def start_ray_node(ray_params, cleanup=True):
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: node_ip_address,
-            redis_address, object_manager_ports, node_manager_ports,
-            num_workers, num_local_schedulers, object_store_memory,
-            redis_password, worker_path, cleanup, redirect_worker_output,
-            redirect_output, resources, plasma_directory, huge_pages,
-            plasma_store_socket_name, raylet_socket_name, temp_dir,
-            _internal_config
+            redis_address, object_manager_port, node_manager_port,
+            num_workers, object_store_memory, redis_password, worker_path,
+            cleanup, redirect_worker_output, redirect_output, resources,
+            plasma_directory, huge_pages, plasma_store_socket_name,
+            raylet_socket_name, temp_dir, _internal_config.
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
@@ -1513,14 +1486,14 @@ def start_ray_head(ray_params, cleanup=True):
     Args:
         ray_params (ray.params.RayParams): The RayParams instance. The
             following parameters could be checked: address_info,
-            object_manager_ports, node_manager_ports, node_ip_address,
-            redis_port, redis_shard_ports, num_workers, num_local_schedulers,
-            object_store_memory, redis_max_memory, worker_path, cleanup,
-            redirect_worker_output, redirect_output,
-            start_workers_from_local_scheduler, resources, num_redis_shards,
-            redis_max_clients, redis_password, include_webui, huge_pages,
-            plasma_directory, autoscaling_config, plasma_store_socket_name,
-            raylet_socket_name, temp_dir, _internal_config
+            object_manager_port, node_manager_port, node_ip_address,
+            redis_port, redis_shard_ports, num_workers, object_store_memory,
+            redis_max_memory, worker_path, cleanup, redirect_worker_output,
+            redirect_output, start_workers_from_local_scheduler, resources,
+            num_redis_shards, redis_max_clients, redis_password, include_webui,
+            huge_pages, plasma_directory, autoscaling_config,
+            plasma_store_socket_name, raylet_socket_name, temp_dir,
+            _internal_config.
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.

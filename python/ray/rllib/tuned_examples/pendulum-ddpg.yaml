@@ -4,7 +4,7 @@ pendulum-ddpg:
     run: DDPG
     stop:
         episode_reward_mean: -160
-        time_total_s: 600 # 10 minutes
+        timesteps_total: 100000
     config:
         # === Model ===
         actor_hiddens: [64, 64]
