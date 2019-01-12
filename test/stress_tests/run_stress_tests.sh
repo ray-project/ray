@@ -35,4 +35,3 @@ pushd "$ROOT_DIR"
 popd
 
 cat $RESULT_FILE
-
