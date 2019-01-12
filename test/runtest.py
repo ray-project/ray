@@ -1242,7 +1242,7 @@ def test_multithreading(shutdown_only):
             ready, _ = ray.wait(
                 objects,
                 num_returns=len(objects),
-                timeout=1000,
+                timeout=1000.0,
             )
             assert len(ready) == num_wait_objects
             assert ray.get(ready) == list(range(num_wait_objects))
@@ -1273,7 +1273,7 @@ def test_multithreading(shutdown_only):
                 ready, _ = ray.wait(
                     wait_objects,
                     num_returns=len(wait_objects),
-                    timeout=1000,
+                    timeout=1000.0,
                 )
                 assert len(ready) == len(wait_objects)
                 for _ in range(50):

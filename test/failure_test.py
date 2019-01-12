@@ -670,7 +670,7 @@ def test_raylet_crash_when_get(ray_start_regular):
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
-        ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
+        ray.worker._global_node.kill_raylet()
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()

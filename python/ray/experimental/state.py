@@ -38,6 +38,8 @@ def parse_client_table(redis_client):
     node_info = {}
     gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
 
+    ordered_client_ids = []
+
     # Since GCS entries are append-only, we override so that
     # only the latest entries are kept.
     for i in range(gcs_entry.EntriesLength()):
@@ -58,6 +60,8 @@ def parse_client_table(redis_client):
             assert client_id in node_info, "Client removed not found!"
             assert node_info[client_id]["IsInsertion"], (
                 "Unexpected duplicate removal of client.")
+        else:
+            ordered_client_ids.append(client_id)
 
         node_info[client_id] = {
             "ClientID": client_id,
@@ -72,7 +76,13 @@ def parse_client_table(redis_client):
                 client.RayletSocketName(), allow_none=True),
             "Resources": resources
         }
-    return list(node_info.values())
+    # NOTE: We return the list comprehension below instead of simply doing
+    # 'list(node_info.values())' in order to have the nodes appear in the order
+    # that they joined the cluster. Python dictionaries do not preserve
+    # insertion order. We could use an OrderedDict, but then we'd have to be
+    # sure to only insert a given node a single time (clients that die appear
+    # twice in the GCS log).
+    return [node_info[client_id] for client_id in ordered_client_ids]
 
 
 class GlobalState(object):

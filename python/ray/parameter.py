@@ -11,25 +11,13 @@ class RayParams(object):
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        address_info (dict): A dictionary with address information for
-            processes in a partially-started Ray cluster. If
-            start_ray_local=True, any processes not in this dictionary will be
-            started. If provided, an updated address_info dictionary will be
-            returned to include processes that are newly started.
-        start_ray_local (bool): If True then this will start any processes not
-            already in address_info, including Redis, a global scheduler, local
-            scheduler(s), object store(s), and worker(s). It will also kill
-            these processes when Python exits. If False, this will attach to an
-            existing Ray cluster.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             global scheduler, a local scheduler, a plasma store, a plasma
             manager, and some workers. It will also kill these processes when
             Python exits.
         redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen. If the key
-            "redis_address" is in address_info, then this argument will be
-            ignored.
+            to. If None, then a random port will be chosen.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
             shards.
         num_cpus (int): Number of CPUs to configure the raylet with.
@@ -84,8 +72,6 @@ class RayParams(object):
     """
 
     def __init__(self,
-                 address_info=None,
-                 start_ray_local=False,
                  redis_address=None,
                  num_cpus=None,
                  num_gpus=None,
@@ -118,8 +104,6 @@ class RayParams(object):
                  include_log_monitor=None,
                  autoscaling_config=None,
                  _internal_config=None):
-        self.address_info = address_info
-        self.start_ray_local = start_ray_local
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -191,3 +175,8 @@ class RayParams(object):
             assert "GPU" not in self.resources, (
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
+
+        if self.num_workers is not None:
+            raise Exception(
+                "The 'num_workers' argument is deprecated. Please use "
+                "'num_cpus' instead.")
