@@ -68,8 +68,8 @@ class MARWILPolicyGraph(TFPolicyGraph):
             tf.float32, shape=(None, ) + observation_space.shape)
 
         with tf.variable_scope(P_SCOPE) as scope:
-            logits = self._build_policy_network(
-                self.cur_observations, observation_space, logit_dim)
+            logits = self._build_policy_network(self.cur_observations,
+                                                observation_space, logit_dim)
             self.p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -84,17 +84,17 @@ class MARWILPolicyGraph(TFPolicyGraph):
 
         # v network evaluation
         with tf.variable_scope(V_SCOPE) as scope:
-            state_values = self._build_value_network(
-                self.obs_t, observation_space)
+            state_values = self._build_value_network(self.obs_t,
+                                                     observation_space)
             self.v_func_vars = _scope_vars(scope.name)
         self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)
 
         # p network evaluation
         with tf.variable_scope(P_SCOPE, reuse=True) as scope:
-            logits = self._build_policy_network(
-                self.obs_t, observation_space, logit_dim)
-        self.p_loss = self._build_policy_loss(
-            state_values, self.cum_rew_t, logits, self.act_t, action_space)
+            logits = self._build_policy_network(self.obs_t, observation_space,
+                                                logit_dim)
+        self.p_loss = self._build_policy_loss(state_values, self.cum_rew_t,
+                                              logits, self.act_t, action_space)
 
         # which kind of objective to optimize
         objective = self.p_loss.loss + self.config["c"] * self.v_loss.loss
@@ -126,9 +126,9 @@ class MARWILPolicyGraph(TFPolicyGraph):
 
     def _build_policy_network(self, obs, obs_space, logit_dim):
         policy_network = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, logit_dim, self.config["model"])
+            "obs": obs,
+            "is_training": self._get_is_training_placeholder(),
+        }, obs_space, logit_dim, self.config["model"])
         return policy_network.outputs
 
     def _build_value_network(self, obs, obs_space):
@@ -142,7 +142,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
         return ValueLoss(state_values, cum_rwds)
 
     def _build_policy_loss(self, state_values, cum_rwds, logits, actions,
-                      action_space):
+                           action_space):
         return ReweightedImitationLoss(state_values, cum_rwds, logits, actions,
                                        action_space, self.config["beta"])
 
@@ -163,8 +163,5 @@ class MARWILPolicyGraph(TFPolicyGraph):
                              len(sample_batch["dones"]),
                              sample_batch["dones"][-1])
         batch = compute_advantages(
-            sample_batch,
-            last_r,
-            gamma=self.config["gamma"],
-            use_gae=False)
+            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False)
         return batch

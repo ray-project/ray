@@ -11,7 +11,6 @@ from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
-
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
