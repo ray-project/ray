@@ -42,9 +42,8 @@ const std::vector<ray::ObjectID> object_ids_from_flatbuf(
 /// @param fbb Reference to the flatbuffer builder.
 /// @param object_ids The vector of object IDs.
 /// @return Flatbuffer string of concatenated IDs.
-flatbuffers::Offset<flatbuffers::String>  object_ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    const std::vector<ray::ObjectID> &object_ids);
+flatbuffers::Offset<flatbuffers::String> object_ids_to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ray::ObjectID> &object_ids);
 
 /// Convert an array of object IDs to a flatbuffer vector of strings.
 ///

@@ -183,7 +183,7 @@ int TaskSpecification::ArgIdCount(int64_t arg_index) const {
 
 ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  const auto & object_ids =
+  const auto &object_ids =
       object_ids_from_flatbuf(*message->args()->Get(arg_index)->object_ids());
   return object_ids[id_index];
 }
