@@ -107,7 +107,8 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         env = gym.make(env_name)
 
     if hasattr(agent, "local_evaluator"):
-        state_init = agent.local_evaluator.policy_map["default"].get_initial_state()
+        state_init = agent.local_evaluator.policy_map[
+            "default"].get_initial_state()
     else:
         state_init = []
     if state_init:
