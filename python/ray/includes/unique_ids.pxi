@@ -4,10 +4,23 @@ We define different types for different IDs for type safe.
 See https://github.com/ray-project/ray/issues/3721.
 """
 
-from ray.includes.common cimport *
+from ray.includes.common cimport (
+    UniqueID as CUniqueID,
+    TaskID as CTaskID,
+    ObjectID as CObjectID,
+    JobID as CJobID,
+    FunctionID as CFunctionID,
+    ClassID as CClassID,
+    ActorID as CActorID,
+    ActorHandleID as CActorHandleID,
+    WorkerID as CWorkerID,
+    DriverID as CDriverID,
+    ConfigID as CConfigID,
+    ClientID as CClientID,
+)
 
 
-cdef class UniqueID:
+cdef class PyUniqueID:
     cdef CUniqueID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -16,24 +29,28 @@ cdef class UniqueID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CUniqueID.from_binary(object_id)
-        elif isinstance (object_id, UniqueID):
-            self.data = CUniqueID((<UniqueID>object_id).data)
+        elif isinstance (object_id, PyUniqueID):
+            self.data = CUniqueID((<PyUniqueID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CUniqueID& cpp_id):
+        return PyUniqueID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return UniqueID(CUniqueID.from_random().binary())
+        return PyUniqueID(CUniqueID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return UniqueID(id_bytes)
+        return PyUniqueID(id_bytes)
 
     @staticmethod
     def nil():
-        return UniqueID(CUniqueID.nil())
+        return PyUniqueID.from_native(CUniqueID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -43,13 +60,13 @@ cdef class UniqueID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<UniqueID?>other).data
+            return self.data == (<PyUniqueID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<UniqueID?>other).data
+            return self.data != (<PyUniqueID?>other).data
         except TypeError:
             return False
 
@@ -81,7 +98,7 @@ cdef class UniqueID:
         return type(self), self.binary()
 
 
-cdef class ObjectID:
+cdef class PyObjectID:
     cdef CObjectID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -90,24 +107,28 @@ cdef class ObjectID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CObjectID.from_binary(object_id)
-        elif isinstance(object_id, ObjectID):
-            self.data = CObjectID((<ObjectID>object_id).data)
+        elif isinstance(object_id, PyObjectID):
+            self.data = CObjectID((<PyObjectID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CObjectID& cpp_id):
+        return PyObjectID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return ObjectID(CObjectID.from_random().binary())
+        return PyObjectID(CObjectID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ObjectID(id_bytes)
+        return PyObjectID(id_bytes)
 
     @staticmethod
     def nil():
-        return ObjectID(CObjectID.nil())
+        return PyObjectID.from_native(CObjectID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -117,13 +138,13 @@ cdef class ObjectID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ObjectID?>other).data
+            return self.data == (<PyObjectID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ObjectID?>other).data
+            return self.data != (<PyObjectID?>other).data
         except TypeError:
             return False
 
@@ -155,7 +176,7 @@ cdef class ObjectID:
         return type(self), self.binary()
 
 
-cdef class JobID:
+cdef class PyJobID:
     cdef CJobID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -164,28 +185,28 @@ cdef class JobID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CJobID.from_binary(object_id)
-        elif isinstance(object_id, JobID):
-            self.data = CJobID((<JobID>object_id).data)
+        elif isinstance(object_id, PyJobID):
+            self.data = CJobID((<PyJobID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CJobID& cpp_id):
-        return JobID(cpp_id.binary())
+        return PyJobID(cpp_id.binary())
 
     @staticmethod
     def from_random():
-        return JobID(CJobID.from_random().binary())
+        return PyJobID(CJobID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return JobID(id_bytes)
+        return PyJobID(id_bytes)
 
     @staticmethod
     def nil():
-        return JobID(CJobID.nil())
+        return PyJobID.from_native(CJobID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -195,13 +216,13 @@ cdef class JobID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<JobID?>other).data
+            return self.data == (<PyJobID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<JobID?>other).data
+            return self.data != (<PyJobID?>other).data
         except TypeError:
             return False
 
@@ -233,7 +254,7 @@ cdef class JobID:
         return type(self), self.binary()
 
 
-cdef class TaskID:
+cdef class PyTaskID:
     cdef CTaskID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -242,24 +263,28 @@ cdef class TaskID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CTaskID.from_binary(object_id)
-        elif isinstance (object_id, TaskID):
-            self.data = CTaskID((<TaskID>object_id).data)
+        elif isinstance (object_id, PyTaskID):
+            self.data = CTaskID((<PyTaskID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CTaskID& cpp_id):
+        return PyTaskID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return TaskID(CTaskID.from_random().binary())
+        return PyTaskID(CTaskID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return TaskID(id_bytes)
+        return PyTaskID(id_bytes)
 
     @staticmethod
     def nil():
-        return TaskID(CTaskID.nil())
+        return PyTaskID.from_native(CTaskID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -269,13 +294,13 @@ cdef class TaskID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<TaskID?>other).data
+            return self.data == (<PyTaskID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<TaskID?>other).data
+            return self.data != (<PyTaskID?>other).data
         except TypeError:
             return False
 
@@ -307,7 +332,7 @@ cdef class TaskID:
         return type(self), self.binary()
 
 
-cdef class ClientID:
+cdef class PyClientID:
     cdef CClientID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -316,28 +341,28 @@ cdef class ClientID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CClientID.from_binary(object_id)
-        elif isinstance (object_id, ClientID):
-            self.data = CClientID((<ClientID>object_id).data)
+        elif isinstance (object_id, PyClientID):
+            self.data = CClientID((<PyClientID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CClientID& cpp_id):
-        return ClientID(cpp_id.binary())
+        return PyClientID(cpp_id.binary())
 
     @staticmethod
     def from_random():
-        return ClientID(CClientID.from_random().binary())
+        return PyClientID(CClientID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ClientID(id_bytes)
+        return PyClientID(id_bytes)
 
     @staticmethod
     def nil():
-        return ClientID(CClientID.nil())
+        return PyClientID.from_native(CClientID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -347,13 +372,13 @@ cdef class ClientID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ClientID?>other).data
+            return self.data == (<PyClientID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ClientID?>other).data
+            return self.data != (<PyClientID?>other).data
         except TypeError:
             return False
 
@@ -385,7 +410,7 @@ cdef class ClientID:
         return type(self), self.binary()
 
 
-cdef class WorkerID:
+cdef class PyWorkerID:
     cdef CWorkerID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -394,24 +419,28 @@ cdef class WorkerID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CWorkerID.from_binary(object_id)
-        elif isinstance(object_id, WorkerID):
-            self.data = CWorkerID((<WorkerID>object_id).data)
+        elif isinstance(object_id, PyWorkerID):
+            self.data = CWorkerID((<PyWorkerID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CWorkerID& cpp_id):
+        return PyWorkerID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return WorkerID(CWorkerID.from_random().binary())
+        return PyWorkerID(CWorkerID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return WorkerID(id_bytes)
+        return PyWorkerID(id_bytes)
 
     @staticmethod
     def nil():
-        return WorkerID(CWorkerID.nil())
+        return PyWorkerID.from_native(CWorkerID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -421,13 +450,13 @@ cdef class WorkerID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<WorkerID?>other).data
+            return self.data == (<PyWorkerID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<WorkerID?>other).data
+            return self.data != (<PyWorkerID?>other).data
         except TypeError:
             return False
 
@@ -459,7 +488,7 @@ cdef class WorkerID:
         return type(self), self.binary()
 
 
-cdef class DriverID:
+cdef class PyDriverID:
     cdef CDriverID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -468,24 +497,28 @@ cdef class DriverID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CDriverID.from_binary(object_id)
-        elif isinstance(object_id, DriverID):
-            self.data = CDriverID((<DriverID>object_id).data)
+        elif isinstance(object_id, PyDriverID):
+            self.data = CDriverID((<PyDriverID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CDriverID& cpp_id):
+        return PyDriverID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return DriverID(CDriverID.from_random().binary())
+        return PyDriverID(CDriverID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return DriverID(id_bytes)
+        return PyDriverID(id_bytes)
 
     @staticmethod
     def nil():
-        return DriverID(CDriverID.nil())
+        return PyDriverID.from_native(CDriverID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -495,13 +528,13 @@ cdef class DriverID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<DriverID?>other).data
+            return self.data == (<PyDriverID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<DriverID?>other).data
+            return self.data != (<PyDriverID?>other).data
         except TypeError:
             return False
 
@@ -533,7 +566,7 @@ cdef class DriverID:
         return type(self), self.binary()
 
 
-cdef class ActorID:
+cdef class PyActorID:
     cdef CActorID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -542,24 +575,28 @@ cdef class ActorID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CActorID.from_binary(object_id)
-        elif isinstance (object_id, ActorID):
-            self.data = CActorID((<ActorID>object_id).data)
+        elif isinstance (object_id, PyActorID):
+            self.data = CActorID((<PyActorID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CActorID& cpp_id):
+        return PyActorID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return ActorID(CActorID.from_random().binary())
+        return PyActorID(CActorID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ActorID(id_bytes)
+        return PyActorID(id_bytes)
 
     @staticmethod
     def nil():
-        return ActorID(CActorID.nil())
+        return PyActorID.from_native(CActorID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -569,13 +606,13 @@ cdef class ActorID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ActorID?>other).data
+            return self.data == (<PyActorID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ActorID?>other).data
+            return self.data != (<PyActorID?>other).data
         except TypeError:
             return False
 
@@ -607,7 +644,7 @@ cdef class ActorID:
         return type(self), self.binary()
 
 
-cdef class ActorHandleID:
+cdef class PyActorHandleID:
     cdef CActorHandleID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -616,24 +653,28 @@ cdef class ActorHandleID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CActorHandleID.from_binary(object_id)
-        elif isinstance(object_id, ActorHandleID):
-            self.data = CActorHandleID((<ActorHandleID>object_id).data)
+        elif isinstance(object_id, PyActorHandleID):
+            self.data = CActorHandleID((<PyActorHandleID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CActorHandleID& cpp_id):
+        return PyActorHandleID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return ActorHandleID(CActorHandleID.from_random().binary())
+        return PyActorHandleID(CActorHandleID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ActorHandleID(id_bytes)
+        return PyActorHandleID(id_bytes)
 
     @staticmethod
     def nil():
-        return ActorHandleID(CActorHandleID.nil())
+        return PyActorHandleID.from_native(CActorHandleID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -643,13 +684,13 @@ cdef class ActorHandleID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ActorHandleID?>other).data
+            return self.data == (<PyActorHandleID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ActorHandleID?>other).data
+            return self.data != (<PyActorHandleID?>other).data
         except TypeError:
             return False
 
@@ -681,7 +722,7 @@ cdef class ActorHandleID:
         return type(self), self.binary()
 
 
-cdef class ConfigID:
+cdef class PyConfigID:
     cdef CConfigID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -690,24 +731,28 @@ cdef class ConfigID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CConfigID.from_binary(object_id)
-        elif isinstance (object_id, ConfigID):
-            self.data = CConfigID((<ConfigID>object_id).data)
+        elif isinstance (object_id, PyConfigID):
+            self.data = CConfigID((<PyConfigID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CConfigID& cpp_id):
+        return PyConfigID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return ConfigID(CConfigID.from_random().binary())
+        return PyConfigID(CConfigID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ConfigID(id_bytes)
+        return PyConfigID(id_bytes)
 
     @staticmethod
     def nil():
-        return ConfigID(CConfigID.nil())
+        return PyConfigID.from_native(CConfigID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -717,13 +762,13 @@ cdef class ConfigID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ConfigID?>other).data
+            return self.data == (<PyConfigID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ConfigID?>other).data
+            return self.data != (<PyConfigID?>other).data
         except TypeError:
             return False
 
@@ -755,7 +800,7 @@ cdef class ConfigID:
         return type(self), self.binary()
 
 
-cdef class FunctionID:
+cdef class PyFunctionID:
     cdef CFunctionID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -764,24 +809,28 @@ cdef class FunctionID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CFunctionID.from_binary(object_id)
-        elif isinstance(object_id, FunctionID):
-            self.data = CFunctionID((<FunctionID>object_id).data)
+        elif isinstance(object_id, PyFunctionID):
+            self.data = CFunctionID((<PyFunctionID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CFunctionID& cpp_id):
+        return PyFunctionID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return FunctionID(CFunctionID.from_random().binary())
+        return PyFunctionID(CFunctionID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return FunctionID(id_bytes)
+        return PyFunctionID(id_bytes)
 
     @staticmethod
     def nil():
-        return FunctionID(CFunctionID.nil())
+        return PyFunctionID.from_native(CFunctionID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -791,13 +840,13 @@ cdef class FunctionID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<FunctionID?>other).data
+            return self.data == (<PyFunctionID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<FunctionID?>other).data
+            return self.data != (<PyFunctionID?>other).data
         except TypeError:
             return False
 
@@ -829,7 +878,7 @@ cdef class FunctionID:
         return type(self), self.binary()
 
 
-cdef class ClassID:
+cdef class PyClassID:
     cdef CClassID data
     def __cinit__(self, object_id):
         if object_id is None:
@@ -838,24 +887,28 @@ cdef class ClassID:
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CClassID.from_binary(object_id)
-        elif isinstance (object_id, ClassID):
-            self.data = CClassID((<ClassID>object_id).data)
+        elif isinstance (object_id, PyClassID):
+            self.data = CClassID((<PyClassID>object_id).data)
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
+    cdef from_native(const CClassID& cpp_id):
+        return PyClassID(cpp_id.binary())
+
+    @staticmethod
     def from_random():
-        return ClassID(CClassID.from_random().binary())
+        return PyClassID(CClassID.from_random().binary())
 
     @staticmethod
     def from_binary(id_bytes):
         if not isinstance(id_bytes, bytes):
             raise TypeError("Expect bytes, got " + str(type(id_bytes)))
-        return ClassID(id_bytes)
+        return PyClassID(id_bytes)
 
     @staticmethod
     def nil():
-        return ClassID(CClassID.nil())
+        return PyClassID.from_native(CClassID.nil())
 
     def __hash__(self):
         return self.data.hash()
@@ -865,13 +918,13 @@ cdef class ClassID:
 
     def __eq__(self, other):
         try:
-            return self.data == (<ClassID?>other).data
+            return self.data == (<PyClassID?>other).data
         except TypeError:
             return False
 
     def __ne__(self, other):
         try:
-            return self.data != (<ClassID?>other).data
+            return self.data != (<PyClassID?>other).data
         except TypeError:
             return False
 
