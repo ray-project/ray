@@ -18,3 +18,11 @@ def override(cls):
         return method
 
     return check_override
+
+
+def PublicAPI(obj):
+    return obj
+
+
+def DeveloperAPI(obj):
+    return obj
