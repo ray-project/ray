@@ -16,8 +16,7 @@ run_test(){
     {
         ray up -y $CLUSTER --cluster-name "$test_name" &&
         sleep 1 &&
-        ray submit $CLUSTER --cluster-name "$test_name" "$test_name.py" &&
-        echo "PASS: $test_name" >> $RESULT_FILE
+        ray submit $CLUSTER --cluster-name "$test_name" "$test_name.py"
     } || echo "FAIL: $test_name" >> $RESULT_FILE
 
     # Tear down cluster.
