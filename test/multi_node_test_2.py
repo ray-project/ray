@@ -8,7 +8,6 @@ import pytest
 import time
 
 import ray
-import ray.services as services
 from ray.test.cluster_utils import Cluster
 
 logger = logging.getLogger(__name__)
@@ -55,8 +54,8 @@ def test_cluster():
     g = Cluster(initialize_head=False)
     node = g.add_node()
     node2 = g.add_node()
-    assert node.all_processes_alive()
-    assert node2.all_processes_alive()
+    assert node.remaining_processes_alive()
+    assert node2.remaining_processes_alive()
     g.remove_node(node2)
     g.remove_node(node)
     assert not any(n.any_processes_alive() for n in [node, node2])
@@ -117,5 +116,5 @@ def test_worker_plasma_store_failure(start_connected_cluster):
     # Log monitor doesn't die for some reason
     worker.kill_log_monitor()
     worker.kill_plasma_store()
-    worker.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
+    worker.all_processes[ray.node.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()

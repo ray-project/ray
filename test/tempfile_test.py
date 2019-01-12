@@ -72,8 +72,8 @@ def test_raylet_tempfiles():
     assert log_files == {
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err"
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err"
     }  # without raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
@@ -86,8 +86,9 @@ def test_raylet_tempfiles():
     assert log_files == {
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err", "raylet.out", "raylet.err"
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
     }  # with raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
@@ -101,8 +102,9 @@ def test_raylet_tempfiles():
     assert log_files.issuperset({
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err", "raylet.out", "raylet.err"
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
     })  # with raylet logs
 
     # Check numbers of worker log file.
