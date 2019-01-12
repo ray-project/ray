@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import logging
 import sys
+import threading
 import traceback
 
 import ray.cloudpickle as pickle
@@ -225,8 +226,7 @@ class ActorMethod(object):
             self._method_name,
             args=args,
             kwargs=kwargs,
-            num_return_vals=num_return_vals,
-            dependency=self._actor._ray_actor_cursor)
+            num_return_vals=num_return_vals)
 
 
 class ActorClass(object):
@@ -525,13 +525,13 @@ class ActorHandle(object):
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
         self._ray_new_actor_handles = []
+        self._ray_actor_lock = threading.Lock()
 
     def _actor_method_call(self,
                            method_name,
                            args=None,
                            kwargs=None,
-                           num_return_vals=None,
-                           dependency=None):
+                           num_return_vals=None):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
@@ -570,41 +570,34 @@ class ActorHandle(object):
             return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
-        # Add the execution dependency.
-        if dependency is None:
-            execution_dependencies = []
-        else:
-            execution_dependencies = [dependency]
-
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-        object_ids = worker.submit_task(
-            function_descriptor,
-            args,
-            actor_id=self._ray_actor_id,
-            actor_handle_id=self._ray_actor_handle_id,
-            actor_counter=self._ray_actor_counter,
-            is_actor_checkpoint_method=is_actor_checkpoint_method,
-            actor_creation_dummy_object_id=(
-                self._ray_actor_creation_dummy_object_id),
-            execution_dependencies=execution_dependencies,
-            new_actor_handles=self._ray_new_actor_handles,
-            # We add one for the dummy return ID.
-            num_return_vals=num_return_vals + 1,
-            resources={"CPU": self._ray_actor_method_cpus},
-            placement_resources={},
-            driver_id=self._ray_actor_driver_id)
-        # Update the actor counter and cursor to reflect the most recent
-        # invocation.
-        self._ray_actor_counter += 1
-        # The last object returned is the dummy object that should be
-        # passed in to the next actor method. Do not return it to the user.
-        self._ray_actor_cursor = object_ids.pop()
-        # We have notified the backend of the new actor handles to expect since
-        # the last task was submitted, so clear the list.
-        self._ray_new_actor_handles = []
+        with self._ray_actor_lock:
+            object_ids = worker.submit_task(
+                function_descriptor,
+                args,
+                actor_id=self._ray_actor_id,
+                actor_handle_id=self._ray_actor_handle_id,
+                actor_counter=self._ray_actor_counter,
+                is_actor_checkpoint_method=is_actor_checkpoint_method,
+                actor_creation_dummy_object_id=(
+                    self._ray_actor_creation_dummy_object_id),
+                execution_dependencies=[self._ray_actor_cursor],
+                new_actor_handles=self._ray_new_actor_handles,
+                # We add one for the dummy return ID.
+                num_return_vals=num_return_vals + 1,
+                resources={"CPU": self._ray_actor_method_cpus},
+                placement_resources={},
+                driver_id=self._ray_actor_driver_id,
+            )
+            # Update the actor counter and cursor to reflect the most recent
+            # invocation.
+            self._ray_actor_counter += 1
+            # The last object returned is the dummy object that should be
+            # passed in to the next actor method. Do not return it to the user.
+            self._ray_actor_cursor = object_ids.pop()
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]

@@ -109,6 +109,8 @@ class RayConfig {
 
   int inline_object_max_size_bytes() const { return inline_object_max_size_bytes_; }
 
+  int64_t max_task_lease_timeout_ms() const { return max_task_lease_timeout_ms_; }
+
   void initialize(const std::unordered_map<std::string, int> &config_map) {
     RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
@@ -182,6 +184,8 @@ class RayConfig {
         object_manager_default_chunk_size_ = pair.second;
       } else if (pair.first == "object_manager_repeated_push_delay_ms") {
         object_manager_repeated_push_delay_ms_ = pair.second;
+      } else if (pair.first == "max_task_lease_timeout_ms") {
+        max_task_lease_timeout_ms_ = pair.second;
       } else {
         RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
       }
@@ -227,6 +231,7 @@ class RayConfig {
         object_manager_default_chunk_size_(1000000),
         num_workers_per_process_(1),
         inline_object_max_size_bytes_(512),
+        max_task_lease_timeout_ms_(60 * 1000),
         initialized_(false) {}
 
   ~RayConfig() {}
@@ -357,6 +362,9 @@ class RayConfig {
 
   /// Maximum size of an inline object (bytes).
   int inline_object_max_size_bytes_;
+
+  // Maximum timeout in milliseconds within which a task lease must be renewed.
+  int64_t max_task_lease_timeout_ms_;
 
   /// Whether the initialization of the instance has been called before.
   /// The RayConfig instance can only (and must) be initialized once.

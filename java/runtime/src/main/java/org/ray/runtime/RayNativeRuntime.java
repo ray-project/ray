@@ -39,7 +39,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       path += ":";
     }
 
-    path += rayConfig.libraryPath.stream().collect(Collectors.joining(":"));
+    path += String.join(":", rayConfig.libraryPath);
 
     // This is a hack to reset library path at runtime,
     // see https://stackoverflow.com/questions/15409223/.
@@ -80,7 +80,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.rayletSocketName,
         workerContext.getCurrentWorkerId(),
         rayConfig.workerMode == WorkerMode.WORKER,
-        workerContext.getCurrentTask().taskId
+        workerContext.getCurrentDriverId()
     );
 
     // register

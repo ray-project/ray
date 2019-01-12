@@ -79,6 +79,9 @@ public class RayletClientImpl implements RayletClient {
   @Override
   public void submitTask(TaskSpec spec) {
     LOGGER.debug("Submitting task: {}", spec);
+    Preconditions.checkState(!spec.parentTaskId.isNil());
+    Preconditions.checkState(!spec.driverId.isNil());
+
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {

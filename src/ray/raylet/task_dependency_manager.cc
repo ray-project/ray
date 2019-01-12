@@ -279,7 +279,8 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
       });
 
   it->second.expires_at = now_ms + it->second.lease_period;
-  it->second.lease_period *= 2;
+  it->second.lease_period = std::min(it->second.lease_period * 2,
+                                     RayConfig::instance().max_task_lease_timeout_ms());
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
