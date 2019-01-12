@@ -14,9 +14,9 @@ run_test(){
     local CLUSTER="stress_testing_config.yaml"
     echo "Try running $test_name."
     {
-        ray up -y $CLUSTER --cluster-name "$test_name"
-        sleep 1
-        ray submit $CLUSTER --cluster-name "$test_name" "$test_name.py"
+        ray up -y $CLUSTER --cluster-name "$test_name" &&
+        sleep 1 &&
+        ray submit $CLUSTER --cluster-name "$test_name" "$test_name.py" &&
         echo "PASS: $test_name" >> $RESULT_FILE
     } || echo "FAIL: $test_name" >> $RESULT_FILE
 
@@ -29,9 +29,8 @@ run_test(){
 }
 
 pushd "$ROOT_DIR"
-    run_test test_many_tasks_and_transfers &
-    run_test test_dead_actors &
-    wait
+    run_test test_many_tasks_and_transfers
+    run_test test_dead_actors
 popd
 
 cat $RESULT_FILE
