@@ -2410,6 +2410,34 @@ def test_wait_reconstruction(shutdown_only):
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
+def test_inline_objects(shutdown_only):
+    import pyarrow
+
+    ray.init(num_cpus=1, object_store_memory=10**8)
+
+    @ray.remote
+    class Actor(object):
+
+        def create_inline_object(self):
+            return "inline"
+
+        def create_non_inline_object(self):
+            return 10000 * [1]
+
+    a = Actor.remote()
+    inline_object = a.create_inline_object.remote()
+    ray.get(inline_object)
+    ray.worker.global_worker.plasma_client.delete([pyarrow.plasma.ObjectID(inline_object.id())])
+
+    assert ray.get(inline_object) == "inline"
+
+    non_inline_object = a.create_non_inline_object.remote()
+    ray.get(non_inline_object)
+    ray.worker.global_worker.plasma_client.delete([pyarrow.plasma.ObjectID(non_inline_object.id())])
+
+    with pytest.raises(ray.worker.RayTaskError):
+        ray.get(non_inline_object) == 10000 * [1]
+
 
 def test_ray_setproctitle(shutdown_only):
     ray.init(num_cpus=2)
