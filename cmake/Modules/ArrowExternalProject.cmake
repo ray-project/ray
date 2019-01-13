@@ -14,10 +14,6 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-# Because we use the old C++ ABI to be compatible with TensorFlow,
-# we have to turn it on for dependencies too
-set(EP_CXX_FLAGS "${EP_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
-
 set(arrow_URL https://github.com/ray-project/arrow.git)
 # This commit is based on https://github.com/apache/arrow/pull/3197. We
 # include the link here to make it easier to find the right commit because
