@@ -31,6 +31,8 @@ static int PyRayletClient_init(PyRayletClient *self, PyObject *args, PyObject *k
   return 0;
 }
 
+PyObject *ray_common_error = nullptr;
+
 static void PyRayletClient_dealloc(PyRayletClient *self) {
   if (self->raylet_client != NULL) {
     delete self->raylet_client;
@@ -112,7 +114,7 @@ static PyObject *PyRayletClient_FetchOrReconstruct(PyRayletClient *self, PyObjec
     stream << "[RayletClient] FetchOrReconstruct failed: "
            << "raylet client may be closed, check raylet status. error message: "
            << status.ToString();
-    PyErr_SetString(CommonError, stream.str().c_str());
+    PyErr_SetString(ray_common_error, stream.str().c_str());
     return NULL;
   }
 }
@@ -485,9 +487,9 @@ MOD_INIT(libraylet_library_python) {
   PyModule_AddObject(m, "RayletClient", (PyObject *)&PyRayletClientType);
 
   char common_error[] = "common.error";
-  CommonError = PyErr_NewException(common_error, NULL, NULL);
-  Py_INCREF(CommonError);
-  PyModule_AddObject(m, "common_error", CommonError);
+  ray_common_error = PyErr_NewException(common_error, NULL, NULL);
+  Py_INCREF(ray_common_error);
+  PyModule_AddObject(m, "RayCommonError", ray_common_error);
 
   Py_INCREF(&PyRayConfigType);
   PyModule_AddObject(m, "RayConfig", (PyObject *)&PyRayConfigType);
