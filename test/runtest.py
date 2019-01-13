@@ -2579,8 +2579,6 @@ def test_pandas_parquet_serialization():
 
     tempdir = tempfile.mkdtemp()
     filename = os.path.join(tempdir, 'parquet-test')
-    pd.DataFrame(
-        {"col1": [0, 1], "col2": [0, 1]}
-    ).to_parquet(filename)
+    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
     # Clean up
     shutil.rmtree(tempdir)
