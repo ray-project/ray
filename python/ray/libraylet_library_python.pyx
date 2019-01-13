@@ -5,12 +5,12 @@
 
 from ray.includes.common cimport *
 from ray.includes.libraylet_client cimport LibRayletClient, ResourceMappingType, WaitResultPair
-from ray.includes.task cimport RayletTaskSpecification, RayletTaskExecutionSpecification, RayletTask, _Task
+from ray.includes.task cimport RayletTaskSpecification, RayletTaskExecutionSpecification, RayletTask, _Task, RayletTaskArgument, RayletTaskArgumentByValue, RayletTaskArgumentByReference
 from ray.includes.ray_config cimport RayConfig
 
 from libc.stdint cimport int32_t as c_int32, int64_t as c_int64
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport unique_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr, make_shared, static_pointer_cast
 from libcpp.vector cimport vector as c_vector
 
 from libcpp.unordered_map cimport unordered_map
@@ -18,7 +18,13 @@ from libcpp.utility cimport pair
 
 from cython.operator import dereference, postincrement
 cimport cpython
+
+if cpython.PY_MAJOR_VERSION >= 3:
+    import pickle
+else:
+    import cPickle as pickle
 import numpy
+
 
 include "includes/unique_ids.pxi"
 
@@ -52,6 +58,10 @@ def compute_put_id(PyTaskID task_id, c_int64 put_index):
         raise ValueError("The range of 'put_index' should be [1, %d]" % kMaxTaskPuts)
     cdef CObjectID object_id = ComputePutId(task_id.data, put_index)
     return PyObjectID.from_native(object_id)
+
+
+def compute_task_id(PyObjectID object_id):
+    return PyTaskID.from_native(ComputeTaskId(object_id.data))
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
@@ -116,12 +126,6 @@ def check_simple_value(value):
     return is_simple_value(value, &num_elements_contained)
 
 
-# Programming language enum values.
-cdef c_int32 LANG_PYTHON = <c_int32>LANGUAGE_PYTHON
-cdef c_int32 LANG_CPP = <c_int32>LANGUAGE_CPP
-cdef c_int32 LANG_JAVA = <c_int32>LANGUAGE_JAVA
-
-
 cdef class Language:
     cdef CLanguage lang
     def __cinit__(self, c_int32 lang):
@@ -143,6 +147,12 @@ cdef class Language:
             return "JAVA"
         else:
             raise Exception("Unexpected error")
+
+
+# Programming language enum values.
+cdef Language LANG_PYTHON = Language.from_native(LANGUAGE_PYTHON)
+cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
+cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef class Config:
@@ -295,10 +305,82 @@ cdef extern from "<utility>" namespace "std" nogil:
     cdef c_vector[ObjectID] move(c_vector[ObjectID])
 
 
+cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map):
+    cdef:
+        unordered_map[c_string, double] out
+        c_string resource_name
+    if not isinstance(resource_map, dict):
+        raise TypeError("resource_map must be a dictionary")
+    for key, value in resource_map.items():
+        if not isinstance(key, str):
+            raise TypeError("the keys in resource_map must be strings")
+        # Handle the case where the key is a bytes object and the case where it
+        # is a unicode object.
+        resource_name = key
+        out[resource_name] = float(value)
+    return out
+
+
 cdef class Task:
     cdef:
         unique_ptr[RayletTaskSpecification] task_spec
         unique_ptr[c_vector[ObjectID]] execution_dependencies
+
+    def __init__(self, PyUniqueID driver_id, function_descriptor, arguments,
+                 int num_returns, PyTaskID parent_task_id, int parent_counter,
+                 PyActorID actor_creation_id,
+                 PyObjectID actor_creation_dummy_object_id,
+                 c_int32 max_actor_reconstructions, PyUniqueID actor_id,
+                 PyUniqueID actor_handle_id, int actor_counter,
+                 new_actor_handles, execution_arguments, resource_map,
+                 placement_resource_map, Language language):
+        cdef:
+            unordered_map[c_string, double] required_resources
+            unordered_map[c_string, double] required_placement_resources
+            c_vector[shared_ptr[RayletTaskArgument]] task_args
+            c_vector[ActorHandleID] task_new_actor_handles
+            c_vector[c_string] c_function_descriptor
+            c_string pickled_str
+            c_vector[ObjectID] references
+
+        for item in function_descriptor:
+            if not isinstance(item, bytes):
+                raise TypeError("'function_descriptor' takes a list of byte strings.")
+            c_function_descriptor.push_back(item)
+
+        # Parse the resource map.
+        if resource_map is not None:
+            required_resources = resource_map_from_python_dict(resource_map)
+        if required_resources.count(b"CPU") == 0:
+            required_resources[b"CPU"] = 1.0
+        if placement_resource_map is not None:
+            required_placement_resources = resource_map_from_python_dict(placement_resource_map)
+
+        # Parse the arguments from the list.
+        for arg in arguments:
+            if isinstance(arg, PyObjectID):
+                references.clear()
+                references.push_back((<PyObjectID>arg).data)
+                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByReference](make_shared[RayletTaskArgumentByReference](references)))
+            else:
+                pickled_str = pickle.dumps(arg, protocol=pickle.HIGHEST_PROTOCOL)
+                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByValue](make_shared[RayletTaskArgumentByValue](<c_uint8 *>pickled_str.c_str(), pickled_str.size())))
+
+        for new_actor_handle in new_actor_handles:
+            task_new_actor_handles.push_back((<PyActorHandleID?>new_actor_handle).data)
+
+        self.task_spec.reset(new RayletTaskSpecification(
+            driver_id.data, parent_task_id.data, parent_counter, actor_creation_id.data,
+            actor_creation_dummy_object_id.data, max_actor_reconstructions, actor_id.data,
+            actor_handle_id.data, actor_counter, task_new_actor_handles, task_args, num_returns,
+            required_resources, required_placement_resources, LANGUAGE_PYTHON,
+            c_function_descriptor))
+
+        # Set the task's execution dependencies.
+        self.execution_dependencies.reset(new c_vector[ObjectID]())
+        if execution_arguments is not None:
+            for execution_arg in execution_arguments:
+                self.execution_dependencies.get().push_back((<PyObjectID?>execution_arg).data)
 
     @staticmethod
     cdef make(unique_ptr[RayletTaskSpecification]& task_spec):
@@ -376,7 +458,6 @@ cdef class Task:
                 assert count == 1
                 arg_list.append(PyObjectID.from_native(task_spec.ArgId(i, 0)))
             else:
-                import pickle
                 serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
                 obj = pickle.loads(serialized_str)
                 arg_list.append(obj)
@@ -457,7 +538,7 @@ cdef class RayletClient:
         if not status.ok():
             raise ConnectionError("[RayletClient] Failed to disconnect.")
 
-    def submit_task(self, execution_dependencies, TaskSpecification task_spec):
+    def submit_task(self, execution_dependencies, Task task_spec):
         cdef:
             c_vector[CObjectID] exec_deps
             CRayStatus cstatus

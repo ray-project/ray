@@ -41,8 +41,14 @@ cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogi
 
 
 cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass RayletTaskArgument "TaskArgument":
+    cdef cppclass RayletTaskArgument "ray::raylet::TaskArgument":
         Offset[GCSArg] ToFlatbuffer(FlatBufferBuilder &fbb) const
+
+    cdef cppclass RayletTaskArgumentByReference "ray::raylet::TaskArgumentByReference":
+        RayletTaskArgumentByReference(const c_vector[ObjectID] &references);
+
+    cdef cppclass RayletTaskArgumentByValue "ray::raylet::TaskArgumentByValue":
+        RayletTaskArgumentByValue(const uint8_t *value, size_t length);
 
     cdef cppclass RayletTaskSpecification "ray::raylet::TaskSpecification":
         RayletTaskSpecification(const FlatBufferString &string)
