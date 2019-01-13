@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from flaky import flaky
 import shutil
 import tempfile
 import threading
@@ -182,8 +183,8 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitFor(self, condition):
-        for _ in range(50):
+    def waitFor(self, condition, num_retries=50):
+        for _ in range(num_retries):
             if condition():
                 return
             time.sleep(.1)
@@ -674,6 +675,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert len(self.provider.nodes({})) == 0
 
+    @flaky(max_runs=4)
     def testRecoverUnhealthyWorkers(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -698,7 +700,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         num_calls = len(runner.calls)
         autoscaler.update()
-        self.waitFor(lambda: len(runner.calls) > num_calls)
+        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
