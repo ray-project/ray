@@ -58,7 +58,7 @@ def construct_error_message(driver_id, error_type, message, timestamp):
         The serialized object.
     """
     builder = flatbuffers.Builder(0)
-    driver_offset = builder.CreateString(driver_id)
+    driver_offset = builder.CreateString(driver_id.id())
     error_type_offset = builder.CreateString(error_type)
     message_offset = builder.CreateString(message)
 

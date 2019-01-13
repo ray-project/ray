@@ -30,8 +30,6 @@ using ray::UniqueID;
 using ray::FunctionID;
 using ray::TaskID;
 
-PyObject *CommonError;
-
 /* Initialize pickle module. */
 
 PyObject *pickle_module = NULL;
@@ -117,11 +115,16 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
   if (size != sizeof(ObjectID)) {
-    PyErr_SetString(CommonError, "ObjectID: object id string needs to have length 20");
+    PyErr_SetString(PyExc_ValueError,
+                    "ObjectID: object id string needs to have length 20");
     return -1;
   }
   std::memcpy(self->object_id.mutable_data(), data, sizeof(self->object_id));
   return 0;
+}
+
+static PyObject *PyObjectID_nil_id(PyObject *cls) {
+  return PyObjectID_make(ray::UniqueID());
 }
 
 /* Create a PyObjectID from C. */
@@ -269,9 +272,14 @@ static PyObject *PyObjectID_repr(PyObjectID *self) {
   return result;
 }
 
-static PyObject *PyObjectID___reduce__(PyObjectID *self) {
-  PyErr_SetString(CommonError, "ObjectID objects cannot be serialized.");
-  return NULL;
+static PyObject *PyObjectID_getstate(PyObjectID *self) {
+  PyObject *field;
+  field = PyBytes_FromStringAndSize((char *)self->object_id.data(), sizeof(ObjectID));
+  return Py_BuildValue("(N)", field);
+}
+
+static PyObject *PyObjectID___reduce__(PyObjectID *self, PyObject *arg) {
+  return Py_BuildValue("(ON)", Py_TYPE(self), PyObjectID_getstate(self));
 }
 
 static PyMethodDef PyObjectID_methods[] = {
@@ -283,9 +291,10 @@ static PyMethodDef PyObjectID_methods[] = {
      "Return the object ID as a string in hex."},
     {"is_nil", (PyCFunction)PyObjectID_is_nil, METH_NOARGS,
      "Return whether the ObjectID is nil"},
-    {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_NOARGS,
-     "Say how to pickle this ObjectID. This raises an exception to prevent"
-     "object IDs from being serialized."},
+    {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_VARARGS,
+     "Provide a way to pickle this ObjectID."},
+    {"nil_id", (PyCFunction)PyObjectID_nil_id, METH_NOARGS | METH_CLASS,
+     "Create an instance of ray.ObjectID from random string"},
     {NULL} /* Sentinel */
 };
 
@@ -293,9 +302,11 @@ static PyMemberDef PyObjectID_members[] = {
     {NULL} /* Sentinel */
 };
 
+// This python class is introduced by python/ray/raylet/__init__.py.
+// Therefore, tp_name should match the path. ray.ObjectID is also OK.
 PyTypeObject PyObjectIDType = {
     PyVarObject_HEAD_INIT(NULL, 0)       /* ob_size */
-    "common.ObjectID",                   /* tp_name */
+    "ray.raylet.ObjectID",               /* tp_name */
     sizeof(PyObjectID),                  /* tp_basicsize */
     0,                                   /* tp_itemsize */
     0,                                   /* tp_dealloc */
