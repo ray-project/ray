@@ -8,9 +8,11 @@ import os
 import random
 import re
 import setproctitle
+import shutil
 import string
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict, namedtuple, OrderedDict
@@ -2585,3 +2587,16 @@ def test_ray_stack(shutdown_only):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
+
+
+def test_pandas_parquet_serialization():
+    # Only test this if pandas is installed
+    pytest.importorskip("pandas")
+
+    import pandas as pd
+
+    tempdir = tempfile.mkdtemp()
+    filename = os.path.join(tempdir, "parquet-test")
+    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
+    # Clean up
+    shutil.rmtree(tempdir)
