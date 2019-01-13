@@ -4,7 +4,8 @@ Deploying on Kubernetes
 .. warning::
 
   These instructions have not been tested extensively. If you have a suggestion
-  for how to improve them, please let us know!
+  for how to improve them, please open a pull request or email
+  ray-dev@googlegroups.com.
 
 You can run Ray on top of Kubernetes. This document assumes that you have access
 to a Kubernetes cluster and have ``kubectl`` installed locally.
@@ -131,7 +132,8 @@ You will probably need to do some amount of customization.
 TODO
 ----
 
-The following are also important but haven't been documented yet.
+The following are also important but haven't been documented yet. Contributions
+are welcome!
 
 1. Request CPU/GPU/memory resources.
 2. Increase shared memory.
