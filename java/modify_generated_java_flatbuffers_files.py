@@ -6,9 +6,10 @@ import os
 import sys
 
 """
-This script is used for modifying the generated java flatbuffer files for the reason:
-The package declaration in Java is different from python and C++, and there is
-no option in the flatc command to specify package(namepsace) for Java specially.
+This script is used for modifying the generated java flatbuffer
+files for the reason: The package declaration in Java is different
+from python and C++, and there is no option in the flatc command
+to specify package(namepsace) for Java specially.
 
 USAGE:
     python modify_generated_java_flatbuffers_file.py RAY_HOME
