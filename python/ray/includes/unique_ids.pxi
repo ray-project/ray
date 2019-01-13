@@ -22,25 +22,27 @@ from ray.includes.common cimport (
 
 cdef class PyUniqueID:
     cdef CUniqueID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CUniqueID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CUniqueID.from_binary(object_id)
-        elif isinstance (object_id, PyUniqueID):
-            self.data = CUniqueID((<PyUniqueID>object_id).data)
+        elif isinstance(object_id, PyUniqueID):
+            self.data = (<PyUniqueID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CUniqueID& cpp_id):
-        return PyUniqueID(cpp_id.binary())
+        cdef PyUniqueID self = PyUniqueID.__new__(PyUniqueID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyUniqueID(CUniqueID.from_random().binary())
+        return PyUniqueID.from_native(CUniqueID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -100,7 +102,7 @@ cdef class PyUniqueID:
 
 cdef class PyObjectID:
     cdef CObjectID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CObjectID()
         elif isinstance(object_id, bytes):
@@ -108,17 +110,19 @@ cdef class PyObjectID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CObjectID.from_binary(object_id)
         elif isinstance(object_id, PyObjectID):
-            self.data = CObjectID((<PyObjectID>object_id).data)
+            self.data = (<PyObjectID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CObjectID& cpp_id):
-        return PyObjectID(cpp_id.binary())
+        cdef PyObjectID self = PyObjectID.__new__(PyObjectID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyObjectID(CObjectID.from_random().binary())
+        return PyObjectID.from_native(CObjectID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -178,7 +182,7 @@ cdef class PyObjectID:
 
 cdef class PyJobID:
     cdef CJobID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CJobID()
         elif isinstance(object_id, bytes):
@@ -186,17 +190,19 @@ cdef class PyJobID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CJobID.from_binary(object_id)
         elif isinstance(object_id, PyJobID):
-            self.data = CJobID((<PyJobID>object_id).data)
+            self.data = (<PyJobID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CJobID& cpp_id):
-        return PyJobID(cpp_id.binary())
+        cdef PyJobID self = PyJobID.__new__(PyJobID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyJobID(CJobID.from_random().binary())
+        return PyJobID.from_native(CJobID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -256,25 +262,27 @@ cdef class PyJobID:
 
 cdef class PyTaskID:
     cdef CTaskID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CTaskID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CTaskID.from_binary(object_id)
-        elif isinstance (object_id, PyTaskID):
-            self.data = CTaskID((<PyTaskID>object_id).data)
+        elif isinstance(object_id, PyTaskID):
+            self.data = (<PyTaskID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CTaskID& cpp_id):
-        return PyTaskID(cpp_id.binary())
+        cdef PyTaskID self = PyTaskID.__new__(PyTaskID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyTaskID(CTaskID.from_random().binary())
+        return PyTaskID.from_native(CTaskID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -334,25 +342,27 @@ cdef class PyTaskID:
 
 cdef class PyClientID:
     cdef CClientID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CClientID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CClientID.from_binary(object_id)
-        elif isinstance (object_id, PyClientID):
-            self.data = CClientID((<PyClientID>object_id).data)
+        elif isinstance(object_id, PyClientID):
+            self.data = (<PyClientID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CClientID& cpp_id):
-        return PyClientID(cpp_id.binary())
+        cdef PyClientID self = PyClientID.__new__(PyClientID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyClientID(CClientID.from_random().binary())
+        return PyClientID.from_native(CClientID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -412,7 +422,7 @@ cdef class PyClientID:
 
 cdef class PyWorkerID:
     cdef CWorkerID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CWorkerID()
         elif isinstance(object_id, bytes):
@@ -420,17 +430,19 @@ cdef class PyWorkerID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CWorkerID.from_binary(object_id)
         elif isinstance(object_id, PyWorkerID):
-            self.data = CWorkerID((<PyWorkerID>object_id).data)
+            self.data = (<PyWorkerID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CWorkerID& cpp_id):
-        return PyWorkerID(cpp_id.binary())
+        cdef PyWorkerID self = PyWorkerID.__new__(PyWorkerID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyWorkerID(CWorkerID.from_random().binary())
+        return PyWorkerID.from_native(CWorkerID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -490,7 +502,7 @@ cdef class PyWorkerID:
 
 cdef class PyDriverID:
     cdef CDriverID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CDriverID()
         elif isinstance(object_id, bytes):
@@ -498,17 +510,19 @@ cdef class PyDriverID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CDriverID.from_binary(object_id)
         elif isinstance(object_id, PyDriverID):
-            self.data = CDriverID((<PyDriverID>object_id).data)
+            self.data = (<PyDriverID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CDriverID& cpp_id):
-        return PyDriverID(cpp_id.binary())
+        cdef PyDriverID self = PyDriverID.__new__(PyDriverID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyDriverID(CDriverID.from_random().binary())
+        return PyDriverID.from_native(CDriverID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -568,25 +582,27 @@ cdef class PyDriverID:
 
 cdef class PyActorID:
     cdef CActorID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CActorID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CActorID.from_binary(object_id)
-        elif isinstance (object_id, PyActorID):
-            self.data = CActorID((<PyActorID>object_id).data)
+        elif isinstance(object_id, PyActorID):
+            self.data = (<PyActorID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CActorID& cpp_id):
-        return PyActorID(cpp_id.binary())
+        cdef PyActorID self = PyActorID.__new__(PyActorID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyActorID(CActorID.from_random().binary())
+        return PyActorID.from_native(CActorID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -646,7 +662,7 @@ cdef class PyActorID:
 
 cdef class PyActorHandleID:
     cdef CActorHandleID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CActorHandleID()
         elif isinstance(object_id, bytes):
@@ -654,17 +670,19 @@ cdef class PyActorHandleID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CActorHandleID.from_binary(object_id)
         elif isinstance(object_id, PyActorHandleID):
-            self.data = CActorHandleID((<PyActorHandleID>object_id).data)
+            self.data = (<PyActorHandleID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CActorHandleID& cpp_id):
-        return PyActorHandleID(cpp_id.binary())
+        cdef PyActorHandleID self = PyActorHandleID.__new__(PyActorHandleID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyActorHandleID(CActorHandleID.from_random().binary())
+        return PyActorHandleID.from_native(CActorHandleID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -724,25 +742,27 @@ cdef class PyActorHandleID:
 
 cdef class PyConfigID:
     cdef CConfigID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CConfigID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CConfigID.from_binary(object_id)
-        elif isinstance (object_id, PyConfigID):
-            self.data = CConfigID((<PyConfigID>object_id).data)
+        elif isinstance(object_id, PyConfigID):
+            self.data = (<PyConfigID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CConfigID& cpp_id):
-        return PyConfigID(cpp_id.binary())
+        cdef PyConfigID self = PyConfigID.__new__(PyConfigID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyConfigID(CConfigID.from_random().binary())
+        return PyConfigID.from_native(CConfigID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -802,7 +822,7 @@ cdef class PyConfigID:
 
 cdef class PyFunctionID:
     cdef CFunctionID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CFunctionID()
         elif isinstance(object_id, bytes):
@@ -810,17 +830,19 @@ cdef class PyFunctionID:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CFunctionID.from_binary(object_id)
         elif isinstance(object_id, PyFunctionID):
-            self.data = CFunctionID((<PyFunctionID>object_id).data)
+            self.data = (<PyFunctionID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CFunctionID& cpp_id):
-        return PyFunctionID(cpp_id.binary())
+        cdef PyFunctionID self = PyFunctionID.__new__(PyFunctionID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyFunctionID(CFunctionID.from_random().binary())
+        return PyFunctionID.from_native(CFunctionID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):
@@ -880,25 +902,27 @@ cdef class PyFunctionID:
 
 cdef class PyClassID:
     cdef CClassID data
-    def __cinit__(self, object_id):
+    def __init__(self, object_id):
         if object_id is None:
             self.data = CClassID()
         elif isinstance(object_id, bytes):
             if len(object_id) != kUniqueIDSize:
                 raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
             self.data = CClassID.from_binary(object_id)
-        elif isinstance (object_id, PyClassID):
-            self.data = CClassID((<PyClassID>object_id).data)
+        elif isinstance(object_id, PyClassID):
+            self.data = (<PyClassID>object_id).data
         else:
             raise TypeError("Unsupported type: " + str(type(object_id)))
 
     @staticmethod
     cdef from_native(const CClassID& cpp_id):
-        return PyClassID(cpp_id.binary())
+        cdef PyClassID self = PyClassID.__new__(PyClassID)
+        self.data = cpp_id
+        return self
 
     @staticmethod
     def from_random():
-        return PyClassID(CClassID.from_random().binary())
+        return PyClassID.from_native(CClassID.from_random())
 
     @staticmethod
     def from_binary(id_bytes):

@@ -1,9 +1,44 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 
-from libc.stdint cimport int64_t as c_int64, uint8_t as c_uint8
+from libc.stdint cimport int64_t as c_int64, uint32_t as c_uint32, uint16_t as c_uint16, uint8_t as c_uint8
+from libcpp.memory cimport unique_ptr
+from libcpp.vector cimport vector as c_vector
+from libcpp.unordered_map cimport unordered_map
 from cpython cimport PyObject
 cimport cpython
+
+ctypedef c_uint32 uoffset_t
+ctypedef c_uint16 voffset_t
+
+cdef extern from "flatbuffers/flatbuffers.h" namespace "flatbuffers":
+    # Cython cannot rename a template class.
+    cdef cppclass Offset[T]:
+        uoffset_t o
+        Offset()
+        Offset(T) except +
+        Offset[void] Union() const
+
+    cdef cppclass FlatBufferString "flatbuffers::String":
+        const char *c_str() const
+        c_string str()
+        c_bool operator<(const FlatBufferString &o) const
+
+    cdef T GetRoot[T](void *buf)
+
+    cdef cppclass FlatBufferBuilder:
+        FlatBufferBuilder() except +
+        void Reset()
+        uoffset_t GetSize()
+        void Clear()
+        c_uint8 *GetBufferPointer()
+        c_uint8 *GetCurrentBufferPointer() const
+        void Finish[T](T root)
+        Offset[FlatBufferString] CreateString(char *str, size_t len)
+        void StartVector(size_t len, size_t elemsize)
+        uoffset_t EndVector(size_t len)
+        uoffset_t StartTable()
+        uoffset_t EndTable(uoffset_t start, voffset_t numfields)
 
 
 cdef extern from "ray/constants.h" nogil:
@@ -73,7 +108,7 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
     cdef cppclass UniqueID "ray::UniqueID":
-        # TODO: Add Plasma UniqueID support.
+        # TODO(?): Add Plasma UniqueID support.
         UniqueID()
         UniqueID(const UniqueID &from_id)
         @staticmethod
@@ -116,22 +151,57 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
     c_int64 ComputeObjectIndex(const ObjectID & object_id)
 
 
-cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass RayletTaskSpecification "ray::raylet::TaskSpecification":
-        RayletTaskSpecification(const c_string &string)
-
-
 cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
+    cdef cppclass GCSArg "Arg":
+        pass
+
+    # Note: This is a C++ enum class.
     cdef cppclass CLanguage "Language":
         pass
-    cdef struct GCSProfileTableDataT "ProfileTableDataT":
+
+    # Note: It is a C++ struct in the header file.
+    cdef cppclass GCSProfileEventT "ProfileEventT":
+        c_string event_type
+        double start_time
+        double end_time
+        c_string extra_data
+        GCSProfileEventT()
+
+    # Note: It is a C++ struct in the header file.
+    cdef cppclass GCSProfileTableDataT "ProfileTableDataT":
+        c_string component_type
+        c_string component_id
+        c_string node_ip_address
+        c_vector[unique_ptr[GCSProfileEventT]] profile_events
         GCSProfileTableDataT()
 
 
+# This is a workaround for C++ enum class since Cython has no corresponding representation.
 cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+
+
+cdef extern from "ray/raylet/scheduling_resources.h" namespace "ray::raylet" nogil:
+    cdef cppclass ResourceSet "ResourceSet":
+        ResourceSet()
+        ResourceSet(const unordered_map[c_string, double] &resource_map)
+        ResourceSet(const c_vector[c_string] &resource_labels, const c_vector[double] resource_capacity)
+        c_bool operator==(const ResourceSet &rhs) const
+        c_bool IsEqual(const ResourceSet &other) const
+        c_bool IsSubset(const ResourceSet &other) const
+        c_bool IsSuperset(const ResourceSet &other) const
+        c_bool AddResource(const c_string &resource_name, double capacity)
+        c_bool RemoveResource(const c_string &resource_name)
+        c_bool AddResourcesStrict(const ResourceSet &other)
+        void AddResources(const ResourceSet &other)
+        c_bool SubtractResourcesStrict(const ResourceSet &other)
+        c_bool GetResource(const c_string &resource_name, double *value) const
+        double GetNumCpus() const
+        c_bool IsEmpty() const
+        const unordered_map[c_string, double] &GetResourceMap() const
+        const c_string ToString() const
 
 
 cdef inline object PyObject_to_object(PyObject*o):
