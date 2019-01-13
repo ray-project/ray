@@ -2301,8 +2301,7 @@ def test_global_state_api(shutdown_only):
 
     driver_id = ray.experimental.state.binary_to_hex(
         ray.worker.global_worker.worker_id)
-    driver_task_id = ray.experimental.state.binary_to_hex(
-        ray.worker.global_worker.current_task_id.id())
+    driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
     wait_for_num_tasks(1)
@@ -2310,8 +2309,7 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_id_hex = ray.experimental.state.binary_to_hex(
-        ray.ObjectID.nil_id().id())
+    nil_id_hex = ray.ObjectID.nil_id().hex()
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
