@@ -56,15 +56,12 @@ ADD_THIRDPARTY_LIB(boost_filesystem
   STATIC_LIB ${Boost_FILESYSTEM_LIBRARY})
 ADD_THIRDPARTY_LIB(boost_thread
   STATIC_LIB ${Boost_THREAD_LIBRARY})
-ADD_THIRDPARTY_LIB(boost_regex
-  STATIC_LIB ${Boost_REGEX_LIBRARY})
 
 add_dependencies(boost_system boost_ep)
 add_dependencies(boost_filesystem boost_ep)
 add_dependencies(boost_thread boost_ep)
-add_dependencies(boost_regex boost_ep)
 
-add_custom_target(boost DEPENDS boost_system boost_filesystem boost_thread boost_regex)
+add_custom_target(boost DEPENDS boost_system boost_filesystem boost_thread)
 
 # flatbuffers
 include(FlatBuffersExternalProject)
