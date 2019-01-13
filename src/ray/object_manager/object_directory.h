@@ -50,7 +50,9 @@ class ObjectDirectoryInterface {
   /// Callback for object location notifications.
   using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
                                               const std::unordered_set<ray::ClientID> &,
-                                              bool, const std::vector<uint8_t> &,
+                                              bool,
+                                              const std::vector<uint8_t> &,
+                                              const std::string &,
                                               bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
@@ -104,7 +106,9 @@ class ObjectDirectoryInterface {
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info,
-      bool inline_object_flag, const std::vector<uint8_t> &inline_object_data) = 0;
+      bool inline_object_flag,
+      const std::vector<uint8_t> &inline_object_data,
+      const std::string &inline_object_metadata) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -159,7 +163,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info,
-      bool inline_object_flag, const std::vector<uint8_t> &inline_object_data) override;
+      bool inline_object_flag,
+      const std::vector<uint8_t> &inline_object_data,
+      const std::string &inline_object_metadata) override;
+
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
 
@@ -179,8 +186,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<ClientID> current_object_locations;
     /// Specify whether the object is inlined.
     bool inline_object_flag;
-    /// Inlined object, if inline_object_flag == true.
+    /// Inlined object data, if inline_object_flag == true.
     std::vector<uint8_t> inline_object_data;
+    /// Inlined object metadata, if inline_object_flag == true.
+    std::string inline_object_metadata;
     /// This flag will get set to true if the object has ever been created. It
     /// should never go back to false once set to true. If this is true, and
     /// the current_object_locations is empty, then this means that the object

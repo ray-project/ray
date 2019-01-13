@@ -129,6 +129,8 @@ table ObjectTableData {
   num_evictions: int;
   // In-line object data.
   inline_object_data: [ubyte];
+  // In-line object metadata.
+  inline_object_metadata: [ubyte];
 }
 
 table TaskReconstructionData {
