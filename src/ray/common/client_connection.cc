@@ -206,7 +206,7 @@ ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
       error_message_type_(error_message_type) {}
 
 template <class T>
-const ClientID &ClientConnection<T>::GetClientId() {
+const ClientID &ClientConnection<T>::GetClientId() const {
   return client_id_;
 }
 

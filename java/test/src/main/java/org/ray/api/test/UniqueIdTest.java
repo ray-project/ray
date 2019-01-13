@@ -2,6 +2,7 @@ package org.ray.api.test;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.List;
 import javax.xml.bind.DatatypeConverter;
 import org.junit.Assert;
 import org.junit.Test;
@@ -77,6 +78,22 @@ public class UniqueIdTest {
 
     putId = UniqueIdUtil.computePutId(taskId, 0x01020304);
     Assert.assertEquals("FCFCFDFE123456789ABCDEF123456789ABCDEF00".toLowerCase(), putId.toString());
+  }
+
+  @Test
+  public void testUniqueIdsAndByteBufferInterConversion() {
+    final int len = 5;
+    UniqueId[] ids = new UniqueId[len];
+    for (int i = 0; i < len; ++i) {
+      ids[i] = UniqueId.randomId();
+    }
+
+    ByteBuffer temp = UniqueIdUtil.concatUniqueIds(ids);
+    UniqueId[] res = UniqueIdUtil.getUniqueIdsFromByteBuffer(temp);
+
+    for (int i = 0; i < len; ++i) {
+      Assert.assertEquals(ids[i], res[i]);
+    }
   }
 
 }

@@ -169,10 +169,6 @@ def new_log_files(name, redirect_output):
     logs_dir = get_logs_dir_path()
     # Create another directory that will be used by some of the RL algorithms.
 
-    # TODO(suquark): This is done by the old code.
-    # We should be able to control its path later.
-    try_to_create_directory("/tmp/ray")
-
     log_stdout = make_inc_temp(
         suffix=".out", prefix=name, directory_name=logs_dir)
     log_stderr = make_inc_temp(
@@ -234,3 +230,10 @@ def new_monitor_log_file(redirect_output):
     monitor_stdout_file, monitor_stderr_file = new_log_files(
         "monitor", redirect_output)
     return monitor_stdout_file, monitor_stderr_file
+
+
+def new_raylet_monitor_log_file(redirect_output):
+    """Create new logging files for the raylet monitor."""
+    raylet_monitor_stdout_file, raylet_monitor_stderr_file = new_log_files(
+        "raylet_monitor", redirect_output)
+    return raylet_monitor_stdout_file, raylet_monitor_stderr_file

@@ -12,9 +12,10 @@ import threading
 import time
 
 import ray.ray_constants as ray_constants
-import ray.test.cluster_utils
 from ray.utils import _random_string
 import pytest
+
+from ray.test.cluster_utils import Cluster
 
 
 def relevant_errors(error_type):
@@ -337,7 +338,7 @@ def test_actor_worker_dying(ray_start_regular):
         pass
 
     a = Actor.remote()
-    [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
+    [obj], _ = ray.wait([a.kill.remote()], timeout=5.0)
     with pytest.raises(Exception):
         ray.get(obj)
     with pytest.raises(Exception):
@@ -620,7 +621,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
-    cluster = ray.test.cluster_utils.Cluster()
+    cluster = Cluster()
     for _ in range(2):
         cluster.add_node(
             num_cpus=0,
@@ -670,10 +671,12 @@ def test_raylet_crash_when_get(ray_start_regular):
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
-        ray.services.all_processes[ray.services.PROCESS_TYPE_RAYLET][0].kill()
+        ray.worker._global_node.kill_raylet()
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(Exception, match=r".*raylet client may be closed.*"):
+    with pytest.raises(
+            ray.raylet.RayCommonError,
+            match=r".*raylet client may be closed.*"):
         ray.get(nonexistent_id)
     thread.join()

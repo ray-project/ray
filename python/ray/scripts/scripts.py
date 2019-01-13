@@ -9,13 +9,11 @@ import os
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import (attach_cluster, exec_cluster,
-                                     create_or_update_cluster, rsync,
-                                     teardown_cluster, get_head_node_ip)
+from ray.autoscaler.commands import (
+    attach_cluster, exec_cluster, create_or_update_cluster, rsync,
+    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
-
-from ray.parameter import RayParams
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +229,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    ray_params = RayParams(
+    ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
@@ -274,8 +272,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
+        logger.info("Using IP address {} for this node.".format(
+            ray_params.node_ip_address))
         ray_params.update_if_absent(
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -285,8 +283,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             include_webui=(not no_ui),
             autoscaling_config=autoscaling_config)
 
-        address_info = services.start_ray_head(ray_params, cleanup=False)
-        logger.info(address_info)
+        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
+        redis_address = node.redis_address
+
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
@@ -299,9 +298,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                address_info["redis_address"], " --redis-password "
+                redis_address, " --redis-password "
                 if redis_password else "", redis_password if redis_password
-                else "", address_info["redis_address"], "\", redis_password=\""
+                else "", redis_address, "\", redis_password=\""
                 if redis_password else "", redis_password
                 if redis_password else ""))
     else:
@@ -342,16 +341,16 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
-        logger.info("Using IP address {} for this node."
-                    .format(ray_params.node_ip_address))
+        logger.info("Using IP address {} for this node.".format(
+            ray_params.node_ip_address))
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
-        ray_params.redis_address = redis_address
-        address_info = services.start_ray_node(ray_params, cleanup=False)
-        logger.info(address_info)
+        ray_params.update(redis_address=redis_address)
+
+        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")
@@ -456,6 +455,7 @@ def stop():
     help="Don't ask for confirmation.")
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                      restart_only, yes, cluster_name):
+    """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
@@ -483,7 +483,28 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     type=str,
     help="Override the configured cluster name.")
 def teardown(cluster_config_file, yes, workers_only, cluster_name):
+    """Tear down the Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Don't ask for confirmation.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def kill_random_node(cluster_config_file, yes, cluster_name):
+    """Kills a random Ray node. For testing purposes only."""
+    click.echo("Killed node with IP " +
+               kill_node(cluster_config_file, yes, cluster_name))
 
 
 @cli.command()
@@ -665,6 +686,19 @@ def get_head_ip(cluster_config_file, cluster_name):
 
 
 @cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def get_worker_ips(cluster_config_file, cluster_name):
+    worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
+    click.echo("\n".join(worker_ips))
+
+
+@cli.command()
 def stack():
     COMMAND = """
 pyspy=`which py-spy`
@@ -700,7 +734,9 @@ cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(submit)
 cli.add_command(teardown)
 cli.add_command(teardown, name="down")
+cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
+cli.add_command(get_worker_ips)
 cli.add_command(stack)
 
 
