@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "arrow/util/logging.h"
+
 #include "ray/raylet/raylet.h"
 
 namespace ray {
