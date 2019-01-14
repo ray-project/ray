@@ -137,13 +137,12 @@ class _LogSyncer(object):
             logger.error("Log sync requires rsync to be installed.")
             return
         source = '{}/'.format(self.local_dir)
-        target = '{}@{}:{}/'.format(ssh_user, self.worker_ip,
-                                    self.local_dir)
-        final_cmd = ((
-            """rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
-            """-o StrictHostKeyChecking=no" {} {}""").format(
-                quote(ssh_key), quote(source), quote(target)))
-        sync_process = subprocess.Popen(final_cmd, shell=True, stdout=self.logfile)
+        target = '{}@{}:{}/'.format(ssh_user, self.worker_ip, self.local_dir)
+        final_cmd = (("""rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
+                      """-o StrictHostKeyChecking=no" {} {}""").format(
+                          quote(ssh_key), quote(source), quote(target)))
+        sync_process = subprocess.Popen(
+            final_cmd, shell=True, stdout=self.logfile)
         sync_process.wait()
 
     def sync_now(self, force=False):
@@ -203,7 +202,8 @@ class _LogSyncer(object):
                     final_cmd += " && "
                 final_cmd += local_to_remote_sync_cmd
             logger.debug("Running log sync: {}".format(final_cmd))
-            self.sync_process = subprocess.Popen(final_cmd, shell=True, stdout=self.logfile)
+            self.sync_process = subprocess.Popen(
+                final_cmd, shell=True, stdout=self.logfile)
 
     def wait(self):
         if self.sync_process:

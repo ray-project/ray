@@ -126,7 +126,7 @@ class UnifiedLogger(Logger):
     def update_location(self, worker_ip):
         """Sends the current log directory to the remote node."""
         if worker_ip != self._log_syncer.worker_ip:
-            self._log_syncer.set_worker_ip(current_runner_ip)
+            self._log_syncer.set_worker_ip(worker_ip)
             self._log_syncer.sync_to_worker_if_needed()
 
 
