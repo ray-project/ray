@@ -123,11 +123,15 @@ class UnifiedLogger(Logger):
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
 
-    def update_location(self, worker_ip):
-        """Sends the current log directory to the remote node."""
+    def sync_results_to_new_location(self, worker_ip):
+        """Sends the current log directory to the remote node.
+
+        Syncing will not occur if the cluster is not started
+        with the Ray autoscaler.
+        """
         if worker_ip != self._log_syncer.worker_ip:
             self._log_syncer.set_worker_ip(worker_ip)
-            self._log_syncer.sync_to_worker_if_needed()
+            self._log_syncer.sync_to_worker_if_possible()
 
 
 class NoopLogger(Logger):

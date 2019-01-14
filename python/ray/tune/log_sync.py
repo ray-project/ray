@@ -124,14 +124,19 @@ class _LogSyncer(object):
         if time.time() - self.last_sync_time > 300:
             self.sync_now()
 
-    def sync_to_worker_if_needed(self):
+    def sync_to_worker_if_possible(self):
+        """Syncs the local logdir on driver to worker if possible.
+
+        Requires ray cluster to be started with the autoscaler. Also requires
+        rsync to be installed.
+        """
         if self.worker_ip == self.local_ip:
             return
         ssh_key = get_ssh_key()
         ssh_user = get_ssh_user()
         if ssh_key is None or ssh_user is None:
             logger.error("Log sync requires cluster to be setup with "
-                         "`ray create_or_update`.")
+                         "`ray up`.")
             return
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
@@ -141,6 +146,7 @@ class _LogSyncer(object):
         final_cmd = (("""rsync -savz -e "ssh -i {} -o ConnectTimeout=120s """
                       """-o StrictHostKeyChecking=no" {} {}""").format(
                           quote(ssh_key), quote(source), quote(target)))
+        logger.info("Syncing results to %s", str(self.worker_ip))
         sync_process = subprocess.Popen(
             final_cmd, shell=True, stdout=self.logfile)
         sync_process.wait()
@@ -159,7 +165,7 @@ class _LogSyncer(object):
             ssh_user = get_ssh_user()
             if ssh_key is None or ssh_user is None:
                 logger.error("Log sync requires cluster to be setup with "
-                             "`ray create_or_update`.")
+                             "`ray up`.")
                 return
             if not distutils.spawn.find_executable("rsync"):
                 logger.error("Log sync requires rsync to be installed.")

@@ -241,13 +241,13 @@ class Trial(object):
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
 
-    def update_logger_location(self, worker_ip):
+    def sync_logger_to_new_location(self, worker_ip):
         """Updates the logger location.
 
         Also pushes logdir to worker_ip, allowing for cross-node recovery.
         """
         if self.result_logger:
-            self.result_logger.update_location(worker_ip)
+            self.result_logger.sync_results_to_new_location(worker_ip)
 
     def close_logger(self):
         """Close logger."""
