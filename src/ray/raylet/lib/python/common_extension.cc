@@ -58,6 +58,8 @@ void init_pickle_module(void) {
   RAY_CHECK(pickle_protocol != NULL);
 }
 
+TaskBuilder *g_task_builder = NULL;
+
 /* Define the PyObjectID class. */
 
 int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
@@ -131,6 +133,12 @@ PyObject *PyObjectID_make(ObjectID object_id) {
   result = (PyObjectID *)PyObject_Init((PyObject *)result, &PyObjectIDType);
   result->object_id = object_id;
   return (PyObject *)result;
+}
+
+TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size) {
+  TaskSpec *copy = (TaskSpec *)malloc(task_spec_size);
+  memcpy(copy, spec, task_spec_size);
+  return copy;
 }
 
 /**
