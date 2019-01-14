@@ -443,8 +443,19 @@ class StandardAutoscaler(object):
             self.log_info_string(nodes)
 
         # Update nodes with out-of-date files
-        for node_id in nodes:
-            self.update_if_needed(node_id)
+        T = [
+            threading.Thread(
+                target=self.spawn_updater,
+                args=(node_id, commands),
+            )
+            for node_id, commands in
+            (self.should_update(node_id) for node_id in nodes)
+            if node_id is not None
+        ]
+        for t in T:
+            t.start()
+        for t in T:
+            t.join()
 
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
@@ -527,11 +538,13 @@ class StandardAutoscaler(object):
         updater.start()
         self.updaters[node_id] = updater
 
-    def update_if_needed(self, node_id):
+    def should_update(self, node_id):
         if not self.can_update(node_id):
-            return
+            return (None, None)
+
         if self.files_up_to_date(node_id):
-            return
+            return (None, None)
+
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
             init_commands = self.config["worker_start_ray_commands"]
@@ -543,6 +556,9 @@ class StandardAutoscaler(object):
                              self.config["worker_setup_commands"] +
                              self.config["worker_start_ray_commands"])
 
+        return (node_id, init_commands)
+
+    def spawn_updater(self, node_id, init_commands):
         updater = NodeUpdaterThread(
             node_id,
             self.config["provider"],
