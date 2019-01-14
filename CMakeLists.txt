@@ -127,10 +127,6 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list} copy_redis ray_redis_module)
   add_dependencies(copy_ray copy_ray_files)
 
-  # Make sure that the Python extensions are built before copying the files.
-  # get_raylet_library("python" RAYLET_LIBRARY_PYTHON)
-  # add_dependencies(copy_ray ${RAYLET_LIBRARY_PYTHON})
-
   # Build Cython extensions
   add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/python)
 

@@ -12,8 +12,6 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}")
 # Include some generated Arrow headers.
 include_directories("${ARROW_SOURCE_DIR}/../arrow_ep-build/src")
 
-#get_directory_property(cmake_include_directories DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/ray" INCLUDE_DIRECTORIES)
-
 # If the pyx file is a C++ file, we should specify that here.
 set_source_files_properties(
   ${CMAKE_CURRENT_LIST_DIR}/ray/libraylet_library_python.pyx
@@ -36,3 +34,13 @@ cython_add_module(
   ${RAY_SRC_DIRECTORY}/raylet/task_spec.cc
   ${RAY_SRC_DIRECTORY}/raylet/task_execution_spec.cc
   ${RAY_SRC_DIRECTORY}/raylet/raylet_client.cc)
+
+add_dependencies(libraylet_library_python
+    boost_thread
+    arrow_ep
+    gen_gcs_fbs
+    gen_object_manager_fbs
+    gen_node_manager_fbs)
+
+# Make sure that the Python extensions are built before copying the files.
+add_dependencies(copy_ray libraylet_library_python)

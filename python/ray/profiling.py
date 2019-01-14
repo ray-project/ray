@@ -120,7 +120,7 @@ class Profiler(object):
             component_type = "driver"
 
         self.worker.raylet_client.push_profile_events(
-            component_type, ray.ObjectID(self.worker.worker_id),
+            component_type, ray.UniqueID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 
     def add_event(self, event):

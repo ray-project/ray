@@ -25,7 +25,7 @@ def parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray.ObjectID.nil_id().id()
+    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
     message = redis_client.execute_command("RAY.TABLE_LOOKUP",
                                            ray.gcs_utils.TablePrefix.CLIENT,
                                            "", NIL_CLIENT_ID)
@@ -229,7 +229,7 @@ class GlobalState(object):
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
-                                        object_id.id())
+                                        object_id.binary())
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -292,7 +292,7 @@ class GlobalState(object):
         """
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                        "", task_id.id())
+                                        "", task_id.binary())
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -303,7 +303,7 @@ class GlobalState(object):
 
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
-        task_spec = ray.raylet.task_from_string(task_spec)
+        task_spec = ray.raylet.Task.from_string(task_spec)
         function_descriptor_list = task_spec.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
@@ -439,7 +439,7 @@ class GlobalState(object):
         # events and should also support returning a window of events.
         message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        batch_id.id())
+                                        batch_id.binary())
 
         if message is None:
             return []
@@ -877,9 +877,10 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
+        assert isinstance(job_id, ray.JobID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.id())
+            job_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -891,7 +892,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.id() == error_data.JobId()
+            assert job_id.binary() == error_data.JobId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -912,6 +913,7 @@ class GlobalState(object):
                 that job.
         """
         if job_id is not None:
+            assert isinstance(job_id, ray.JobID)
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
@@ -922,6 +924,6 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
             for job_id in job_ids
         }

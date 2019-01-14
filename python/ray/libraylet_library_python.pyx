@@ -305,6 +305,17 @@ cdef extern from "<utility>" namespace "std" nogil:
     cdef c_vector[ObjectID] move(c_vector[ObjectID])
 
 
+cdef c_string to_c_string(str_or_bytes):
+    """Handle the case where str_or_bytes is a bytes object and the case where it 
+    is a unicode object."""
+    if not isinstance(str_or_bytes, (str, bytes)):
+        raise TypeError("Expected string or bytes")
+    if not isinstance(str_or_bytes, bytes):
+        return bytes(str_or_bytes, "utf-8")
+    else:
+        return str_or_bytes
+
+
 cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map):
     cdef:
         unordered_map[c_string, double] out
@@ -312,11 +323,10 @@ cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map)
     if not isinstance(resource_map, dict):
         raise TypeError("resource_map must be a dictionary")
     for key, value in resource_map.items():
-        if not isinstance(key, str):
-            raise TypeError("the keys in resource_map must be strings")
-        # Handle the case where the key is a bytes object and the case where it
-        # is a unicode object.
-        resource_name = key
+        try:
+            resource_name = to_c_string(key)
+        except TypeError:
+            raise TypeError("the keys in resource_map must be strings or bytes")
         out[resource_name] = float(value)
     return out
 
@@ -326,14 +336,14 @@ cdef class Task:
         unique_ptr[RayletTaskSpecification] task_spec
         unique_ptr[c_vector[ObjectID]] execution_dependencies
 
-    def __init__(self, PyUniqueID driver_id, function_descriptor, arguments,
+    def __init__(self, PyDriverID driver_id, function_descriptor, arguments,
                  int num_returns, PyTaskID parent_task_id, int parent_counter,
                  PyActorID actor_creation_id,
                  PyObjectID actor_creation_dummy_object_id,
-                 c_int32 max_actor_reconstructions, PyUniqueID actor_id,
-                 PyUniqueID actor_handle_id, int actor_counter,
+                 c_int32 max_actor_reconstructions, PyActorID actor_id,
+                 PyActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, execution_arguments, resource_map,
-                 placement_resource_map, Language language):
+                 placement_resource_map):
         cdef:
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
@@ -359,7 +369,7 @@ cdef class Task:
         # Parse the arguments from the list.
         for arg in arguments:
             if isinstance(arg, PyObjectID):
-                references.clear()
+                references = c_vector[ObjectID]()
                 references.push_back((<PyObjectID>arg).data)
                 task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByReference](make_shared[RayletTaskArgumentByReference](references)))
             else:
@@ -370,9 +380,9 @@ cdef class Task:
             task_new_actor_handles.push_back((<PyActorHandleID?>new_actor_handle).data)
 
         self.task_spec.reset(new RayletTaskSpecification(
-            driver_id.data, parent_task_id.data, parent_counter, actor_creation_id.data,
-            actor_creation_dummy_object_id.data, max_actor_reconstructions, actor_id.data,
-            actor_handle_id.data, actor_counter, task_new_actor_handles, task_args, num_returns,
+            UniqueID(driver_id.data), parent_task_id.data, parent_counter, actor_creation_id.data,
+            actor_creation_dummy_object_id.data, max_actor_reconstructions, UniqueID(actor_id.data),
+            UniqueID(actor_handle_id.data), actor_counter, task_new_actor_handles, task_args, num_returns,
             required_resources, required_placement_resources, LANGUAGE_PYTHON,
             c_function_descriptor))
 
@@ -389,6 +399,28 @@ cdef class Task:
         # The created task does not include any execution dependencies.
         self.execution_dependencies.reset(new c_vector[ObjectID]())
         return self
+
+    @classmethod
+    def create_driver_task(cls, PyDriverID task_driver_id):
+        cdef int nil_actor_counter = 0
+        return cls(
+            task_driver_id,
+            [],  # function_descriptor
+            [],  # arguments.
+            0,  # num_returns.
+            PyTaskID.from_random(),  # parent_task_id.
+            0,  # parent_counter.
+            PyActorID.nil(),  # actor_creation_id.
+            PyObjectID.nil(),  # actor_creation_dummy_object_id.
+            0,  # max_actor_reconstructions.
+            PyActorID.nil(),  # actor_id.
+            PyActorHandleID.nil(),  # actor_handle_id.
+            nil_actor_counter,  # actor_counter.
+            [],  # new_actor_handles.
+            [],  # execution_dependencies.
+            {"CPU": 0},  # resource_map.
+            {},  # placement_resource_map.
+        )
 
     @staticmethod
     def from_string(const c_string& task_spec_str):
@@ -423,7 +455,8 @@ cdef class Task:
 
     def driver_id(self):
         """Return the driver ID for this task."""
-        return PyUniqueID.from_native(self.task_spec.get().DriverId())
+        # TODO(suquark): Change type of "DriverId()" in C++ side to "JobID".
+        return PyJobID.from_native(self.task_spec.get().DriverId())
 
     def task_id(self):
         """Return the task ID for this task."""
@@ -485,7 +518,7 @@ cdef class Task:
             py_resource_name = str(resource_name)  # bytes for Py2, unicode for Py3
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
-            iterator = postincrement(iterator)
+            postincrement(iterator)
         return required_resources
 
     def actor_creation_id(self):
@@ -494,7 +527,7 @@ cdef class Task:
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
-        return PyActorID.from_native(self.task_spec.get().ActorCreationDummyObjectId())
+        return PyObjectID.from_native(self.task_spec.get().ActorCreationDummyObjectId())
 
     def actor_id(self):
         """Return the actor ID for this task."""
@@ -524,12 +557,14 @@ cdef class Task:
 
 cdef class RayletClient:
     cdef unique_ptr[LibRayletClient] client
-    def __cinit__(self, const c_string & raylet_socket,
+    def __cinit__(self, raylet_socket,
                   PyClientID client_id,
                   c_bool is_worker,
                   PyJobID driver_id):
+        cdef:
+            c_string c_raylet_socket = to_c_string(raylet_socket)
         # We have known that we are using Python, so just skip the language parameter.
-        self.client.reset(new LibRayletClient(raylet_socket, client_id.data,
+        self.client.reset(new LibRayletClient(c_raylet_socket, client_id.data,
                           is_worker, driver_id.data, LANGUAGE_PYTHON))
 
     def disconnect(self):
@@ -538,12 +573,10 @@ cdef class RayletClient:
         if not status.ok():
             raise ConnectionError("[RayletClient] Failed to disconnect.")
 
-    def submit_task(self, execution_dependencies, Task task_spec):
+    def submit_task(self, Task task_spec):
         cdef:
-            c_vector[CObjectID] exec_deps
             CRayStatus cstatus
-        exec_deps = ObjectIDsToVector(execution_dependencies)
-        cstatus = self.client.get().SubmitTask(exec_deps, task_spec.task_spec.get()[0])
+        cstatus = self.client.get().SubmitTask(task_spec.execution_dependencies.get()[0], task_spec.task_spec.get()[0])
         if not cstatus.ok():
             raise Exception(cstatus.ToString())
 
@@ -556,7 +589,6 @@ cdef class RayletClient:
             # Drop the global interpreter lock while we get a task because
             # GetTask may block for a long time.
             cstatus = self.client.get().GetTask(&task_spec)
-
         return Task.make(task_spec)
 
     def task_done(self):
@@ -565,7 +597,7 @@ cdef class RayletClient:
             raise Exception(cstatus.ToString())
 
     def fetch_or_reconstruct(self, object_ids,
-                             c_bool fetch_only, PyTaskID current_task_id):
+                             c_bool fetch_only, PyTaskID current_task_id=PyTaskID.nil()):
         cdef:
             c_vector[CObjectID] fetch_ids
             CRayStatus cstatus
@@ -574,7 +606,7 @@ cdef class RayletClient:
         if not cstatus.ok():
             raise Exception(cstatus.ToString())
 
-    def notify_blocked(self, PyTaskID current_task_id):
+    def notify_unblocked(self, PyTaskID current_task_id):
         cdef CRayStatus cstatus
         cstatus = self.client.get().NotifyUnblocked(current_task_id.data)
         if not cstatus.ok():
@@ -606,18 +638,21 @@ cdef class RayletClient:
             for i in range(c_value.size()):
                 ids_and_fractions.append((c_value[i].first, c_value[i].second))
             resources_dict[key] = ids_and_fractions
-            iterator = postincrement(iterator)
+            postincrement(iterator)
         return resources_dict
 
-    def push_error(self, PyJobID job_id, const c_string& error_type,
-                   const c_string& error_message, double timestamp):
+    def push_error(self, PyJobID job_id, error_type, error_message,
+                   double timestamp):
         cdef CRayStatus cstatus
-        cstatus = self.client.get().PushError(job_id.data, error_type, error_message, timestamp)
+        cstatus = self.client.get().PushError(job_id.data,
+                                              to_c_string(error_type),
+                                              to_c_string(error_message),
+                                              timestamp)
         if not cstatus.ok():
             raise Exception(cstatus.ToString())
 
-    def push_profile_events(self, const c_string& component_type, PyUniqueID component_id,
-                            const c_string& node_ip_address, profile_data):
+    def push_profile_events(self, component_type, PyUniqueID component_id,
+                            node_ip_address, profile_data):
         cdef:
             GCSProfileTableDataT profile_info
             GCSProfileEventT *profile_event
@@ -627,9 +662,9 @@ cdef class RayletClient:
         if not profile_data:
             return  # Short circuit if there are no profile events.
 
-        profile_info.component_type = component_type
+        profile_info.component_type = to_c_string(component_type)
         profile_info.component_id = component_id.binary()
-        profile_info.node_ip_address = node_ip_address
+        profile_info.node_ip_address = to_c_string(node_ip_address)
 
         for py_profile_event in profile_data:
             profile_event = new GCSProfileEventT()
@@ -640,16 +675,16 @@ cdef class RayletClient:
             # segfaults in the node manager.
             for key_string, event_data in py_profile_event.items():
                 if key_string == "event_type":
-                    profile_event.event_type = event_data
-                    if len(profile_event.event_type) == 0:
+                    profile_event.event_type = to_c_string(event_data)
+                    if profile_event.event_type.length() == 0:
                         raise ValueError("'event_type' should not be a null string.")
                 elif key_string == "start_time":
                     profile_event.start_time = float(event_data)
                 elif key_string == "end_time":
                     profile_event.end_time = float(event_data)
                 elif key_string == "extra_data":
-                    profile_event.extra_data = event_data
-                    if len(profile_event.extra_data) == 0:
+                    profile_event.extra_data = to_c_string(event_data)
+                    if profile_event.extra_data.length() == 0:
                         raise ValueError("'extra_data' should not be a null string.")
                 else:
                     raise ValueError("Unknown profile event key '%s'" % key_string)

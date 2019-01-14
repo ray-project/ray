@@ -3,16 +3,25 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.core.src.ray.raylet.libraylet_library_python import (
-    Task, RayletClient, PyObjectID, check_simple_value, compute_task_id,
-    Config)
+    Task, RayletClient, check_simple_value, compute_task_id, compute_put_id,
+    Config, PyUniqueID, PyClientID, PyDriverID, PyObjectID, PyActorID,
+    PyActorHandleID, PyJobID, PyFunctionID, PyClassID, PyTaskID)
 
 _config = Config()
+
+UniqueID = PyUniqueID
 ObjectID = PyObjectID
-task_from_string = Task.from_string
-task_to_string = Task.to_string
+ActorID = PyActorID
+ActorHandleID = PyActorHandleID
+ClientID = PyClientID
+DriverID = PyDriverID
+JobID = PyJobID
+TaskID = PyTaskID
+FunctionID = PyFunctionID
+ClassID = PyClassID
 
 __all__ = [
-    "Task", "RayletClient", "ObjectID", "check_simple_value",
-    "compute_task_id", "task_from_string", "task_to_string",
-    "_config"
+    "Task", "RayletClient", "check_simple_value", "compute_task_id",
+    "compute_put_id", "_config", "UniqueID", "ObjectID", "ActorID",
+    "ActorHandleID", "ClientID", "DriverID", "JobID", "FunctionID", "ClassID"
 ]

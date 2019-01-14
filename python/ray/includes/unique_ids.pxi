@@ -85,19 +85,19 @@ cdef class PyUniqueID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "UniqueID(" + self.data.hex().decode() + ")"
+        return "UniqueID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyObjectID:
@@ -165,19 +165,19 @@ cdef class PyObjectID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ObjectID(" + self.data.hex().decode() + ")"
+        return "ObjectID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyJobID:
@@ -245,19 +245,19 @@ cdef class PyJobID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "JobID(" + self.data.hex().decode() + ")"
+        return "JobID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyTaskID:
@@ -297,6 +297,12 @@ cdef class PyTaskID:
     def __hash__(self):
         return self.data.hash()
 
+    def redis_shard_hash(self):
+        # NOTE: The hash function used here must match the one in GetRedisContext in
+        # src/ray/gcs/tables.h. Changes to the hash function should only be made
+        # through std::hash in src/common/common.h
+        return self.data.hash()
+
     def is_nil(self):
         return self.data.is_nil()
 
@@ -325,19 +331,19 @@ cdef class PyTaskID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "TaskID(" + self.data.hex().decode() + ")"
+        return "TaskID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyClientID:
@@ -405,19 +411,19 @@ cdef class PyClientID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ClientID(" + self.data.hex().decode() + ")"
+        return "ClientID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyWorkerID:
@@ -485,19 +491,19 @@ cdef class PyWorkerID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
-        return self.hex()
+        return self.hex().decode()
 
     def __repr__(self):
-        return "WorkerID(" + self.data.hex().decode() + ")"
+        return "WorkerID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyDriverID:
@@ -565,19 +571,19 @@ cdef class PyDriverID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "DriverID(" + self.data.hex().decode() + ")"
+        return "DriverID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyActorID:
@@ -645,19 +651,19 @@ cdef class PyActorID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ActorID(" + self.data.hex().decode() + ")"
+        return "ActorID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyActorHandleID:
@@ -725,19 +731,19 @@ cdef class PyActorHandleID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ActorHandleID(" + self.data.hex().decode() + ")"
+        return "ActorHandleID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyConfigID:
@@ -805,19 +811,19 @@ cdef class PyConfigID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ConfigID(" + self.data.hex().decode() + ")"
+        return "ConfigID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyFunctionID:
@@ -885,19 +891,19 @@ cdef class PyFunctionID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "FunctionID(" + self.data.hex().decode() + ")"
+        return "FunctionID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)
 
 
 cdef class PyClassID:
@@ -965,16 +971,16 @@ cdef class PyClassID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex()
+        return self.data.hex().decode()
 
     def __hex__(self):
         return self.hex()
 
     def __repr__(self):
-        return "ClassID(" + self.data.hex().decode() + ")"
+        return "ClassID(" + self.hex() + ")"
 
     def __str__(self):
         return self.__repr__()
 
     def __reduce__(self):
-        return type(self), self.binary()
+        return type(self), (self.binary(),)

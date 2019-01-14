@@ -112,7 +112,7 @@ class ImportThread(object):
 
         if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.id()):
+                and driver_id != self.worker.task_driver_id.binary()):
             return
 
         try:
