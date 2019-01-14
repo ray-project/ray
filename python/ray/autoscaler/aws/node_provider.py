@@ -63,27 +63,28 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache_update_event.wait()
             self.tag_cache_update_event.clear()
 
+            DD = defaultdict(list)
+
             with self.tag_cache_lock:
                 if self.tag_cache_pending:
-                    DD = defaultdict(list)
                     for node_id, tags in self.tag_cache_pending.items():
                         for x in tags.items():
                             DD[x].append(node_id)
-
-                    for (k, v), node_ids in DD.items():
-                        m = "Set tag {}={} on {}".format(k, v, node_ids)
-                        with LogTimer("AWSNodeProvider", m) as _:
-                            if k == TAG_RAY_NODE_NAME:  # TODO: to_aws_format
-                                k = "Name"
-                            self.ec2.meta.client.create_tags(
-                                Resources=node_ids,
-                                Tags=[{"Key": k, "Value": v}],
-                            )
 
                     for node_id, tags in self.tag_cache_pending.items():
                         self.tag_cache[node_id].update(tags)
 
                     self.tag_cache_pending = {}
+
+            for (k, v), node_ids in DD.items():
+                m = "Set tag {}={} on {}".format(k, v, node_ids)
+                with LogTimer("AWSNodeProvider", m) as _:
+                    if k == TAG_RAY_NODE_NAME:  # TODO: to_aws_format
+                        k = "Name"
+                    self.ec2.meta.client.create_tags(
+                        Resources=node_ids,
+                        Tags=[{"Key": k, "Value": v}],
+                    )
 
             self.tag_cache_kill_event.wait(timeout=5)
             if self.tag_cache_kill_event.is_set():
