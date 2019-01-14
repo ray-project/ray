@@ -18,17 +18,6 @@ from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import SampleBatch
 
 
-def _setup_logger():
-    logger = logging.getLogger("ray.rllib")
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-        ))
-    logger.addHandler(handler)
-    logger.propagate = False
-
-
 def _register_all():
 
     from ray.rllib.agents.registry import ALGORITHMS
@@ -39,7 +28,6 @@ def _register_all():
         register_trainable(key, get_agent_class(key))
 
 
-_setup_logger()
 _register_all()
 
 __all__ = [
