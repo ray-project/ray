@@ -21,6 +21,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <projetct.version>0.1-SNAPSHOT</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
+    <jaxbVersion>2.3.0</jaxbVersion>
   </properties>
 
   <dependencyManagement>

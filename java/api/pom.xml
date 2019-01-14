@@ -14,10 +14,6 @@
   <description>java api for ray</description>
 
   <packaging>jar</packaging>
-  
-  <properties>
-    <jaxbVersion>2.3.0</jaxbVersion>
-  </properties>
 
   <dependencies>
     <dependency>
