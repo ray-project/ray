@@ -284,8 +284,9 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
 def setup_logger(logging_level, logging_format):
     """Setup default logging for ray."""
     logger = logging.getLogger("ray")
-    level = logging.getLevelName(logging_level.upper())
-    logger.setLevel(level)
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(logging_level)
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
