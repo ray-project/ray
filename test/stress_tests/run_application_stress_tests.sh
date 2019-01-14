@@ -48,12 +48,11 @@ test_impala(){
         echo "Try running IMPALA stress test."
         {
             RLLIB_DIR=../../python/ray/rllib/
-            ray up -y $CLUSTER
-            ray rsync_up $CLUSTER $RLLIB_DIR/tuned_examples/ tuned_examples/
-            sleep 1
+            ray up -y $CLUSTER &&
+            ray rsync_up $CLUSTER $RLLIB_DIR/tuned_examples/ tuned_examples/ &&
+            sleep 1 &&
             ray exec $CLUSTER "
-                rllib train -f tuned_examples/atari-impala-large.yaml --redis-address='localhost:6379' --queue-trials"
-
+                rllib train -f tuned_examples/atari-impala-large.yaml --redis-address='localhost:6379' --queue-trials" &&
             echo "PASS: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
         } || echo "FAIL: IMPALA Test for" $PYTHON_VERSION >> $RESULT_FILE
 
@@ -91,13 +90,12 @@ test_sgd(){
         echo "Try running SGD stress test."
         {
             SGD_DIR=$ROOT_DIR/../../python/ray/experimental/sgd/
-            ray up -y $CLUSTER
+            ray up -y $CLUSTER &&
             # TODO: fix submit so that args work
-            ray rsync_up $CLUSTER $SGD_DIR/mnist_example.py mnist_example.py
-            sleep 1
+            ray rsync_up $CLUSTER $SGD_DIR/mnist_example.py mnist_example.py &&
+            sleep 1 &&
             ray exec $CLUSTER "
-                python mnist_example.py --redis-address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu"
-
+                python mnist_example.py --redis-address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu" &&
             echo "PASS: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
         } || echo "FAIL: SGD Test for" $PYTHON_VERSION >> $RESULT_FILE
 
@@ -114,9 +112,8 @@ test_sgd(){
 # RUN TESTS
 for PYTHON_VERSION in "p27" "p36"
 do
-    test_impala $PYTHON_VERSION &
-    test_sgd $PYTHON_VERSION &
+    test_impala $PYTHON_VERSION
+    test_sgd $PYTHON_VERSION
 done
-wait
 
 cat $RESULT_FILE
