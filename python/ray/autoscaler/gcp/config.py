@@ -267,6 +267,12 @@ def _configure_key_pair(config):
 def _configure_subnet(config):
     """Pick a reasonable subnet if not specified by the config."""
 
+    # Rationale: avoid subnet lookup if the network is already
+    # completely manually configured
+    if ("networkInterfaces" in config["head_node"]
+            and "networkInterfaces" in config["worker_nodes"]):
+        return config
+
     subnets = _list_subnets(config)
 
     if not subnets:

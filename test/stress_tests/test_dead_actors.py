@@ -70,4 +70,4 @@ for i in range(100):
         parents[parent_index].kill.remote()
         parents[parent_index] = Parent.remote(num_children, death_probability)
 
-    logger.info("Finished trial", i)
+    logger.info("Finished trial %s", i)

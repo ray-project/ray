@@ -181,9 +181,14 @@ class NodeManager {
   bool AssignTask(const Task &task);
   /// Handle a worker finishing its assigned task.
   ///
-  /// \param The worker that fiished the task.
+  /// \param worker The worker that finished the task.
   /// \return Void.
   void FinishAssignedTask(Worker &worker);
+  /// Handle a worker finishing an assigned actor task or actor creation task.
+  /// \param worker The worker that finished the task.
+  /// \param task The actor task or actor creationt ask.
+  /// \return Void.
+  void FinishAssignedActorTask(Worker &worker, const Task &task);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///

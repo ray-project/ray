@@ -156,7 +156,7 @@ class ClientConnection : public ServerConnection<T> {
   }
 
   /// \return The ClientID of the remote client.
-  const ClientID &GetClientId();
+  const ClientID &GetClientId() const;
 
   /// \param client_id The ClientID of the remote client.
   void SetClientID(const ClientID &client_id);

@@ -67,6 +67,7 @@ typedef ray::CerrLog LoggingProvider;
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
+std::string RayLog::log_dir_ = "";
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -117,14 +118,14 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   }
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
+  log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::InitGoogleLogging(app_name_.c_str());
   google::SetStderrLogging(mapped_severity_threshold);
-  // Enble log file if log_dir is not empty.
-  if (!log_dir.empty()) {
-    auto dir_ends_with_slash = log_dir;
-    if (log_dir[log_dir.length() - 1] != '/') {
+  // Enable log file if log_dir_ is not empty.
+  if (!log_dir_.empty()) {
+    auto dir_ends_with_slash = log_dir_;
+    if (log_dir_[log_dir_.length() - 1] != '/') {
       dir_ends_with_slash += "/";
     }
     auto app_name_without_path = app_name;
@@ -137,8 +138,13 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_name.substr(pos + 1);
       }
     }
+    google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    google::SetLogDestination(mapped_severity_threshold, log_dir.c_str());
+    for (int i = static_cast<int>(severity_threshold_);
+         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+      int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
+      google::SetLogDestination(level, dir_ends_with_slash.c_str());
+    }
   }
 #endif
 }
@@ -162,7 +168,9 @@ void RayLog::UninstallSignalAction() {
 void RayLog::ShutDownRayLog() {
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
-  google::ShutdownGoogleLogging();
+  if (!log_dir_.empty()) {
+    google::ShutdownGoogleLogging();
+  }
 #endif
 }
 

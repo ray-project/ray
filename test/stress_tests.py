@@ -41,22 +41,22 @@ def ray_start_combination(request):
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
-            "resources": {
-                "CPU": 10
-            },
+            "num_cpus": 10,
             "redis_max_memory": 10**7
         })
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
     ray.init(redis_address=cluster.redis_address)
 
-    yield num_nodes, num_workers_per_scheduler
+    yield num_nodes, num_workers_per_scheduler, cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
 
 
 def test_submitting_tasks(ray_start_combination):
+    _, _, cluster = ray_start_combination
+
     @ray.remote
     def f(x):
         return x
@@ -73,10 +73,12 @@ def test_submitting_tasks(ray_start_combination):
     for _ in range(1000):
         ray.get([f.remote(1) for _ in range(1)])
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 def test_dependencies(ray_start_combination):
+    _, _, cluster = ray_start_combination
+
     @ray.remote
     def f(x):
         return x
@@ -96,7 +98,7 @@ def test_dependencies(ray_start_combination):
         xs.append(g.remote(1))
     ray.get(xs)
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 def test_submitting_many_tasks(ray_start_sharded):
@@ -111,7 +113,7 @@ def test_submitting_many_tasks(ray_start_sharded):
         return x
 
     ray.get([g(1000) for _ in range(100)])
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 def test_submitting_many_actors_to_one(ray_start_sharded):
@@ -149,7 +151,7 @@ def test_getting_and_putting(ray_start_sharded):
         for _ in range(1000):
             ray.get(x_id)
 
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 def test_getting_many_objects(ray_start_sharded):
@@ -161,11 +163,11 @@ def test_getting_many_objects(ray_start_sharded):
     lst = ray.get([f.remote() for _ in range(n)])
     assert lst == n * [1]
 
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 def test_wait(ray_start_combination):
-    num_nodes, num_workers_per_scheduler = ray_start_combination
+    num_nodes, num_workers_per_scheduler, cluster = ray_start_combination
     num_workers = num_nodes * num_workers_per_scheduler
 
     @ray.remote
@@ -188,7 +190,7 @@ def test_wait(ray_start_combination):
         ]
         ray.wait(x_ids, num_returns=len(x_ids))
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 @pytest.fixture(params=[1, 4])
@@ -200,9 +202,7 @@ def ray_start_reconstruction(request):
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
-            "resources": {
-                "CPU": 1
-            },
+            "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
             "redirect_output": True,
@@ -267,8 +267,7 @@ def test_simple(ray_start_reconstruction):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
 
-    for node in cluster.list_all_nodes():
-        assert node.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 def sorted_random_indexes(total, output_num):
@@ -332,8 +331,7 @@ def test_recursive(ray_start_reconstruction):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
 
-    for node in cluster.list_all_nodes():
-        assert node.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test often hangs or fails in CI.")
@@ -390,8 +388,7 @@ def test_multiple_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
 
-    for node in cluster.list_all_nodes():
-        assert node.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 def wait_for_errors(error_check):
@@ -476,8 +473,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
     assert all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
                for error in errors)
 
-    for node in cluster.list_all_nodes():
-        assert node.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 @pytest.fixture

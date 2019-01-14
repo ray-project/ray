@@ -406,6 +406,14 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
         --batch-size=1 --strategy=ps
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
+        --batch-size=1 --strategy=simple
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
+        --batch-size=1 --strategy=ps
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
         --num-workers=1 --devices-per-worker=1 --strategy=ps
 

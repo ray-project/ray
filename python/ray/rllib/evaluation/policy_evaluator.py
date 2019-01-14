@@ -489,6 +489,15 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
 
+    def get_policy(self, policy_id=DEFAULT_POLICY_ID):
+        """Return policy graph for the specified id, or None.
+
+        Arguments:
+            policy_id (str): id of policy graph to return.
+        """
+
+        return self.policy_map.get(policy_id)
+
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
         """Apply the given function to the specified policy graph."""
 

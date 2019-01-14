@@ -5,23 +5,27 @@ from __future__ import print_function
 import json
 import logging
 import os
+import random
 import re
 import setproctitle
+import shutil
 import string
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict, namedtuple, OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pickle
 import pytest
 
 import ray
-from ray.parameter import RayParams
-import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
+from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
@@ -300,24 +304,7 @@ def test_putting_object_that_closes_over_object_id(ray_start):
             f
 
     f = Foo()
-    with pytest.raises(ray.raylet.common_error):
-        ray.put(f)
-
-
-def test_python_workers(shutdown_only):
-    # Test the codepath for starting workers from the Python script,
-    # instead of the local scheduler. This codepath is for debugging
-    # purposes only.
-    num_workers = 4
-    ray_params = RayParams(num_cpus=num_workers, start_ray_local=True)
-    ray.worker._init(ray_params)
-
-    @ray.remote
-    def f(x):
-        return x
-
-    values = ray.get([f.remote(1) for i in range(num_workers * 2)])
-    assert values == [1] * (num_workers * 2)
+    ray.put(f)
 
 
 def test_put_get(shutdown_only):
@@ -770,7 +757,7 @@ def test_defining_remote_functions(shutdown_only):
                 args=[], num_cpus=1, num_gpus=1,
                 resources={"Custom": 1})) == [0]
         infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
+        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
         assert len(ready_ids) == 0
         assert len(remaining_ids) == 1
 
@@ -845,14 +832,14 @@ def test_wait(shutdown_only):
 
     objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=1750, num_returns=4)
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
     assert time.time() - start_time < 2
     assert len(ready_ids) == 3
     assert len(remaining_ids) == 1
     ray.wait(objectids)
     objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
     start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=5000)
+    ready_ids, remaining_ids = ray.wait(objectids, timeout=5.0)
     assert time.time() - start_time < 5
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
@@ -1074,7 +1061,6 @@ def test_object_transfer_dump(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
-
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -1194,62 +1180,140 @@ def test_multithreading(shutdown_only):
     # relase resources when joining the threads.
     ray.init(num_cpus=2)
 
+    def run_test_in_multi_threads(test_case, num_threads=20, num_repeats=50):
+        """A helper function that runs test cases in multiple threads."""
+
+        def wrapper():
+            for _ in range(num_repeats):
+                test_case()
+                time.sleep(random.randint(0, 10) / 1000.0)
+            return "ok"
+
+        executor = ThreadPoolExecutor(max_workers=num_threads)
+        futures = [executor.submit(wrapper) for _ in range(num_threads)]
+        for future in futures:
+            assert future.result() == "ok"
+
     @ray.remote
-    def f():
-        pass
+    def echo(value, delay_ms=0):
+        if delay_ms > 0:
+            time.sleep(delay_ms / 1000.0)
+        return value
 
-    def g(n):
-        for _ in range(1000 // n):
-            ray.get([f.remote() for _ in range(n)])
-        res = [ray.put(i) for i in range(1000 // n)]
-        ray.wait(res, len(res))
+    @ray.remote
+    class Echo(object):
+        def echo(self, value):
+            return value
 
-    def test_multi_threading():
-        threads = [
-            threading.Thread(target=g, args=(n, ))
-            for n in [1, 5, 10, 100, 1000]
+    def test_api_in_multi_threads():
+        """Test using Ray api in multiple threads."""
+
+        # Test calling remote functions in multiple threads.
+        def test_remote_call():
+            value = random.randint(0, 1000000)
+            result = ray.get(echo.remote(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_remote_call)
+
+        # Test multiple threads calling one actor.
+        actor = Echo.remote()
+
+        def test_call_actor():
+            value = random.randint(0, 1000000)
+            result = ray.get(actor.echo.remote(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_call_actor)
+
+        # Test put and get.
+        def test_put_and_get():
+            value = random.randint(0, 1000000)
+            result = ray.get(ray.put(value))
+            assert value == result
+
+        run_test_in_multi_threads(test_put_and_get)
+
+        # Test multiple threads waiting for objects.
+        num_wait_objects = 10
+        objects = [
+            echo.remote(i, delay_ms=10) for i in range(num_wait_objects)
         ]
 
-        [thread.start() for thread in threads]
-        [thread.join() for thread in threads]
+        def test_wait():
+            ready, _ = ray.wait(
+                objects,
+                num_returns=len(objects),
+                timeout=1000.0,
+            )
+            assert len(ready) == num_wait_objects
+            assert ray.get(ready) == list(range(num_wait_objects))
 
+        run_test_in_multi_threads(test_wait, num_repeats=1)
+
+    # Run tests in a driver.
+    test_api_in_multi_threads()
+
+    # Run tests in a worker.
     @ray.remote
-    def test_multi_threading_in_worker():
-        test_multi_threading()
+    def run_tests_in_worker():
+        test_api_in_multi_threads()
+        return "ok"
 
-    def block(args, n):
-        ray.wait(args, num_returns=n)
-        ray.get(args[:n])
+    assert ray.get(run_tests_in_worker.remote()) == "ok"
 
+    # Test actor that runs background threads.
     @ray.remote
     class MultithreadedActor(object):
         def __init__(self):
-            pass
+            self.lock = threading.Lock()
+            self.thread_results = []
+
+        def background_thread(self, wait_objects):
+            try:
+                # Test wait
+                ready, _ = ray.wait(
+                    wait_objects,
+                    num_returns=len(wait_objects),
+                    timeout=1000.0,
+                )
+                assert len(ready) == len(wait_objects)
+                for _ in range(50):
+                    num = 20
+                    # Test remote call
+                    results = [echo.remote(i) for i in range(num)]
+                    assert ray.get(results) == list(range(num))
+                    # Test put and get
+                    objects = [ray.put(i) for i in range(num)]
+                    assert ray.get(objects) == list(range(num))
+                    time.sleep(random.randint(0, 10) / 1000.0)
+            except Exception as e:
+                with self.lock:
+                    self.thread_results.append(e)
+            else:
+                with self.lock:
+                    self.thread_results.append("ok")
 
         def spawn(self):
-            objects = [f.remote() for _ in range(1000)]
+            wait_objects = [echo.remote(i, delay_ms=10) for i in range(20)]
             self.threads = [
-                threading.Thread(target=block, args=(objects, n))
-                for n in [1, 5, 10, 100, 1000]
+                threading.Thread(
+                    target=self.background_thread, args=(wait_objects, ))
+                for _ in range(20)
             ]
-
             [thread.start() for thread in self.threads]
 
         def join(self):
             [thread.join() for thread in self.threads]
+            assert self.thread_results == ["ok"] * len(self.threads)
+            return "ok"
 
-    # test multi-threading in the driver
-    test_multi_threading()
-    # test multi-threading in the worker
-    ray.get(test_multi_threading_in_worker.remote())
-
-    # test multi-threading in the actor
-    a = MultithreadedActor.remote()
-    ray.get(a.spawn.remote())
-    ray.get(a.join.remote())
+    actor = MultithreadedActor.remote()
+    actor.spawn.remote()
+    ray.get(actor.join.remote()) == "ok"
 
 
-def test_free_objects_multi_node(shutdown_only):
+def test_free_objects_multi_node(ray_start_cluster):
     # This test will do following:
     # 1. Create 3 raylets that each hold an actor.
     # 2. Each actor creates an object which is the deletion target.
@@ -1261,20 +1325,14 @@ def test_free_objects_multi_node(shutdown_only):
     # tasks, so the flushing operations may be executed in different
     # workers and the plasma client holding the deletion target
     # may not be flushed.
+    cluster = ray_start_cluster
     config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=3,
-        num_cpus=[1, 1, 1],
-        resources=[{
-            "Custom0": 1
-        }, {
-            "Custom1": 1
-        }, {
-            "Custom2": 1
-        }],
-        _internal_config=config)
-    ray.worker._init(ray_params)
+    for i in range(3):
+        cluster.add_node(
+            num_cpus=1,
+            resources={"Custom{}".format(i): 1},
+            _internal_config=config)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(resources={"Custom0": 1})
     class ActorOnNode0(object):
@@ -1326,13 +1384,13 @@ def test_free_objects_multi_node(shutdown_only):
     ]
     # Case 1: run this local_only=False. All 3 objects will be deleted.
     (a, b, c) = run_one_test(actors, False)
-    (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=1)
+    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
     # All the objects are deleted.
     assert len(l1) == 0
     assert len(l2) == 3
     # Case 2: run this local_only=True. Only 1 object will be deleted.
     (a, b, c) = run_one_test(actors, True)
-    (l1, l2) = ray.wait([a, b, c], timeout=10, num_returns=3)
+    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
     # One object is deleted and 2 objects are not.
     assert len(l1) == 2
     assert len(l2) == 1
@@ -1718,10 +1776,11 @@ def test_zero_cpus(shutdown_only):
     ray.get(f.remote())
 
 
-def test_zero_cpus_actor(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
-    ray.worker._init(ray_params)
+def test_zero_cpus_actor(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    ray.init(redis_address=cluster.redis_address)
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1763,7 +1822,7 @@ def test_fractional_resources(shutdown_only):
     # custom resource. TODO(rkn): Re-enable this once ray.wait is
     # implemented.
     f2 = Foo2._remote([], {}, resources={"Custom": 0.7})
-    ready, _ = ray.wait([f2.method.remote()], timeout=500)
+    ready, _ = ray.wait([f2.method.remote()], timeout=0.5)
     assert len(ready) == 0
     # Make sure we can start an actor that requries only 0.3 of the custom
     # resource.
@@ -1786,16 +1845,16 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
-def test_multiple_local_schedulers(shutdown_only):
+def test_multiple_local_schedulers(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific local schedulers, and we will check that they are assigned
     # to the correct local schedulers.
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=3,
-        num_cpus=[11, 5, 10],
-        num_gpus=[0, 5, 1])
-    address_info = ray.worker._init(ray_params)
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=11, num_gpus=0)
+    cluster.add_node(num_cpus=5, num_gpus=5)
+    cluster.add_node(num_cpus=10, num_gpus=1)
+    ray.init(redis_address=cluster.redis_address)
+    cluster.wait_for_nodes()
 
     # Define a bunch of remote functions that all return the socket name of
     # the plasma store. Since there is a one-to-one correspondence between
@@ -1857,7 +1916,21 @@ def test_multiple_local_schedulers(shutdown_only):
                 results.append(run_on_0_2.remote())
         return names, results
 
-    store_names = address_info["object_store_addresses"]
+    client_table = ray.global_state.client_table()
+    store_names = []
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 0
+    ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 5
+    ]
+    store_names += [
+        client["ObjectStoreSocketName"] for client in client_table
+        if client["Resources"]["GPU"] == 1
+    ]
+    assert len(store_names) == 3
 
     def validate_names_and_results(names, results):
         for name, result in zip(names, ray.get(results)):
@@ -1898,17 +1971,11 @@ def test_multiple_local_schedulers(shutdown_only):
     validate_names_and_results(names, results)
 
 
-def test_custom_resources(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_cpus=[3, 3],
-        resources=[{
-            "CustomResource": 0
-        }, {
-            "CustomResource": 1
-        }])
-    ray.worker._init(ray_params)
+def test_custom_resources(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
+    cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f():
@@ -1940,19 +2007,19 @@ def test_custom_resources(shutdown_only):
     ray.get([h.remote() for _ in range(5)])
 
 
-def test_two_custom_resources(shutdown_only):
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=2,
-        num_cpus=[3, 3],
-        resources=[{
+def test_two_custom_resources(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=3, resources={
             "CustomResource1": 1,
             "CustomResource2": 2
-        }, {
+        })
+    cluster.add_node(
+        num_cpus=3, resources={
             "CustomResource1": 3,
             "CustomResource2": 4
-        }])
-    ray.worker._init(ray_params)
+        })
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -1992,7 +2059,7 @@ def test_two_custom_resources(shutdown_only):
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
-    ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()], timeout=500)
+    ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()], timeout=0.5)
     assert ready_ids == []
 
 
@@ -2131,7 +2198,7 @@ def test_max_call_tasks(shutdown_only):
 def attempt_to_load_balance(remote_function,
                             args,
                             total_tasks,
-                            num_local_schedulers,
+                            num_nodes,
                             minimum_count,
                             num_attempts=100):
     attempts = 0
@@ -2141,43 +2208,41 @@ def attempt_to_load_balance(remote_function,
         names = set(locations)
         counts = [locations.count(name) for name in names]
         logger.info("Counts are {}.".format(counts))
-        if (len(names) == num_local_schedulers
+        if (len(names) == num_nodes
                 and all(count >= minimum_count for count in counts)):
             break
         attempts += 1
     assert attempts < num_attempts
 
 
-def test_load_balancing(shutdown_only):
+def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner.
-    num_local_schedulers = 3
+    cluster = ray_start_cluster
+    num_nodes = 3
     num_cpus = 7
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=num_cpus)
-    ray.worker._init(ray_params)
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpus)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f():
         time.sleep(0.01)
         return ray.worker.global_worker.plasma_client.store_socket_name
 
-    attempt_to_load_balance(f, [], 100, num_local_schedulers, 10)
-    attempt_to_load_balance(f, [], 1000, num_local_schedulers, 100)
+    attempt_to_load_balance(f, [], 100, num_nodes, 10)
+    attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
-def test_load_balancing_with_dependencies(shutdown_only):
+def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all local
     # schedulers in a roughly equal manner even when the tasks have
     # dependencies.
-    num_local_schedulers = 3
-    ray_params = RayParams(
-        start_ray_local=True,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=1)
-    ray.worker._init(ray_params)
+    cluster = ray_start_cluster
+    num_nodes = 3
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
     def f(x):
@@ -2189,7 +2254,7 @@ def test_load_balancing_with_dependencies(shutdown_only):
     # schedulers.
     x = ray.put(np.zeros(1000000))
 
-    attempt_to_load_balance(f, [x], 100, num_local_schedulers, 25)
+    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
 def wait_for_num_tasks(num_tasks, timeout=10):
@@ -2238,8 +2303,7 @@ def test_global_state_api(shutdown_only):
 
     driver_id = ray.experimental.state.binary_to_hex(
         ray.worker.global_worker.worker_id)
-    driver_task_id = ray.experimental.state.binary_to_hex(
-        ray.worker.global_worker.current_task_id.id())
+    driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
     wait_for_num_tasks(1)
@@ -2247,12 +2311,13 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
+    nil_id_hex = ray.ObjectID.nil_id().hex()
 
     assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
     assert task_spec["DriverID"] == driver_id
-    assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.global_state.client_table()
@@ -2278,7 +2343,7 @@ def test_global_state_api(shutdown_only):
 
     function_table = ray.global_state.function_table()
     task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
@@ -2392,6 +2457,24 @@ def test_specific_driver_id():
     ray.shutdown()
 
 
+def test_object_id_properties():
+    id_bytes = b"00112233445566778899"
+    object_id = ray.ObjectID(id_bytes)
+    assert object_id.id() == id_bytes
+    object_id = ray.ObjectID.nil_id()
+    assert object_id.is_nil()
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(id_bytes + b"1234")
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(b"0123456789")
+    object_id = ray.ObjectID(_random_string())
+    assert not object_id.is_nil()
+    assert object_id.id() != id_bytes
+    id_dumps = pickle.dumps(object_id)
+    id_from_dumps = pickle.loads(id_dumps)
+    assert id_from_dumps == object_id
+
+
 @pytest.fixture
 def shutdown_only_with_initialization_check():
     yield None
@@ -2451,7 +2534,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ray_constants.NIL_JOB_ID.id()
+    driver_id = ray.ObjectID.nil_id()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2461,13 +2544,13 @@ def test_duplicate_error_messages(shutdown_only):
     r = ray.worker.global_worker.redis_client
 
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
 
@@ -2504,3 +2587,16 @@ def test_ray_stack(shutdown_only):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
+
+
+def test_pandas_parquet_serialization():
+    # Only test this if pandas is installed
+    pytest.importorskip("pandas")
+
+    import pandas as pd
+
+    tempdir = tempfile.mkdtemp()
+    filename = os.path.join(tempdir, "parquet-test")
+    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
+    # Clean up
+    shutil.rmtree(tempdir)

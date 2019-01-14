@@ -1,21 +1,35 @@
 #!/usr/bin/env bash
 
-# Cause the script to exit if a single command fails.
-set -e
-
 # Show explicitly which commands are currently running.
 set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+RESULT_FILE=$ROOT_DIR/results-$(date '+%Y-%m-%d_%H-%M-%S').log
+echo "Logging to" $RESULT_FILE
+touch $RESULT_FILE
+
+run_test(){
+    local test_name=$1
+
+    local CLUSTER="stress_testing_config.yaml"
+    echo "Try running $test_name."
+    {
+        ray up -y $CLUSTER --cluster-name "$test_name" &&
+        sleep 1 &&
+        ray submit $CLUSTER --cluster-name "$test_name" "$test_name.py"
+    } || echo "FAIL: $test_name" >> $RESULT_FILE
+
+    # Tear down cluster.
+    if [ "$DEBUG_MODE" = "" ]; then
+        ray down -y $CLUSTER --cluster-name "$test_name"
+    else
+        echo "Not tearing down cluster" $CLUSTER
+    fi
+}
 
 pushd "$ROOT_DIR"
-  # Start a large cluster using the autoscaler.
-  ray up -y stress_testing_config.yaml
-
-  # Run a bunch of stress tests.
-  ray submit stress_testing_config.yaml test_many_tasks_and_transfers.py
-  ray submit stress_testing_config.yaml test_dead_actors.py
-
-  # Tear down the cluster.
-  ray down -y stress_testing_config.yaml
+    run_test test_many_tasks_and_transfers
+    run_test test_dead_actors
 popd
+
+cat $RESULT_FILE

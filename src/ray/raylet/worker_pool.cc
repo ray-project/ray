@@ -144,7 +144,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
                  << strerror(errno);
 }
 
-void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
+void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   auto &state = GetStateForLanguage(worker->GetLanguage());
@@ -158,7 +158,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   }
 }
 
-void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
+void WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
@@ -186,7 +186,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
   return nullptr;
 }
 
-void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
+void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().is_nil())
       << "Idle workers cannot have an assigned task ID";
@@ -218,13 +218,13 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   return worker;
 }
 
-bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
+bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
   return RemoveWorker(state.idle, worker);
 }
 
-void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
+void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
 }
