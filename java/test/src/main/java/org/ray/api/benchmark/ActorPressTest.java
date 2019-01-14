@@ -1,10 +1,10 @@
 package org.ray.api.benchmark;
 
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.testng.annotations.Test;
 
 public class ActorPressTest extends RayBenchmarkTest {
 
