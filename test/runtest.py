@@ -16,7 +16,6 @@ import tempfile
 import threading
 import time
 from collections import defaultdict, namedtuple, OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pickle
@@ -1183,16 +1182,26 @@ def test_multithreading(shutdown_only):
     def run_test_in_multi_threads(test_case, num_threads=20, num_repeats=50):
         """A helper function that runs test cases in multiple threads."""
 
-        def wrapper():
-            for _ in range(num_repeats):
-                test_case()
-                time.sleep(random.randint(0, 10) / 1000.0)
-            return "ok"
+        # Exceptions raised in the background threads.
+        exceptions_raised = []
 
-        executor = ThreadPoolExecutor(max_workers=num_threads)
-        futures = [executor.submit(wrapper) for _ in range(num_threads)]
-        for future in futures:
-            assert future.result() == "ok"
+        def wrapper():
+            try:
+                for _ in range(num_repeats):
+                    test_case()
+                    time.sleep(random.randint(0, 10) / 1000.0)
+            except Exception as e:
+                exceptions_raised.append(e)
+                # re-raise the exception, so we can see the stack trace.
+                raise e
+
+        threads = [threading.Thread(target=wrapper) for _ in range(num_threads)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(exceptions_raised) == 0
 
     @ray.remote
     def echo(value, delay_ms=0):
