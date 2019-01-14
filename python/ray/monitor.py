@@ -18,9 +18,8 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
-
-# Set up logging.
-logger = logging.getLogger(__name__)
+from ray.autoscaler.log_timer import (logInfo, logWarning, logError,
+                                      logException, logCritical, LogTimer)
 
 
 class Monitor(object):
@@ -68,8 +67,9 @@ class Monitor(object):
             # that redis server.
             addr_port = self.redis.lrange("RedisShards", 0, -1)
             if len(addr_port) > 1:
-                logger.warning("TODO: if launching > 1 redis shard, flushing "
-                               "needs to touch shards in parallel.")
+                logWarning("Monitor",
+                    "TODO: if launching > 1 redis shard, flushing needs to "
+                    "touch shards in parallel.")
                 self.issue_gcs_flushes = False
             else:
                 addr_port = addr_port[0].split(b":")
@@ -80,7 +80,7 @@ class Monitor(object):
                 try:
                     self.redis_shard.execute_command("HEAD.FLUSH 0")
                 except redis.exceptions.ResponseError as e:
-                    logger.info(
+                    logInfo("Monitor",
                         "Turning off flushing due to exception: {}".format(
                             str(e)))
                     self.issue_gcs_flushes = False
@@ -127,8 +127,8 @@ class Monitor(object):
                 self.load_metrics.update(ip, static_resources,
                                          dynamic_resources)
             else:
-                print("Warning: could not find ip for client {} in {}.".format(
-                    client_id, self.local_scheduler_id_to_ip_map))
+                logWarning("Monitor", "could not find ip for client {}".format(
+                    client_id))
 
     def _xray_clean_up_entries_for_driver(self, driver_id):
         """Remove this driver's object/task entries from redis.
@@ -184,12 +184,12 @@ class Monitor(object):
                 continue
             redis = self.state.redis_clients[shard_index]
             num_deleted = redis.delete(*keys)
-            logger.info("Removed {} dead redis entries of the driver from"
-                        " redis shard {}.".format(num_deleted, shard_index))
+            logInfo("Monitor", "Removed {} dead redis entries of the "
+                "driver from redis shard {}.".format(num_deleted, shard_index))
             if num_deleted != len(keys):
-                logger.warning("Failed to remove {} relevant redis entries"
-                               " from redis shard {}.".format(
-                                   len(keys) - num_deleted, shard_index))
+                logWarning("Monitor", "Failed to remove {} relevant redis "
+                    "entries from redis shard {}.".format(
+                        len(keys) - num_deleted, shard_index))
 
     def xray_driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.
@@ -204,7 +204,7 @@ class Monitor(object):
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
             driver_data, 0)
         driver_id = message.DriverId()
-        logger.info("XRay Driver {} has been removed.".format(
+        logInfo("Monitor", "XRay Driver {} has been removed.".format(
             binary_to_hex(driver_id)))
         self._xray_clean_up_entries_for_driver(driver_id)
 
@@ -280,7 +280,7 @@ class Monitor(object):
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
         num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
-        logger.info("num_flushed {}".format(num_flushed))
+        logInfo("Monitor", "num_flushed {}".format(num_flushed))
 
         # This flushes event log and log files.
         ray.experimental.flush_redis_unsafe(self.redis)

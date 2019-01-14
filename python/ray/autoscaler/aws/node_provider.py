@@ -12,10 +12,8 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
-
-
-import logging
-logger = logging.getLogger(__name__)
+from ray.autoscaler.log_timer import (logInfo, logError, logException,
+                                      logCritical, LogTimer)
 
 
 def to_aws_format(tags):
@@ -73,22 +71,18 @@ class AWSNodeProvider(NodeProvider):
                             DD[x].append(node_id)
 
                     for (k, v), node_ids in DD.items():
-                        logger.info(
-                            "AWSNodeProvider: Setting tag {}={} on {}".format(
-                                k, v, node_ids
+                        m = "Set tag {}={} on {}".format(k, v, node_ids)
+                        with LogTimer("AWSNodeProvider", m) as _:
+                            if k == TAG_RAY_NODE_NAME:  # TODO: to_aws_format
+                                k = "Name"
+                            self.ec2.meta.client.create_tags(
+                                Resources=node_ids,
+                                Tags=[{"Key": k, "Value": v}],
                             )
-                        )
-
-                    for (k, v), node_ids in DD.items():
-                        if k == TAG_RAY_NODE_NAME:  # TODO: to_aws_format
-                            k = "Name"
-                        self.ec2.meta.client.create_tags(
-                            Resources=node_ids,
-                            Tags=[{"Key": k, "Value": v}],
-                        )
 
                     for node_id, tags in self.tag_cache_pending.items():
                         self.tag_cache[node_id].update(tags)
+
                     self.tag_cache_pending = {}
 
             self.tag_cache_kill_event.wait(timeout=5)
@@ -150,7 +144,6 @@ class AWSNodeProvider(NodeProvider):
         return self._node(node_id).private_ip_address
 
     def set_node_tags(self, node_id, tags):
-        logger.info("Setting tags {} for {}".format(tags, node_id))
         with self.tag_cache_lock:
             try:
                 self.tag_cache_pending[node_id].update(tags)
@@ -233,6 +226,5 @@ class AWSNodeProvider(NodeProvider):
         return self.cached_nodes[node_id]
 
     def cleanup(self):
-        logger.info("Set kill event")
         self.tag_cache_update_event.set()
         self.tag_cache_kill_event.set()

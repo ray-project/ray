@@ -527,7 +527,6 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -550,7 +549,6 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -574,7 +572,6 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -682,7 +679,6 @@ class AutoscalingTest(unittest.TestCase):
             lm,
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(2)

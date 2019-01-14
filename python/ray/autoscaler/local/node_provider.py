@@ -10,8 +10,9 @@ import logging
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE
+from ray.autoscaler.log_timer import (logInfo, logError, logException,
+                                      logCritical, LogTimer)
 
-logger = logging.getLogger(__name__)
 filelock_logger = logging.getLogger("filelock")
 filelock_logger.setLevel(logging.WARNING)
 
@@ -26,7 +27,7 @@ class ClusterState(object):
                 workers = json.loads(open(self.save_path).read())
             else:
                 workers = {}
-            logger.info("Loaded cluster state: {}".format(workers))
+            logInfo("ClusterState", "Loaded cluster state: {}".format(workers))
             for worker_ip in provider_config["worker_ips"]:
                 if worker_ip not in workers:
                     workers[worker_ip] = {
@@ -50,7 +51,8 @@ class ClusterState(object):
                     TAG_RAY_NODE_TYPE] == "head"
             assert len(workers) == len(provider_config["worker_ips"]) + 1
             with open(self.save_path, "w") as f:
-                logger.info("Writing cluster state: {}".format(workers))
+                logInfo("ClusterState",
+                    "Writing cluster state: {}".format(workers))
                 f.write(json.dumps(workers))
 
     def get(self):
@@ -65,7 +67,8 @@ class ClusterState(object):
             workers = self.get()
             workers[worker_id] = info
             with open(self.save_path, "w") as f:
-                logger.info("Writing cluster state: {}".format(workers))
+                logInfo("ClusterState",
+                    "Writing cluster state: {}".format(workers))
                 f.write(json.dumps(workers))
 
 

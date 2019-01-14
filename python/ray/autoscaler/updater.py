@@ -6,7 +6,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
-import logging
+import logging  # TODO TODO TODO remove
 import os
 import subprocess
 import sys
@@ -17,6 +17,8 @@ from threading import Thread
 
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
+from ray.autoscaler.log_timer import (logDebug, logInfo, logError,
+                                      logException, logCritical, LogTimer)
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
@@ -38,13 +40,6 @@ def get_default_ssh_options(private_key, connect_timeout):
         for x in y
     ]
 
-logger = logging.getLogger(__name__)
-
-
-def pretty_cmd(cmd_str):
-    return "\n\n\t{}\n\n".format(cmd_str)
-
-
 class NodeUpdater(object):
     """A process for syncing files and running init commands on a node."""
 
@@ -57,7 +52,6 @@ class NodeUpdater(object):
                  file_mounts,
                  setup_cmds,
                  runtime_hash,
-                 redirect_output=True,
                  process_runner=subprocess,
                  use_internal_ip=False):
         self.daemon = True
@@ -75,21 +69,6 @@ class NodeUpdater(object):
         }
         self.setup_cmds = setup_cmds
         self.runtime_hash = runtime_hash
-        self.logger = logger.getChild(str(node_id))
-        if redirect_output:
-            self.logfile = tempfile.NamedTemporaryFile(
-                mode="w", prefix="node-updater-", delete=False)
-            handler = logging.StreamHandler(stream=self.logfile)
-            handler.setLevel(logging.INFO)
-            self.logger.addHandler(handler)
-            self.output_name = self.logfile.name
-            self.stdout = self.logfile
-            self.stderr = self.logfile
-        else:
-            self.logfile = None
-            self.output_name = "(console)"
-            self.stdout = sys.stdout
-            self.stderr = sys.stderr
 
     def get_caller(self, check_error):
         if check_error:
@@ -103,6 +82,18 @@ class NodeUpdater(object):
         else:
             return self.provider.external_ip(self.node_id)
 
+    def wait_for_ip(self, deadline):
+        while time.time() < deadline and \
+                not self.provider.is_terminated(self.node_id):
+            logInfo("NodeUpdater",
+                "Waiting for IP of {}...".format(self.node_id))
+            ip = self.get_node_ip()
+            if ip is not None:
+                return ip
+            time.sleep(10)
+
+        return None
+
     def set_ssh_ip_if_required(self):
         if self.ssh_ip is not None:
             return
@@ -110,16 +101,11 @@ class NodeUpdater(object):
         # We assume that this never changes.
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
-        while time.time() < deadline and \
-                not self.provider.is_terminated(self.node_id):
-            self.logger.info("NodeUpdater: Waiting for IP of {}...".format(
-                self.node_id))
-            self.ssh_ip = self.get_node_ip()
-            if self.ssh_ip is not None:
-                break
-            time.sleep(10)
+        with LogTimer("NodeUpdater", "{}: Got IP".format(self.node_id)) as _:
+            ip = self.wait_for_ip(deadline)
+            assert ip is not None, "Unable to find IP of node"
 
-        assert self.ssh_ip is not None, "Unable to find IP of node"
+        self.ssh_ip = ip
 
         # This should run before any SSH commands and therefore ensure that
         #   the ControlPath directory exists, allowing SSH to maintain
@@ -136,35 +122,59 @@ class NodeUpdater(object):
                 stderr=redirect)
 
     def run(self):
-        self.logger.info(
-            "NodeUpdater: Updating {} to {}, logging to {}".format(
-                self.node_id, self.runtime_hash, self.output_name))
+        logInfo("NodeUpdater",
+            "{}: Updating to {}".format(
+                self.node_id, self.runtime_hash
+            )
+        )
         try:
-            self.do_update()
+            m = "{}: Applied config {}".format(self.node_id, self.runtime_hash)
+            with LogTimer("NodeUpdater", m) as _:
+                self.do_update()
         except Exception as e:
             error_str = str(e)
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
-                    e.returncode, pretty_cmd(" ".join(e.cmd)))
-            self.logger.error("NodeUpdater: Error updating {}"
-                              "See {} for remote logs.".format(
-                                  error_str, self.output_name))
+                    e.returncode, " ".join(e.cmd))
+            logError("NodeUpdater",
+                "{}: Error updating {}".format(self.node_id, error_str))
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "update-failed"})
-            if self.logfile is not None:
-                self.logger.info("----- BEGIN REMOTE LOGS -----\n" +
-                                 open(self.logfile.name).read() +
-                                 "\n----- END REMOTE LOGS -----")
             raise e
+
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
-        self.logger.info("NodeUpdater: Applied config {} to node {}".format(
-            self.runtime_hash, self.node_id))
 
         self.exitcode = 0
+
+    def wait_for_ssh(self, deadline):
+        logInfo("NodeUpdater", "{}: Waiting for SSH...".format(
+                self.node_id))
+
+        while time.time() < deadline and \
+                not self.provider.is_terminated(self.node_id):
+            try:
+                logDebug("NodeUpdater", "{}: Waiting for SSH...".format(
+                        self.node_id))
+                self.ssh_cmd(
+                    "uptime",
+                    connect_timeout=5,
+                    redirect=open("/dev/null", "w"))
+                return True
+
+            except Exception as e:
+                retry_str = str(e)
+                if hasattr(e, "cmd"):
+                    retry_str = "(Exit Status {}): {}".format(
+                        e.returncode, " ".join(e.cmd))
+                logDebug("NodeUpdater", "{}: SSH not up, retrying: {}".format(
+                    self.node_id, retry_str))
+                time.sleep(SSH_CHECK_INTERVAL)
+
+        return False
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -174,53 +184,47 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         # Wait for SSH access
-        ssh_ok = False
-        while time.time() < deadline and \
-                not self.provider.is_terminated(self.node_id):
-            try:
-                self.logger.info(
-                    "NodeUpdater: Waiting for SSH to {}...".format(
-                        self.node_id))
-                self.ssh_cmd(
-                    "uptime",
-                    connect_timeout=5,
-                    redirect=open("/dev/null", "w"))
-                ssh_ok = True
-            except Exception as e:
-                retry_str = str(e)
-                if hasattr(e, "cmd"):
-                    retry_str = "(Exit Status {}): {}".format(
-                        e.returncode, pretty_cmd(" ".join(e.cmd)))
-                self.logger.debug(
-                    "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
-                )
-                time.sleep(SSH_CHECK_INTERVAL)
-            else:
-                break
-        assert ssh_ok, "Unable to SSH to node"
+        with LogTimer("NodeUpdater", "{}: Got SSH".format(self.node_id)) as _:
+            ssh_ok = self.wait_for_ssh(deadline)
+            assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            self.logger.info("NodeUpdater: Syncing {} to {}...".format(
-                local_path, remote_path))
+            logInfo("NodeUpdater", "{}: Syncing {} to {}...".format(
+                self.node_id, local_path, remote_path))
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
                     local_path += "/"
                 if not remote_path.endswith("/"):
                     remote_path += "/"
-            self.ssh_cmd("mkdir -p {}".format(os.path.dirname(remote_path)))
-            self.rsync_up(local_path, remote_path)
+
+            m = "{}: Synced {} to {}".format(
+                self.node_id, local_path, remote_path)
+            with LogTimer("NodeUpdater", m) as _:
+                self.ssh_cmd(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    redirect=open("/dev/null", "w"),
+                )
+                self.rsync_up(local_path, remote_path, redirect=open("/dev/null", "w"))
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
-        for cmd in self.setup_cmds:
-            self.ssh_cmd(cmd, verbose=True)
 
-    def rsync_up(self, source, target, check_error=True):
+        m = "{}: Setup commands completed".format(
+            self.node_id)
+        with LogTimer("NodeUpdater", m) as _:
+            for cmd in self.setup_cmds:
+                self.ssh_cmd(
+                    cmd,
+                    #verbose=True,
+                    redirect=open("/dev/null", "w")
+                )
+
+    def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
@@ -229,10 +233,10 @@ class NodeUpdater(object):
                 "--delete", "-avz", source,
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
-            stdout=self.stdout,
-            stderr=self.stderr)
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
-    def rsync_down(self, source, target, check_error=True):
+    def rsync_down(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
@@ -241,8 +245,8 @@ class NodeUpdater(object):
                 "-avz",
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
             ],
-            stdout=self.stdout,
-            stderr=self.stderr)
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
     def ssh_cmd(self,
                 cmd,
@@ -257,8 +261,8 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         if verbose:
-            self.logger.info("NodeUpdater: running {} on {}...".format(
-                pretty_cmd(cmd), self.ssh_ip))
+            logInfo("NodeUpdater", "Running {} on {}...".format(
+                cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
@@ -280,8 +284,8 @@ class NodeUpdater(object):
             get_default_ssh_options(self.ssh_private_key, connect_timeout) + [
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ],
-            stdout=redirect or self.stdout,
-            stderr=redirect or self.stderr)
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
 class NodeUpdaterThread(NodeUpdater, Thread):
     def __init__(self, *args, **kwargs):
