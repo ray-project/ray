@@ -111,9 +111,9 @@
         <version>1.10.19</version>
       </dependency>
       <dependency>
-        <groupId>junit</groupId>
-        <artifactId>junit</artifactId>
-        <version>4.11</version>
+        <groupId>org.testng</groupId>
+        <artifactId>testng</artifactId>
+        <version>6.9.9</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

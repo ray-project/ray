@@ -1,5 +1,7 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include "arrow/util/logging.h"
+
 namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,

@@ -8,21 +8,24 @@ import os
 import random
 import re
 import setproctitle
+import shutil
 import string
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict, namedtuple, OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pickle
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
+from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
 
@@ -301,8 +304,7 @@ def test_putting_object_that_closes_over_object_id(ray_start):
             f
 
     f = Foo()
-    with pytest.raises(ray.raylet.common_error):
-        ray.put(f)
+    ray.put(f)
 
 
 def test_put_get(shutdown_only):
@@ -1242,7 +1244,7 @@ def test_multithreading(shutdown_only):
             ready, _ = ray.wait(
                 objects,
                 num_returns=len(objects),
-                timeout=1000,
+                timeout=1000.0,
             )
             assert len(ready) == num_wait_objects
             assert ray.get(ready) == list(range(num_wait_objects))
@@ -1273,7 +1275,7 @@ def test_multithreading(shutdown_only):
                 ready, _ = ray.wait(
                     wait_objects,
                     num_returns=len(wait_objects),
-                    timeout=1000,
+                    timeout=1000.0,
                 )
                 assert len(ready) == len(wait_objects)
                 for _ in range(50):
@@ -2301,8 +2303,7 @@ def test_global_state_api(shutdown_only):
 
     driver_id = ray.experimental.state.binary_to_hex(
         ray.worker.global_worker.worker_id)
-    driver_task_id = ray.experimental.state.binary_to_hex(
-        ray.worker.global_worker.current_task_id.id())
+    driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
     wait_for_num_tasks(1)
@@ -2310,12 +2311,13 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
+    nil_id_hex = ray.ObjectID.nil_id().hex()
 
     assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
     assert task_spec["DriverID"] == driver_id
-    assert task_spec["FunctionID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.global_state.client_table()
@@ -2341,7 +2343,7 @@ def test_global_state_api(shutdown_only):
 
     function_table = ray.global_state.function_table()
     task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == ray_constants.ID_SIZE * "ff"
+    assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["DriverID"] == driver_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
@@ -2455,6 +2457,24 @@ def test_specific_driver_id():
     ray.shutdown()
 
 
+def test_object_id_properties():
+    id_bytes = b"00112233445566778899"
+    object_id = ray.ObjectID(id_bytes)
+    assert object_id.id() == id_bytes
+    object_id = ray.ObjectID.nil_id()
+    assert object_id.is_nil()
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(id_bytes + b"1234")
+    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+        ray.ObjectID(b"0123456789")
+    object_id = ray.ObjectID(_random_string())
+    assert not object_id.is_nil()
+    assert object_id.id() != id_bytes
+    id_dumps = pickle.dumps(object_id)
+    id_from_dumps = pickle.loads(id_dumps)
+    assert id_from_dumps == object_id
+
+
 @pytest.fixture
 def shutdown_only_with_initialization_check():
     yield None
@@ -2514,7 +2534,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ray_constants.NIL_JOB_ID.id()
+    driver_id = ray.ObjectID.nil_id()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2524,13 +2544,13 @@ def test_duplicate_error_messages(shutdown_only):
     r = ray.worker.global_worker.redis_client
 
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id,
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
                       error_data)
 
 
@@ -2567,3 +2587,16 @@ def test_ray_stack(shutdown_only):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
+
+
+def test_pandas_parquet_serialization():
+    # Only test this if pandas is installed
+    pytest.importorskip("pandas")
+
+    import pandas as pd
+
+    tempdir = tempfile.mkdtemp()
+    filename = os.path.join(tempdir, "parquet-test")
+    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
+    # Clean up
+    shutil.rmtree(tempdir)

@@ -2,15 +2,13 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.annotation.RayRemote;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Test Ray.call API
@@ -87,7 +85,7 @@ public class RayCallTest extends BaseTest {
     Assert.assertEquals(1, (long) Ray.call(RayCallTest::testLong, 1L).get());
     Assert.assertEquals(1.0, Ray.call(RayCallTest::testDouble, 1.0).get(), 0.0);
     Assert.assertEquals(1.0f, Ray.call(RayCallTest::testFloat, 1.0f).get(), 0.0);
-    Assert.assertEquals(true, Ray.call(RayCallTest::testBool, true).get());
+    Assert.assertTrue(Ray.call(RayCallTest::testBool, true).get());
     Assert.assertEquals("foo", Ray.call(RayCallTest::testString, "foo").get());
     List<Integer> list = ImmutableList.of(1, 2, 3);
     Assert.assertEquals(list, Ray.call(RayCallTest::testList, list).get());

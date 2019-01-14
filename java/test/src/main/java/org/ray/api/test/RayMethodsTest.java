@@ -3,12 +3,11 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.runtime.util.logger.RayLog;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Integration test for Ray.*
@@ -30,8 +29,6 @@ public class RayMethodsTest extends BaseTest {
     double f1 = f1Id.get();
     Object n1 = n1Id.get();
 
-    RayLog.rapp.info("Strings: " + ss.get(0) + ss.get(1) + " int: " + i1 + " double: " + f1
-        + " null: " + n1);
     Assert.assertEquals("Hello World!", ss.get(0) + ss.get(1));
     Assert.assertEquals(1, i1);
     Assert.assertEquals(3.14, f1, Double.MIN_NORMAL);

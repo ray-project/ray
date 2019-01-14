@@ -5,12 +5,12 @@ import static org.ray.runtime.util.SystemUtil.pid;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class ActorReconstructionTest extends BaseTest {
 
