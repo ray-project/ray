@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import logging
 import traceback
 
 import ray
@@ -11,6 +10,7 @@ import ray.actor
 from ray.parameter import RayParams
 import ray.ray_constants as ray_constants
 import ray.tempfile_services as tempfile_services
+import ray.utils
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -69,9 +69,7 @@ if __name__ == "__main__":
         "raylet_socket_name": args.raylet_name,
     }
 
-    logging.basicConfig(
-        level=logging.getLevelName(args.logging_level.upper()),
-        format=args.logging_format)
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     # Override the temporary directory.
     tempfile_services.set_temp_root(args.temp_dir)

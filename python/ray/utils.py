@@ -281,6 +281,17 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     return resources
 
 
+def setup_logger(logging_level, logging_format):
+    """Setup default logging for ray."""
+    logger = logging.getLogger("ray")
+    level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(level)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(logging_format))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+
 # This function is copied and modified from
 # https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
 def vmstat(stat):

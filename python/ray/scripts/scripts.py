@@ -9,7 +9,6 @@ import os
 import subprocess
 
 import ray.services as services
-from ray.worker import setup_logger
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, rsync,
     teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
@@ -60,7 +59,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     help=ray_constants.LOGGER_FORMAT_HELP)
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    setup_logger(level, logging_format)
+    ray.utils.setup_logger(level, logging_format)
 
 
 @cli.command()

@@ -43,6 +43,7 @@ from ray.utils import (
     is_cython,
     random_string,
     thread_safe_client,
+    setup_logger,
 )
 
 SCRIPT_MODE = 0
@@ -69,8 +70,8 @@ DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
 # Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
 logger = logging.getLogger(__name__)
 
 try:
@@ -1248,22 +1249,6 @@ def get_address_info_from_redis(redis_address,
                 "'ray start' on this node?")
             time.sleep(1)
         counter += 1
-
-
-def setup_logger(logging_level, logging_format):
-    """Setup default logging.
-
-    Args:
-        logging_level: Logging level, default will be logging.INFO.
-        logging_format: Logging format, default will contain a timestamp,
-            filename, line number, and message. See ray_constants.py
-    """
-    logger = logging.getLogger("ray")
-    logger.setLevel(logging_level)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(logging_format))
-    logger.addHandler(handler)
-    logger.propagate = False
 
 
 def _init(ray_params, driver_id=None):

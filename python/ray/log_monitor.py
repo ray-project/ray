@@ -14,8 +14,8 @@ from ray.services import get_port
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
 logger = logging.getLogger(__name__)
 
 
@@ -154,9 +154,7 @@ if __name__ == "__main__":
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.getLevelName(args.logging_level.upper()),
-        format=args.logging_format)
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)
