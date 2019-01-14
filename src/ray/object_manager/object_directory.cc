@@ -221,8 +221,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (listener_state.has_been_created) {
     auto &locations = listener_state.current_object_locations;
     auto inline_object_flag = listener_state.inline_object_flag;
-    auto &inline_object_data = listener_state.inline_object_data;
-    auto &inline_object_metadata = listener_state.inline_object_metadata;
+    const auto &inline_object_data = listener_state.inline_object_data;
+    const auto &inline_object_metadata = listener_state.inline_object_metadata;
     io_service_.post([callback, locations, inline_object_flag,
                       inline_object_data,
                       inline_object_metadata,
@@ -285,13 +285,13 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     auto &locations = it->second.current_object_locations;
     bool has_been_created = it->second.has_been_created;
     bool inline_object_flag = it->second.inline_object_flag;
-    std::vector<uint8_t> inline_object_data = it->second.inline_object_data;
-    std::string inline_object_metadata = it->second.inline_object_metadata;
+    const auto& inline_object_data = it->second.inline_object_data;
+    const auto& inline_object_metadata = it->second.inline_object_metadata;
     io_service_.post([callback, object_id, locations,
                      inline_object_flag,
-                      inline_object_data,
-                      inline_object_metadata,
-                      has_been_created]() {
+                     inline_object_data,
+                     inline_object_metadata,
+                     has_been_created]() {
       callback(object_id, locations,
                inline_object_flag,
                inline_object_data,
