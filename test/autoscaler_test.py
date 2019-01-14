@@ -17,7 +17,6 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
-from ray.autoscaler.updater import NodeUpdaterThread
 import pytest
 
 
@@ -529,7 +528,6 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -553,7 +551,6 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -578,7 +575,6 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -687,7 +683,6 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(2)
