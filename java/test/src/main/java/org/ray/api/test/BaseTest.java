@@ -11,7 +11,6 @@ public class BaseTest {
 
   @BeforeMethod
   public void setUp() {
-    System.out.println("setUp");
     System.setProperty("ray.home", "../..");
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     Ray.init();
@@ -23,7 +22,7 @@ public class BaseTest {
     // We could not enable this until `systemInfo` enabled.
     //File rayletSocketFIle = new File(Ray.systemInfo().rayletSocketName());
     Ray.shutdown();
-    System.out.println("tearDown");
+
     //remove raylet socket file
     //rayletSocketFIle.delete();
 
