@@ -558,11 +558,9 @@ class StandardAutoscaler(object):
         self.updaters[node_id] = updater
 
     def can_update(self, node_id):
-        if not self.provider.is_running(node_id):
+        if node_id in self.updaters:
             return False
         if not self.launch_config_ok(node_id):
-            return False
-        if node_id in self.updaters:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
