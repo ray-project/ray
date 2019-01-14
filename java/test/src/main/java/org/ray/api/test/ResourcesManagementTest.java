@@ -2,8 +2,6 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -11,6 +9,8 @@ import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Resources Management Test.
