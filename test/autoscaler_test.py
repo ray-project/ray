@@ -165,9 +165,9 @@ class LoadMetricsTest(unittest.TestCase):
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
         debug = lm.info_string()
-        assert "ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU" in debug
-        assert "NumNodesConnected: 2" in debug
-        assert "NumNodesUsed: 1.88" in debug
+        assert "ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU" in debug
+        assert "NumNodesConnected=2" in debug
+        assert "NumNodesUsed=1.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -535,7 +535,7 @@ class AutoscalingTest(unittest.TestCase):
             node.state = "running"
         assert len(
             self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "uninitialized"
+                TAG_RAY_NODE_STATUS: "waiting-for-ssh"
             })) == 2
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
@@ -557,7 +557,7 @@ class AutoscalingTest(unittest.TestCase):
             node.state = "running"
         assert len(
             self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "uninitialized"
+                TAG_RAY_NODE_STATUS: "waiting-for-ssh"
             })) == 2
         autoscaler.update()
         self.waitForNodes(
