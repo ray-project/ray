@@ -589,7 +589,8 @@ class FunctionActorManager(object):
 
         class_name = decode(class_name)
         module = decode(module)
-        driver_id = ray.ObjectID(driver_id_str)
+        # TODO(suquark): Ensure the type of "driver_id".
+        driver_id = ray.JobID(driver_id_str)
         checkpoint_interval = int(checkpoint_interval)
         actor_method_names = json.loads(decode(actor_method_names))
 
