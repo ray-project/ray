@@ -16,8 +16,8 @@ import redis
 
 import pyarrow
 # Ray modules
+import ray
 import ray.ray_constants as ray_constants
-import ray.plasma
 
 from ray.tempfile_services import (get_ipython_notebook_path, get_temp_root,
                                    new_redis_log_file)
@@ -196,6 +196,86 @@ def create_redis_client(redis_address, password=None):
     # as Redis) must have run "CONFIG SET protected-mode no".
     return redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=password)
+
+
+def start_ray_process(command,
+                      process_type,
+                      env_updates=None,
+                      cwd=None,
+                      use_valgrind=False,
+                      use_gdb=False,
+                      use_valgrind_profiler=False,
+                      use_perftools_profiler=False,
+                      use_tmux=False,
+                      stdout_file=None,
+                      stderr_file=None):
+    """Start one of the Ray processes.
+
+    TODO(rkn): We need to figure out how these commands interact. For example,
+    it may only make sense to start a process in gdb if we also start it in
+    tmux. Similarly, certain combinations probably don't make sense, like
+    simultaneously running the process in valgrind and the profiler.
+
+    Args:
+        command (List[str]): The command to use to start the Ray process.
+        process_type (str): The type of the process that is being started
+            (e.g., "raylet").
+        env_updates (dict): A dictionary of additional environment variables to
+            run the command with (in addition to the caller's environment
+            variables).
+        cwd (str): The directory to run the process in.
+        use_valgrind (bool): True if we should start the process in valgrind.
+        use_gdb (bool): True if we should start the process in gdb.
+        use_valgrind_profiler (bool): True if we should start the process in
+            the valgrind profiler.
+        use_perftools_profiler (bool): True if we should profile the process
+            using perftools.
+        use_tmux (bool): True if we should start the process in tmux.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+
+    Returns:
+        A handle to the process that was started.
+    """
+    if use_gdb:
+        raise NotImplementedError
+    if use_tmux:
+        raise NotImplementedError
+    if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
+        raise ValueError(
+            "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
+            "'use_perftools_profiler' flags can be used at a time.")
+    if env_updates is None:
+        env_updates = {}
+    if not isinstance(env_updates, dict):
+        raise ValueError("The 'env_updates' argument must be a dictionary.")
+
+    modified_env = os.environ.copy()
+    modified_env.update(env_updates)
+
+    if use_valgrind:
+        command = [
+            "valgrind", "--track-origins=yes", "--leak-check=full",
+            "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
+            "--error-exitcode=1"
+        ] + command
+
+    if use_valgrind_profiler:
+        command = ["valgrind", "--tool=callgrind"] + command
+
+    if use_perftools_profiler:
+        modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
+        modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    process = subprocess.Popen(
+        command,
+        env=modified_env,
+        cwd=cwd,
+        stdout=stdout_file,
+        stderr=stderr_file)
+    return process
 
 
 def wait_for_redis_to_start(redis_ip_address,
@@ -561,8 +641,11 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             command += ["--requirepass", password]
         command += (
             ["--port", str(port), "--loglevel", "warning"] + load_module_args)
-
-        p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+        p = start_ray_process(
+            command,
+            ray.node.PROCESS_TYPE_REDIS_SERVER,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
         # did not exit within 0.1 seconds).
@@ -664,7 +747,11 @@ def start_log_monitor(redis_address,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    p = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_LOG_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
     record_log_files_in_redis(
         redis_address,
         node_ip_address, [stdout_file, stderr_file],
@@ -695,8 +782,6 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
             break
         except socket.error:
             port += 1
-    new_env = os.environ.copy()
-    new_env["REDIS_ADDRESS"] = redis_address
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
     new_notebook_directory, webui_url, token = (
@@ -714,12 +799,13 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
         command.append("--allow-root")
 
     try:
-        ui_process = subprocess.Popen(
+        ui_process = start_ray_process(
             command,
-            env=new_env,
+            ray.node.PROCESS_TYPE_WEB_UI,
+            env_updates={"REDIS_ADDRESS": redis_address},
             cwd=new_notebook_directory,
-            stdout=stdout_file,
-            stderr=stderr_file)
+            stdout_file=stdout_file,
+            stderr_file=stderr_file)
     except Exception:
         logger.warning("Failed to start the UI, you may need to run "
                        "'pip install jupyter'.")
@@ -901,30 +987,15 @@ def start_raylet(redis_address,
         redis_password or "",
         get_temp_root(),
     ]
-
-    if use_valgrind:
-        p = subprocess.Popen(
-            [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
-            ] + command,
-            stdout=stdout_file,
-            stderr=stderr_file)
-    elif use_profiler:
-        p = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
-            stdout=stdout_file,
-            stderr=stderr_file)
-    elif "RAYLET_PERFTOOLS_PATH" in os.environ:
-        modified_env = os.environ.copy()
-        modified_env["LD_PRELOAD"] = os.environ["RAYLET_PERFTOOLS_PATH"]
-        modified_env["CPUPROFILE"] = os.environ["RAYLET_PERFTOOLS_LOGFILE"]
-        p = subprocess.Popen(
-            command, stdout=stdout_file, stderr=stderr_file, env=modified_env)
-    else:
-        p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
-
+    p = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_RAYLET,
+        use_valgrind=use_valgrind,
+        use_gdb=False,
+        use_valgrind_profiler=use_profiler,
+        use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
     record_log_files_in_redis(
         redis_address,
         node_ip_address, [stdout_file, stderr_file],
@@ -1013,6 +1084,75 @@ def determine_plasma_store_config(object_store_memory=None,
     return object_store_memory, plasma_directory
 
 
+def _start_plasma_store(plasma_store_memory,
+                        use_valgrind=False,
+                        use_profiler=False,
+                        stdout_file=None,
+                        stderr_file=None,
+                        plasma_directory=None,
+                        huge_pages=False,
+                        socket_name=None):
+    """Start a plasma store process.
+
+    Args:
+        plasma_store_memory (int): The amount of memory in bytes to start the
+            plasma store with.
+        use_valgrind (bool): True if the plasma store should be started inside
+            of valgrind. If this is True, use_profiler must be False.
+        use_profiler (bool): True if the plasma store should be started inside
+            a profiler. If this is True, use_valgrind must be False.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages: a boolean flag indicating whether to start the
+            Object Store with hugetlbfs support. Requires plasma_directory.
+        socket_name (str): If provided, it will specify the socket
+            name used by the plasma store.
+
+    Return:
+        A tuple of the name of the plasma store socket and the process ID of
+            the plasma store process.
+    """
+    if use_valgrind and use_profiler:
+        raise Exception("Cannot use valgrind and profiler at the same time.")
+
+    if huge_pages and not (sys.platform == "linux"
+                           or sys.platform == "linux2"):
+        raise Exception("The huge_pages argument is only supported on "
+                        "Linux.")
+
+    if huge_pages and plasma_directory is None:
+        raise Exception("If huge_pages is True, then the "
+                        "plasma_directory argument must be provided.")
+
+    if not isinstance(plasma_store_memory, int):
+        raise Exception("plasma_store_memory should be an integer.")
+
+    plasma_store_executable = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)),
+        "core/src/plasma/plasma_store_server")
+    plasma_store_name = socket_name
+    command = [
+        plasma_store_executable, "-s", plasma_store_name, "-m",
+        str(plasma_store_memory)
+    ]
+    if plasma_directory is not None:
+        command += ["-d", plasma_directory]
+    if huge_pages:
+        command += ["-h"]
+    process = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_PLASMA_STORE,
+        use_valgrind=use_valgrind,
+        use_valgrind_profiler=use_profiler,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    return plasma_store_name, process
+
+
 def start_plasma_store(node_ip_address,
                        redis_address,
                        stdout_file=None,
@@ -1057,8 +1197,8 @@ def start_plasma_store(node_ip_address,
     logger.info("Starting the Plasma object store with {} GB memory "
                 "using {}.".format(object_store_memory_str, plasma_directory))
     # Start the Plasma store.
-    plasma_store_name, p = ray.plasma.start_plasma_store(
-        plasma_store_memory=object_store_memory,
+    plasma_store_name, p = _start_plasma_store(
+        object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
@@ -1106,10 +1246,14 @@ def start_worker(node_ip_address,
         "--redis-address=" + str(redis_address),
         "--temp-dir=" + get_temp_root()
     ]
-    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    process = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_WORKER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
     record_log_files_in_redis(redis_address, node_ip_address,
                               [stdout_file, stderr_file])
-    return p
+    return process
 
 
 def start_monitor(redis_address,
@@ -1144,12 +1288,16 @@ def start_monitor(redis_address,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:
         command.append("--redis-password=" + redis_password)
-    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    process = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
     record_log_files_in_redis(
         redis_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
-    return p
+    return process
 
 
 def start_raylet_monitor(redis_address,
@@ -1179,5 +1327,9 @@ def start_raylet_monitor(redis_address,
     command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
     if redis_password:
         command += [redis_password]
-    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
-    return p
+    process = start_ray_process(
+        command,
+        ray.node.PROCESS_TYPE_RAYLET_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    return process
