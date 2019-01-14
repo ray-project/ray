@@ -48,11 +48,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected ObjectStoreProxy objectStoreProxy;
   protected FunctionManager functionManager;
 
-  /**
-   * Actor ID -> local actor instance.
-   */
-  Map<UniqueId, Object> localActors = new HashMap<>();
-
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     functionManager = new FunctionManager(rayConfig.driverResourcePath);

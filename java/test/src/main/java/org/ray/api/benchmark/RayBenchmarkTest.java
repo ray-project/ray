@@ -6,7 +6,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.junit.Assert;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -14,6 +13,7 @@ import org.ray.api.annotation.RayRemote;
 import org.ray.api.test.BaseTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 
 public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializable {
 

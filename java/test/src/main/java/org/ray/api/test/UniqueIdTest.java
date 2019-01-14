@@ -2,12 +2,11 @@ package org.ray.api.test;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.List;
 import javax.xml.bind.DatatypeConverter;
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.UniqueIdUtil;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class UniqueIdTest {
 
