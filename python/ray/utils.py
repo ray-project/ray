@@ -6,6 +6,7 @@ import binascii
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import subprocess
