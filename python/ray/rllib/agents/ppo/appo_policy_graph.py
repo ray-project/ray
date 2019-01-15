@@ -26,17 +26,17 @@ logger = logging.getLogger(__name__)
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
-        Args:
-            cur_kl_coeff: A float32 scalar.
-            prev_actions_logp: A float32 tensor of shape [T, B].
-            actions_logp: A float32 tensor of shape [T, B].
-            actions_kl: A float32 tensor of shape [T, B].
-            actions_entropy: A float32 tensor of shape [T, B].
-            values: A float32 tensor of shape [T, B].
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-            advantages: A float32 tensor of shape [T, B].
-            value_targets: A float32 tensor of shape [T, B].
-        """
+    Arguments:
+        cur_kl_coeff: A float32 scalar.
+        prev_actions_logp: A float32 tensor of shape [T, B].
+        actions_logp: A float32 tensor of shape [T, B].
+        actions_kl: A float32 tensor of shape [T, B].
+        actions_entropy: A float32 tensor of shape [T, B].
+        values: A float32 tensor of shape [T, B].
+        valid_mask: A bool tensor of valid RNN input elements (#2992).
+        advantages: A float32 tensor of shape [T, B].
+        value_targets: A float32 tensor of shape [T, B].
+    """
 
     def __init__(self,
                  cur_kl_coeff,
@@ -104,7 +104,7 @@ class VTraceSurrogateLoss(object):
         batch_size. The reason we need to know `B` is for V-trace to properly
         handle episode cut boundaries.
 
-        Args:
+        Arguments:
             cur_kl_coeff: A float32 scalar.
             actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
             prev_actions_logp: A float32 tensor of shape [T, B].
