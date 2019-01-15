@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import logging
+import shutil
 import tensorflow as tf
 import numpy as np
 
@@ -192,6 +193,8 @@ class TFPolicyGraph(PolicyGraph):
     @override(PolicyGraph)
     def export_model(self, export_dir):
         """Export tensorflow graph to export_dir for serving."""
+        if os.path.exists(export_dir):
+            shutil.rmtree(export_dir)
         with self._sess.graph.as_default():
             builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
             signature_def_map = self._build_signature_def()
@@ -203,6 +206,8 @@ class TFPolicyGraph(PolicyGraph):
     @override(PolicyGraph)
     def export_checkpoint(self, export_dir, filename_prefix="model"):
         """Export tensorflow checkpoint to export_dir."""
+        if os.path.exists(export_dir):
+            shutil.rmtree(export_dir)
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
             saver = tf.train.Saver()

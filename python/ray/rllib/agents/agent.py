@@ -7,7 +7,6 @@ import copy
 import logging
 import os
 import pickle
-import shutil
 import six
 import tempfile
 import tensorflow as tf
@@ -587,13 +586,9 @@ class Agent(Trainable):
 
     def _export_default_policy(self, export_dir):
         model_path = os.path.join(export_dir, "policy_model")
-        if os.path.exists(model_path):
-            shutil.rmtree(model_path)
         self.export_policy_model(export_dir)
 
         ckpt_path = os.path.join(export_dir, "policy_checkpoint")
-        if os.path.exists(ckpt_path):
-            shutil.rmtree(ckpt_path)
         self.export_policy_checkpoint(export_dir)
 
     def __getstate__(self):
