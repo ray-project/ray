@@ -46,6 +46,7 @@ from ray.utils import (
     random_string,
     thread_safe_client,
     setup_logger,
+    try_update_handler
 )
 
 SCRIPT_MODE = 0
@@ -1836,6 +1837,7 @@ def connect(info,
                     worker.worker_id))
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
+            try_update_handler(sys.stderr)
             services.record_log_files_in_redis(
                 info["redis_address"],
                 info["node_ip_address"], [log_stdout_file, log_stderr_file],

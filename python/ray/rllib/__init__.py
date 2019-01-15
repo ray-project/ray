@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
