@@ -1,9 +1,13 @@
+# To generate training data, first run:
+# $ ./train.py --run=PPO --env=CartPole-v0 \
+#      --stop='{"timesteps_total": 50000}' \
+#      --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
 cartpole-marwil:
     env: CartPole-v0
     run: MARWIL
     stop:
-        episode_reward_mean: 150
         timesteps_total: 500000
     config:
-        beta: 1.0
-        input: /gruntdata/app_data/jones.wz/rl/cartpole_100_experience
+        beta:
+            grid_search: [0, 1]   # compare IL (beta=0) vs MARWIL
+        input: /tmp/out
