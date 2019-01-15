@@ -124,7 +124,6 @@ def _configure_project(config):
     assert config["provider"]["project_id"] is not None, (
         "'project_id' must be set in the 'provider' section of the autoscaler"
         " config. Notice that the project id must be globally unique.")
-
     project = _get_project(project_id)
 
     if project is None:
@@ -380,19 +379,28 @@ def _add_iam_policy_binding(service_account, roles):
 
     policy = crm.projects().getIamPolicy(resource=project_id).execute()
 
+    already_configured = True
+
     for role in roles:
         role_exists = False
         for binding in policy["bindings"]:
             if binding["role"] == role:
                 if member_id not in binding["members"]:
                     binding["members"].append(member_id)
+                    already_configured = False
                 role_exists = True
 
         if not role_exists:
+            already_configured = False
             policy["bindings"].append({
                 "members": [member_id],
                 "role": role,
             })
+
+    if already_configured: 
+        # In some managed environments, an admin needs to grant the 
+        # roles, so only call setIamPolicy if needed.
+        return
 
     result = crm.projects().setIamPolicy(
         resource=project_id, body={
