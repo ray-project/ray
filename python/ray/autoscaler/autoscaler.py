@@ -635,7 +635,7 @@ def check_extraneous(config, schema):
         elif isinstance(v, type):
             if not isinstance(config[k], v):
                 if v is str and isinstance(config[k], string_types):
-                    pass
+                    continue
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k,
