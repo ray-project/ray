@@ -22,11 +22,13 @@ DEFAULT_CONFIG = with_common_config({
     # Read data from historic data and evaluate by a sampler
     "input_evaluation": "simulation",
     # Learning rate for adam optimizer
-    "lr": 1e-3,
+    "lr": 1e-4,
     # Number of timesteps collected for each SGD round
     "train_batch_size": 2000,
     # Number of steps max to keep in the batch replay buffer
     "replay_buffer_size": 100000,
+    # Number of steps to read before learning starts
+    "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
 })
@@ -49,6 +51,7 @@ class MARWILAgent(Agent):
             self.env_creator, self._policy_graph, self.config["num_workers"])
         self.optimizer = SyncBatchReplayOptimizer(
             self.local_evaluator, self.remote_evaluators, {
+                "learning_starts": self.config["learning_starts"],
                 "buffer_size": self.config["replay_buffer_size"],
                 "train_batch_size": self.config["train_batch_size"],
             })
