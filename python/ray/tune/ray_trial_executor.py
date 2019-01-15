@@ -71,7 +71,9 @@ class RayTrialExecutor(TrialExecutor):
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             if trial.status == Trial.ERROR:
-                raise RuntimeError("Restore from checkpoint failed.")
+                raise RuntimeError(
+                    "Restore from checkpoint failed for Trial {}.".format(
+                        str(trial)))
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
@@ -113,7 +115,7 @@ class RayTrialExecutor(TrialExecutor):
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=0.25)
         except Exception:
-            logger.exception("Error stopping runner.")
+            logger.exception("Error stopping runner for Trial %s", str(trial))
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
@@ -133,17 +135,21 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint)
         except Exception:
-            logger.exception("Error starting runner. "
-                             "Trying again without checkpoint.")
+            logger.exception("Error starting runner for Trial %s", str(trial))
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 # This forces the trial to not start from checkpoint.
                 trial.clear_checkpoint()
+                logger.info(
+                    "Trying to start runner for Trial %s without checkpoint.",
+                    str(trial))
                 self._start_trial(trial)
             except Exception:
-                logger.exception("Error starting runner, aborting!")
+                logger.exception(
+                    "Error starting runner for Trial %s, aborting!",
+                    str(trial))
                 error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
@@ -159,7 +165,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
-            logger.debug("Returning resources for this trial.")
+            logger.debug("Returning resources for Trial %s.", str(trial))
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
@@ -337,6 +343,6 @@ class RayTrialExecutor(TrialExecutor):
             trial.last_result = checkpoint.last_result
             return True
         except Exception:
-            logger.exception("Error restoring runner.")
+            logger.exception("Error restoring runner for Trial %s.", trial)
             self.set_status(trial, Trial.ERROR)
             return False
