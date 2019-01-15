@@ -249,7 +249,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-
+        self._update_avail_resources()
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
 
