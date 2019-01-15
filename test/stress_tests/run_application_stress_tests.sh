@@ -117,3 +117,5 @@ do
 done
 
 cat $RESULT_FILE
+cat $RESULT_FILE | grep FAIL > test.log
+[ ! -s test.log ] || exit 1
