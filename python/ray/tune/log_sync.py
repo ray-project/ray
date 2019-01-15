@@ -22,6 +22,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.suggest.variant_generator import function as tune_function
 
 logger = logging.getLogger(__name__)
+_log_sync_warned = False
 
 # Map from (logdir, remote_dir) -> syncer
 _syncers = {}
@@ -134,9 +135,12 @@ class _LogSyncer(object):
             return
         ssh_key = get_ssh_key()
         ssh_user = get_ssh_user()
+        global _log_sync_warned
         if ssh_key is None or ssh_user is None:
-            logger.error("Log sync requires cluster to be setup with "
-                         "`ray up`.")
+            if not _log_sync_warned:
+                logger.error("Log sync requires cluster to be setup with "
+                             "`ray up`.")
+                _log_sync_warned = True
             return
         if not distutils.spawn.find_executable("rsync"):
             logger.error("Log sync requires rsync to be installed.")
@@ -163,9 +167,12 @@ class _LogSyncer(object):
         else:
             ssh_key = get_ssh_key()
             ssh_user = get_ssh_user()
+            global _log_sync_warned
             if ssh_key is None or ssh_user is None:
-                logger.error("Log sync requires cluster to be setup with "
-                             "`ray up`.")
+                if not _log_sync_warned:
+                    logger.error("Log sync requires cluster to be setup with "
+                                 "`ray up`.")
+                    _log_sync_warned = True
                 return
             if not distutils.spawn.find_executable("rsync"):
                 logger.error("Log sync requires rsync to be installed.")
