@@ -7,6 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import logging
 import gym
 
 import ray
@@ -18,6 +19,8 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
+
+logger = logging.getLogger(__name__)
 
 
 class PPOSurrogateLoss(object):
@@ -62,6 +65,7 @@ class PPOSurrogateLoss(object):
 
         # The baseline loss
         delta = tf.boolean_mask(values - value_targets, valid_mask)
+        self.value_targets = value_targets
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
@@ -145,6 +149,7 @@ class VTraceSurrogateLoss(object):
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
+        self.value_targets = self.vtrace_returns.vs
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
         # The entropy loss
@@ -264,6 +269,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         if self.config["vtrace"]:
+            logger.info("Using V-Trace surrogate loss (vtrace=True)")
             self.loss = VTraceSurrogateLoss(
                 cur_kl_coeff=self.kl_coeff,
                 actions=to_batches(actions)[:-1],
@@ -287,6 +293,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     "vtrace_clip_pg_rho_threshold"],
                 clip_param=self.config["clip_param"])
         else:
+            logger.info("Using PPO surrogate loss (vtrace=False)")
             self.loss = PPOSurrogateLoss(
                 cur_kl_coeff=self.kl_coeff,
                 prev_actions_logp=to_batches(prev_action_dist.logp(actions)),
@@ -342,6 +349,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
+        if self.config["vtrace"]:
+            values_batched = to_batches(values)[:-1]
+        else:
+            values_batched = to_batches(values)
         self.stats_fetches = {
             "stats": {
                 "model_loss": self.model.loss(),
@@ -352,8 +363,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "var_gnorm": tf.global_norm(self.var_list),
                 "vf_loss": self.loss.vf_loss,
                 "vf_explained_var": explained_variance(
-                    tf.reshape(self.loss.vtrace_returns.vs, [-1]),
-                    tf.reshape(to_batches(values)[:-1], [-1])),
+                    tf.reshape(self.loss.value_targets, [-1]),
+                    tf.reshape(values_batched, [-1])),
                 "mean_KL": self.mean_KL,
                 "max_KL": self.max_KL,
                 "median_KL": self.median_KL,

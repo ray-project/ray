@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
 from ray.rllib.agents.agent import with_base_config
 from ray.rllib.agents import impala
+from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -24,6 +25,20 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "clip_param": 0.4,
     "kl_coeff": 0.2,
     "kl_target": 0.01,
+
+    # == System params (see documentation in impala.py) ==
+    "sample_batch_size": 50,
+    "train_batch_size": 500,
+    "min_iter_time_s": 10,
+    "num_workers": 2,
+    "num_gpus": 1,
+    "num_data_loader_buffers": 1,
+    "minibatch_buffer_size": 1,
+    "num_sgd_iter": 1,
+    "replay_proportion": 0.0,
+    "replay_buffer_num_slots": 100,
+    "max_sample_requests_in_flight_per_worker": 2,
+    "broadcast_interval": 1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -35,3 +50,7 @@ class APPOAgent(impala.ImpalaAgent):
     _agent_name = "APPO"
     _default_config = DEFAULT_CONFIG
     _policy_graph = AsyncPPOPolicyGraph
+
+    @override(impala.ImpalaAgent)
+    def _get_policy_graph(self):
+        return AsyncPPOPolicyGraph
