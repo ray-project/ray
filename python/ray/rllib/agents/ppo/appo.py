@@ -26,7 +26,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "kl_coeff": 0.2,
     "kl_target": 0.01,
 
-    # == System params (see documentation in impala.py) ==
+    # == IMPALA optimizer params (see documentation in impala.py) ==
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
@@ -39,6 +39,15 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "replay_buffer_num_slots": 100,
     "max_sample_requests_in_flight_per_worker": 2,
     "broadcast_interval": 1,
+    "grad_clip": 40.0,
+    "opt_type": "adam",
+    "lr": 0.0005,
+    "lr_schedule": None,
+    "decay": 0.99,
+    "momentum": 0.0,
+    "epsilon": 0.1,
+    "vf_loss_coeff": 0.5,
+    "entropy_coeff": -0.01,
 })
 # __sphinx_doc_end__
 # yapf: enable

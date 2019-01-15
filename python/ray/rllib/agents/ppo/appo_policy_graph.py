@@ -27,7 +27,6 @@ class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
     Arguments:
-        cur_kl_coeff: A float32 scalar.
         prev_actions_logp: A float32 tensor of shape [T, B].
         actions_logp: A float32 tensor of shape [T, B].
         actions_kl: A float32 tensor of shape [T, B].
@@ -39,7 +38,6 @@ class PPOSurrogateLoss(object):
     """
 
     def __init__(self,
-                 cur_kl_coeff,
                  prev_actions_logp,
                  actions_logp,
                  action_kl,
@@ -60,8 +58,7 @@ class PPOSurrogateLoss(object):
                                           1 + clip_param))
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = (-tf.reduce_sum(surrogate_loss) +
-                        cur_kl_coeff * tf.reduce_sum(action_kl))
+        self.pi_loss = -tf.reduce_sum(surrogate_loss)
 
         # The baseline loss
         delta = tf.boolean_mask(values - value_targets, valid_mask)
@@ -79,7 +76,6 @@ class PPOSurrogateLoss(object):
 
 class VTraceSurrogateLoss(object):
     def __init__(self,
-                 cur_kl_coeff,
                  actions,
                  prev_actions_logp,
                  actions_logp,
@@ -105,7 +101,6 @@ class VTraceSurrogateLoss(object):
         handle episode cut boundaries.
 
         Arguments:
-            cur_kl_coeff: A float32 scalar.
             actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
             prev_actions_logp: A float32 tensor of shape [T, B].
             actions_logp: A float32 tensor of shape [T, B].
@@ -144,8 +139,7 @@ class VTraceSurrogateLoss(object):
                                           1 + clip_param))
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = (-tf.reduce_sum(surrogate_loss) +
-                        cur_kl_coeff * tf.reduce_sum(action_kl))
+        self.pi_loss = -tf.reduce_sum(surrogate_loss)
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
@@ -172,16 +166,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
-
-        # PPO Addition for Action KL
-        self.kl_coeff_val = self.config["kl_coeff"]
-        self.kl_target = self.config["kl_target"]
-        self.kl_coeff = tf.get_variable(
-            initializer=tf.constant_initializer(self.kl_coeff_val),
-            name="kl_coeff",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
 
         # Policy network model
         dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -272,7 +256,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         if self.config["vtrace"]:
             logger.info("Using V-Trace surrogate loss (vtrace=True)")
             self.loss = VTraceSurrogateLoss(
-                cur_kl_coeff=self.kl_coeff,
                 actions=to_batches(actions)[:-1],
                 prev_actions_logp=to_batches(
                     prev_action_dist.logp(actions))[:-1],
@@ -296,7 +279,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         else:
             logger.info("Using PPO surrogate loss (vtrace=False)")
             self.loss = PPOSurrogateLoss(
-                cur_kl_coeff=self.kl_coeff,
                 prev_actions_logp=to_batches(prev_action_dist.logp(actions)),
                 actions_logp=to_batches(action_dist.logp(actions)),
                 action_kl=prev_action_dist.kl(action_dist),
@@ -395,14 +377,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
-        return self.kl_coeff_val
 
     def value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
