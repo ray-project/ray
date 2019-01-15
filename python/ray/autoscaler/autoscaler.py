@@ -9,6 +9,7 @@ import hashlib
 import logging
 import math
 import os
+from six import string_types
 from six.moves import queue
 import subprocess
 import threading
@@ -633,6 +634,8 @@ def check_extraneous(config, schema):
             continue
         elif isinstance(v, type):
             if not isinstance(config[k], v):
+                if v is str and isinstance(config[k], string_types):
+                    pass
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k,
