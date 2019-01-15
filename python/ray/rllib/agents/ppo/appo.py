@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import override
 DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     # Whether to use V-trace weighted advantages. If false, PPO GAE advantages
     # will be used instead.
-    "vtrace": True,
+    "vtrace": False,
 
     # == These two options only apply if vtrace: False ==
     # If true, use the Generalized Advantage Estimator (GAE)

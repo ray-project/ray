@@ -11,7 +11,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
 =============  =======================  ==================  ===========  ==================
 A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
 DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
