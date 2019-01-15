@@ -183,6 +183,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             trainable=False,
             dtype=tf.float32)
 
+        # Policy network model
+        dist_class, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
+
         # Create input placeholders
         if existing_inputs:
             if self.config["vtrace"]:
@@ -197,17 +201,16 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_state_in = existing_inputs[9:-1]
                 existing_seq_lens = existing_inputs[-1]
         else:
-            if isinstance(action_space, gym.spaces.Discrete):
-                ac_size = action_space.n
-                actions = tf.placeholder(tf.int64, [None], name="ac")
-            else:
+            actions = ModelCatalog.get_action_placeholder(action_space)
+            if (not isinstance(action_space, gym.spaces.Discrete)
+                    and self.config["vtrace"]):
                 raise UnsupportedSpaceException(
-                    "Action space {} is not supported for APPO.".format(
+                    "Action space {} is not supported with vtrace.".format(
                         action_space))
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(
-                tf.float32, [None, ac_size], name="behaviour_logits")
+                tf.float32, [None, logit_dim], name="behaviour_logits")
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
@@ -220,8 +223,6 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.observations = observations
 
         # Setup the policy
-        dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
