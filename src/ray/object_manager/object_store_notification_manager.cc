@@ -5,8 +5,9 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "ray/common/common_protocol.h"
+#include "arrow/util/logging.h"
 
+#include "ray/common/common_protocol.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/util/util.h"
 

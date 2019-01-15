@@ -1,6 +1,7 @@
 cluster_name: default
 min_workers: 0
 max_workers: 0
+initial_workers: 0
 docker:
     image: ""
     container_name: ""

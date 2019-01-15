@@ -146,10 +146,8 @@ requires = [
     # The six module is required by pyarrow.
     "six >= 1.0.0",
     "flatbuffers",
+    "faulthandler;python_version<'3.3'",
 ]
-
-if sys.version_info < (3, 0):
-    requires.append("faulthandler")
 
 setup(
     name="ray",

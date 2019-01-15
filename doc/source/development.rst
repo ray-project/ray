@@ -44,7 +44,7 @@ helpful.
    .. code-block:: shell
 
      cd ray
-     python test/runtest.py APITest.testKeywordArgs
+     python -m pytest -v test/runtest.py::test_keyword_args
 
    When running tests, usually only the first test failure matters. A single
    test failure often triggers the failure of subsequent tests in the same

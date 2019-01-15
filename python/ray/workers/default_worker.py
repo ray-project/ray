@@ -36,11 +36,6 @@ parser.add_argument(
     type=str,
     help="the object store's name")
 parser.add_argument(
-    "--object-store-manager-name",
-    required=False,
-    type=str,
-    help="the object store manager's name")
-parser.add_argument(
     "--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
     "--logging-level",
@@ -56,11 +51,6 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
-    "--collect-profiling-data",
-    type=int,  # int since argparse can't handle bool values
-    default=1,
-    help="Whether to collect profiling data from workers.")
-parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
@@ -75,7 +65,6 @@ if __name__ == "__main__":
         "redis_address": args.redis_address,
         "redis_password": args.redis_password,
         "store_socket_name": args.object_store_name,
-        "manager_socket_name": args.object_store_manager_name,
         "raylet_socket_name": args.raylet_name,
     }
 
@@ -87,10 +76,7 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info,
-        mode=ray.WORKER_MODE,
-        redis_password=args.redis_password,
-        collect_profiling_data=args.collect_profiling_data)
+        info, redis_password=args.redis_password, mode=ray.WORKER_MODE)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

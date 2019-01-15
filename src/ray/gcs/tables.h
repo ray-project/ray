@@ -501,23 +501,6 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
     prefix_ = TablePrefix::PROFILE;
   };
 
-  /// Add a single profile event to the profile table.
-  ///
-  /// \param event_type The type of the event.
-  /// \param component_type The type of the component that the event came from.
-  /// \param component_id An identifier for the component that generated the event.
-  /// \param node_ip_address The IP address of the node that generated the event.
-  /// \param start_time The timestamp of the event start, this should be in seconds since
-  /// the Unix epoch.
-  /// \param end_time The timestamp of the event end, this should be in seconds since
-  /// the Unix epoch. If the event is a point event, this should be equal to start_time.
-  /// \param extra_data Additional data to associate with the event.
-  /// \return Status.
-  Status AddProfileEvent(const std::string &event_type, const std::string &component_type,
-                         const UniqueID &component_id, const std::string &node_ip_address,
-                         double start_time, double end_time,
-                         const std::string &extra_data);
-
   /// Add a batch of profiling events to the profile table.
   ///
   /// \param profile_events The profile events to record.

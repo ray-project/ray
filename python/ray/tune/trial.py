@@ -337,6 +337,9 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def clear_checkpoint(self):
+        self._checkpoint.value = None
+
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
@@ -352,9 +355,8 @@ class Trial(object):
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            logger.info("Result for {}:".format(self))
-            logger.info("  {}".format(
-                pretty_print(result).replace("\n", "\n  ")))
+            print("Result for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
         self.last_update_time = time.time()
@@ -407,7 +409,8 @@ class Trial(object):
             "_checkpoint": self._checkpoint,
             "config": self.config,
             "custom_loggers": self.custom_loggers,
-            "sync_function": self.sync_function
+            "sync_function": self.sync_function,
+            "last_result": self.last_result
         }
 
         for key, value in pickle_data.items():
@@ -428,7 +431,8 @@ class Trial(object):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
         for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function"
+                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "last_result"
         ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 

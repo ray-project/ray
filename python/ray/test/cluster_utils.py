@@ -2,12 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import logging
 import time
 
+import redis
+
 import ray
-import ray.services as services
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,10 @@ class Cluster(object):
                 for shutting down all started processes.
         """
         self.head_node = None
-        self.worker_nodes = {}
+        self.worker_nodes = set()
         self.redis_address = None
         self.connected = False
+        self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -42,69 +43,61 @@ class Cluster(object):
             head_node_args = head_node_args or {}
             self.add_node(**head_node_args)
             if connect:
-                self.connect(head_node_args)
-        if shutdown_at_exit:
-            atexit.register(self.shutdown)
+                self.connect()
 
-    def connect(self, head_node_args):
+    def connect(self):
+        """Connect the driver to the cluster."""
         assert self.redis_address is not None
         assert not self.connected
-        redis_password = head_node_args.get("redis_password")
         output_info = ray.init(
             ignore_reinit_error=True,
             redis_address=self.redis_address,
-            redis_password=redis_password)
+            redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, **override_kwargs):
+    def add_node(self, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
             cleanup=True,
-            resources={"CPU": 1},
+            num_cpus=1,
             object_store_memory=100 * (2**20) # 100 MB
 
         Args:
-            override_kwargs: Keyword arguments used in `start_ray_head`
-                and `start_ray_node`. Overrides defaults.
+            node_args: Keyword arguments used in `start_ray_head` and
+                `start_ray_node`. Overrides defaults.
 
         Returns:
             Node object of the added Ray node.
         """
-        node_kwargs = {
-            "cleanup": True,
-            "resources": {
-                "CPU": 1
-            },
-            "object_store_memory": 100 * (2**20)  # 100 MB
+        default_kwargs = {
+            "num_cpus": 1,
+            "object_store_memory": 100 * (2**20),  # 100 MB
         }
-        node_kwargs.update(override_kwargs)
-
+        ray_params = ray.parameter.RayParams(**node_args)
+        ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
-            address_info = services.start_ray_head(
-                node_ip_address=services.get_node_ip_address(),
-                include_webui=False,
-                **node_kwargs)
-            self.redis_address = address_info["redis_address"]
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
+            node = ray.node.Node(
+                ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
             self.head_node = node
+            self.redis_address = self.head_node.redis_address
+            self.redis_password = node_args.get("redis_password")
+            self.webui_url = self.head_node.webui_url
         else:
-            address_info = services.start_ray_node(
-                services.get_node_ip_address(), self.redis_address,
-                **node_kwargs)
-            # TODO(rliaw): Find a more stable way than modifying global state.
-            process_dict_copy = services.all_processes.copy()
-            for key in services.all_processes:
-                services.all_processes[key] = []
-            node = Node(address_info, process_dict_copy)
-            self.worker_nodes[node] = address_info
-        logger.info("Starting Node with raylet socket {}".format(
-            address_info["raylet_socket_names"]))
+            ray_params.update_if_absent(redis_address=self.redis_address)
+            node = ray.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=self._shutdown_at_exit)
+            self.worker_nodes.add(node)
+
+        # Wait for the node to appear in the client table. We do this so that
+        # the nodes appears in the client table in the order that the
+        # corresponding calls to add_node were made. We do this because in the
+        # tests we assume that the driver is connected to the first node that
+        # is added.
+        self._wait_for_node(node)
 
         return node
 
@@ -116,47 +109,82 @@ class Cluster(object):
                 will be removed.
         """
         if self.head_node == node:
-            self.head_node.kill_all_processes()
+            self.head_node.kill_all_processes(check_alive=False)
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_all_processes()
-            self.worker_nodes.pop(node)
+            node.kill_all_processes(check_alive=False)
+            self.worker_nodes.remove(node)
 
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def wait_for_nodes(self, retries=30):
-        """Waits for all nodes to be registered with global state.
-
-        By default, waits for 3 seconds.
+    def _wait_for_node(self, node, timeout=30):
+        """Wait until this node has appeared in the client table.
 
         Args:
-            retries (int): Number of times to retry checking client table.
+            node (ray.node.Node): The node to wait for.
+            timeout: The amount of time in seconds to wait before raising an
+                exception.
 
-        Returns:
-            True if successfully registered nodes as expected.
+        Raises:
+            Exception: An exception is raised if the timeout expires before the
+                node appears in the client table.
         """
+        ip_address, port = self.redis_address.split(":")
+        redis_client = redis.StrictRedis(
+            host=ip_address, port=int(port), password=self.redis_password)
 
-        for i in range(retries):
-            if not ray.is_initialized() or not self._check_registered_nodes():
-                time.sleep(0.1)
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            clients = ray.experimental.state.parse_client_table(redis_client)
+            object_store_socket_names = [
+                client["ObjectStoreSocketName"] for client in clients
+            ]
+            if node.plasma_store_socket_name in object_store_socket_names:
+                return
             else:
-                return True
-        return False
+                time.sleep(0.1)
+        raise Exception("Timed out while waiting for nodes to join.")
 
-    def _check_registered_nodes(self):
-        registered = len([
-            client for client in ray.global_state.client_table()
-            if client["IsInsertion"]
-        ])
-        expected = len(self.list_all_nodes())
-        if registered == expected:
-            logger.info("All nodes registered as expected.")
-        else:
-            logger.info("Currently registering {} but expecting {}".format(
-                registered, expected))
-        return registered == expected
+    def wait_for_nodes(self, timeout=30):
+        """Waits for correct number of nodes to be registered.
+
+        This will wait until the number of live nodes in the client table
+        exactly matches the number of "add_node" calls minus the number of
+        "remove_node" calls that have been made on this cluster. This means
+        that if a node dies without "remove_node" having been called, this will
+        raise an exception.
+
+        Args:
+            timeout (float): The number of seconds to wait for nodes to join
+                before failing.
+
+        Raises:
+            Exception: An exception is raised if we time out while waiting for
+                nodes to join.
+        """
+        ip_address, port = self.redis_address.split(":")
+        redis_client = redis.StrictRedis(
+            host=ip_address, port=int(port), password=self.redis_password)
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            clients = ray.experimental.state.parse_client_table(redis_client)
+            live_clients = [
+                client for client in clients if client["IsInsertion"]
+            ]
+
+            expected = len(self.list_all_nodes())
+            if len(live_clients) == expected:
+                logger.debug("All nodes registered as expected.")
+                return
+            else:
+                logger.debug(
+                    "{} nodes are currently registered, but we are expecting "
+                    "{}".format(len(live_clients), expected))
+                time.sleep(0.1)
+        raise Exception("Timed out while waiting for nodes to join.")
 
     def list_all_nodes(self):
         """Lists all nodes.
@@ -172,6 +200,18 @@ class Cluster(object):
             nodes = [self.head_node] + nodes
         return nodes
 
+    def remaining_processes_alive(self):
+        """Returns a bool indicating whether all processes are alive or not.
+
+        Note that this ignores processes that have been explicitly killed,
+        e.g., via a command like node.kill_raylet().
+
+        Returns:
+            True if all processes are alive and false otherwise.
+        """
+        return all(
+            node.remaining_processes_alive() for node in self.list_all_nodes())
+
     def shutdown(self):
         """Removes all nodes."""
 
@@ -181,63 +221,5 @@ class Cluster(object):
         for node in all_nodes:
             self.remove_node(node)
 
-        if self.head_node:
+        if self.head_node is not None:
             self.remove_node(self.head_node)
-        else:
-            logger.warning("No headnode exists!")
-
-
-class Node(object):
-    """Abstraction for a Ray node."""
-
-    def __init__(self, address_info, process_dict):
-        # TODO(rliaw): Is there a unique identifier for a node?
-        self.address_info = address_info
-        self.process_dict = process_dict
-
-    def kill_plasma_store(self):
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].kill()
-        self.process_dict[services.PROCESS_TYPE_PLASMA_STORE][0].wait()
-
-    def kill_raylet(self):
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].kill()
-        self.process_dict[services.PROCESS_TYPE_RAYLET][0].wait()
-
-    def kill_log_monitor(self):
-        self.process_dict["log_monitor"][0].kill()
-        self.process_dict["log_monitor"][0].wait()
-
-    def kill_all_processes(self):
-        for process_name, process_list in self.process_dict.items():
-            logger.info("Killing all {}(s)".format(process_name))
-            for process in process_list:
-                # Kill the process if it is still alive.
-                if process.poll() is None:
-                    process.kill()
-
-        for process_name, process_list in self.process_dict.items():
-            logger.info("Waiting all {}(s)".format(process_name))
-            for process in process_list:
-                process.wait()
-
-    def live_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-                for proc in p_list if proc.poll() is None]
-
-    def dead_processes(self):
-        return [(p_name, proc) for p_name, p_list in self.process_dict.items()
-                for proc in p_list if proc.poll() is not None]
-
-    def any_processes_alive(self):
-        return any(self.live_processes())
-
-    def all_processes_alive(self):
-        return not any(self.dead_processes())
-
-    def get_plasma_store_name(self):
-        """Return the plasma store name.
-
-        Assuming one plasma store per raylet, this may be used as a unique
-        identifier for a node.
-        """
-        return self.address_info['object_store_addresses'][0]

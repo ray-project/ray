@@ -403,7 +403,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         if self.config["grad_norm_clipping"] is not None:
             grads_and_vars = _minimize_and_clip(
                 optimizer,
-                self.loss.loss,
+                self._loss,
                 var_list=self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:

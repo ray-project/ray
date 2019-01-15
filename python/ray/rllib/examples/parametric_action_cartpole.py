@@ -175,10 +175,10 @@ if __name__ == "__main__":
         }
     elif args.run == "DQN":
         cfg = {
-            "hiddens": [],  # don't postprocess the action scores
+            "hiddens": [],  # important: don't postprocess the action scores
         }
     else:
-        cfg = {}
+        cfg = {}  # PG, IMPALA, A2C, etc.
     run_experiments({
         "parametric_cartpole": {
             "run": args.run,

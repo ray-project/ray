@@ -12,7 +12,7 @@
 typedef char TaskSpec;
 class TaskBuilder;
 
-extern PyObject *CommonError;
+extern PyObject *ray_common_error;
 
 // clang-format off
 typedef struct {

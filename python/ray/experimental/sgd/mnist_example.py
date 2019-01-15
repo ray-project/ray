@@ -101,6 +101,12 @@ class MNISTModel(Model):
             })
         return {"accuracy": accuracy}
 
+    def get_weights(self):
+        return self.variables.get_flat()
+
+    def set_weights(self, weights):
+        self.variables.set_flat(weights)
+
 
 def train_mnist(config, reporter):
     args = config["args"]

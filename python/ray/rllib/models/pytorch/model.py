@@ -2,79 +2,57 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import torch
 import torch.nn as nn
 
+from ray.rllib.models.model import _restore_original_dimensions
 
-class Model(nn.Module):
-    def __init__(self, obs_space, ac_space, options):
-        super(Model, self).__init__()
-        self._build_layers(obs_space, ac_space, options)
 
-    def _build_layers(self, inputs, num_outputs, options):
-        raise NotImplementedError
+class TorchModel(nn.Module):
+    """Defines an abstract network model for use with RLlib / PyTorch."""
 
-    def forward(self, obs):
-        """Forward pass for the model. Internal method - should only
-        be passed PyTorch Tensors.
+    def __init__(self, obs_space, num_outputs, options):
+        """All custom RLlib torch models must support this constructor.
 
-        PyTorch automatically overloads the given model
-        with this function. Recommended that model(obs)
-        is used instead of model.forward(obs). See
-        https://discuss.pytorch.org/t/any-different-between-model
-        -input-and-model-forward-input/3690
+        Arguments:
+            obs_space (gym.Space): Input observation space.
+            num_outputs (int): Output tensor must be of size
+                [BATCH_SIZE, num_outputs].
+            options (dict): Dictionary of model options.
+        """
+        nn.Module.__init__(self)
+        self.obs_space = obs_space
+        self.num_outputs = num_outputs
+        self.options = options
+
+    def forward(self, input_dict, hidden_state):
+        """Wraps _forward() to unpack flattened Dict and Tuple observations."""
+        input_dict["obs"] = input_dict["obs"].float()  # TODO(ekl): avoid cast
+        input_dict = _restore_original_dimensions(
+            input_dict, self.obs_space, tensorlib=torch)
+        outputs, features, vf, h = self._forward(input_dict, hidden_state)
+        return outputs, features, vf, h
+
+    def state_init(self):
+        """Returns a list of initial hidden state tensors, if any."""
+        return []
+
+    def _forward(self, input_dict, hidden_state):
+        """Forward pass for the model.
+
+        Prefer implementing this instead of forward() directly for proper
+        handling of Dict and Tuple observations.
+
+        Arguments:
+            input_dict (dict): Dictionary of tensor inputs, commonly
+                including "obs", "prev_action", "prev_reward", each of shape
+                [BATCH_SIZE, ...].
+            hidden_state (list): List of hidden state tensors, each of shape
+                [BATCH_SIZE, h_size].
+
+        Returns:
+            (outputs, feature_layer, values, state): Tensors of size
+                [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
+                [BATCH_SIZE], and [len(hidden_state), BATCH_SIZE, h_size].
         """
         raise NotImplementedError
-
-
-class SlimConv2d(nn.Module):
-    """Simple mock of tf.slim Conv2d"""
-
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel,
-                 stride,
-                 padding,
-                 initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU,
-                 bias_init=0):
-        super(SlimConv2d, self).__init__()
-        layers = []
-        if padding:
-            layers.append(nn.ZeroPad2d(padding))
-        conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
-        if initializer:
-            initializer(conv.weight)
-        nn.init.constant_(conv.bias, bias_init)
-
-        layers.append(conv)
-        if activation_fn:
-            layers.append(activation_fn())
-        self._model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self._model(x)
-
-
-class SlimFC(nn.Module):
-    """Simple PyTorch of `linear` function"""
-
-    def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 bias_init=0):
-        super(SlimFC, self).__init__()
-        layers = []
-        linear = nn.Linear(in_size, out_size)
-        if initializer:
-            initializer(linear.weight)
-        nn.init.constant_(linear.bias, bias_init)
-        layers.append(linear)
-        if activation_fn:
-            layers.append(activation_fn())
-        self._model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self._model(x)

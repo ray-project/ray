@@ -39,7 +39,6 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
@@ -112,6 +111,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("foo", B)
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
+
+    def testRegisterTrainableCallable(self):
+        def dummy_fn(config, reporter, steps):
+            reporter(timesteps_total=steps, done=True)
+
+        from functools import partial
+        steps = 500
+        register_trainable("test", partial(dummy_fn, steps=steps))
+        [trial] = run_experiments({
+            "foo": {
+                "run": "test",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
     def testBuiltInTrainableResources(self):
         class B(Trainable):
@@ -545,7 +562,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -759,7 +775,6 @@ class RunExperimentTest(unittest.TestCase):
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
         ray.init()
 
     def tearDown(self):
@@ -963,9 +978,6 @@ def create_mock_components():
 
 
 class TrialRunnerTest(unittest.TestCase):
-    def setUp(self):
-        os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -1758,6 +1770,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(runner2.get_trial("pending").last_result is None)
         runner2.step()
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointWithFunction(self):
+        ray.init()
+        trial = Trial(
+            "__fake",
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda i: i),
+                }
+            },
+            checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trial = runner2.get_trials()[0]
+        self.assertTrue("callbacks" in new_trial.config)
+        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
         shutil.rmtree(tmpdir)
 
 

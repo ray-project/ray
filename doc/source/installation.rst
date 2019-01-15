@@ -116,8 +116,7 @@ that you've cloned the git repository.
 
 .. code-block:: bash
 
-  export PYTHONPATH="$PYTHONPATH:./test/"
-  python -m pytest test/runtest.py
+  python -m pytest -v test/mini_test.py
 
 Cleaning the source tree
 ~~~~~~~~~~~~~~~~~~~~~~~~
