@@ -1,7 +1,6 @@
-pong-impala-fast:
+pong-appo:
     env: PongNoFrameskip-v4
     run: APPO
-    local_dir: "/data/mluo/testing"
     stop:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
@@ -18,8 +17,6 @@ pong-impala-fast:
         vf_loss_coeff: 1.0
         clip_param: 0.3
         num_gpus: 1
-        use_ppo: True
         grad_clip: 10
         model:
-          use_autoencoder: False
           dim: 42
