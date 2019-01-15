@@ -20,6 +20,59 @@ from ray.rllib.models.action_dist import Categorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
 
 
+class PPOSurrogateLoss(object):
+    """Loss used when V-trace is disabled.
+
+        Args:
+            cur_kl_coeff: A float32 scalar.
+            prev_actions_logp: A float32 tensor of shape [T, B].
+            actions_logp: A float32 tensor of shape [T, B].
+            actions_kl: A float32 tensor of shape [T, B].
+            actions_entropy: A float32 tensor of shape [T, B].
+            values: A float32 tensor of shape [T, B].
+            valid_mask: A bool tensor of valid RNN input elements (#2992).
+            advantages: A float32 tensor of shape [T, B].
+            value_targets: A float32 tensor of shape [T, B].
+        """
+
+    def __init__(self,
+                 cur_kl_coeff,
+                 prev_actions_logp,
+                 actions_logp,
+                 action_kl,
+                 actions_entropy,
+                 values,
+                 valid_mask,
+                 advantages,
+                 value_targets,
+                 vf_loss_coeff=0.5,
+                 entropy_coeff=-0.01,
+                 clip_param=0.3):
+
+        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+
+        surrogate_loss = tf.minimum(
+            advantages * logp_ratio,
+            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
+                                          1 + clip_param))
+
+        self.mean_kl = tf.reduce_mean(action_kl)
+        self.pi_loss = (-tf.reduce_sum(surrogate_loss) +
+                        cur_kl_coeff * tf.reduce_sum(action_kl))
+
+        # The baseline loss
+        delta = tf.boolean_mask(values - value_targets, valid_mask)
+        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+
+        # The entropy loss
+        self.entropy = tf.reduce_sum(
+            tf.boolean_mask(actions_entropy, valid_mask))
+
+        # The summed weighted loss
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
+                           self.entropy * entropy_coeff)
+
+
 class VTraceSurrogateLoss(object):
     def __init__(self,
                  cur_kl_coeff,
@@ -65,7 +118,6 @@ class VTraceSurrogateLoss(object):
         """
 
         # Compute vtrace on the CPU for better perf.
-
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.from_logits(
                 behaviour_policy_logits=behaviour_logits,
@@ -83,13 +135,13 @@ class VTraceSurrogateLoss(object):
 
         advantages = self.vtrace_returns.pg_advantages
         surrogate_loss = tf.minimum(
-                    advantages * logp_ratio,
-                    advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                      1 + clip_param))
+            advantages * logp_ratio,
+            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
+                                          1 + clip_param))
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = (-tf.reduce_sum(surrogate_loss) + cur_kl_coeff * tf.reduce_sum(action_kl))
-
+        self.pi_loss = (-tf.reduce_sum(surrogate_loss) +
+                        cur_kl_coeff * tf.reduce_sum(action_kl))
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
@@ -104,7 +156,7 @@ class VTraceSurrogateLoss(object):
                            self.entropy * entropy_coeff)
 
 
-class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -128,10 +180,17 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Create input placeholders
         if existing_inputs:
-            actions, dones, behaviour_logits, rewards, observations, \
-                prev_actions, prev_rewards = existing_inputs[:7]
-            existing_state_in = existing_inputs[7:-1]
-            existing_seq_lens = existing_inputs[-1]
+            if self.config["vtrace"]:
+                actions, dones, behaviour_logits, rewards, observations, \
+                    prev_actions, prev_rewards = existing_inputs[:7]
+                existing_state_in = existing_inputs[7:-1]
+                existing_seq_lens = existing_inputs[-1]
+            else:
+                actions, dones, behaviour_logits, rewards, observations, \
+                    prev_actions, prev_rewards, adv_ph, value_targets = \
+                    existing_inputs[:9]
+                existing_state_in = existing_inputs[9:-1]
+                existing_seq_lens = existing_inputs[-1]
         else:
             if isinstance(action_space, gym.spaces.Discrete):
                 ac_size = action_space.n
@@ -148,12 +207,18 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
             existing_seq_lens = None
+            if not self.config["vtrace"]:
+                adv_ph = tf.placeholder(
+                    tf.float32, name="advantages", shape=(None, ))
+                value_targets = tf.placeholder(
+                    tf.float32, name="value_targets", shape=(None, ))
+        self.observations = observations
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
-        prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")     
+        prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
             {
                 "obs": observations,
@@ -170,6 +235,7 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         prev_action_dist = dist_class(behaviour_logits)
 
         values = self.model.value_function()
+        self.value_function = values
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
 
@@ -197,26 +263,43 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.ones_like(rewards)
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-        self.loss = VTraceSurrogateLoss(
-            cur_kl_coeff = self.kl_coeff,
-            actions=to_batches(actions)[:-1],
-            prev_actions_logp=to_batches(prev_action_dist.logp(actions))[:-1],
-            actions_logp=to_batches(action_dist.logp(actions))[:-1],
-            action_kl=prev_action_dist.kl(action_dist),
-            actions_entropy=to_batches(action_dist.entropy())[:-1],
-            dones=to_batches(dones)[:-1],
-            behaviour_logits=to_batches(behaviour_logits)[:-1],
-            target_logits=to_batches(self.model.outputs)[:-1],
-            discount=config["gamma"],
-            rewards=to_batches(rewards)[:-1],
-            values=to_batches(values)[:-1],
-            bootstrap_value=to_batches(values)[-1],
-            valid_mask=to_batches(mask)[:-1],
-            vf_loss_coeff=self.config["vf_loss_coeff"],
-            entropy_coeff=self.config["entropy_coeff"],
-            clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
-            clip_param=self.config["clip_param"])
+        if self.config["vtrace"]:
+            self.loss = VTraceSurrogateLoss(
+                cur_kl_coeff=self.kl_coeff,
+                actions=to_batches(actions)[:-1],
+                prev_actions_logp=to_batches(
+                    prev_action_dist.logp(actions))[:-1],
+                actions_logp=to_batches(action_dist.logp(actions))[:-1],
+                action_kl=prev_action_dist.kl(action_dist),
+                actions_entropy=to_batches(action_dist.entropy())[:-1],
+                dones=to_batches(dones)[:-1],
+                behaviour_logits=to_batches(behaviour_logits)[:-1],
+                target_logits=to_batches(self.model.outputs)[:-1],
+                discount=config["gamma"],
+                rewards=to_batches(rewards)[:-1],
+                values=to_batches(values)[:-1],
+                bootstrap_value=to_batches(values)[-1],
+                valid_mask=to_batches(mask)[:-1],
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
+                clip_pg_rho_threshold=self.config[
+                    "vtrace_clip_pg_rho_threshold"],
+                clip_param=self.config["clip_param"])
+        else:
+            self.loss = PPOSurrogateLoss(
+                cur_kl_coeff=self.kl_coeff,
+                prev_actions_logp=to_batches(prev_action_dist.logp(actions)),
+                actions_logp=to_batches(action_dist.logp(actions)),
+                action_kl=prev_action_dist.kl(action_dist),
+                actions_entropy=to_batches(action_dist.entropy()),
+                values=to_batches(values),
+                valid_mask=to_batches(mask),
+                advantages=to_batches(adv_ph),
+                value_targets=to_batches(value_targets),
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_param=self.config["clip_param"])
 
         # KL divergence between worker and learner logits for debugging
         model_dist = Categorical(self.model.outputs)
@@ -235,6 +318,9 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             ("prev_actions", prev_actions),
             ("prev_rewards", prev_rewards),
         ]
+        if not self.config["vtrace"]:
+            loss_in.append(("advantages", adv_ph))
+            loss_in.append(("value_targets", value_targets))
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
         TFPolicyGraph.__init__(
@@ -270,7 +356,7 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                     tf.reshape(to_batches(values)[:-1], [-1])),
                 "mean_KL": self.mean_KL,
                 "max_KL": self.max_KL,
-                "median_KL": self.median_KL, 
+                "median_KL": self.median_KL,
             },
         }
         self.stats_fetches["kl"] = self.loss.mean_kl
@@ -290,7 +376,10 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return clipped_grads
 
     def extra_compute_action_fetches(self):
-        return {"behaviour_logits": self.model.outputs}
+        out = {"behaviour_logits": self.model.outputs}
+        if not self.config["vtrace"]:
+            out["vf_preds"] = self.value_function
+        return out
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
@@ -303,18 +392,45 @@ class VTraceSurrogatePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.kl_coeff.load(self.kl_coeff_val, session=self.sess)
         return self.kl_coeff_val
 
+    def value(self, ob, *args):
+        feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
+            feed_dict[k] = v
+        vf = self.sess.run(self.value_function, feed_dict)
+        return vf[0]
+
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        del sample_batch.data["new_obs"]  # not used, so save some bandwidth
-        return sample_batch
+        if not self.config["vtrace"]:
+            completed = sample_batch["dones"][-1]
+            if completed:
+                last_r = 0.0
+            else:
+                next_state = []
+                for i in range(len(self.model.state_in)):
+                    next_state.append(
+                        [sample_batch["state_out_{}".format(i)][-1]])
+                last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                self.config["gamma"],
+                self.config["lambda"],
+                use_gae=self.config["use_gae"])
+        else:
+            batch = sample_batch
+        del batch.data["new_obs"]  # not used, so save some bandwidth
+        return batch
 
     def get_initial_state(self):
         return self.model.state_init
 
     def copy(self, existing_inputs):
-        return VTracePolicyGraph(
+        return AsyncPPOPolicyGraph(
             self.observation_space,
             self.action_space,
             self.config,
