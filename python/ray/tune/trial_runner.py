@@ -116,6 +116,8 @@ class TrialRunner(object):
 
     @classmethod
     def checkpoint_exists(cls, directory):
+        if not os.path.exists(directory):
+            return False
         return any(
             (fname.startswith("experiment_state") and fname.endswith(".json"))
             for fname in os.listdir(directory))
