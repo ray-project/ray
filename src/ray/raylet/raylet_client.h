@@ -6,55 +6,21 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/client_connection.h"
 #include "ray/raylet/task_spec.h"
 #include "ray/status.h"
 
 using ray::ActorID;
+using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
 
-using MessageType = ray::protocol::MessageType;
+using ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
-
-class RayletConnection {
- public:
-  /// Connect to the raylet.
-  ///
-  /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
-  /// \return The connection information.
-  RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
-
-  ~RayletConnection() { close(conn_); }
-  /// Notify the raylet that this client is disconnecting gracefully. This
-  /// is used by actors to exit gracefully so that the raylet doesn't
-  /// propagate an error message to the driver.
-  ///
-  /// \return ray::Status.
-  ray::Status Disconnect();
-  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
-  ray::Status WriteMessage(MessageType type,
-                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
-  ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
-                                 std::unique_ptr<uint8_t[]> &reply_message,
-                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
- private:
-  /// File descriptor of the Unix domain socket that connects to raylet.
-  int conn_;
-  /// A mutex to protect stateful operations of the raylet client.
-  std::mutex mutex_;
-  /// A mutex to protect write operations of the raylet client.
-  std::mutex write_mutex_;
-};
 
 class RayletClient {
  public:
@@ -69,7 +35,10 @@ class RayletClient {
   RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
                bool is_worker, const JobID &driver_id, const Language &language);
 
-  ray::Status Disconnect() { return conn_->Disconnect(); };
+  /// Disconnect from raylet server.
+  ///
+  /// \return ray::Status.
+  ray::Status Disconnect();
 
   /// Submit a task using the raylet code path.
   ///
@@ -156,16 +125,22 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const UniqueID client_id_;
+  /// The ID for this raylet client.
+  const ClientID client_id_;
+  /// Whether this client belongs to a worker.
   const bool is_worker_;
+  /// The TaskID for the driver.
   const JobID driver_id_;
+  /// The programming language using this C++ client.
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
+  /// The Boost IO service.
+  boost::asio::io_service main_service_;
   /// The connection to the raylet server.
-  std::unique_ptr<RayletConnection> conn_;
+  std::unique_ptr<ray::LocalSimpleConnection> conn_;
 };
 
 #endif

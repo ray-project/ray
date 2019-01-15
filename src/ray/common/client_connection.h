@@ -1,15 +1,21 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
+#include <unistd.h>
 #include <deque>
 #include <memory>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/id.h"
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/status.h"
+
+using boost::asio::local::stream_protocol;
+using ray::protocol::MessageType;
 
 namespace ray {
 
@@ -21,6 +27,19 @@ namespace ray {
 /// \return Status.
 ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
                        const std::string &ip_address, int port);
+
+/// Connect a Unix domain socket with multiple retries.
+///
+/// \param socket_name The name of the socket to connect.
+/// \param num_retries The retry numbers.
+/// \param main_service Boost asio service instance.
+/// \param socket A shared pointer of a Unix domain socket.
+/// \param timeout_ms The timeout between two retries (in millisecond).
+/// \return ray::Status.
+ray::Status UnixSocketConnect(const std::string &socket_name,
+                              boost::asio::io_service &main_service,
+                              std::unique_ptr<stream_protocol::socket> &socket,
+                              int num_retries = -1, int64_t timeout_ms = -1);
 
 /// \typename ServerConnection
 ///
@@ -66,8 +85,10 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec);
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+
+  /// The underlying socket is open or not?
+  bool IsOpen() const { return socket_.is_open(); }
 
   /// Shuts down socket for this connection.
   void Close() {
@@ -193,11 +214,105 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
+/// \typename SimpleConnection
+///
+/// A generic type representing a client connection on a server. In addition to
+/// writing messages to the client, like in ServerConnection, this typename can
+/// also be used to process messages asynchronously from client.
+template <typename T>
+class SimpleConnection {
+ public:
+  SimpleConnection(boost::asio::basic_stream_socket<T> &&socket)
+      : socket_(std::move(socket)) {}
+
+  /// \return The ClientID of the remote client.
+  const ClientID &GetClientId() const { return client_id_; }
+
+  /// \param client_id The ClientID of the remote client.
+  void SetClientID(const ClientID &client_id) { client_id_ = client_id; }
+
+  /// Read a message from the client. This method is NOT thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+
+  /// Read a message from the client. This method is thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessageThreadSafe(MessageType type,
+                                    std::unique_ptr<uint8_t[]> &message) {
+    std::unique_lock<std::mutex> guard(mutex_);
+    return ReadMessage(type, message);
+  }
+
+  /// Write a message to the client. This method is NOT thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message);
+
+  /// Write a message to the client. This method is thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessageThreadSafe(MessageType type, int64_t length,
+                                     const uint8_t *message) {
+    std::unique_lock<std::mutex> guard(mutex_);
+    return WriteMessage(type, length, message);
+  }
+
+  /// Write a message and read the reply atomically. This method is thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status AtomicRequestReply(MessageType request_type, int64_t request_length,
+                                 const uint8_t *request_message, MessageType reply_type,
+                                 std::unique_ptr<uint8_t[]> &reply_message) {
+    std::unique_lock<std::mutex> guard(mutex_);
+    auto status = WriteMessage(request_type, request_length, request_message);
+    if (!status.ok()) {
+      return status;
+    }
+    return ReadMessage(reply_type, reply_message);
+  }
+
+  /// Export the socket to other languages.
+  int GetNativeHandle() { return socket_.native_handle(); }
+
+  /// The underlying socket is open or not?
+  bool IsOpen() const { return socket_.is_open(); }
+
+  /// Shuts down socket for this connection.
+  void Close() {
+    boost::system::error_code ec;
+    socket_.close(ec);
+  }
+
+ private:
+  /// A mutex to protect the stateful connection.
+  std::mutex mutex_;
+  /// The ClientID of the remote client.
+  ClientID client_id_;
+  /// The socket connection.
+  boost::asio::basic_stream_socket<T> socket_;
+};
+
 using LocalServerConnection = ServerConnection<boost::asio::local::stream_protocol>;
 using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
 using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-
+using LocalSimpleConnection = SimpleConnection<boost::asio::local::stream_protocol>;
+using TcpSimpleConnection = SimpleConnection<boost::asio::ip::tcp>;
 }  // namespace ray
 
 #endif  // RAY_COMMON_CLIENT_CONNECTION_H
