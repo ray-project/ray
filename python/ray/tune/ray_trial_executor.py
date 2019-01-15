@@ -321,7 +321,8 @@ class RayTrialExecutor(TrialExecutor):
         """Restores training state from a given model checkpoint.
 
         This will also sync the trial results to a new location
-        if restoring on a different node."""
+        if restoring on a different node.
+        """
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial._checkpoint
         if checkpoint is None or checkpoint.value is None:
@@ -339,7 +340,6 @@ class RayTrialExecutor(TrialExecutor):
                 worker_ip = ray.get(trial.runner.current_ip.remote())
                 trial.sync_logger_to_new_location(worker_ip)
                 ray.get(trial.runner.restore.remote(value))
-
             trial.last_result = checkpoint.last_result
             return True
         except Exception:
