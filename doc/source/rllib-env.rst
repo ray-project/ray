@@ -7,21 +7,21 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 **Compatibility matrix**:
 
-=============  =======================  ===========  ==========================  =======
-Algorithm      Discrete Actions         Continuous   Multi-Agent / Hierarchical  RNNs
-=============  =======================  ===========  ==========================  =======
-A2C, A3C        **Yes** `+parametric`_  **Yes**      **Yes**                     **Yes**
-PPO             **Yes** `+parametric`_  **Yes**      **Yes**                     **Yes**
-PG              **Yes** `+parametric`_  **Yes**      **Yes**                     **Yes**
-IMPALA          **Yes** `+parametric`_  No           **Yes**                     **Yes**
-DQN, Rainbow    **Yes** `+parametric`_  No           **Yes**                     No
-DDPG, TD3       No                      **Yes**      **Yes**                     No
-APEX-DQN        **Yes** `+parametric`_  No           **Yes**                     No
-APEX-DDPG       No                      **Yes**      **Yes**                     No
-ES              **Yes**                 **Yes**      No                          No
-ARS             **Yes**                 **Yes**      No                          No
-QMIX            **Yes**                 No           **Yes**                     **Yes**
-=============  =======================  ===========  ==========================  =======
+=============  =======================  ==================  ===========  ==================
+Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
+=============  =======================  ==================  ===========  ==================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
+DDPG, TD3       No                      **Yes**             **Yes**      No
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
+APEX-DDPG       No                      **Yes**             **Yes**      No
+ES              **Yes**                 **Yes**             No           No
+ARS             **Yes**                 **Yes**             No           No
+QMIX            **Yes**                 No                  **Yes**      **Yes**
+=============  =======================  ==================  ===========  ==================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 
