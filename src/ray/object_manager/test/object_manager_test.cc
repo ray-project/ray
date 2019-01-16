@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "arrow/util/logging.h"
+
 #include "ray/object_manager/object_manager.h"
 
 namespace ray {

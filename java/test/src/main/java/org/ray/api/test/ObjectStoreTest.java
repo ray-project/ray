@@ -3,12 +3,11 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.UniqueId;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Test putting and getting objects.

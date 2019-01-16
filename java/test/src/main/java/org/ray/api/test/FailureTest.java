@@ -1,11 +1,11 @@
 package org.ray.api.test;
 
-import org.junit.Assert;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.exception.RayException;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class FailureTest extends BaseTest {
 

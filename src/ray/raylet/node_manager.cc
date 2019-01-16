@@ -2,6 +2,8 @@
 
 #include <fstream>
 
+#include "arrow/util/logging.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"

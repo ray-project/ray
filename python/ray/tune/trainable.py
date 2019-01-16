@@ -104,6 +104,10 @@ class Trainable(object):
 
         return ""
 
+    def current_ip(self):
+        self._local_ip = ray.services.get_node_ip_address()
+        return self._local_ip
+
     def train(self):
         """Runs one logical iteration of training.
 
