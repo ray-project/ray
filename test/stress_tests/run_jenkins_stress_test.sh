@@ -21,4 +21,3 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} \
     -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
     $DOCKER_SHA \
     bash /ray/test/stress_tests/run_stress_tests.sh
-
