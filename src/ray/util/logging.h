@@ -2,65 +2,11 @@
 #define RAY_UTIL_LOGGING_H
 
 #include <iostream>
-#include <memory>
 #include <string>
-#ifndef _WIN32
-#include <execinfo.h>
-#endif
-
-#ifdef RAY_USE_GLOG
-#include "glog/logging.h"
-typedef google::LogMessage LoggingProvider;
-#else
-typedef ray::CerrLog LoggingProvider;
-#endif
 
 namespace ray {
 
 enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
-
-// This is the default implementation of ray log,
-// which is independent of any libs.
-class CerrLog {
- public:
-  CerrLog(RayLogLevel severity) : severity_(severity), has_logged_(false) {}
-
-  virtual ~CerrLog() {
-    if (has_logged_) {
-      std::cerr << std::endl;
-    }
-    if (severity_ == RayLogLevel::FATAL) {
-      PrintBackTrace();
-      std::abort();
-    }
-  }
-
-  std::ostream &Stream() {
-    has_logged_ = true;
-    return std::cerr;
-  }
-
-  template <class T>
-  CerrLog &operator<<(const T &t) {
-    if (severity_ != RayLogLevel::DEBUG) {
-      has_logged_ = true;
-      std::cerr << t;
-    }
-    return *this;
-  }
-
- protected:
-  const RayLogLevel severity_;
-  bool has_logged_;
-
-  void PrintBackTrace() {
-#if defined(_EXECINFO_H) || !defined(_WIN32)
-    void *buffer[255];
-    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
-    backtrace_symbols_fd(buffer, calls, 1);
-#endif
-  }
-};
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
@@ -117,6 +63,8 @@ class RayLog : public RayLogBase {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
 
+  virtual ~RayLog();
+
   /// Return whether or not current logging instance is enabled.
   ///
   /// \return True if logging is enabled and false otherwise.
@@ -150,7 +98,9 @@ class RayLog : public RayLogBase {
   static RayLogLevel GetLogLevelFromEnv();
 
  private:
-  std::unique_ptr<LoggingProvider> logging_provider_;
+  // Hide the implementation of log provider by void *.
+  // Otherwise, lib user may define the same macro to use the correct header file.
+  void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   static RayLogLevel severity_threshold_;
