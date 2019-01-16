@@ -397,8 +397,8 @@ def _add_iam_policy_binding(service_account, roles):
                 "role": role,
             })
 
-    if already_configured: 
-        # In some managed environments, an admin needs to grant the 
+    if already_configured:
+        # In some managed environments, an admin needs to grant the
         # roles, so only call setIamPolicy if needed.
         return
 
