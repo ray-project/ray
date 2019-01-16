@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # This script runs all of the application tests.
+# Currently includes an IMPALA stress test and a SGD stress test.
+# on both Python 2.7 and 3.6.
+# All tests use a separate cluster, and each cluster
+# will be destroyed upon test completion (or failure).
+
+# Note that if the environment variable DEBUG_MODE is detected,
+# the clusters will not be automatically shut down after the test runs.
+
+# This script will exit with code 1 if the test did not run successfully.
 
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
