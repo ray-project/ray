@@ -399,7 +399,7 @@ tune.run_experiments(
                 break
         time.sleep(0.3)
 
-    if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -491,7 +491,7 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
