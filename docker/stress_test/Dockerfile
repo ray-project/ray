@@ -7,5 +7,4 @@ RUN pip install -U boto3
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
 # TODO(rliaw): Remove
-RUN rm -rf /opt/conda/lib/python2.7/site-packages/ray/autoscaler && cp -r /ray/python/ray/autoscaler/ /opt/conda/lib/python2.7/site-packages/ray/autoscaler/
 WORKDIR /ray
