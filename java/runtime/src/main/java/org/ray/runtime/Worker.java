@@ -95,7 +95,12 @@ public class Worker {
         currentActorId = returnId;
       }
     } finally {
-      runtime.getWorkerContext().setCurrentTask(null, null);
+      // Don't need to reset current driver id if the worker is an actor.
+      // Because the following tasks should all have the same driver id.
+      if (!spec.isActorTask() && !spec.isActorCreationTask()) {
+        runtime.getWorkerContext().setCurrentTask(null, null);
+      }
+
       Thread.currentThread().setContextClassLoader(oldLoader);
     }
   }
