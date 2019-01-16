@@ -1796,6 +1796,33 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
         shutil.rmtree(tmpdir)
 
+    def testCheckpointOverwrite(self):
+        def count_checkpoints(cdir):
+            return sum((fname.startswith("experiment_state")
+                        and fname.endswith(".json"))
+                       for fname in os.listdir(cdir))
+
+        ray.init()
+        trial = Trial("__fake", checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 1)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for i in range(5):
+            runner2.step()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+
+        runner2.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+        shutil.rmtree(tmpdir)
+
 
 class SearchAlgorithmTest(unittest.TestCase):
     def testNestedSuggestion(self):
