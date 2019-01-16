@@ -21,6 +21,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <projetct.version>0.1-SNAPSHOT</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
+    <jaxb.version>2.3.0</jaxb.version>
   </properties>
 
   <dependencyManagement>
@@ -114,6 +115,21 @@
         <groupId>org.testng</groupId>
         <artifactId>testng</artifactId>
         <version>6.9.9</version>
+      </dependency>
+      <dependency>
+        <groupId>javax.xml.bind</groupId>
+        <artifactId>jaxb-api</artifactId>
+        <version>${jaxb.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sun.xml.bind</groupId>
+        <artifactId>jaxb-core</artifactId>
+        <version>${jaxb.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sun.xml.bind</groupId>
+        <artifactId>jaxb-impl</artifactId>
+        <version>${jaxb.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
