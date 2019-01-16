@@ -390,9 +390,7 @@ tune.run_experiments(
     # the checkpoint.
     metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(100):
-        if os.path.exists(
-                os.path.join(metadata_checkpoint_dir,
-                             TrialRunner.CKPT_FILE_NAME)):
+        if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
@@ -401,8 +399,7 @@ tune.run_experiments(
                 break
         time.sleep(0.3)
 
-    if not os.path.exists(
-            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -485,9 +482,7 @@ tune.run_experiments(
     # the checkpoint.
     metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if os.path.exists(
-                os.path.join(metadata_checkpoint_dir,
-                             TrialRunner.CKPT_FILE_NAME)):
+        if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner.restore(metadata_checkpoint_dir)
             trials = runner.get_trials()
@@ -496,8 +491,7 @@ tune.run_experiments(
                 break
         time.sleep(0.2)
 
-    if not os.path.exists(
-            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
