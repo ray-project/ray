@@ -45,11 +45,11 @@
 #define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
 
 // This macro is used to replace the "ARROW_CHECK_OK_PREPEND" macro.
-#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)                \
-  do {                                                      \
-    ::arrow::Status _s = (to_call);                         \
+#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)          \
+  do {                                                    \
+    ::arrow::Status _s = (to_call);                       \
     RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
-  } while (false)
+  } while (0)
 
 // This macro is used to replace the "ARROW_CHECK_OK" macro.
 #define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")

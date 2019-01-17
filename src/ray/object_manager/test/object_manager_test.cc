@@ -169,7 +169,7 @@ class TestObjectManagerBase : public ::testing::Test {
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
     RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                 metadata_size, &data));
+                                     metadata_size, &data));
     RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
     return object_id;
   }
