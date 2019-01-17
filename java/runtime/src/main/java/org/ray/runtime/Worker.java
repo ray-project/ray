@@ -59,7 +59,8 @@ public class Worker {
       RayFunction rayFunction = runtime.getFunctionManager()
           .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
-      runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
+      runtime.getWorkerContext().setCurrentTask(
+        spec.taskId, spec.driverId, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
       Object actor = null;
@@ -95,10 +96,13 @@ public class Worker {
         currentActorId = returnId;
       }
     } finally {
-      // Don't need to reset current driver id if the worker is an actor.
-      // Because the following tasks should all have the same driver id.
-      if (!spec.isActorTask() && !spec.isActorCreationTask()) {
-        runtime.getWorkerContext().setCurrentTask(null, null);
+      if (spec.isActorTask() || spec.isActorCreationTask()) {
+        // Don't need to reset current driver id if the worker is an actor.
+        // Because the following tasks should all have the same driver id.
+        runtime.getWorkerContext().setCurrentTask(null, spec.driverId, null);
+      } else {
+        // For normal task, we should set current task id to null as well.
+        runtime.getWorkerContext().setCurrentTask(null, null, null);
       }
 
       Thread.currentThread().setContextClassLoader(oldLoader);
