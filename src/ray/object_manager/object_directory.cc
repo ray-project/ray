@@ -8,11 +8,15 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
-/// Process a suffix of the object table log and store the result in
-/// client_ids. This assumes that client_ids already contains the result of the
-/// object table log up to but not including this suffix. This also stores a
-/// bool in has_been_created indicating whether the object has ever been
-/// created before.
+/// Process a suffix of the object table log.
+/// If object is inlined (inline_object_flag = TRUE), its data and metadata are
+/// stored with the object's entry so we read them into nline_object_data, and
+/// nline_object_metadata, respectively.
+/// If object is not inlined, store the result in client_ids.
+/// This assumes that client_ids already contains the result of the
+/// object table log up to but not including this suffix.
+/// This function also stores a bool in has_been_created indicating whether the
+/// object has ever been created before.
 void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids,
@@ -27,18 +31,17 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
   //   client2.is_eviction = false
   // In such a scenario, we want to indicate client2 is the only client that contains
   // the object, which the following code achieves.
+  //
+  // If object is inlined each entry contains both the object's data and metadata,
+  // so we don't care about its location. 
   if (!location_history.empty()) {
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
     *has_been_created = true;
   }
+  *inline_object_flag = false;
   for (const auto &object_table_data : location_history) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
-    if (!object_table_data.is_eviction) {
-      client_ids->insert(client_id);
-    } else {
-      client_ids->erase(client_id);
-    }
     if (object_table_data.inline_object_flag) {
       // This is an inlined object. Read object's data from the object's GCS entry.
       *inline_object_flag = object_table_data.inline_object_flag;
@@ -46,15 +49,23 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
                                  object_table_data.inline_object_data.end());
       inline_object_metadata->assign(object_table_data.inline_object_metadata.begin(),
                                      object_table_data.inline_object_metadata.end());
-
+      break; // We got the data and metadata of the object so exit the loop.
+    } else {
+      if (!object_table_data.is_eviction) {
+        client_ids->insert(client_id);
+      } else {
+        client_ids->erase(client_id);
+      }
     }
   }
-  // Filter out the removed clients from the object locations.
-  for (auto it = client_ids->begin(); it != client_ids->end();) {
-    if (client_table.IsRemoved(*it)) {
-      it = client_ids->erase(it);
-    } else {
-      it++;
+  if (!*inline_object_flag) {
+    // Filter out the removed clients from the object locations.
+    for (auto it = client_ids->begin(); it != client_ids->end();) {
+      if (client_table.IsRemoved(*it)) {
+        it = client_ids->erase(it);
+      } else {
+        it++;
+      }
     }
   }
 }

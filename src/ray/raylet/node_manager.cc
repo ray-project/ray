@@ -1194,6 +1194,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
             if (inline_object_flag) {
+              // If object is inlined, we already have its data and metadata, so return.
               return;
             }
             if (clients.empty() && has_been_created) {

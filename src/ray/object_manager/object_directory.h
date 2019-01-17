@@ -102,6 +102,9 @@ class ObjectDirectoryInterface {
   /// \param object_id The object id that was put into the store.
   /// \param client_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
+  /// \param inline_object_flag Flag specifying whether object is inlined.
+  /// \param inline_object_data Object data. Only for inlined objects.
+  /// \param inline_object_metadata Object metadata. Only for inlined objects..
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,

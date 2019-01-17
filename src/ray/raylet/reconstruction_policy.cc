@@ -147,8 +147,8 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
             const ray::ObjectID &object_id,
             const std::unordered_set<ray::ClientID> &clients,
             bool inline_object_flag,
-            const std::vector<uint8_t> inline_object_data,
-            const std::string inline_object_metadata,
+            const std::vector<uint8_t> &inline_object_data,
+            const std::string &inline_object_metadata,
             bool created) {
           if (clients.empty() && !inline_object_flag) {
             // The required object no longer exists on any live nodes. Attempt

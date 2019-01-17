@@ -184,6 +184,8 @@ class RayConfig {
         object_manager_default_chunk_size_ = pair.second;
       } else if (pair.first == "object_manager_repeated_push_delay_ms") {
         object_manager_repeated_push_delay_ms_ = pair.second;
+      } else if (pair.first == "inline_object_max_size_bytes") {
+        inline_object_max_size_bytes_ = pair.second;
       } else if (pair.first == "max_task_lease_timeout_ms") {
         max_task_lease_timeout_ms_ = pair.second;
       } else {
@@ -361,6 +363,8 @@ class RayConfig {
   int num_workers_per_process_;
 
   /// Maximum size of an inline object (bytes).
+  /// Inline objects are objects whose data and metadata are inlined in the GCS o
+  /// bject table entry, which normally only specifies the object location.
   int inline_object_max_size_bytes_;
 
   // Maximum timeout in milliseconds within which a task lease must be renewed.
