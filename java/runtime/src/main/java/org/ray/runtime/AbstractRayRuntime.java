@@ -216,7 +216,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
-    Preconditions.checkState(!workerContext.getCurrentDriverId().isNil());
     TaskSpec spec = createTaskSpec(func, RayActorImpl.NIL, args, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -224,7 +223,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject call(RayFunc func, RayActor actor, Object[] args) {
-    Preconditions.checkState(!workerContext.getCurrentDriverId().isNil());
     if (!(actor instanceof RayActorImpl)) {
       throw new IllegalArgumentException("Unsupported actor type: " + actor.getClass().getName());
     }
@@ -243,7 +241,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @SuppressWarnings("unchecked")
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
-    Preconditions.checkState(!workerContext.getCurrentDriverId().isNil());
     TaskSpec spec = createTaskSpec(actorFactoryFunc, RayActorImpl.NIL,
         args, true, options);
     RayActorImpl<?> actor = new RayActorImpl(spec.returnIds[0]);
