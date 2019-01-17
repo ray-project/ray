@@ -1187,7 +1187,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
             const ray::ObjectID &object_id,
             const std::unordered_set<ray::ClientID> &clients,
             bool inline_object_flag,
-            const std::vector<uint8_t> inline_object_data,
+            const std::vector<uint8_t> &inline_object_data,
             const std::string inline_object_metadata,
             bool has_been_created) {
           if (!*task_marked_as_failed) {
