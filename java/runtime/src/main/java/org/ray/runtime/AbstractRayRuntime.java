@@ -231,6 +231,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       spec = createTaskSpec(func, actorImpl, args, false, null);
       spec.getExecutionDependencies().add(((RayActorImpl) actor).getTaskCursor());
       actorImpl.setTaskCursor(spec.returnIds[1]);
+      actorImpl.clearNewActorHandles();
     }
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
@@ -285,7 +286,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
     }
+
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentDriverId(), func);
+
     return new TaskSpec(
         workerContext.getCurrentDriverId(),
         taskId,
@@ -296,6 +299,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),
+        (UniqueId[]) actor.getNewActorHandles().toArray(),
         ArgumentsBuilder.wrap(args),
         returnIds,
         resources,
