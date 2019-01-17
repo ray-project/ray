@@ -25,7 +25,7 @@ This document describes the process for creating new releases.
 
      NEW_VERSION=0.x.x  # Change this
      OLD_VERSION=${$(git describe --tags --abbrev=0)#"ray-"}
-     sed -i '' "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
+     sed -i'.bak' -e "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
      # sed -i "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py if on Linux
      git checkout -b release_$NEW_VERSION
      git add python/ray/__init__.py && git commit -m "Bump version"
