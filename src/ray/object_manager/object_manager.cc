@@ -613,7 +613,7 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const ObjectID &lookup_object_id,
                           const std::unordered_set<ClientID> &client_ids,
                           bool inline_object_flag,
-                          const std::vector<uint8_t> inline_object_data,
+                          const std::vector<uint8_t> &inline_object_data,
                           const std::string &inline_object_metadata,
                           bool created) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
