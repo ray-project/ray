@@ -8,7 +8,7 @@
 
 namespace ray {
 
-template <typename T>
+template <class T>
 Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
                   const boost::asio::mutable_buffer &buffer) {
   boost::system::error_code ec;
@@ -29,7 +29,7 @@ Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
   return Status::OK();
 }
 
-template <typename T>
+template <class T>
 Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
                   const std::vector<boost::asio::mutable_buffer> &buffer) {
   // Loop until all bytes are read while handling interrupts.
@@ -40,7 +40,7 @@ Status ReadBuffer(boost::asio::basic_stream_socket<T> &socket,
   return Status::OK();
 }
 
-template <typename T>
+template <class T>
 Status WriteBuffer(boost::asio::basic_stream_socket<T> &socket,
                    const std::vector<boost::asio::const_buffer> &buffer) {
   boost::system::error_code error;
@@ -145,6 +145,45 @@ Status ServerConnection<T>::ReadBuffer(
 }
 
 template <class T>
+Status ServerConnection<T>::ReadBuffer(boost::asio::mutable_buffer &buffer) {
+  return ray::ReadBuffer<T>(socket_, buffer);
+}
+
+template <class T>
+ray::Status ServerConnection<T>::ReadMessage(int64_t type,
+                                             std::unique_ptr<uint8_t[]> &message) {
+  int64_t read_version, read_type, read_length;
+  // Wait for a message header from the client. The message header includes the
+  // protocol version, the message type, and the length of the message.
+  std::vector<boost::asio::mutable_buffer> header;
+  header.push_back(boost::asio::buffer(&read_version, sizeof(read_version)));
+  header.push_back(boost::asio::buffer(&read_type, sizeof(read_type)));
+  header.push_back(boost::asio::buffer(&read_length, sizeof(read_length)));
+
+  auto status = ReadBuffer(header);
+  if (!status.ok()) {
+    return status;
+  }
+  // If there was no error, make sure the protocol version matches.
+  RAY_CHECK(read_version == RayConfig::instance().ray_protocol_version());
+  if (read_type == static_cast<int64_t>(MessageType::DisconnectClient)) {
+    return ray::Status::IOError("Disconnection message received.");
+  }
+
+  if (type != read_type) {
+    return ray::Status::TypeError(
+        std::string("Connection corrupted. ") + "Expected message type: " +
+        std::to_string(type) + "; got message type: " +
+        std::to_string(read_type) + ". Check logs or dmesg for previous errors.");
+  }
+  // Create read buffer.
+  message.reset(new uint8_t[read_length]);
+  auto buffer = boost::asio::mutable_buffer(message.get(), read_length);
+  // Wait for the message to be read.
+  return ReadBuffer(buffer);
+}
+
+template <class T>
 ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
   sync_writes_ += 1;
@@ -234,6 +273,23 @@ void ServerConnection<T>::DoAsyncWrites() {
 }
 
 template <class T>
+const ClientID &ServerConnection<T>::GetClientId() const {
+  return client_id_;
+}
+
+template <class T>
+void ServerConnection<T>::SetClientID(const ClientID &client_id) {
+  client_id_ = client_id;
+}
+
+template <class T>
+ray::Status ServerConnection<T>::Close() {
+  boost::system::error_code ec;
+  socket_.close(ec);
+  return boost_to_ray_status(ec);
+}
+
+template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
     boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
@@ -254,16 +310,6 @@ ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
       message_handler_(message_handler),
       debug_label_(debug_label),
       error_message_type_(error_message_type) {}
-
-template <class T>
-const ClientID &ClientConnection<T>::GetClientId() const {
-  return client_id_;
-}
-
-template <class T>
-void ClientConnection<T>::SetClientID(const ClientID &client_id) {
-  client_id_ = client_id;
-}
 
 template <class T>
 void ClientConnection<T>::ProcessMessages() {
@@ -332,64 +378,9 @@ std::string ServerConnection<T>::DebugString() const {
   return result.str();
 }
 
-template <typename T>
-ray::Status ThreadSafeConnection<T>::Close() {
-  boost::system::error_code ec;
-  socket_.close(ec);
-  return boost_to_ray_status(ec);
-}
-
-template <typename T>
-ray::Status ThreadSafeConnection<T>::ReadMessage_(MessageType type,
-                                                  std::unique_ptr<uint8_t[]> &message) {
-  int64_t read_version, read_type, read_length;
-  // Wait for a message header from the client. The message header includes the
-  // protocol version, the message type, and the length of the message.
-  std::vector<boost::asio::mutable_buffer> header{
-      boost::asio::buffer(&read_version, sizeof(read_version)),
-      boost::asio::buffer(&read_type, sizeof(read_type)),
-      boost::asio::buffer(&read_length, sizeof(read_length))};
-
-  auto status = ReadBuffer<T>(socket_, header);
-  if (!status.ok()) {
-    return status;
-  }
-  // If there was no error, make sure the protocol version matches.
-  RAY_CHECK(read_version == RayConfig::instance().ray_protocol_version());
-  if (read_type == static_cast<int64_t>(MessageType::DisconnectClient)) {
-    return ray::Status::IOError("Disconnection message received.");
-  }
-
-  if (static_cast<int64_t>(type) != read_type) {
-    return ray::Status::TypeError(
-        std::string("Connection corrupted. ") + "Expected message type: " +
-        std::to_string(static_cast<int64_t>(type)) + "; got message type: " +
-        std::to_string(read_type) + ". Check logs or dmesg for previous errors.");
-  }
-  // Create read buffer.
-  message.reset(new uint8_t[read_length]);
-  // Wait for the message to be read.
-  return ReadBuffer<T>(socket_, boost::asio::buffer(message.get(), read_length));
-}
-
-template <typename T>
-ray::Status ThreadSafeConnection<T>::WriteMessage_(MessageType type, int64_t length,
-                                                   const uint8_t *message) {
-  int64_t write_version = RayConfig::instance().ray_protocol_version();
-  int64_t write_type = static_cast<int64_t>(type);
-  std::vector<boost::asio::const_buffer> message_buffers{
-      boost::asio::const_buffer(&write_version, sizeof(write_version)),
-      boost::asio::const_buffer(&write_type, sizeof(write_type)),
-      boost::asio::const_buffer(&length, sizeof(length)),
-      boost::asio::const_buffer(message, length)};
-  return WriteBuffer<T>(socket_, message_buffers);
-}
-
 template class ServerConnection<boost::asio::local::stream_protocol>;
 template class ServerConnection<boost::asio::ip::tcp>;
 template class ClientConnection<boost::asio::local::stream_protocol>;
 template class ClientConnection<boost::asio::ip::tcp>;
-template class ThreadSafeConnection<boost::asio::local::stream_protocol>;
-template class ThreadSafeConnection<boost::asio::ip::tcp>;
 
 }  // namespace ray

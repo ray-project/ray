@@ -125,6 +125,8 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
+  /// A mutex to protect the stateful connection.
+  std::mutex mutex_;
   /// The ID for this raylet client.
   const ClientID client_id_;
   /// Whether this client belongs to a worker.
@@ -140,7 +142,7 @@ class RayletClient {
   /// The Boost IO service.
   boost::asio::io_service main_service_;
   /// The connection to the raylet server.
-  std::unique_ptr<ray::LocalThreadSafeConnection> conn_;
+  std::shared_ptr<ray::LocalServerConnection> conn_;
 };
 
 #endif

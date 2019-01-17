@@ -31,7 +31,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   auto status = ray::UnixSocketConnect(raylet_socket, main_service_, _socket);
   RAY_CHECK_OK_PREPEND(status,
                        "Unable to connect to raylet socket " + raylet_socket + ".");
-  conn_.reset(new ray::LocalThreadSafeConnection(std::move(*_socket.release())));
+  conn_ = ray::LocalServerConnection::Create(std::move(*_socket.release()));
   conn_->SetClientID(client_id);
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
@@ -73,11 +73,14 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
 
 ray::Status RayletClient::GetTask(
     std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
-  std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the local
   // scheduler gives this client a task.
-  auto status = conn_->AtomicRequestReply(MessageType::GetTask, 0, nullptr,
-                                          MessageType::ExecuteTask, reply);
+  auto status = conn_->WriteMessage(MessageType::GetTask, 0, nullptr);
+  if (!status.ok()) {
+    return status;
+  }
+  std::unique_ptr<uint8_t[]> reply;
+  status = conn_->ReadMessage(MessageType::ExecuteTask, reply);
   if (!status.ok()) {
     return status;
   }
@@ -147,13 +150,17 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  std::unique_ptr<uint8_t[]> reply;
-  auto status =
-      conn_->AtomicRequestReply(MessageType::WaitRequest, fbb.GetSize(),
-                                fbb.GetBufferPointer(), MessageType::WaitReply, reply);
+  auto status = conn_->WriteMessage(MessageType::WaitRequest, fbb.GetSize(),
+                                    fbb.GetBufferPointer());
   if (!status.ok()) {
     return status;
   }
+  std::unique_ptr<uint8_t[]> reply;
+  status = conn_->ReadMessage(MessageType::WaitReply, reply);
+  if (!status.ok()) {
+    return status;
+  }
+
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();

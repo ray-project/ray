@@ -66,6 +66,32 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// \return Status.
   ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
 
+  /// Write a message to the client.
+  ///
+  /// \param type The Ray flatbuffer protocol message type.
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message) {
+    return WriteMessage(static_cast<int64_t>(type), length, message);
+  }
+
+  /// Read a message from the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage(int64_t type, std::unique_ptr<uint8_t[]> &message);
+
+  /// Read a message from the client.
+  ///
+  /// \param type The Ray flatbuffer protocol message type.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message) {
+    return ReadMessage(static_cast<int64_t>(type), message);
+  }
+
   /// Write a message to the client asynchronously.
   ///
   /// \param type The message type (e.g., a flatbuffer enum).
@@ -87,14 +113,22 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// \param ec The error code object in which to store error codes.
   Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
+  Status ReadBuffer(boost::asio::mutable_buffer &buffer);
+
   /// The underlying socket is open or not?
   bool IsOpen() const { return socket_.is_open(); }
 
+  /// Export the socket to other languages.
+  int GetNativeHandle() { return socket_.native_handle(); }
+
+  /// \return The ClientID of the remote client.
+  const ClientID &GetClientId() const;
+
+  /// \param client_id The ClientID of the remote client.
+  void SetClientID(const ClientID &client_id);
+
   /// Shuts down socket for this connection.
-  void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
-  }
+  ray::Status Close();
 
   std::string DebugString() const;
 
@@ -113,6 +147,9 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;
+
+  /// The ClientID of the remote client.
+  ClientID client_id_;
 
   /// Max number of messages to write out at once.
   const int async_write_max_messages_;
@@ -176,12 +213,6 @@ class ClientConnection : public ServerConnection<T> {
     return std::static_pointer_cast<ClientConnection<T>>(shared_from_this());
   }
 
-  /// \return The ClientID of the remote client.
-  const ClientID &GetClientId() const;
-
-  /// \param client_id The ClientID of the remote client.
-  void SetClientID(const ClientID &client_id);
-
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
@@ -198,9 +229,6 @@ class ClientConnection : public ServerConnection<T> {
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
-
-  /// The ClientID of the remote client.
-  ClientID client_id_;
   /// The handler for a message from the client.
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.
@@ -214,98 +242,11 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
-/// \typename ThreadSafeConnection
-///
-/// A generic type representing a thread-safe client connection.
-template <typename T>
-class ThreadSafeConnection {
- public:
-  ThreadSafeConnection(boost::asio::basic_stream_socket<T> &&socket)
-      : socket_(std::move(socket)) {}
-
-  /// \return The ClientID of the remote client.
-  const ClientID &GetClientId() const { return client_id_; }
-
-  /// \param client_id The ClientID of the remote client.
-  void SetClientID(const ClientID &client_id) { client_id_ = client_id; }
-
-  /// Read a message from the client. This method is thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message) {
-    std::unique_lock<std::mutex> guard(mutex_);
-    return ReadMessage_(type, message);
-  }
-
-  /// Write a message to the client. This method is thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param length The size in bytes of the message.
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message) {
-    std::unique_lock<std::mutex> guard(mutex_);
-    return WriteMessage_(type, length, message);
-  }
-
-  /// Write a message and read the reply atomically. This method is thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param length The size in bytes of the message.
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status AtomicRequestReply(MessageType request_type, int64_t request_length,
-                                 const uint8_t *request_message, MessageType reply_type,
-                                 std::unique_ptr<uint8_t[]> &reply_message) {
-    std::unique_lock<std::mutex> guard(mutex_);
-    auto status = WriteMessage_(request_type, request_length, request_message);
-    if (!status.ok()) {
-      return status;
-    }
-    return ReadMessage_(reply_type, reply_message);
-  }
-
-  /// Export the socket to other languages.
-  int GetNativeHandle() { return socket_.native_handle(); }
-
-  /// The underlying socket is open or not?
-  bool IsOpen() const { return socket_.is_open(); }
-
-  /// Shuts down socket for this connection.
-  ray::Status Close();
-
- private:
-  /// Read a message from the client. This method is NOT thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status ReadMessage_(MessageType type, std::unique_ptr<uint8_t[]> &message);
-
-  /// Write a message to the client. This method is NOT thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param length The size in bytes of the message.
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status WriteMessage_(MessageType type, int64_t length, const uint8_t *message);
-
-  /// A mutex to protect the stateful connection.
-  std::mutex mutex_;
-  /// The ClientID of the remote client.
-  ClientID client_id_;
-  /// The socket connection.
-  boost::asio::basic_stream_socket<T> socket_;
-};
-
 using LocalServerConnection = ServerConnection<stream_protocol>;
 using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
 using LocalClientConnection = ClientConnection<stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-using LocalThreadSafeConnection = ThreadSafeConnection<stream_protocol>;
-using TcpThreadSafeConnection = ThreadSafeConnection<boost::asio::ip::tcp>;
+
 }  // namespace ray
 
 #endif  // RAY_COMMON_CLIENT_CONNECTION_H

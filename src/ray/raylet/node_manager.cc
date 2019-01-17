@@ -402,7 +402,10 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // Remove the remote server connection.
   const auto connection_entry = remote_server_connections_.find(client_id);
   if (connection_entry != remote_server_connections_.end()) {
-    connection_entry->second->Close();
+    auto status = connection_entry->second->Close();
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to close the connection to the remote server.";
+    }
     remote_server_connections_.erase(connection_entry);
   } else {
     RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
