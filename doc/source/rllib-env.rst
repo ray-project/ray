@@ -21,6 +21,7 @@ APEX-DDPG       No                      **Yes**             **Yes**      No
 ES              **Yes**                 **Yes**             No           No
 ARS             **Yes**                 **Yes**             No           No
 QMIX            **Yes**                 No                  **Yes**      **Yes**
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 =============  =======================  ==================  ===========  ==================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
