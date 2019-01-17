@@ -19,10 +19,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const ClientID &local_client_id) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
-  // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
-  RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
-
 #ifndef NDEBUG
+  RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
@@ -52,10 +50,12 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
       available_node_resources.SubtractResourcesStrict(node_resources.GetLoadResources());
+#ifndef NDEBUG
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
                      << " load: " << node_resources.GetLoadResources().ToString()
                      << " avail-load: " << available_node_resources.ToString();
+#endif
 
       if (resource_demand.IsSubset(available_node_resources)) {
         // This node is a feasible candidate.

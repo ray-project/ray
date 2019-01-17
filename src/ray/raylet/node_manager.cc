@@ -166,10 +166,9 @@ ray::Status NodeManager::RegisterGcs() {
     HeartbeatBatchAdded(heartbeat_batch);
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added, nullptr,
-      [](gcs::AsyncGcsClient *client) {
-        RAY_LOG(DEBUG) << "Heartbeat batch table subscription done.";
-      }));
+      UniqueID::nil(), UniqueID::nil(), heartbeat_batch_added,
+      /*subscribe_callback=*/nullptr,
+      /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
   const auto driver_table_handler = [this](
@@ -246,7 +245,6 @@ void NodeManager::Heartbeat() {
   }
   last_heartbeat_at_ms_ = now_ms;
 
-  RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
   const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -254,8 +252,6 @@ void NodeManager::Heartbeat() {
   heartbeat_data->client_id = my_client_id.binary();
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
-  RAY_LOG(DEBUG) << "[Heartbeat] resources available: "
-                 << local_resources.GetAvailableResources().ToString();
   for (const auto &resource_pair :
        local_resources.GetAvailableResources().GetResourceMap()) {
     heartbeat_data->resources_available_label.push_back(resource_pair.first);
@@ -274,16 +270,8 @@ void NodeManager::Heartbeat() {
 
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
-      [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-         const HeartbeatTableDataT &data) {
-        RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
-      });
-
-  if (!status.ok()) {
-    RAY_LOG(INFO) << "heartbeat failed: string " << status.ToString() << status.message();
-    RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
-  }
-  RAY_CHECK_OK(status);
+      /*success_callback=*/nullptr);
+  RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
 
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
@@ -330,7 +318,7 @@ void NodeManager::GetObjectManagerProfileInfo() {
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
 
-  RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
+  RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
@@ -341,11 +329,10 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // TODO(atumanov): make remote client lookup O(1)
   if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) ==
       remote_clients_.end()) {
-    RAY_LOG(DEBUG) << "a new client: " << client_id;
     remote_clients_.push_back(client_id);
   } else {
     // NodeManager connection to this client was already established.
-    RAY_LOG(DEBUG) << "received a new client connection that already exists: "
+    RAY_LOG(DEBUG) << "Received a new client connection that already exists: "
                    << client_id;
     return;
   }
@@ -383,7 +370,7 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
   const ClientID client_id = ClientID::from_binary(client_data.client_id);
-  RAY_LOG(DEBUG) << "[ClientRemoved] received callback from client id " << client_id;
+  RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -429,7 +416,6 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
 
 void NodeManager::HeartbeatAdded(const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(client_id);
@@ -446,7 +432,6 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   ResourceSet remote_load(heartbeat_data.resource_load_label,
                           heartbeat_data.resource_load_capacity);
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received load: " << remote_load.ToString();
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
@@ -615,9 +600,9 @@ void NodeManager::DispatchTasks(
     const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
   std::unordered_set<TaskID> removed_task_ids;
   for (const auto &it : tasks_with_resources) {
+    const auto &task_resources = it.first;
     for (const auto &task_id : it.second) {
       const auto &task = local_queues_.GetReadyQueue().GetTask(task_id);
-      const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
       if (!local_available_resources_.Contains(task_resources)) {
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
@@ -636,8 +621,11 @@ void NodeManager::ProcessClientMessage(
     const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(DEBUG) << "Message of " << protocol::EnumNameMessageType(message_type_value)
-                 << "(" << message_type << ")";
+  RAY_LOG(DEBUG) << "[Worker] Message "
+                 << protocol::EnumNameMessageType(message_type_value) << "("
+                 << message_type << ") from worker with PID "
+                 << (registered_worker ? std::to_string(registered_worker->Pid())
+                                       : "nil");
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the driver has died already),
     // all the messages are ignored except DisconnectClient.
@@ -1012,8 +1000,10 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
 
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-    RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
-                   << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
+    RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
+                   << " on node " << gcs_client_->client_table().GetLocalClientId()
+                   << " spillback=" << task.GetTaskExecutionSpec().NumForwards()
+                   << " at time " << current_sys_time_ms();
     SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   } break;
   case protocol::MessageType::DisconnectClient: {
@@ -1167,7 +1157,8 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
 
 void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId()
+                 << " as failed if return values lost.";
   // Loop over the return IDs (except the dummy ID) and check whether a
   // location for the return ID exists.
   int64_t num_returns = spec.NumReturns();
@@ -1212,7 +1203,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                  << ", actor_creation_id=" << spec.ActorCreationId()
                  << ", actor_handle_id=" << spec.ActorHandleId()
                  << ", actor_counter=" << spec.ActorCounter()
-                 << ", task_descriptor=" << spec.FunctionDescriptorString();
+                 << ", task_descriptor=" << spec.FunctionDescriptorString() << " on node "
+                 << gcs_client_->client_table().GetLocalClientId() << " at time "
+                 << current_sys_time_ms();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1795,6 +1788,8 @@ void NodeManager::ResubmitTask(const Task &task) {
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
+  RAY_LOG(DEBUG) << "Object local " << object_id << ", " << ready_task_ids.size()
+                 << " tasks ready at time " << current_sys_time_ms();
   // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
@@ -1820,6 +1815,8 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
   const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
+  RAY_LOG(DEBUG) << "Object missing " << object_id << ", " << waiting_task_ids.size()
+                 << " tasks waiting at time " << current_sys_time_ms();
   // Transition any tasks that were in the runnable state and are dependent on
   // this object to the waiting state.
   if (!waiting_task_ids.empty()) {
@@ -1905,8 +1902,11 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
-  RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="
-                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
+  RAY_LOG(DEBUG) << "Forwarding task " << task_id << " from "
+                 << gcs_client_->client_table().GetLocalClientId() << " to " << node_id
+                 << " spillback="
+                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards()
+                 << " at time " << current_sys_time_ms();
 
   // Lookup remote server connection for this node_id and use it to send the request.
   auto it = remote_server_connections_.find(node_id);
