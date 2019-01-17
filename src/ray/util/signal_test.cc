@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <cstdlib>
 #include <iostream>
+#include <csignal>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
