@@ -142,6 +142,10 @@ def run_experiments(experiments,
                                     trial_executor)
     else:
         logger.info("Starting a new experiment.")
+        if any(not exp.checkpointable for exp in experiments):
+            logger.info("Checkpointing is turned off for an experiment. "
+                        "Consider enabling checkpointing to easily "
+                        "recover from possible failures.")
 
     if not runner:
         if scheduler is None:

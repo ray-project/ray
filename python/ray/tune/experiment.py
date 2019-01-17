@@ -152,6 +152,11 @@ class Experiment(object):
         self.name = name
         self.spec = spec
 
+    @property
+    def checkpointable(self):
+        """Returns True if a form of checkpointing has been enabled."""
+        return self.spec["checkpoint_freq"] or self.spec["checkpoint_at_end"]
+
     @classmethod
     def from_json(cls, name, spec):
         """Generates an Experiment object from JSON.
