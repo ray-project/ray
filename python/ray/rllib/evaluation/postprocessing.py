@@ -45,7 +45,8 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
             [rollout["rewards"], np.array([last_r])])
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
         if "vf_preds" in rollout:
-            traj["value_targets"] = traj["advantages"].copy().astype(np.float32)
+            traj["value_targets"] = traj["advantages"].copy().astype(
+                np.float32)
             traj["advantages"] -= traj["vf_preds"]
         else:
             traj["value_targets"] = np.zeros_like(traj["advantages"])
