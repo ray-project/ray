@@ -273,10 +273,6 @@ class Node(object):
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 get_logs_dir_path()))
 
-        raylet_valgrind = os.environ.get("RAY_RAYLET_VALGRIND") == "1"
-        if raylet_valgrind:
-            logger.info("Detected environment variable 'RAY_RAYLET_VALGRIND'.")
-
         # If this is the head node, start the relevant head node processes.
         if self._redis_address is None:
             self.start_redis()
@@ -284,7 +280,7 @@ class Node(object):
             self.start_raylet_monitor()
 
         self.start_plasma_store()
-        self.start_raylet(use_valgrind=raylet_valgrind)
+        self.start_raylet()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

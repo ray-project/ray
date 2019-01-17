@@ -239,6 +239,28 @@ def start_ray_process(command,
     Returns:
         A handle to the process that was started.
     """
+    # Detect which flags are set through environment variables.
+    valgrind_env_var = "RAY_{}_VALGRIND".format(process_type.upper())
+    if os.environ.get(valgrind_env_var) == "1":
+        logger.info("Detected environment variable '%s'.", valgrind_env_var)
+        use_valgrind = True
+    valgrind_profiler_env_var = "RAY_{}_VALGRIND_PROFILER".format(
+        process_type.upper())
+    if os.environ.get(valgrind_profiler_env_var) == "1":
+        logger.info("Detected environment variable '%s'.",
+                    valgrind_profiler_env_var)
+        use_valgrind_profiler = True
+    perftools_profiler_env_var = "RAY_{}_PERFTOOLS_PROFILER".format(
+        process_type.upper())
+    if os.environ.get(perftools_profiler_env_var) == "1":
+        logger.info("Detected environment variable '%s'.",
+                    perftools_profiler_env_var)
+        use_perftools_profiler = True
+    tmux_env_var = "RAY_{}_TMUX".format(process_type.upper())
+    if os.environ.get(tmux_env_var) == "1":
+        logger.info("Detected environment variable '%s'.", tmux_env_var)
+        use_tmux = True
+
     if use_gdb:
         raise NotImplementedError
     if use_tmux:
