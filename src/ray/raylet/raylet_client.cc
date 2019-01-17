@@ -31,7 +31,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   auto status = ray::UnixSocketConnect(raylet_socket, main_service_, _socket);
   RAY_CHECK_OK_PREPEND(status,
                        "Unable to connect to raylet socket " + raylet_socket + ".");
-  conn_.reset(new ray::LocalSimpleConnection(std::move(*_socket.release())));
+  conn_.reset(new ray::LocalThreadSafeConnection(std::move(*_socket.release())));
   conn_->SetClientID(client_id);
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
@@ -40,8 +40,8 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  status = conn_->WriteMessageThreadSafe(MessageType::RegisterClientRequest,
-                                         fbb.GetSize(), fbb.GetBufferPointer());
+  status = conn_->WriteMessage(MessageType::RegisterClientRequest, fbb.GetSize(),
+                               fbb.GetBufferPointer());
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
@@ -49,8 +49,8 @@ ray::Status RayletClient::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
-  auto status = conn_->WriteMessageThreadSafe(MessageType::IntentionalDisconnectClient,
-                                              fbb.GetSize(), fbb.GetBufferPointer());
+  auto status = conn_->WriteMessage(MessageType::IntentionalDisconnectClient,
+                                    fbb.GetSize(), fbb.GetBufferPointer());
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
@@ -67,8 +67,8 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   auto message = ray::protocol::CreateSubmitTaskRequest(
       fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
-  return conn_->WriteMessageThreadSafe(MessageType::SubmitTask, fbb.GetSize(),
-                                       fbb.GetBufferPointer());
+  return conn_->WriteMessage(MessageType::SubmitTask, fbb.GetSize(),
+                             fbb.GetBufferPointer());
 }
 
 ray::Status RayletClient::GetTask(
@@ -113,7 +113,7 @@ ray::Status RayletClient::GetTask(
 }
 
 ray::Status RayletClient::TaskDone() {
-  return conn_->WriteMessageThreadSafe(MessageType::TaskDone, 0, nullptr);
+  return conn_->WriteMessage(MessageType::TaskDone, 0, nullptr);
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
@@ -124,8 +124,8 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
   auto message = ray::protocol::CreateFetchOrReconstruct(
       fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  auto status = conn_->WriteMessageThreadSafe(MessageType::FetchOrReconstruct,
-                                              fbb.GetSize(), fbb.GetBufferPointer());
+  auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, fbb.GetSize(),
+                                    fbb.GetBufferPointer());
   return status;
 }
 
@@ -134,8 +134,8 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
-  return conn_->WriteMessageThreadSafe(MessageType::NotifyUnblocked, fbb.GetSize(),
-                                       fbb.GetBufferPointer());
+  return conn_->WriteMessage(MessageType::NotifyUnblocked, fbb.GetSize(),
+                             fbb.GetBufferPointer());
 }
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
@@ -176,16 +176,16 @@ ray::Status RayletClient::PushError(const JobID &job_id, const std::string &type
       fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
-  return conn_->WriteMessageThreadSafe(MessageType::PushErrorRequest, fbb.GetSize(),
-                                       fbb.GetBufferPointer());
+  return conn_->WriteMessage(MessageType::PushErrorRequest, fbb.GetSize(),
+                             fbb.GetBufferPointer());
 }
 
 ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateProfileTableData(fbb, &profile_events);
   fbb.Finish(message);
-  auto status = conn_->WriteMessageThreadSafe(MessageType::PushProfileEventsRequest,
-                                              fbb.GetSize(), fbb.GetBufferPointer());
+  auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, fbb.GetSize(),
+                                    fbb.GetBufferPointer());
   // Don't be too strict for profile errors. Just create logs and prevent it from crash.
   if (!status.ok()) {
     RAY_LOG(ERROR) << status.ToString()
@@ -200,8 +200,7 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
   auto message = ray::protocol::CreateFreeObjectsRequest(fbb, local_only,
                                                          to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
-  auto status =
-      conn_->WriteMessageThreadSafe(MessageType::FreeObjectsInObjectStoreRequest,
+  auto status = conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest,
                                     fbb.GetSize(), fbb.GetBufferPointer());
   return status;
 }

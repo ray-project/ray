@@ -214,15 +214,13 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
-/// \typename SimpleConnection
+/// \typename ThreadSafeConnection
 ///
-/// A generic type representing a client connection on a server. In addition to
-/// writing messages to the client, like in ServerConnection, this typename can
-/// also be used to process messages asynchronously from client.
+/// A generic type representing a thread-safe client connection.
 template <typename T>
-class SimpleConnection {
+class ThreadSafeConnection {
  public:
-  SimpleConnection(boost::asio::basic_stream_socket<T> &&socket)
+  ThreadSafeConnection(boost::asio::basic_stream_socket<T> &&socket)
       : socket_(std::move(socket)) {}
 
   /// \return The ClientID of the remote client.
@@ -231,31 +229,15 @@ class SimpleConnection {
   /// \param client_id The ClientID of the remote client.
   void SetClientID(const ClientID &client_id) { client_id_ = client_id; }
 
-  /// Read a message from the client. This method is NOT thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
-
   /// Read a message from the client. This method is thread-safe.
   ///
   /// \param type The message type (e.g., a flatbuffer enum).
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  ray::Status ReadMessageThreadSafe(MessageType type,
-                                    std::unique_ptr<uint8_t[]> &message) {
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message) {
     std::unique_lock<std::mutex> guard(mutex_);
-    return ReadMessage(type, message);
+    return ReadMessage_(type, message);
   }
-
-  /// Write a message to the client. This method is NOT thread-safe.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param length The size in bytes of the message.
-  /// \param message A pointer to the message buffer.
-  /// \return Status.
-  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message);
 
   /// Write a message to the client. This method is thread-safe.
   ///
@@ -263,10 +245,9 @@ class SimpleConnection {
   /// \param length The size in bytes of the message.
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  ray::Status WriteMessageThreadSafe(MessageType type, int64_t length,
-                                     const uint8_t *message) {
+  ray::Status WriteMessage(MessageType type, int64_t length, const uint8_t *message) {
     std::unique_lock<std::mutex> guard(mutex_);
-    return WriteMessage(type, length, message);
+    return WriteMessage_(type, length, message);
   }
 
   /// Write a message and read the reply atomically. This method is thread-safe.
@@ -279,11 +260,11 @@ class SimpleConnection {
                                  const uint8_t *request_message, MessageType reply_type,
                                  std::unique_ptr<uint8_t[]> &reply_message) {
     std::unique_lock<std::mutex> guard(mutex_);
-    auto status = WriteMessage(request_type, request_length, request_message);
+    auto status = WriteMessage_(request_type, request_length, request_message);
     if (!status.ok()) {
       return status;
     }
-    return ReadMessage(reply_type, reply_message);
+    return ReadMessage_(reply_type, reply_message);
   }
 
   /// Export the socket to other languages.
@@ -293,12 +274,24 @@ class SimpleConnection {
   bool IsOpen() const { return socket_.is_open(); }
 
   /// Shuts down socket for this connection.
-  void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
-  }
+  ray::Status Close();
 
  private:
+  /// Read a message from the client. This method is NOT thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status ReadMessage_(MessageType type, std::unique_ptr<uint8_t[]> &message);
+
+  /// Write a message to the client. This method is NOT thread-safe.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage_(MessageType type, int64_t length, const uint8_t *message);
+
   /// A mutex to protect the stateful connection.
   std::mutex mutex_;
   /// The ClientID of the remote client.
@@ -307,12 +300,12 @@ class SimpleConnection {
   boost::asio::basic_stream_socket<T> socket_;
 };
 
-using LocalServerConnection = ServerConnection<boost::asio::local::stream_protocol>;
+using LocalServerConnection = ServerConnection<stream_protocol>;
 using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
-using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
+using LocalClientConnection = ClientConnection<stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-using LocalSimpleConnection = SimpleConnection<boost::asio::local::stream_protocol>;
-using TcpSimpleConnection = SimpleConnection<boost::asio::ip::tcp>;
+using LocalThreadSafeConnection = ThreadSafeConnection<stream_protocol>;
+using TcpThreadSafeConnection = ThreadSafeConnection<boost::asio::ip::tcp>;
 }  // namespace ray
 
 #endif  // RAY_COMMON_CLIENT_CONNECTION_H

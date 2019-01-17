@@ -140,7 +140,7 @@ class RayletClient {
   /// The Boost IO service.
   boost::asio::io_service main_service_;
   /// The connection to the raylet server.
-  std::unique_ptr<ray::LocalSimpleConnection> conn_;
+  std::unique_ptr<ray::LocalThreadSafeConnection> conn_;
 };
 
 #endif

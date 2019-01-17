@@ -107,9 +107,7 @@ ray::Status UnixSocketConnect(const std::string &socket_name,
                      << ")";
     }
   }
-  RAY_CHECK_OK_PREPEND(boost_to_ray_status(ec),
-                       "Unable to connect to socket " + socket_name + ".");
-  return boost_to_ray_status(ec);  // Cannot reach here.
+  return boost_to_ray_status(ec);
 }
 
 template <class T>
@@ -335,8 +333,15 @@ std::string ServerConnection<T>::DebugString() const {
 }
 
 template <typename T>
-ray::Status SimpleConnection<T>::ReadMessage(MessageType type,
-                                             std::unique_ptr<uint8_t[]> &message) {
+ray::Status ThreadSafeConnection<T>::Close() {
+  boost::system::error_code ec;
+  socket_.close(ec);
+  return boost_to_ray_status(ec);
+}
+
+template <typename T>
+ray::Status ThreadSafeConnection<T>::ReadMessage_(MessageType type,
+                                                  std::unique_ptr<uint8_t[]> &message) {
   int64_t read_version, read_type, read_length;
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
@@ -357,9 +362,9 @@ ray::Status SimpleConnection<T>::ReadMessage(MessageType type,
 
   if (static_cast<int64_t>(type) != read_type) {
     return ray::Status::TypeError(
-          std::string("Connection corrupted. ") + "Expected message type: " +
-          std::to_string(static_cast<int64_t>(type)) + "; got message type: " +
-          std::to_string(read_type) + ". Check logs or dmesg for previous errors.");
+        std::string("Connection corrupted. ") + "Expected message type: " +
+        std::to_string(static_cast<int64_t>(type)) + "; got message type: " +
+        std::to_string(read_type) + ". Check logs or dmesg for previous errors.");
   }
   // Create read buffer.
   message.reset(new uint8_t[read_length]);
@@ -368,8 +373,8 @@ ray::Status SimpleConnection<T>::ReadMessage(MessageType type,
 }
 
 template <typename T>
-ray::Status SimpleConnection<T>::WriteMessage(MessageType type, int64_t length,
-                                              const uint8_t *message) {
+ray::Status ThreadSafeConnection<T>::WriteMessage_(MessageType type, int64_t length,
+                                                   const uint8_t *message) {
   int64_t write_version = RayConfig::instance().ray_protocol_version();
   int64_t write_type = static_cast<int64_t>(type);
   std::vector<boost::asio::const_buffer> message_buffers{
@@ -384,7 +389,7 @@ template class ServerConnection<boost::asio::local::stream_protocol>;
 template class ServerConnection<boost::asio::ip::tcp>;
 template class ClientConnection<boost::asio::local::stream_protocol>;
 template class ClientConnection<boost::asio::ip::tcp>;
-template class SimpleConnection<boost::asio::local::stream_protocol>;
-template class SimpleConnection<boost::asio::ip::tcp>;
+template class ThreadSafeConnection<boost::asio::local::stream_protocol>;
+template class ThreadSafeConnection<boost::asio::ip::tcp>;
 
 }  // namespace ray
