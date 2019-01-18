@@ -830,7 +830,6 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        self._return_object_ids = return_object_ids
         if (not task.actor_id().is_nil()
                 or not task.actor_creation_id().is_nil()):
             dummy_return_id = return_object_ids.pop()
@@ -853,6 +852,7 @@ class Worker(object):
 
         # Execute the task.
         try:
+            self._return_object_ids = return_object_ids
             with profiling.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
@@ -873,6 +873,8 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e, traceback_str)
             return
+        finally:
+            self._return_object_ids = []
 
         # Store the outputs in the local object store.
         try:
