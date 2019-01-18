@@ -9,7 +9,12 @@ git clone https://github.com/ray-project/ray.git
 
 # Sync newest wheels from AWS
 COUNT=0
-while ! [[ $WHEELS ]]; do
+# Assumes that wheel file names do not contain whitespace
+# and that a complete build has 10 wheels
+while ! [[ $(echo $WHEELS | wc -w) == 10 ]]; do
+    # Cleanup in case of version bump
+    rm $WHEEL_DIR/*
+
     # Get commit hash
     pushd ray
     COMMIT_HASH=$(git rev-parse "HEAD~$COUNT")
