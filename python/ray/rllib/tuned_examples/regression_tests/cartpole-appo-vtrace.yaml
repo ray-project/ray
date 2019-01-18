@@ -1,4 +1,4 @@
-cartpole-appo-vtrace:
+cartpole-appo-vt:
     env: CartPole-v0
     run: APPO
     stop:
