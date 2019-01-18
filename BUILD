@@ -1,0 +1,312 @@
+# Bazel build
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+#
+# Notes:
+# * All external deps referenced as THIRDPARTY:name. Need to be implemented.
+# * Credis not implemented.
+
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+
+cc_binary(
+  name="raylet",
+  srcs=["src/ray/raylet/main.cc"],
+  deps=[
+      ":ray_util",
+      ":raylet_lib",
+  ],
+)
+
+cc_binary(
+  name="raylet_monitor",
+  srcs=[
+      "src/ray/raylet/monitor.cc",
+      "src/ray/raylet/monitor.h",
+      "src/ray/raylet/monitor_main.cc",
+  ],
+  deps=[
+      ":gcs",
+      ":ray_util",
+  ],
+)
+
+cc_library(
+    name="raylet_lib",
+    srcs=glob(
+        [
+            "src/ray/raylet/*.cc",
+        ],
+        exclude=[
+            "src/ray/raylet/mock_gcs_client.cc",
+            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/*_test.cc",
+        ],
+    ),
+    hdrs=glob([
+        "src/ray/raylet/*.h",
+    ],),
+    deps=[
+        ":gcs",
+        ":gcs_fbs",
+        ":node_manager_fbs",
+        ":object_manager",
+        ":ray_common",
+        ":ray_util",
+        "@boost//:asio",
+        "@plasma",
+        "@gtest"
+    ],
+)
+
+# cc_test(
+#     name="lineage_cache_test",
+#     srcs=["src/ray/raylet/lineage_cache_test.cc"],
+#     deps=[
+#         "@com_google_googletest//:gtest_main",
+#         ":node_manager_fbs",
+#         ":raylet_lib",
+#     ],
+# )
+
+# cc_test(
+#     name="reconstruction_policy_test",
+#     srcs=["src/ray/raylet/reconstruction_policy_test.cc"],
+#     deps=[
+#         "@com_google_googletest//:gtest_main",
+#         ":node_manager_fbs",
+#         ":object_manager",
+#         ":raylet_lib"
+#     ],
+# )
+
+cc_test(
+    name="worker_pool_test",
+    srcs=["src/ray/raylet/worker_pool_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":raylet_lib",
+    ],
+)
+
+cc_test(
+    name="logging_test",
+    srcs=["src/ray/util/logging_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":ray_util",
+    ],
+)
+
+cc_test(
+    name="task_dependency_manager_test",
+    srcs=["src/ray/raylet/task_dependency_manager_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":raylet_lib"
+    ],
+)
+
+cc_test(
+    name="task_test",
+    srcs=["src/ray/raylet/task_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":raylet_lib",
+    ],
+)
+
+cc_library(
+    name="object_manager",
+    srcs=glob([
+        "src/ray/object_manager/*.cc",
+    ]),
+    hdrs=glob([
+        "src/ray/object_manager/*.h",
+    ]),
+    includes=[
+        "src",
+    ],
+    deps=[
+        ":gcs",
+        ":object_manager_fbs",
+        ":ray_common",
+        ":ray_util",
+        "@boost//:asio",
+        "@plasma"
+    ],
+)
+
+cc_binary(
+    name="object_manager_test",
+    testonly=1,
+    srcs=["src/ray/object_manager/test/object_manager_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":object_manager",
+    ],
+)
+
+cc_binary(
+    name="object_manager_stress_test",
+    testonly=1,
+    srcs=["src/ray/object_manager/test/object_manager_stress_test.cc"],
+    deps=[
+        "@com_google_googletest//:gtest_main",
+        ":object_manager",
+    ],
+)
+
+cc_library(
+    name="ray_util",
+    srcs=glob(
+        [
+            "src/ray/*.cc",
+            "src/ray/util/*.cc",
+        ],
+        exclude=[
+            "src/ray/util/logging_test.cc",
+            "src/ray/util/signal_test.cc"
+        ],
+    ),
+    hdrs=glob([
+        "src/ray/*.h",
+        "src/ray/util/*.h",
+    ]),
+    includes=[
+        "src",
+    ],
+    deps=[
+      "@plasma",
+      ":sha256"
+    ]
+)
+
+cc_library(
+    name="ray_common",
+    srcs=["src/ray/common/client_connection.cc",
+          "src/ray/common/common_protocol.cc"],
+    hdrs=["src/ray/common/client_connection.h",
+          "src/ray/common/common_protocol.h"],
+    includes=[
+        "src/ray/gcs/format",
+    ],
+    deps=[
+        ":gcs_fbs",
+        ":node_manager_fbs",
+        ":ray_util",
+        "@boost//:asio",
+    ],
+)
+
+cc_library(
+    name="sha256",
+    srcs=[
+        "src/ray/thirdparty/sha256.c",
+    ],
+    hdrs=[
+        "src/ray/thirdparty/sha256.h",
+    ],
+    includes=["src/ray/thirdparty"],
+)
+
+cc_library(
+    name="hiredis",
+    srcs=glob([
+      "src/ray/thirdparty/ae/ae.c",
+      "src/ray/thirdparty/hiredis/*.c",
+    ]),
+    hdrs=glob([
+      "src/ray/thirdparty/ae/*.h",
+      "src/ray/thirdparty/hiredis/*.h",
+      "src/ray/thirdparty/hiredis/adapters/*.h",
+      "src/ray/thirdparty/hiredis/dict.c",
+      "src/ray/thirdparty/ae/ae_kqueue.c"
+    ]),
+    includes=[
+      "src/ray/thirdparty/hiredis",
+      "src/ray/thirdparty/ae"
+    ],
+)
+
+cc_library(
+    name="gcs",
+    srcs=glob(
+        [
+            "src/ray/gcs/*.cc",
+        ],
+        exclude=[
+            "src/ray/gcs/*_test.cc",
+        ],
+    ),
+    hdrs=glob([
+        "src/ray/gcs/*.h",
+        "src/ray/gcs/format/*.h",
+    ]),
+    includes=[
+        "src/ray/gcs/format",
+    ],
+    deps=[
+        ":gcs_fbs",
+        ":node_manager_fbs",
+        ":ray_util",
+        ":ray_common",
+        ":hiredis",
+        "@boost//:asio",
+    ],
+)
+
+cc_binary(
+    name="gcs_client_test",
+    testonly=1,
+    srcs=["src/ray/gcs/client_test.cc"],
+    deps=[
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name="asio_test",
+    testonly=1,
+    srcs=["src/ray/gcs/asio_test.cc"],
+    deps=[
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+        ":ray_util",
+    ],
+)
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
+
+flatbuffer_cc_library(
+    name="gcs_fbs",
+    srcs=["src/ray/gcs/format/gcs.fbs"],
+    flatc_args=FLATC_ARGS,
+    out_prefix="src/ray/gcs/format/",
+)
+
+flatbuffer_cc_library(
+    name="common_fbs",
+    srcs=["@plasma//:cpp/src/plasma/format/common.fbs"],
+    flatc_args=FLATC_ARGS,
+    out_prefix="src/ray/common/"
+)
+
+flatbuffer_cc_library(
+    name="node_manager_fbs",
+    srcs=["src/ray/raylet/format/node_manager.fbs"],
+    flatc_args=FLATC_ARGS,
+    include_paths=["src/ray/gcs/format"],
+    includes=[":gcs_fbs_includes"],
+    out_prefix="src/ray/raylet/format/",
+)
+
+flatbuffer_cc_library(
+    name="object_manager_fbs",
+    srcs=["src/ray/object_manager/format/object_manager.fbs"],
+    flatc_args=FLATC_ARGS,
+    out_prefix="src/ray/object_manager/format/",
+)
