@@ -1,7 +1,6 @@
 #include <signal.h>
 #include <cstdlib>
 #include <iostream>
-#include <csignal>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
@@ -69,7 +68,7 @@ TEST(SignalTest, SIGILL_Test) {
   pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
-    std::raise(SIGILL);
+    raise(SIGILL);
   } else {
     Sleep();
     RAY_LOG(ERROR) << "SIGILL_Test: kill pid " << pid
