@@ -894,7 +894,7 @@ class Worker(object):
                     # If this is an actor task, then the last object ID returned by
                     # the task is a dummy output, not returned by the function
                     # itself. Decrement to get the correct number of return values.
-                    num_returns = len(return_object_ids)
+                   num_returns = len(return_object_ids)
                     if num_returns == 1:
                         outputs = (outputs, )
                     self._store_outputs_in_object_store(
