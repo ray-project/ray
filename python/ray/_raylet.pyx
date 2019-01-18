@@ -21,7 +21,8 @@ include "includes/task.pxi"
 from ray.includes.common cimport (
     CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
     CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, CRayStatus, LANGUAGE_CPP, LANGUAGE_JAVA, LANGUAGE_PYTHON)
+    CLanguage, CRayStatus, LANGUAGE_CPP, LANGUAGE_JAVA, LANGUAGE_PYTHON,
+    CClientType, CLIENT_TYPE_NONE, CLIENT_TYPE_WORKER, CLIENT_TYPE_DRIVER)
 from ray.includes.libraylet cimport (
     CRayletClient, GCSProfileTableDataT, GCSProfileEventT,
     ResourceMappingType, WaitResultPair)
@@ -176,6 +177,33 @@ cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
 cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
+cdef class ClientType:
+    cdef CClientType client_type
+
+    def __cinit__(self, int32_t client_type):
+        self.client_type = <CClientType>client_type
+
+    @staticmethod
+    cdef from_native(const CClientType& client_type):
+        return ClientType(<int32_t>client_type)
+
+    def __eq__(self, other):
+        return isinstance(other, ClientType) and (<int32_t>self.client_type) == (<int32_t>other.client_type)
+
+    def __repr__(self):
+        if <int32_t>self.client_type == <int32_t>CLIENT_TYPE_NONE:
+            return "NONE"
+        elif <int32_t>self.client_type == <int32_t>CLIENT_TYPE_WORKER:
+            return "WORKER"
+        elif <int32_t>self.client_type == <int32_t>CLIENT_TYPE_DRIVER:
+            return "DRIVER"
+        else:
+            raise Exception("Unexpected error")
+
+
+# TODO(qwang): Client type enum values
+
+
 cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map):
     cdef:
         unordered_map[c_string, double] out
@@ -193,10 +221,11 @@ cdef class RayletClient:
                   ClientID client_id,
                   c_bool is_worker,
                   DriverID driver_id):
+        client_type = CLIENT_TYPE_WORKER if is_worer else CLIENT_TYPE_DRIVER
         # We know that we are using Python, so just skip the language parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(raylet_socket.encode("ascii"), client_id.data,
-                          is_worker, driver_id.data, LANGUAGE_PYTHON))
+                          client_type, driver_id.data, LANGUAGE_PYTHON))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())

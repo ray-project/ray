@@ -202,10 +202,10 @@ ray::Status RayletConnection::AtomicRequestReply(
 }
 
 RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-                           bool is_worker, const JobID &driver_id,
+                           const ClientType &client_type, const JobID &driver_id,
                            const Language &language)
     : client_id_(client_id),
-      is_worker_(is_worker),
+      client_type_(client_type),
       driver_id_(driver_id),
       language_(language) {
   // For C++14, we could use std::make_unique
@@ -213,8 +213,8 @@ RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &cli
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
-      language);
+      fbb, client_type, to_flatbuf(fbb, client_id), getpid(),
+      to_flatbuf(fbb, driver_id), language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.

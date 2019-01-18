@@ -117,18 +117,18 @@ table GetTaskReply {
   fractional_resource_ids: [ResourceIdSetInfo];
 }
 
-// This struct is used to register a new worker with the local scheduler.
+// This struct is used to register a new client with the local scheduler.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
-  // True if the client is a worker and false if the client is a driver.
-  is_worker: bool;
-  // The ID of the worker or driver.
+  // Type of this client.
+  clientType: ClientType;
+  // The ID of this client.
   client_id: string;
-  // The process ID of this worker.
+  // The process ID of this client.
   worker_pid: long;
   // The driver ID. This is non-nil if the client is a driver.
   driver_id: string;
-  // Language of this worker.
+  // Language of this client.
   language: Language;
 }
 

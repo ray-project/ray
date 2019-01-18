@@ -91,6 +91,9 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
 
+    cdef cppclass CClientType "ClientType":
+        pass
+
 
 # This is a workaround for C++ enum class since Cython has no corresponding representation.
 cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
@@ -98,6 +101,10 @@ cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
+cdef extern from "ray/gcs/format/gcs_generated.h" namespace "ClientType" nogil:
+    cdef CClientType CLIENT_TYPE_NONE "ClientType::NONE"
+    cdef CClientType CLIENT_TYPE_WORKER "ClientType::WORKER"
+    cdef CClientType CLIENT_TYPE_DRIVER "ClientType::DRIVER"
 
 cdef extern from "ray/raylet/scheduling_resources.h" namespace "ray::raylet" nogil:
     cdef cppclass ResourceSet "ResourceSet":

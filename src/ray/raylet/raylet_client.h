@@ -63,12 +63,12 @@ class RayletClient {
   ///
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  /// additional message will be sent to register as one.
+  /// \param client_type The type of raylet client.
   /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-               bool is_worker, const JobID &driver_id, const Language &language);
+               const ClientType &client_type, const JobID &driver_id,
+               const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -152,13 +152,14 @@ class RayletClient {
 
   JobID GetDriverID() const { return driver_id_; }
 
-  bool IsWorker() const { return is_worker_; }
+  // TODO(qwang): IsWorker() -> ClientType()
+  bool IsWorker() const { return client_type_ == ClientType::WORKER; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
   const ClientID client_id_;
-  const bool is_worker_;
+  const ClientType client_type_;
   const JobID driver_id_;
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved

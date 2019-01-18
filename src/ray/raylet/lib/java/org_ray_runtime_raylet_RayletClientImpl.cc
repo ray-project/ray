@@ -42,7 +42,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
   UniqueIdFromJByteArray worker_id(env, workerId);
   UniqueIdFromJByteArray driver_id(env, driverId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto raylet_client = new RayletClient(nativeString, *worker_id.PID, isWorker,
+
+  ClientType client_type = static_cast<bool>(isWorker) ?
+      ClientType::WORKER : ClientType::DRIVER;
+
+  auto raylet_client = new RayletClient(nativeString, *worker_id.PID, client_type,
                                         *driver_id.PID, Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(raylet_client);
