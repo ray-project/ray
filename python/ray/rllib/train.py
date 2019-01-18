@@ -76,6 +76,10 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Sets Tune verbosity.")
+    parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
@@ -144,7 +148,8 @@ def run(args, parser):
         experiments,
         scheduler=_make_scheduler(args),
         queue_trials=args.queue_trials,
-        resume=args.resume)
+        resume=args.resume,
+        verbose=args.verbose)
 
 
 if __name__ == "__main__":
