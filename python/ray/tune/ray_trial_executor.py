@@ -231,8 +231,8 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
-        self._committed_resources = Resources.add(
-            self._committed_resources, resources)
+        self._committed_resources = Resources.add(self._committed_resources,
+                                                  resources)
 
     def _return_resources(self, resources):
         self._committed_resources = Resources.subtract(
@@ -254,8 +254,7 @@ class RayTrialExecutor(TrialExecutor):
         assert "GPU" not in custom_resources
 
         self._avail_resources = Resources(
-            int(num_cpus), int(num_gpus),
-            custom_resources=custom_resources)
+            int(num_cpus), int(num_gpus), custom_resources=custom_resources)
         self._resources_initialized = True
 
     def has_resources(self, resources):

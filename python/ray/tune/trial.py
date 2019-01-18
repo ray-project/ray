@@ -79,8 +79,9 @@ class Resources(
         assert len(custom_resources) == len(extra_custom_resources)
         for entry in all_values:
             assert isinstance(entry, Number), "Improper resource value."
-        return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
-                                             extra_gpu, custom_resources)
+        return super(Resources,
+                     cls).__new__(cls, cpu, gpu, extra_cpu, extra_gpu,
+                                  custom_resources, extra_custom_resources)
 
     def summary_string(self):
         summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
