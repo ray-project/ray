@@ -29,15 +29,9 @@ git_repository(
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
 )
 
-# git_repository(
-#     name = "plasma",
-#     build_file = "bazel/plasma.bzl",
-#     remote = "https://github.com/apache/arrow",
-#     commit = "3d77ce62730132f6b6299ab7ea7929bcb9b8779d",
-# )
-
-new_local_repository(
-  name = "plasma",
-  path = "/Users/pcmoritz/arrow/",
-  build_file = "bazel/plasma.bzl"
+git_repository(
+    name = "plasma",
+    build_file = "bazel/plasma.bzl",
+    remote = "https://github.com/apache/arrow",
+    commit = "dd170c983b4e2ac86fba98559471db0e9e0e8cc0"
 )
