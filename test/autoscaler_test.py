@@ -533,10 +533,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
-        assert len(
-            self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "waiting-for-ssh"
-            })) == 2
+        num_waiting_nodes = sum(
+            len(self.provider.nodes({TAG_RAY_NODE_STATUS: x}))
+            for x in ("uninitialized", "waiting-for-ssh")
+        )
+        assert num_waiting_nodes == 2
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
 
@@ -555,10 +556,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
-        assert len(
-            self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "waiting-for-ssh"
-            })) == 2
+        num_waiting_nodes = sum(
+            len(self.provider.nodes({TAG_RAY_NODE_STATUS: x}))
+            for x in ("uninitialized", "waiting-for-ssh")
+        )
+        assert num_waiting_nodes == 2
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: "update-failed"})
