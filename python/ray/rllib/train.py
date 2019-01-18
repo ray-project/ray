@@ -76,7 +76,7 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
-        "--verbose",
+        "--quiet",
         action="store_true",
         help="Sets Tune verbosity.")
     parser.add_argument(
@@ -149,7 +149,7 @@ def run(args, parser):
         scheduler=_make_scheduler(args),
         queue_trials=args.queue_trials,
         resume=args.resume,
-        verbose=args.verbose)
+        verbose=not args.quiet)
 
 
 if __name__ == "__main__":
