@@ -164,6 +164,7 @@ class Worker(object):
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        self._return_object_ids = []
 
     @property
     def task_context(self):
@@ -206,6 +207,10 @@ class Worker(object):
     @property
     def current_task_id(self):
         return self.task_context.current_task_id
+
+    @property
+    def return_object_ids(self):
+        return list(self._return_object_ids)
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
@@ -825,6 +830,7 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
+        self._return_object_ids = return_object_ids
         if (not task.actor_id().is_nil()
                 or not task.actor_creation_id().is_nil()):
             dummy_return_id = return_object_ids.pop()
