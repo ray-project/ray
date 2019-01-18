@@ -112,6 +112,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         stats = {}
         check_support("IMPALA", {"num_gpus": 0}, stats)
+        check_support("APPO", {"num_gpus": 0, "vtrace": False}, stats)
         check_support(
             "DDPG", {
                 "noise_scale": 100.0,

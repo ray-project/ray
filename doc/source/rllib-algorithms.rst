@@ -88,6 +88,24 @@ SpaceInvaders  843                              ~300
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+Asynchronous Proximal Policy Optimization (APPO)
+------------------------------------------------
+
+`[paper] <https://arxiv.org/abs/1707.06347>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/appo.py>`__
+We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
+
+This implementation is currently *experimental*. Consider also using `PPO <rllib-algorithms.html#proximal-policy-optimization-ppo>`__ or `IMPALA <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__.
+
+Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/pong-appo.yaml>`__
+
+**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../python/ray/rllib/agents/ppo/appo.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 Gradient-based
 ~~~~~~~~~~~~~~
 
