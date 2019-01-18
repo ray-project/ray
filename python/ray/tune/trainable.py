@@ -360,8 +360,6 @@ class Trainable(object):
     def _save(self, checkpoint_dir):
         """Subclasses should override this to implement save().
 
-        See also: ray.tune.Trainable.save_dict.
-
         Args:
             checkpoint_dir (str): The directory where the checkpoint
                 file must be stored.
@@ -384,8 +382,6 @@ class Trainable(object):
     def _restore(self, checkpoint):
         """Subclasses should override this to implement restore().
 
-        See also: ray.tune.Trainable.restore_dict.
-
         Args:
             checkpoint (str | dict): Value as returned by `_save`.
                 If a string, then it is the checkpoint path.
@@ -405,21 +401,6 @@ class Trainable(object):
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
-
-
-def save_dict(state_dict, checkpoint_dir):
-    """Pickles dict to a file within provided directory."""
-    state_path = os.path.join(checkpoint_dir, "state_dict.pkl")
-    with open(state_path, 'wb') as f:
-        pickle.dump(state_dict, f)
-    return state_path
-
-
-def restore_dict(state_path):
-    """Restores a dict from the provided path."""
-    with open(state_path, 'rb') as f:
-        state_dict = pickle.load(f)
-    return state_dict
 
 
 def wrap_function(train_func):
