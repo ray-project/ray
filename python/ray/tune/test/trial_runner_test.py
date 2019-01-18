@@ -1837,5 +1837,36 @@ class SearchAlgorithmTest(unittest.TestCase):
         self.assertTrue("d=4" in trial.experiment_tag)
 
 
+class ResourcesTest(unittest.TestCase):
+    def testSubtraction(self):
+        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        new_res = Resources.subtract(resource_1, resource_2)
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+
+    def testAddition(self):
+        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        new_res = Resources.add(resource_1, resource_2)
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+
+    def testDifferentResources(self):
+        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "c": 2})
+        new_res = Resources.subtract(resource_1, resource_2)
+
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+
+
+    def testSerialization(self):
+        original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        jsoned = resources_to_json(original)
+        new_resource = json_to_resources(jsoned)
+        self.assertEquals(original, new_resource)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

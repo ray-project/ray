@@ -231,7 +231,7 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
-        self._committed_resources = Resources.combine(
+        self._committed_resources = Resources.add(
             self._committed_resources, resources)
 
     def _return_resources(self, resources):

@@ -67,10 +67,16 @@ class Resources(
                 extra_custom_resources=None):
         custom_resources = custom_resources or {}
         extra_custom_resources = extra_custom_resources or {}
-        assert set(custom_resources).equals(set(extra_custom_resources))
+        leftovers = set(custom_resources) ^ set(extra_custom_resources)
+
+        for value in leftovers:
+            custom_resources.setdefault(value, 0)
+            extra_custom_resources.setdefault(value, 0)
+
         all_values = [cpu, gpu, extra_cpu, extra_gpu]
         all_values += list(custom_resources.values())
         all_values += list(extra_custom_resources.values())
+        assert len(custom_resources) == len(extra_custom_resources)
         for entry in all_values:
             assert isinstance(entry, Number), "Improper resource value."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
@@ -104,7 +110,7 @@ class Resources(
         return all(v >= 0 for v in all_values)
 
     @classmethod
-    def combine(cls, original, additional):
+    def add(cls, original, additional):
         cpu = original.cpu + additional.cpu
         gpu = original.gpu + additional.gpu
         extra_cpu = original.extra_cpu + additional.extra_cpu
