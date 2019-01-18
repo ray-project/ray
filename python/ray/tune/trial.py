@@ -97,7 +97,7 @@ class Resources(
         return self.custom_resources.get(
             key, 0) + self.extra_custom_resources.get(key, 0)
 
-    def is_valid(self):
+    def is_nonnegative(self):
         all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
         all_values += list(self.custom_resources.values())
         all_values += list(self.extra_custom_resources.values())

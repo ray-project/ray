@@ -237,7 +237,7 @@ class RayTrialExecutor(TrialExecutor):
     def _return_resources(self, resources):
         self._committed_resources = Resources.subtract(
             self._committed_resources, resources)
-        assert self._committed_resources.is_valid(), (
+        assert self._committed_resources.is_nonnegative(), (
             "Resource invalid: {}".format(resources))
 
     def _update_avail_resources(self, num_retries=5):
@@ -268,7 +268,7 @@ class RayTrialExecutor(TrialExecutor):
             val == 0 for val in currently_available.extra_custom_resources)
 
         leftover = Resources.subtract(currently_available, resources)
-        have_space = leftover.is_valid()
+        have_space = leftover.is_nonnegative()
 
         if have_space:
             return True
