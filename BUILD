@@ -1,9 +1,5 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
-#
-# Notes:
-# * All external deps referenced as THIRDPARTY:name. Need to be implemented.
-# * Credis not implemented.
 
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
@@ -57,26 +53,26 @@ cc_library(
     ],
 )
 
-# cc_test(
-#     name="lineage_cache_test",
-#     srcs=["src/ray/raylet/lineage_cache_test.cc"],
-#     deps=[
-#         "@com_google_googletest//:gtest_main",
-#         ":node_manager_fbs",
-#         ":raylet_lib",
-#     ],
-# )
+cc_test(
+   name="lineage_cache_test",
+   srcs=["src/ray/raylet/lineage_cache_test.cc"],
+   deps=[
+       "@com_google_googletest//:gtest_main",
+       ":node_manager_fbs",
+       ":raylet_lib",
+   ],
+)
 
-# cc_test(
-#     name="reconstruction_policy_test",
-#     srcs=["src/ray/raylet/reconstruction_policy_test.cc"],
-#     deps=[
-#         "@com_google_googletest//:gtest_main",
-#         ":node_manager_fbs",
-#         ":object_manager",
-#         ":raylet_lib"
-#     ],
-# )
+cc_test(
+   name="reconstruction_policy_test",
+   srcs=["src/ray/raylet/reconstruction_policy_test.cc"],
+   deps=[
+       "@com_google_googletest//:gtest_main",
+       ":node_manager_fbs",
+       ":object_manager",
+       ":raylet_lib"
+   ],
+)
 
 cc_test(
     name="worker_pool_test",
