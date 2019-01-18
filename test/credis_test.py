@@ -17,7 +17,7 @@ def parse_client(addr_port_str):
                  "Tests functionality of the new GCS.")
 class CredisTest(unittest.TestCase):
     def setUp(self):
-        self.config = ray.init(num_workers=0)
+        self.config = ray.init(num_cpus=0)
 
     def tearDown(self):
         ray.shutdown()

@@ -1,6 +1,5 @@
-BasedOnStyle: Chromium
-ColumnLimit: 80
+BasedOnStyle: Google
+ColumnLimit: 90
 DerivePointerAlignment: false
 IndentCaseLabels: false
 PointerAlignment: Right
-SpaceAfterCStyleCast: true

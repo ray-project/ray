@@ -1,20 +1,38 @@
 package org.ray.runtime;
 
-import org.apache.commons.lang3.tuple.Pair;
+import com.google.common.base.Preconditions;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.RayMethod;
+import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * The worker, which pulls tasks from {@code org.ray.spi.LocalSchedulerProxy} and executes them
+ * The worker, which pulls tasks from {@link org.ray.runtime.raylet.RayletClient} and executes them
  * continuously.
  */
 public class Worker {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
+
   private final AbstractRayRuntime runtime;
+
+  /**
+   * The current actor object, if this worker is an actor, otherwise null.
+   */
+  private Object currentActor = null;
+
+  /**
+   * Id of the current actor object, if the worker is an actor, otherwise NIL.
+   */
+  private UniqueId currentActorId = UniqueId.NIL;
+
+  /**
+   * The exception that failed the actor creation task, if any.
+   */
+  private Exception actorCreationException = null;
 
   public Worker(AbstractRayRuntime runtime) {
     this.runtime = runtime;
@@ -22,7 +40,7 @@ public class Worker {
 
   public void loop() {
     while (true) {
-      RayLog.core.info(Thread.currentThread().getName() + ":fetching new task...");
+      LOGGER.info("Fetching new task in thread {}.", Thread.currentThread().getName());
       TaskSpec task = runtime.getRayletClient().getTask();
       execute(task);
     }
@@ -32,39 +50,52 @@ public class Worker {
    * Execute a task.
    */
   public void execute(TaskSpec spec) {
-    RayLog.core.info("Executing task {}", spec.taskId);
+    LOGGER.info("Executing task {}", spec.taskId);
+    LOGGER.debug("Executing task {}", spec);
     UniqueId returnId = spec.returnIds[0];
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
-      Pair<ClassLoader, RayMethod> pair = runtime.getLocalFunctionManager().getMethod(
-          spec.driverId, spec.actorId, spec.functionId, spec.args);
-      ClassLoader classLoader = pair.getLeft();
-      RayMethod method = pair.getRight();
+      RayFunction rayFunction = runtime.getFunctionManager()
+          .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
-      WorkerContext.prepare(spec, classLoader);
-      Thread.currentThread().setContextClassLoader(classLoader);
+      runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
+      Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
-      Object actor = spec.isActorTask() ? runtime.localActors.get(spec.actorId) : null;
-      Object[] args = ArgumentsBuilder.unwrap(spec, classLoader);
+      Object actor = null;
+      if (spec.isActorTask()) {
+        Preconditions.checkState(spec.actorId.equals(currentActorId));
+        if (actorCreationException != null) {
+          throw actorCreationException;
+        }
+        actor = currentActor;
+      }
+      Object[] args = ArgumentsBuilder.unwrap(spec, rayFunction.classLoader);
       // Execute the task.
       Object result;
-      if (!method.isConstructor()) {
-        result = method.getMethod().invoke(actor, args);
+      if (!rayFunction.isConstructor()) {
+        result = rayFunction.getMethod().invoke(actor, args);
       } else {
-        result = method.getConstructor().newInstance(args);
+        result = rayFunction.getConstructor().newInstance(args);
       }
       // Set result
       if (!spec.isActorCreationTask()) {
         runtime.put(returnId, result);
       } else {
-        runtime.localActors.put(returnId, result);
+        currentActor = result;
+        currentActorId = returnId;
       }
-      RayLog.core.info("Finished executing task {}", spec.taskId);
+      LOGGER.info("Finished executing task {}", spec.taskId);
     } catch (Exception e) {
-      RayLog.core.error("Error executing task " + spec, e);
-      runtime.put(returnId, new RayException("Error executing task " + spec, e));
+      LOGGER.error("Error executing task " + spec, e);
+      if (!spec.isActorCreationTask()) {
+        runtime.put(returnId, new RayException("Error executing task " + spec, e));
+      } else {
+        actorCreationException = e;
+        currentActorId = returnId;
+      }
     } finally {
+      runtime.getWorkerContext().setCurrentTask(null, null);
       Thread.currentThread().setContextClassLoader(oldLoader);
     }
   }

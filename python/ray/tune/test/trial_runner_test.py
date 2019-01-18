@@ -3,25 +3,38 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
+import sys
+import tempfile
 import time
 import unittest
 
 import ray
 from ray.rllib import _register_all
 
+from ray import tune
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE
+from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
+                             EPISODES_TOTAL)
+from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
-from ray.tune.suggest.variant_generator import RecursiveDependencyError
+from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
+                                         SuggestionAlgorithm)
+from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
+                                                resolve_nested_dict)
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import patch
+else:
+    from mock import patch
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -99,6 +112,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
 
+    def testRegisterTrainableCallable(self):
+        def dummy_fn(config, reporter, steps):
+            reporter(timesteps_total=steps, done=True)
+
+        from functools import partial
+        steps = 500
+        register_trainable("test", partial(dummy_fn, steps=steps))
+        [trial] = run_experiments({
+            "foo": {
+                "run": "test",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+
     def testBuiltInTrainableResources(self):
         class B(Trainable):
             @classmethod
@@ -106,7 +137,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("B", B)
 
@@ -183,6 +214,21 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
+
+    def testUploadDirNone(self):
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": train,
+                "upload_dir": None,
+                "config": {
+                    "a": "b"
+                },
+            }
+        })
+        self.assertFalse(trial.upload_dir)
 
     def testLogdirStartingWithTilde(self):
         local_dir = '~/ray_results/local_dir'
@@ -269,7 +315,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             run_experiments({
                 "foo": {
                     "run": "PPO",
-                    "trial_resources": {
+                    "resources_per_trial": {
                         "asdf": 1
                     }
                 }
@@ -366,6 +412,26 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
+    def testNoRaiseFlag(self):
+        def train(config, reporter):
+            # Finish this trial without any metric,
+            # which leads to a failed trial
+            return
+
+        register_trainable("f1", train)
+
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "script_min_iter_time_s": 0,
+                    },
+                }
+            },
+            raise_on_failed_trial=False)
+        self.assertEqual(trial.status, Trial.ERROR)
+
     def testReportInfinity(self):
         def train(config, reporter):
             for i in range(100):
@@ -398,9 +464,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertIsNone(trial.last_result[TIMESTEPS_TOTAL])
 
-        def train3(config, reporter):
+        def train2(config, reporter):
             for i in range(10):
                 reporter(timesteps_total=5)
+
+        [trial2] = run_experiments({
+            "foo": {
+                "run": train2,
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial2.last_result[TIMESTEPS_TOTAL], 5)
+        self.assertEqual(trial2.last_result["timesteps_this_iter"], 0)
+
+        def train3(config, reporter):
+            for i in range(10):
+                reporter(timesteps_this_iter=0, episodes_this_iter=0)
 
         [trial3] = run_experiments({
             "foo": {
@@ -410,8 +491,73 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
-        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 5)
-        self.assertEqual(trial3.last_result["timesteps_this_iter"], 0)
+        self.assertEqual(trial3.last_result[TIMESTEPS_TOTAL], 0)
+        self.assertEqual(trial3.last_result[EPISODES_TOTAL], 0)
+
+    def testCheckpointDict(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1}
+
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        result = test_trainable.save()
+        test_trainable.state["hi"] = 2
+        test_trainable.restore(result)
+        self.assertEqual(test_trainable.state["hi"], 1)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+    def testMultipleCheckpoints(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        checkpoint_1 = test_trainable.save()
+        test_trainable.train()
+        checkpoint_2 = test_trainable.save()
+        self.assertNotEqual(checkpoint_1, checkpoint_2)
+        test_trainable.restore(checkpoint_2)
+        self.assertEqual(test_trainable.state["iter"], 1)
+        test_trainable.restore(checkpoint_1)
+        self.assertEqual(test_trainable.state["iter"], 0)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
 
 
 class RunExperimentTest(unittest.TestCase):
@@ -488,29 +634,6 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
-    def testSpecifyAlgorithm(self):
-        """Tests run_experiments works without specifying experiment."""
-
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        register_trainable("f1", train)
-
-        alg = BasicVariantGenerator()
-        alg.add_configurations({
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
-            }
-        })
-        trials = run_experiments(search_alg=alg)
-        for trial in trials:
-            self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
-
     def testAutoregisterTrainable(self):
         def train(config, reporter):
             for i in range(100):
@@ -518,7 +641,7 @@ class RunExperimentTest(unittest.TestCase):
 
         class B(Trainable):
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("f1", train)
         trials = run_experiments({
@@ -538,10 +661,13 @@ class RunExperimentTest(unittest.TestCase):
     def testCheckpointAtEnd(self):
         class train(Trainable):
             def _train(self):
-                return dict(timesteps_this_iter=1, done=True)
+                return {"timesteps_this_iter": 1, "done": True}
 
             def _save(self, path):
-                return path
+                checkpoint = path + "/checkpoint"
+                with open(checkpoint, "w") as f:
+                    f.write("OK")
+                return checkpoint
 
         trials = run_experiments({
             "foo": {
@@ -552,6 +678,99 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
+
+    def testDeprecatedResources(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "trial_resources": {
+                    "cpu": 1
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCustomLogger(self):
+        class CustomLogger(Logger):
+            def on_result(self, result):
+                with open(os.path.join(self.logdir, "test.log"), "w") as f:
+                    f.write("hi")
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "custom_loggers": [CustomLogger]
+            }
+        })
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+
+    def testCustomTrialString(self):
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "trial_name_creator": tune.function(
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+            }
+        })
+        self.assertEquals(
+            str(trial), "{}_{}_321".format(trial.trainable_name,
+                                           trial.trial_id))
+
+    def testSyncFunction(self):
+        def fail_sync_local():
+            [trial] = run_experiments({
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_function": "ls {remote_dir}"
+                }
+            })
+
+        self.assertRaises(AssertionError, fail_sync_local)
+
+        def fail_sync_remote():
+            [trial] = run_experiments({
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_function": "ls {local_dir}"
+                }
+            })
+
+        self.assertRaises(AssertionError, fail_sync_remote)
+
+        def sync_func(local, remote):
+            with open(os.path.join(local, "test.log"), "w") as f:
+                f.write(remote)
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                },
+                "upload_dir": "test",
+                "sync_function": tune.function(sync_func)
+            }
+        })
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -681,6 +900,20 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
 
+    def test_resolve_dict(self):
+        config = {
+            "a": {
+                "b": 1,
+                "c": 2,
+            },
+            "b": {
+                "a": 3
+            }
+        }
+        resolved = resolve_nested_dict(config)
+        for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
+            self.assertEqual(resolved.get(k), v)
+
     def testRecursiveDep(self):
         try:
             list(
@@ -723,6 +956,25 @@ class VariantGeneratorTest(unittest.TestCase):
         searcher.on_trial_complete(finished_trial.trial_id)
         self.assertEqual(len(searcher.next_trials()), 1)
         self.assertEqual(len(searcher.next_trials()), 0)
+
+
+def create_mock_components():
+    class _MockScheduler(FIFOScheduler):
+        errored_trials = []
+
+        def on_trial_error(self, trial_runner, trial):
+            self.errored_trials += [trial]
+
+    class _MockSearchAlg(BasicVariantGenerator):
+        errored_trials = []
+
+        def on_trial_complete(self, trial_id, error=False, **kwargs):
+            if error:
+                self.errored_trials += [trial_id]
+
+    searchalg = _MockSearchAlg()
+    scheduler = _MockScheduler()
+    return searchalg, scheduler
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -769,16 +1021,6 @@ class TrialRunnerTest(unittest.TestCase):
                 self.assertLessEqual(len(trial.logdir), 200)
                 trial_executor.stop_trial(trial)
 
-    def testTrialErrorOnStart(self):
-        ray.init()
-        trial_executor = RayTrialExecutor()
-        _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = Trial("asdf", resources=Resources(1, 0))
-        try:
-            trial_executor.start_trial(trial)
-        except Exception as e:
-            self.assertIn("a class", str(e))
-
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())
@@ -801,7 +1043,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.PENDING)
 
     def testFractionalGpus(self):
-        ray.init(num_cpus=4, num_gpus=1, use_raylet=True)
+        ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
         kwargs = {
             "resources": Resources(cpu=1, gpu=0.5),
@@ -881,6 +1123,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.RUNNING)
 
+    def testMultiStepRun2(self):
+        """Checks that runner.step throws when overstepping."""
+        ray.init(num_cpus=1)
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertRaises(TuneError, runner.step)
+
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(BasicVariantGenerator())
@@ -903,9 +1169,17 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
 
-    def testFailureRecoveryDisabled(self):
+    def testThrowOnOverstep(self):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
+        runner.step()
+        self.assertRaises(TuneError, runner.step)
+
+    def testFailureRecoveryDisabled(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -924,10 +1198,15 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 1)
+        self.assertEqual(len(searchalg.errored_trials), 1)
+        self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryEnabled(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
+
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -948,6 +1227,40 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].num_failures, 1)
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(len(searchalg.errored_trials), 0)
+        self.assertEqual(len(scheduler.errored_trials), 0)
+
+    def testFailureRecoveryNodeRemoval(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        searchalg, scheduler = create_mock_components()
+
+        runner = TrialRunner(searchalg, scheduler=scheduler)
+
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 1,
+            "config": {
+                "mock_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        with patch('ray.global_state.cluster_resources') as resource_mock:
+            resource_mock.return_value = {"CPU": 1, "GPU": 1}
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.RUNNING)
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.RUNNING)
+
+            # Mimic a node failure
+            resource_mock.return_value = {"CPU": 0, "GPU": 0}
+            runner.step()
+            self.assertEqual(trials[0].status, Trial.PENDING)
+            self.assertEqual(trials[0].num_failures, 1)
+            self.assertEqual(len(searchalg.errored_trials), 0)
+            self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -1299,6 +1612,229 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(len(searcher.live_trials), 0)
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
+
+    def testSearchAlgFinishes(self):
+        """Empty SearchAlg changing state in `next_trials` does not crash."""
+
+        class FinishFastAlg(SuggestionAlgorithm):
+            _index = 0
+
+            def next_trials(self):
+                trials = []
+                self._index += 1
+
+                for trial in self._trial_generator:
+                    trials += [trial]
+                    break
+
+                if self._index > 4:
+                    self._finished = True
+                return trials
+
+            def _suggest(self, trial_id):
+                return {}
+
+        ray.init(num_cpus=2)
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 2,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        searcher = FinishFastAlg()
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher.add_configurations(experiments)
+
+        runner = TrialRunner(search_alg=searcher)
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This launches a new run
+        runner.step()  # This launches a 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the first run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # This kills the 2nd run
+        self.assertFalse(searcher.is_finished())
+        self.assertFalse(runner.is_finished())
+        runner.step()  # this converts self._finished to True
+        self.assertTrue(searcher.is_finished())
+        self.assertRaises(TuneError, runner.step)
+
+    def testTrialSaveRestore(self):
+        """Creates different trials to test runner.checkpoint/restore."""
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        trials = [
+            Trial(
+                "__fake",
+                trial_id="trial_terminate",
+                stopping_criterion={"training_iteration": 1},
+                checkpoint_freq=1)
+        ]
+        runner.add_trial(trials[0])
+        runner.step()  # start
+        runner.step()
+        self.assertEquals(trials[0].status, Trial.TERMINATED)
+
+        trials += [
+            Trial(
+                "__fake",
+                trial_id="trial_fail",
+                stopping_criterion={"training_iteration": 3},
+                checkpoint_freq=1,
+                config={"mock_error": True})
+        ]
+        runner.add_trial(trials[1])
+        runner.step()
+        runner.step()
+        runner.step()
+        self.assertEquals(trials[1].status, Trial.ERROR)
+
+        trials += [
+            Trial(
+                "__fake",
+                trial_id="trial_succ",
+                stopping_criterion={"training_iteration": 2},
+                checkpoint_freq=1)
+        ]
+        runner.add_trial(trials[2])
+        runner.step()
+        self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
+        self.assertEquals(trials[2].status, Trial.RUNNING)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for tid in ["trial_terminate", "trial_fail"]:
+            original_trial = runner.get_trial(tid)
+            restored_trial = runner2.get_trial(tid)
+            self.assertEqual(original_trial.status, restored_trial.status)
+
+        restored_trial = runner2.get_trial("trial_succ")
+        self.assertEqual(Trial.PENDING, restored_trial.status)
+
+        runner2.step()
+        runner2.step()
+        runner2.step()
+        self.assertRaises(TuneError, runner2.step)
+        shutil.rmtree(tmpdir)
+
+    def testTrialNoSave(self):
+        """Check that non-checkpointing trials are not saved."""
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="non_checkpoint",
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="checkpoint",
+                checkpoint_at_end=True,
+                stopping_criterion={"training_iteration": 2}))
+
+        while not all(t.status == Trial.TERMINATED
+                      for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="pending",
+                stopping_criterion={"training_iteration": 2}))
+
+        runner.step()
+        runner.step()
+
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trials = runner2.get_trials()
+        self.assertEquals(len(new_trials), 3)
+        self.assertTrue(
+            runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(
+            runner2.get_trial("checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
+        self.assertTrue(runner2.get_trial("pending").last_result is None)
+        runner2.step()
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointWithFunction(self):
+        ray.init()
+        trial = Trial(
+            "__fake",
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda i: i),
+                }
+            },
+            checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trial = runner2.get_trials()[0]
+        self.assertTrue("callbacks" in new_trial.config)
+        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointOverwrite(self):
+        def count_checkpoints(cdir):
+            return sum((fname.startswith("experiment_state")
+                        and fname.endswith(".json"))
+                       for fname in os.listdir(cdir))
+
+        ray.init()
+        trial = Trial("__fake", checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 1)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for i in range(5):
+            runner2.step()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+
+        runner2.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+        shutil.rmtree(tmpdir)
+
+
+class SearchAlgorithmTest(unittest.TestCase):
+    def testNestedSuggestion(self):
+        class TestSuggestion(SuggestionAlgorithm):
+            def _suggest(self, trial_id):
+                return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
+
+        alg = TestSuggestion()
+        alg.add_configurations({"test": {"run": "__fake"}})
+        trial = alg.next_trials()[0]
+        self.assertTrue("e=5" in trial.experiment_tag)
+        self.assertTrue("d=4" in trial.experiment_tag)
 
 
 if __name__ == "__main__":

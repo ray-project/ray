@@ -1,82 +1,121 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.config.RayParameters;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WorkerContext {
 
-  private static final ThreadLocal<WorkerContext> currentWorkerCtx =
-      ThreadLocal.withInitial(() -> init(AbstractRayRuntime.getParams()));
+  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
+
+  private UniqueId workerId;
+
+  private ThreadLocal<UniqueId> currentTaskId;
+
   /**
-   * id of worker.
+   * Number of objects that have been put from current task.
    */
-  public static UniqueId workerID = UniqueId.randomId();
+  private ThreadLocal<Integer> putIndex;
+
   /**
-   * current doing task.
+   * Number of tasks that have been submitted from current task.
    */
-  private TaskSpec currentTask;
-  /**
-   * current app classloader.
-   */
+  private ThreadLocal<Integer> taskIndex;
+
+  private UniqueId currentDriverId;
+
   private ClassLoader currentClassLoader;
-  /**
-   * how many puts done by current task.
-   */
-  private int currentTaskPutCount;
-  /**
-   * how many calls done by current task.
-   */
-  private int currentTaskCallCount;
 
-  public static WorkerContext init(RayParameters params) {
-    WorkerContext ctx = new WorkerContext();
-    currentWorkerCtx.set(ctx);
+  /**
+   * The ID of main thread which created the worker context.
+   */
+  private long mainThreadId;
 
-    TaskSpec dummy = new TaskSpec();
-    dummy.parentTaskId = UniqueId.NIL;
-    if (params.worker_mode == WorkerMode.DRIVER) {
-      dummy.taskId = UniqueId.randomId();
+
+  public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
+    mainThreadId = Thread.currentThread().getId();
+    taskIndex = ThreadLocal.withInitial(() -> 0);
+    putIndex = ThreadLocal.withInitial(() -> 0);
+    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    if (workerMode == WorkerMode.DRIVER) {
+      workerId = driverId;
+      currentTaskId.set(UniqueId.randomId());
+      currentDriverId = driverId;
+      currentClassLoader = null;
     } else {
-      dummy.taskId = UniqueId.NIL;
+      workerId = UniqueId.randomId();
+      setCurrentTask(null, null);
     }
-    dummy.actorId = UniqueId.NIL;
-    dummy.driverId = params.driver_id;
-    prepare(dummy, null);
-
-    return ctx;
   }
 
-  public static void prepare(TaskSpec task, ClassLoader classLoader) {
-    WorkerContext wc = get();
-    wc.currentTask = task;
-    wc.currentTaskPutCount = 0;
-    wc.currentTaskCallCount = 0;
-    wc.currentClassLoader = classLoader;
+  /**
+   * @return For the main thread, this method returns the ID of this worker's current running task;
+   *     for other threads, this method returns a random ID.
+   */
+  public UniqueId getCurrentTaskId() {
+    return currentTaskId.get();
   }
 
-  public static WorkerContext get() {
-    return currentWorkerCtx.get();
+  /**
+   * Set the current task which is being executed by the current worker. Note, this method can only
+   * be called from the main thread.
+   */
+  public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
+    Preconditions.checkState(
+        Thread.currentThread().getId() == mainThreadId,
+        "This method should only be called from the main thread."
+    );
+    if (task != null) {
+      currentTaskId.set(task.taskId);
+      currentDriverId = task.driverId;
+    } else {
+      currentTaskId.set(UniqueId.NIL);
+      currentDriverId = UniqueId.NIL;
+    }
+    taskIndex.set(0);
+    putIndex.set(0);
+    currentClassLoader = classLoader;
   }
 
-  public static TaskSpec currentTask() {
-    return get().currentTask;
+  /**
+   * Increment the put index and return the new value.
+   */
+  public int nextPutIndex() {
+    putIndex.set(putIndex.get() + 1);
+    return putIndex.get();
   }
 
-  public static int nextPutIndex() {
-    return ++get().currentTaskPutCount;
+  /**
+   * Increment the task index and return the new value.
+   */
+  public int nextTaskIndex() {
+    taskIndex.set(taskIndex.get() + 1);
+    return taskIndex.get();
   }
 
-  public static int nextCallIndex() {
-    return ++get().currentTaskCallCount;
+  /**
+   * @return The ID of the current worker.
+   */
+  public UniqueId getCurrentWorkerId() {
+    return workerId;
   }
 
-  public static UniqueId currentWorkerId() {
-    return WorkerContext.workerID;
+  /**
+   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
+   *     the driver ID of the current running task.
+   */
+  public UniqueId getCurrentDriverId() {
+    return currentDriverId;
   }
 
-  public static ClassLoader currentClassLoader() {
-    return get().currentClassLoader;
+  /**
+   * @return The class loader which is associated with the current driver.
+   */
+  public ClassLoader getCurrentClassLoader() {
+    return currentClassLoader;
   }
+
 }

@@ -29,7 +29,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
     env = gym.make("CartPole-v0")
-    client = PolicyClient("http://localhost:8900")
+    client = PolicyClient("http://localhost:9900")
 
     eid = client.start_episode(training_enabled=not args.no_train)
     obs = env.reset()

@@ -17,3 +17,4 @@ humanoid-ppo-gae:
             free_log_std: true
         num_workers: 64
         num_gpus: 4
+        batch_mode: complete_episodes

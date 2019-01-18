@@ -1,11 +1,11 @@
 Profiling for Ray Users
 =======================
 
-This document is intended for users of Ray who want to know how to evaluate 
-the performance of their code while running on Ray. Profiling the 
-performance of your code can be very helpful to determine performance 
-bottlenecks or to find out where your code may not be parallelized properly. 
-If you are interested in pinpointing why your Ray application may not be 
+This document is intended for users of Ray who want to know how to evaluate
+the performance of their code while running on Ray. Profiling the
+performance of your code can be very helpful to determine performance
+bottlenecks or to find out where your code may not be parallelized properly.
+If you are interested in pinpointing why your Ray application may not be
 achieving the expected speedup, read on!
 
 
@@ -28,26 +28,26 @@ let's define our remote function to just sleep for 0.5 seconds:
   def func():
       time.sleep(0.5)
 
-In our example setup, we wish to call our remote function ``func()`` five 
-times, and store the result of each call into a list. To compare the 
-performance of different ways of looping our calls to our remote function, 
+In our example setup, we wish to call our remote function ``func()`` five
+times, and store the result of each call into a list. To compare the
+performance of different ways of looping our calls to our remote function,
 we can define each loop version as a separate function on the driver script.
 
-For the first version **ex1**, each iteration of the loop calls the remote 
-function, then calls ``ray.get`` in an attempt to store the current result 
+For the first version **ex1**, each iteration of the loop calls the remote
+function, then calls ``ray.get`` in an attempt to store the current result
 into the list, as follows:
 
 .. code-block:: python
 
   # This loop is suboptimal in Ray, and should only be used for the sake of this example
-  def ex1():  
+  def ex1():
       list1 = []
       for i in range(5):
           list1.append(ray.get(func.remote()))
 
-For the second version **ex2**, each iteration of the loop calls the remote 
-function, and stores it into the list **without** calling ``ray.get`` each time. 
-``ray.get`` is used after the loop has finished, in preparation for processing 
+For the second version **ex2**, each iteration of the loop calls the remote
+function, and stores it into the list **without** calling ``ray.get`` each time.
+``ray.get`` is used after the loop has finished, in preparation for processing
 ``func()``'s results:
 
 .. code-block:: python
@@ -59,8 +59,8 @@ function, and stores it into the list **without** calling ``ray.get`` each time.
           list2.append(func.remote())
       ray.get(list2)
 
-Finally, for an example that's not so parallelizable, let's create a 
-third version **ex3** where the driver has to call a local 
+Finally, for an example that's not so parallelizable, let's create a
+third version **ex3** where the driver has to call a local
 function in between each call to the remote function ``func()``:
 
 .. code-block:: python
@@ -81,14 +81,14 @@ Timing Performance Using Python's Timestamps
 --------------------------------------------
 
 One way to sanity-check the performance of the three loops is simply to
-time how long it takes to complete each loop version. We can do this using 
+time how long it takes to complete each loop version. We can do this using
 python's built-in ``time`` `module`_.
 
 .. _`module`: https://docs.python.org/3/library/time.html
 
-The ``time`` module contains a useful ``time()`` function that returns the 
-current timestamp in unix time whenever it's called. We can create a generic 
-function wrapper to call ``time()`` right before and right after each loop 
+The ``time`` module contains a useful ``time()`` function that returns the
+current timestamp in unix time whenever it's called. We can create a generic
+function wrapper to call ``time()`` right before and right after each loop
 function to print out how long each loop takes overall:
 
 .. code-block:: python
@@ -106,8 +106,8 @@ function to print out how long each loop takes overall:
           return result
       return timed_wrapper
 
-To always print out how long the loop takes to run each time the loop 
-function ``ex1()`` is called, we can evoke our ``time_this`` wrapper with 
+To always print out how long the loop takes to run each time the loop
+function ``ex1()`` is called, we can evoke our ``time_this`` wrapper with
 a function decorator. This can similarly be done to functions ``ex2()``
 and ``ex3()``:
 
@@ -136,9 +136,9 @@ Then, running the three timed loops should yield output similar to this:
   | func:'ex2' args:[(), {}] took: 1.0032 seconds |
   | func:'ex3' args:[(), {}] took: 2.0039 seconds |
 
-Let's interpret these results. 
+Let's interpret these results.
 
-Here, ``ex1()`` took substantially more time than ``ex2()``, where 
+Here, ``ex1()`` took substantially more time than ``ex2()``, where
 their only difference is that ``ex1()`` calls ``ray.get`` on the remote
 function before adding it to the list, while ``ex2()`` waits to fetch the
 entire list with ``ray.get`` at once.
@@ -160,28 +160,28 @@ entire list with ``ray.get`` at once.
           list2.append(func.remote())
       ray.get(list2)
 
-Notice how ``ex1()`` took 2.5 seconds, exactly five times 0.5 seconds, or 
-the time it would take to wait for our remote function five times in a row. 
+Notice how ``ex1()`` took 2.5 seconds, exactly five times 0.5 seconds, or
+the time it would take to wait for our remote function five times in a row.
 
-By calling ``ray.get`` after each call to the remote function, ``ex1()`` 
-removes all ability to parallelize work, by forcing the driver to wait for 
-each ``func()``'s result in succession. We are not taking advantage of Ray 
-parallelization here! 
+By calling ``ray.get`` after each call to the remote function, ``ex1()``
+removes all ability to parallelize work, by forcing the driver to wait for
+each ``func()``'s result in succession. We are not taking advantage of Ray
+parallelization here!
 
-Meanwhile, ``ex2()`` takes about 1 second, much faster than it would normally 
-take to call ``func()`` five times iteratively. Ray is running each call to 
-``func()`` in parallel, saving us time. 
+Meanwhile, ``ex2()`` takes about 1 second, much faster than it would normally
+take to call ``func()`` five times iteratively. Ray is running each call to
+``func()`` in parallel, saving us time.
 
-``ex1()`` is actually a common user mistake in Ray. ``ray.get`` is not 
-necessary to do before adding the result of ``func()`` to the list. Instead, 
-the driver should send out all parallelizable calls to the remote function 
+``ex1()`` is actually a common user mistake in Ray. ``ray.get`` is not
+necessary to do before adding the result of ``func()`` to the list. Instead,
+the driver should send out all parallelizable calls to the remote function
 to Ray before waiting to receive their results with ``ray.get``. ``ex1()``'s
 suboptimal behavior can be noticed just using this simple timing test.
 
-Realistically, however, many applications are not as highly parallelizable 
-as ``ex2()``, and the application includes sections where the code must run in 
+Realistically, however, many applications are not as highly parallelizable
+as ``ex2()``, and the application includes sections where the code must run in
 serial. ``ex3()`` is such an example, where the local function ``other_func()``
-must run first before each call to ``func()`` can be submitted to Ray. 
+must run first before each call to ``func()`` can be submitted to Ray.
 
 .. code-block:: python
 
@@ -196,23 +196,23 @@ must run first before each call to ``func()`` can be submitted to Ray.
           list2.append(func.remote())
       ray.get(list3)
 
-What results is that while ``ex3()`` still gained 0.5 seconds of speedup 
+What results is that while ``ex3()`` still gained 0.5 seconds of speedup
 compared to the completely serialized ``ex1()`` version, this speedup is
-still nowhere near the ideal speedup of ``ex2()``. 
+still nowhere near the ideal speedup of ``ex2()``.
 
-The dramatic speedup of ``ex2()`` is possible because ``ex2()`` is 
-theoretically completely parallelizable: if we were given 5 CPUs, all 5 calls 
-to ``func()`` can be run in parallel. What is happening with ``ex3()``, 
-however, is that each parallelized call to ``func()`` is staggered by a wait 
+The dramatic speedup of ``ex2()`` is possible because ``ex2()`` is
+theoretically completely parallelizable: if we were given 5 CPUs, all 5 calls
+to ``func()`` can be run in parallel. What is happening with ``ex3()``,
+however, is that each parallelized call to ``func()`` is staggered by a wait
 of 0.3 seconds for the local ``other_func()`` to finish.
 
-``ex3()`` is thus a manifestation of `Amdahls Law`_: the fastest theoretically 
-possible execution time from parallelizing an application is limited to be 
-no better than the time it takes to run all serial parts in serial. 
+``ex3()`` is thus a manifestation of `Amdahls Law`_: the fastest theoretically
+possible execution time from parallelizing an application is limited to be
+no better than the time it takes to run all serial parts in serial.
 
 .. _`Amdahls Law`: https://en.wikipedia.org/wiki/Amdahl%27s_law
 
-Due to Amdahl's Law, ``ex3()`` must take at least 1.5 
+Due to Amdahl's Law, ``ex3()`` must take at least 1.5
 seconds -- the time it takes for 5 serial calls to ``other_func()`` to finish!
 After an additional 0.5 seconds to execute func and get the result, the
 computation is done.
@@ -224,7 +224,7 @@ Profiling Using An External Profiler (Line Profiler)
 One way to profile the performance of our code using Ray is to use a third-party
 profiler such as `Line_profiler`_. Line_profiler is a useful line-by-line
 profiler for pure Python applications that formats its output side-by-side with
-the profiled code itself. 
+the profiled code itself.
 
 Alternatively, another third-party profiler (not covered in this documentation)
 that you could use is `Pyflame`_, which can generate profiling graphs.
@@ -238,11 +238,11 @@ First install ``line_profiler`` with pip:
 
   pip install line_profiler
 
-``line_profiler`` requires each section of driver code that you want to profile as 
-its own independent function. Conveniently, we have already done so by defining 
+``line_profiler`` requires each section of driver code that you want to profile as
+its own independent function. Conveniently, we have already done so by defining
 each loop version as its own function. To tell ``line_profiler`` which functions
-to profile, just add the ``@profile`` decorator to ``ex1()``, ``ex2()`` and 
-``ex3()``. Note that you do not need to import ``line_profiler`` into your Ray 
+to profile, just add the ``@profile`` decorator to ``ex1()``, ``ex2()`` and
+``ex3()``. Note that you do not need to import ``line_profiler`` into your Ray
 application:
 
 .. code-block:: python
@@ -262,16 +262,16 @@ application:
   if __name__ == "__main__":
       main()
 
-Then, when we want to execute our Python script from the command line, instead 
-of ``python your_script_here.py``, we use the following shell command to run the 
+Then, when we want to execute our Python script from the command line, instead
+of ``python your_script_here.py``, we use the following shell command to run the
 script with ``line_profiler`` enabled:
 
 .. code-block:: bash
 
-  kernprof -l your_script_here.py 
+  kernprof -l your_script_here.py
 
-This command runs your script and prints only your script's output as usual. 
-``Line_profiler`` instead outputs its profiling results to a corresponding 
+This command runs your script and prints only your script's output as usual.
+``Line_profiler`` instead outputs its profiling results to a corresponding
 binary file called ``your_script_here.py.lprof``.
 
 To read ``line_profiler``'s results to terminal, use this shell command:
@@ -300,10 +300,10 @@ Note that execution time is given in units of 1e-06 seconds:
       33         5    2508805.0 501761.0    100.0     list1.append(ray.get(func.remote()))
 
 
-Notice that each hit to ``list1.append(ray.get(func.remote()))`` at line 33 
-takes the full 0.5 seconds waiting for ``func()`` to finish. Meanwhile, in 
-``ex2()`` below, each call of ``func.remote()`` at line 40 only takes 0.127 ms, 
-and the majority of the time (about 1 second) is spent on waiting for ``ray.get()`` 
+Notice that each hit to ``list1.append(ray.get(func.remote()))`` at line 33
+takes the full 0.5 seconds waiting for ``func()`` to finish. Meanwhile, in
+``ex2()`` below, each call of ``func.remote()`` at line 40 only takes 0.127 ms,
+and the majority of the time (about 1 second) is spent on waiting for ``ray.get()``
 at the end:
 
 
@@ -323,11 +323,11 @@ at the end:
       41         1    1002919.0 1002919.0     99.9    ray.get(list2)
 
 
-And finally, ``line_profiler``'s output for ``ex3()``. Each call to 
-``func.remote()`` at line 50 still take magnitudes faster than 0.5 seconds, 
-showing that Ray is successfully parallelizing the remote calls. However, each 
-call to the local function ``other_func()`` takes the full 0.3 seconds, 
-totalling up to the guaranteed minimum application execution time of 1.5 
+And finally, ``line_profiler``'s output for ``ex3()``. Each call to
+``func.remote()`` at line 50 still take magnitudes faster than 0.5 seconds,
+showing that Ray is successfully parallelizing the remote calls. However, each
+call to the local function ``other_func()`` takes the full 0.3 seconds,
+totalling up to the guaranteed minimum application execution time of 1.5
 seconds:
 
 .. code-block:: bash
@@ -351,20 +351,20 @@ seconds:
 Profiling Using Python's CProfile
 ---------------------------------
 
-A second way to profile the performance of your Ray application is to 
-use Python's native cProfile `profiling module`_. Rather than tracking 
+A second way to profile the performance of your Ray application is to
+use Python's native cProfile `profiling module`_. Rather than tracking
 line-by-line of your application code, cProfile can give the total runtime
 of each loop function, as well as list the number of calls made and
-execution time of all function calls made within the profiled code. 
+execution time of all function calls made within the profiled code.
 
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
-Unlike ``line_profiler`` above, this detailed list of profiled function calls 
-**includes** internal function calls and function calls made within Ray! 
+Unlike ``line_profiler`` above, this detailed list of profiled function calls
+**includes** internal function calls and function calls made within Ray!
 
-However, similar to ``line_profiler``, cProfile can be enabled with minimal 
-changes to your application code (given that each section of the code you want 
-to profile is defined as its own function). To use cProfile, add an import 
+However, similar to ``line_profiler``, cProfile can be enabled with minimal
+changes to your application code (given that each section of the code you want
+to profile is defined as its own function). To use cProfile, add an import
 statement, then replace calls to the loop functions as follows:
 
 .. code-block:: python
@@ -385,17 +385,17 @@ statement, then replace calls to the loop functions as follows:
   if __name__ == "__main__":
       main()
 
-Now, when executing your Python script, a cProfile list of profiled function 
+Now, when executing your Python script, a cProfile list of profiled function
 calls will be outputted to terminal for each call made to ``cProfile.run()``.
-At the very top of cProfile's output gives the total execution time for 
+At the very top of cProfile's output gives the total execution time for
 ``'ex1()'``:
 
 .. code-block:: bash
 
   601 function calls (595 primitive calls) in 2.509 seconds
 
-Following is a snippet of profiled function calls for ``'ex1()'``. Most of 
-these calls are quick and take around 0.000 seconds, so the functions of 
+Following is a snippet of profiled function calls for ``'ex1()'``. Most of
+these calls are quick and take around 0.000 seconds, so the functions of
 interest are the ones with non-zero execution times:
 
 .. code-block:: bash
@@ -405,7 +405,7 @@ interest are the ones with non-zero execution times:
       1    0.000    0.000    2.509    2.509 your_script_here.py:31(ex1)
       5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
       5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
-  ...  
+  ...
      10    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
       5    0.000    0.000    2.508    0.502 worker.py:2535(get)
       5    0.000    0.000    0.000    0.000 worker.py:2695(get_global_worker)
@@ -414,25 +414,25 @@ interest are the ones with non-zero execution times:
       5    0.000    0.000    0.000    0.000 worker.py:514(submit_task)
   ...
 
-The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call, 
-can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the 
-remote function itself at ``remote_function.py:103(remote)`` only takes 0.001 
-seconds over 5 calls, and thus is not the source of the slow performance of 
+The 5 separate calls to Ray's ``get``, taking the full 0.502 seconds each call,
+can be noticed at ``worker.py:2535(get)``. Meanwhile, the act of calling the
+remote function itself at ``remote_function.py:103(remote)`` only takes 0.001
+seconds over 5 calls, and thus is not the source of the slow performance of
 ``ex1()``.
 
 
 Profiling Ray Actors with cProfile
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Considering that the detailed output of cProfile can be quite different depending 
-on what Ray functionalities we use, let us see what cProfile's output might look 
-like if our example involved Actors (for an introduction to Ray actors, see our 
-`Actor documentation here`_). 
+Considering that the detailed output of cProfile can be quite different depending
+on what Ray functionalities we use, let us see what cProfile's output might look
+like if our example involved Actors (for an introduction to Ray actors, see our
+`Actor documentation here`_).
 
 .. _`Actor documentation here`: http://ray.readthedocs.io/en/latest/actors.html
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
-let's create a new example and loop over five calls to a remote function 
+let's create a new example and loop over five calls to a remote function
 **inside an actor**. Our actor's remote function again just sleeps for 0.5
 seconds:
 
@@ -440,7 +440,7 @@ seconds:
 
   # Our actor
   @ray.remote
-  class Sleeper(object):  
+  class Sleeper(object):
       def __init__(self):
           self.sleepValue = 0.5
 
@@ -448,7 +448,7 @@ seconds:
       def actor_func(self):
           time.sleep(self.sleepValue)
 
-Recalling the suboptimality of ``ex1``, let's first see what happens if we 
+Recalling the suboptimality of ``ex1``, let's first see what happens if we
 attempt to perform all five ``actor_func()`` calls within a single actor:
 
 .. code-block:: python
@@ -470,7 +470,7 @@ We enable cProfile on this example as follows:
 
   def main():
       ray.init()
-      cProfile.run('ex4()') 
+      cProfile.run('ex4()')
 
   if __name__ == "__main__":
       main()
@@ -497,22 +497,22 @@ Running our new Actor example, cProfile's abbreviated output is as follows:
   8    0.000    0.000    0.001    0.000 worker.py:514(submit_task)
   ...
 
-It turns out that the entire example still took 2.5 seconds to execute, or the 
-time for five calls to ``actor_func()`` to run in serial. We remember in ``ex1`` 
-that this behavior was because we did not wait until after submitting all five 
+It turns out that the entire example still took 2.5 seconds to execute, or the
+time for five calls to ``actor_func()`` to run in serial. We remember in ``ex1``
+that this behavior was because we did not wait until after submitting all five
 remote function tasks to call ``ray.get()``, but we can verify on cProfile's
-output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at 
-the end, for 2.509 seconds. What happened? 
+output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at
+the end, for 2.509 seconds. What happened?
 
-It turns out Ray cannot parallelize this example, because we have only 
-initialized a single ``Sleeper`` actor. Because each actor is a single, 
-stateful worker, our entire code is submitted and ran on a single worker the 
+It turns out Ray cannot parallelize this example, because we have only
+initialized a single ``Sleeper`` actor. Because each actor is a single,
+stateful worker, our entire code is submitted and ran on a single worker the
 whole time.
 
 To better parallelize the actors in ``ex4``, we can take advantage
 that each call to ``actor_func()`` is independent, and instead
 create five ``Sleeper`` actors. That way, we are creating five workers
-that can run in parallel, instead of creating a single worker that 
+that can run in parallel, instead of creating a single worker that
 can only handle one call to ``actor_func()`` at a time.
 
 .. code-block:: python
@@ -530,7 +530,7 @@ can only handle one call to ``actor_func()`` at a time.
 
 Our example in total now takes only 1.5 seconds to run:
 
-.. code-block:: bash 
+.. code-block:: bash
 
   1378 function calls (1363 primitive calls) in 1.567 seconds
 
@@ -553,27 +553,27 @@ Our example in total now takes only 1.5 seconds to run:
 
 Visualizing Tasks in the Ray Timeline
 -------------------------------------
-Profiling the performance of your Ray application doesn't need to be 
-an eye-straining endeavor of interpreting numbers among hundreds of 
-lines of text. Ray comes with its own visual web UI to visualize the 
+Profiling the performance of your Ray application doesn't need to be
+an eye-straining endeavor of interpreting numbers among hundreds of
+lines of text. Ray comes with its own visual web UI to visualize the
 parallelization (or lack thereof) of user tasks submitted to Ray!
 
-This method does have its own limitations, however. The Ray Timeline 
+This method does have its own limitations, however. The Ray Timeline
 can only show timing info about Ray tasks, and not timing for normal
 Python functions. This can be an issue especially for debugging slow
-Python code that is running on the driver, and not running as a task on 
-one of the workers. The other profiling techniques above are options that 
+Python code that is running on the driver, and not running as a task on
+one of the workers. The other profiling techniques above are options that
 do cover profiling normal Python functions.
 
 Currently, whenever initializing Ray, a URL is generated and printed
-in the terminal. This URL can be used to view Ray's web UI as a Jupyter 
+in the terminal. This URL can be used to view Ray's web UI as a Jupyter
 notebook:
 
 .. code-block:: bash
 
   ~$: python your_script_here.py
 
-  Process STDOUT and STDERR is being redirected to /tmp/raylogs/.
+  Process STDOUT and STDERR is being redirected to /tmp/ray/session_2018-11-01_14-31-43_27211/logs.
   Waiting for redis server at 127.0.0.1:61150 to respond...
   Waiting for redis server at 127.0.0.1:21607 to respond...
   Starting local scheduler with the following resources: {'CPU': 4, 'GPU': 0}.
@@ -582,13 +582,13 @@ notebook:
   View the web UI at http://localhost:8897/notebooks/ray_ui84907.ipynb?token=025e8ab295270a57fac209204b37349fdf34e037671a13ff
   ======================================================================
 
-Ray's web UI attempts to run on localhost at port 8888, and if it fails 
-it tries successive ports until it finds an open port. In this above 
+Ray's web UI attempts to run on localhost at port 8888, and if it fails
+it tries successive ports until it finds an open port. In this above
 example, it has opened on port 8897.
 
-Because this web UI is only available as long as your Ray application 
-is currently running, you may need to add a user prompt to prevent 
-your Ray application from exiting once it has finished executing,  
+Because this web UI is only available as long as your Ray application
+is currently running, you may need to add a user prompt to prevent
+your Ray application from exiting once it has finished executing,
 such as below. You can then browse the web UI for as long as you like:
 
 .. code-block:: python
@@ -606,44 +606,44 @@ such as below. You can then browse the web UI for as long as you like:
       main()
 
 Now, when executing your python script, you can access the Ray timeline
-by copying the web UI URL into your web browser on the Ray machine. To 
-load the web UI in the jupyter notebook, select **Kernel -> Restart and 
+by copying the web UI URL into your web browser on the Ray machine. To
+load the web UI in the jupyter notebook, select **Kernel -> Restart and
 Run All** in the jupyter menu.
 
-The Ray timeline can be viewed in the fourth cell of the UI notebook by 
-using the task filter options, then clicking on the **View task timeline** 
+The Ray timeline can be viewed in the fourth cell of the UI notebook by
+using the task filter options, then clicking on the **View task timeline**
 button.
 
-For example, here are the results of executing ``ex1()``, ``ex2()``, and 
-``ex3()`` visualized in the Ray timeline. Each red block is a call to one 
-of our user-defined remote functions, namely ``func()``, which sleeps for 
+For example, here are the results of executing ``ex1()``, ``ex2()``, and
+``ex3()`` visualized in the Ray timeline. Each red block is a call to one
+of our user-defined remote functions, namely ``func()``, which sleeps for
 0.5 seconds:
 
 .. image:: user-profiling-timeline.gif
 
-(highlighted color boxes for ``ex1()``, ``ex2()``, and ``ex3()`` added for 
+(highlighted color boxes for ``ex1()``, ``ex2()``, and ``ex3()`` added for
 the sake of this example)
 
-Note how ``ex1()`` executes all five calls to ``func()`` in serial, 
+Note how ``ex1()`` executes all five calls to ``func()`` in serial,
 while ``ex2()`` and ``ex3()`` are able to parallelize their remote
-function calls. 
+function calls.
 
-Because we have 4 CPUs available on our machine, we can only able to 
-execute up to 4 remote functions in parallel. So, the fifth call to the 
-remote function in ``ex2()`` must wait until the first batch of ``func()`` 
+Because we have 4 CPUs available on our machine, we can only able to
+execute up to 4 remote functions in parallel. So, the fifth call to the
+remote function in ``ex2()`` must wait until the first batch of ``func()``
 calls is finished.
 
-In ``ex3()``, because of the serial dependency on ``other_func()``, we 
+In ``ex3()``, because of the serial dependency on ``other_func()``, we
 aren't even able to use all 4 of our cores to parallelize calls to ``func()``.
 The time gaps between the ``func()`` blocks are a result of staggering the
-calls to ``func()`` in between waiting 0.3 seconds for ``other_func()``. 
+calls to ``func()`` in between waiting 0.3 seconds for ``other_func()``.
 
-Also, notice that due to the aforementioned limitation of the Ray timeline, 
-``other_func()``, as a driver function and not a Ray task, is never 
+Also, notice that due to the aforementioned limitation of the Ray timeline,
+``other_func()``, as a driver function and not a Ray task, is never
 visualized on the Ray timeline.
 
 **For more on Ray's Web UI,** such as how to access the UI on a remote
-node over ssh, or for troubleshooting installation, please see our 
+node over ssh, or for troubleshooting installation, please see our
 `Web UI documentation section`_.
 
 .. _`Web UI documentation section`: http://ray.readthedocs.io/en/latest/webui.html

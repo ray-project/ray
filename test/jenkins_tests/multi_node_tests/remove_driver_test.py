@@ -199,7 +199,7 @@ def cleanup_driver(redis_address, driver_index):
             try:
                 actor = actor_class.remote(driver_index, actor_index,
                                            redis_address)
-            except Exception as e:
+            except Exception:
                 time.sleep(0.1)
             else:
                 return actor

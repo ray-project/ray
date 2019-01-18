@@ -4,13 +4,12 @@
   xmlns="http://maven.apache.org/POM/4.0.0"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
-    <groupId>org.ray.parent</groupId>
+    <groupId>org.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>1.0</version>
+    <version>0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.ray</groupId>
   <artifactId>ray-tutorial</artifactId>
 
   <name>java tutorial</name>
@@ -41,7 +40,7 @@
             <RAY_CONFIG>${basedir}/../ray.config.ini</RAY_CONFIG>
           </environmentVariables>
           <argLine>-ea
-            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/local_scheduler
+            -Djava.library.path=${basedir}/../../build/src/plasma:${basedir}/../../build/src/ray/raylet
             -noverify
             -DlogOutput=console
           </argLine>

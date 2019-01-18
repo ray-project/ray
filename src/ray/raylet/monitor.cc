@@ -1,5 +1,6 @@
 #include "ray/raylet/monitor.h"
 
+#include "ray/ray_config.h"
 #include "ray/status.h"
 #include "ray/util/util.h"
 
@@ -15,21 +16,23 @@ namespace raylet {
 /// the Ray configuration), then the monitor will mark that Raylet as dead in
 /// the client table, which broadcasts the event to all other Raylets.
 Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-                 int redis_port)
-    : gcs_client_(redis_address, redis_port),
+                 int redis_port, const std::string &redis_password)
+    : gcs_client_(redis_address, redis_port, redis_password),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
   RAY_CHECK_OK(gcs_client_.Attach(io_service));
 }
 
-void Monitor::HandleHeartbeat(const ClientID &client_id) {
+void Monitor::HandleHeartbeat(const ClientID &client_id,
+                              const HeartbeatTableDataT &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
+  heartbeat_buffer_[client_id] = heartbeat_data;
 }
 
 void Monitor::Start() {
   const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientID &id,
                                          const HeartbeatTableDataT &heartbeat_data) {
-    HandleHeartbeat(id);
+    HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), heartbeat_callback, nullptr, nullptr));
@@ -63,6 +66,18 @@ void Monitor::Tick() {
     } else {
       it++;
     }
+  }
+
+  // Send any buffered heartbeats as a single publish.
+  if (!heartbeat_buffer_.empty()) {
+    auto batch = std::make_shared<HeartbeatBatchTableDataT>();
+    for (const auto &heartbeat : heartbeat_buffer_) {
+      batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
+          new HeartbeatTableDataT(heartbeat.second)));
+    }
+    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(UniqueID::nil(), UniqueID::nil(),
+                                                         batch, nullptr));
+    heartbeat_buffer_.clear();
   }
 
   auto heartbeat_period = boost::posix_time::milliseconds(

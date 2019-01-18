@@ -145,17 +145,17 @@ class ResourceIds {
   ///
   /// \param resource_quantity: The total amount of resource. This must either be
   /// a whole number or a fraction less than 1.
-  ResourceIds(double resource_quantity);
+  explicit ResourceIds(double resource_quantity);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
-  ResourceIds(const std::vector<int64_t> &whole_ids);
+  explicit ResourceIds(const std::vector<int64_t> &whole_ids);
 
   /// \brief Constructs ResourceIds with a given set of fractional IDs.
   ///
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
+  explicit ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs and fractional IDs.
   ///
@@ -374,6 +374,11 @@ class SchedulingResources {
   /// negative resources.
   bool Acquire(const ResourceSet &resources);
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
  private:
   /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;
@@ -386,5 +391,19 @@ class SchedulingResources {
 }  // namespace raylet
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::raylet::ResourceSet> {
+  size_t operator()(ray::raylet::ResourceSet const &k) const {
+    size_t seed = k.GetResourceMap().size();
+    for (auto &elem : k.GetResourceMap()) {
+      seed ^= std::hash<std::string>()(elem.first);
+      seed ^= std::hash<double>()(elem.second);
+    }
+    return seed;
+  }
+};
+}
 
 #endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H

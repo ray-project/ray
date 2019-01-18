@@ -6,7 +6,7 @@ View the `code for this example`_.
 
 .. note::
 
-    For an overview of Ray's reinforcement learning library, see `Ray RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+    For an overview of Ray's reinforcement learning library, see `RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
 
 To run this example, you will need to install `TensorFlow with GPU support`_ (at
@@ -21,7 +21,7 @@ Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Pong-ram-v4 --run=PPO
+  rllib train --env=Pong-ram-v4 --run=PPO
 
 This will train an agent on the ``Pong-ram-v4`` Atari environment. You can also
 try passing in the ``Pong-v0`` environment or the ``CartPole-v0`` environment.
@@ -39,4 +39,4 @@ Many of the TensorBoard metrics are also printed to the console, but you might
 find it easier to visualize and compare between runs using the TensorBoard UI.
 
 .. _`TensorFlow with GPU support`: https://www.tensorflow.org/install/
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/ppo

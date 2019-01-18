@@ -35,11 +35,15 @@ class LogMonitor(object):
             handle for that file.
     """
 
-    def __init__(self, redis_ip_address, redis_port, node_ip_address):
+    def __init__(self,
+                 redis_ip_address,
+                 redis_port,
+                 node_ip_address,
+                 redis_password=None):
         """Initialize the log monitor object."""
         self.node_ip_address = node_ip_address
         self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address, port=redis_port, password=redis_password)
         self.log_files = {}
         self.log_file_handles = {}
         self.files_to_ignore = set()
@@ -131,6 +135,12 @@ if __name__ == "__main__":
         type=str,
         help="The IP address of the node this process is on.")
     parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="the password to use for Redis")
+    parser.add_argument(
         "--logging-level",
         required=False,
         type=str,
@@ -151,6 +161,9 @@ if __name__ == "__main__":
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)
 
-    log_monitor = LogMonitor(redis_ip_address, redis_port,
-                             args.node_ip_address)
+    log_monitor = LogMonitor(
+        redis_ip_address,
+        redis_port,
+        args.node_ip_address,
+        redis_password=args.redis_password)
     log_monitor.run()

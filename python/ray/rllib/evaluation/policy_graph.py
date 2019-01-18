@@ -40,17 +40,23 @@ class PolicyGraph(object):
     def compute_actions(self,
                         obs_batch,
                         state_batches,
-                        is_training=False,
-                        episodes=None):
+                        prev_action_batch=None,
+                        prev_reward_batch=None,
+                        info_batch=None,
+                        episodes=None,
+                        **kwargs):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
             state_batches (list): list of RNN state input batches, if any
-            is_training (bool): whether we are training the policy
+            prev_action_batch (np.ndarray): batch of previous action values
+            prev_reward_batch (np.ndarray): batch of previous rewards
+            info_batch (info): batch of info objects
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (np.ndarray): batch of output actions, with shape like
@@ -65,17 +71,23 @@ class PolicyGraph(object):
     def compute_single_action(self,
                               obs,
                               state,
-                              is_training=False,
-                              episode=None):
+                              prev_action=None,
+                              prev_reward=None,
+                              info=None,
+                              episode=None,
+                              **kwargs):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
             state_batches (list): list of RNN state inputs, if any
-            is_training (bool): whether we are training the policy
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
-                multiagent algorithms.
+                multi-agent algorithms.
+            kwargs: forward compatibility placeholder
 
         Returns:
             actions (obj): single action
@@ -83,12 +95,31 @@ class PolicyGraph(object):
             info (dict): dictionary of extra features, if any
         """
 
+        prev_action_batch = None
+        prev_reward_batch = None
+        info_batch = None
+        episodes = None
+        if prev_action is not None:
+            prev_action_batch = [prev_action]
+        if prev_reward is not None:
+            prev_reward_batch = [prev_reward]
+        if info is not None:
+            info_batch = [info]
+        if episode is not None:
+            episodes = [episode]
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training, episodes=[episode])
+            [obs], [[s] for s in state],
+            prev_action_batch=prev_action_batch,
+            prev_reward_batch=prev_reward_batch,
+            info_batch=info_batch,
+            episodes=episodes)
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -100,6 +131,9 @@ class PolicyGraph(object):
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy_graph, agent_batch) tuples
                 containing the policy graph and experiences of the other agent.
+            episode (MultiAgentEpisode): this provides access to all of the
+                internal episode state, which may be useful for model-based or
+                multi-agent algorithms.
 
         Returns:
             SampleBatch: postprocessed sample batch.
@@ -182,3 +216,19 @@ class PolicyGraph(object):
             global_vars (dict): Global variables broadcast from the driver.
         """
         pass
+
+    def export_model(self, export_dir):
+        """Export PolicyGraph to local directory for serving.
+
+        Arguments:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
+
+    def export_checkpoint(self, export_dir):
+        """Export PolicyGraph checkpoint to local directory.
+
+        Argument:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError

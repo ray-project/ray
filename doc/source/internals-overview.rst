@@ -15,8 +15,8 @@ Running Ray standalone
 
 Ray can be used standalone by calling ``ray.init()`` within a script. When the
 call to ``ray.init()`` happens, all of the relevant processes are started.
-These include a local scheduler, a global scheduler, an object store and
-manager, a Redis server, and a number of worker processes.
+These include a local scheduler, an object store and manager, a Redis server,
+and a number of worker processes.
 
 When the script exits, these processes will be killed.
 
@@ -112,7 +112,7 @@ When a driver or worker invokes a remote function, a number of things happen.
 - The task object is then sent to the local scheduler on the same node as the
   driver or worker.
 - The local scheduler makes a decision to either schedule the task locally or to
-  pass the task on to a global scheduler.
+  pass the task on to another local scheduler.
 
   - If all of the task's object dependencies are present in the local object
     store and there are enough CPU and GPU resources available to execute the

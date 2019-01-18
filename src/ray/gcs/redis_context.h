@@ -51,7 +51,8 @@ class RedisContext {
   RedisContext()
       : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
   ~RedisContext();
-  Status Connect(const std::string &address, int port, bool sharding);
+  Status Connect(const std::string &address, int port, bool sharding,
+                 const std::string &password);
   Status AttachToEventLoop(aeEventLoop *loop);
 
   /// Run an operation on some table key.

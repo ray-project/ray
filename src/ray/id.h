@@ -10,19 +10,15 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
-extern "C" {
-#include "sha256.h"
-}
-
 namespace ray {
 
 class RAY_EXPORT UniqueID {
  public:
-  UniqueID() {}
+  UniqueID();
   UniqueID(const plasma::UniqueID &from);
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);
-  static const UniqueID nil();
+  static const UniqueID &nil();
   size_t hash() const;
   bool is_nil() const;
   bool operator==(const UniqueID &rhs) const;
@@ -38,8 +34,7 @@ class RAY_EXPORT UniqueID {
   uint8_t id_[kUniqueIDSize];
 };
 
-static_assert(std::is_standard_layout<UniqueID>::value,
-              "UniqueID must be standard");
+static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 

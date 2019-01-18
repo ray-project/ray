@@ -2,8 +2,8 @@ cartpole-es:
     env: CartPole-v0
     run: ES
     stop:
-        episode_reward_mean: 200
-        time_total_s: 300
+        episode_reward_mean: 75
+        timesteps_total: 400000
     config:
         num_workers: 2
         noise_size: 25000000

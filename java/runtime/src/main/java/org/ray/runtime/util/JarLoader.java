@@ -14,12 +14,15 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
 import org.apache.commons.io.filefilter.RegexFileFilter;
-import org.ray.runtime.util.logger.RayLog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * load and unload jars from a dir.
  */
 public class JarLoader {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(JarLoader.class);
 
   public static URLClassLoader loadJars(String dir, boolean explicitLoad) {
     // get all jars
@@ -42,7 +45,7 @@ public class JarLoader {
 
     for (File appJar : appJars) {
       try {
-        RayLog.core.info("load jar " + appJar.getAbsolutePath());
+        LOGGER.info("succeeded to load jar {}.", appJar.getAbsolutePath());
         JarFile jar = new JarFile(appJar.getAbsolutePath());
         jars.add(jar);
         urls.add(appJar.toURI().toURL());

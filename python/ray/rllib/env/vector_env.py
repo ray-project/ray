@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import override
+
 
 class VectorEnv(object):
     """An environment that supports batch evaluation.
@@ -69,13 +71,18 @@ class _VectorizedGymEnv(VectorEnv):
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
+        self.action_space = self.envs[0].action_space
+        self.observation_space = self.envs[0].observation_space
 
+    @override(VectorEnv)
     def vector_reset(self):
         return [e.reset() for e in self.envs]
 
+    @override(VectorEnv)
     def reset_at(self, index):
         return self.envs[index].reset()
 
+    @override(VectorEnv)
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
@@ -86,5 +93,6 @@ class _VectorizedGymEnv(VectorEnv):
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
 
+    @override(VectorEnv)
     def get_unwrapped(self):
         return self.envs

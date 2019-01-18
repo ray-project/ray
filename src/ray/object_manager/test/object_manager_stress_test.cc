@@ -5,6 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#include "arrow/util/logging.h"
+
 #include "ray/object_manager/object_manager.h"
 
 namespace ray {
@@ -33,7 +35,8 @@ class MockServer {
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config,
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -73,9 +76,10 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection =
-        TcpClientConnection::Create(client_handler, message_handler,
-                                    std::move(object_manager_socket_), "object manager");
+    auto new_connection = TcpClientConnection::Create(
+        client_handler, message_handler, std::move(object_manager_socket_),
+        "object manager",
+        static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
 
@@ -106,7 +110,7 @@ class TestObjectManagerBase : public ::testing::Test {
     return store_id;
   }
 
-  void StopStore(std::string store_id) {
+  void StopStore(const std::string &store_id) {
     std::string store_pid = store_id + ".pid";
     std::string kill_1 = "kill -9 `cat " + store_pid + "`";
     int s = system(kill_1.c_str());
@@ -120,7 +124,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::from_random().hex());
     store_id_2 = StartStore(UniqueID::from_random().hex());
 
-    uint pull_timeout_ms = 1;
+    uint pull_timeout_ms = 1000;
     int max_sends_a = 2;
     int max_receives_a = 2;
     int max_sends_b = 3;
@@ -153,8 +157,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client1.Connect(store_id_1));
+    ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -257,7 +261,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -265,7 +269,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_2(ObjectID::from_binary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -433,11 +437,13 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "All connected clients:"
                    << "\n";
-    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
+    ClientTableDataT data;
+    gcs_client_1->client_table().GetClient(client_id_1, data);
     RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
                    << "ClientIp=" << data.node_manager_address << "\n"
                    << "ClientPort=" << data.node_manager_port;
-    const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+    ClientTableDataT data2;
+    gcs_client_1->client_table().GetClient(client_id_2, data2);
     RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
                    << "ClientIp=" << data2.node_manager_address << "\n"
                    << "ClientPort=" << data2.node_manager_port;

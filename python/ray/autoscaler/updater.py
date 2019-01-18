@@ -47,7 +47,8 @@ class NodeUpdater(object):
         self.daemon = True
         self.process_runner = process_runner
         self.node_id = node_id
-        self.use_internal_ip = use_internal_ip
+        self.use_internal_ip = (use_internal_ip or provider_config.get(
+            "use_internal_ips", False))
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]

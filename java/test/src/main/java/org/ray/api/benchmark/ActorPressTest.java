@@ -1,14 +1,11 @@
 package org.ray.api.benchmark;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.test.MyRunner;
+import org.testng.annotations.Test;
 
-@RunWith(MyRunner.class)
 public class ActorPressTest extends RayBenchmarkTest {
 
   @Test

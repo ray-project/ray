@@ -19,7 +19,7 @@ class Monitor {
   /// \param redis_address The GCS Redis address to connect to.
   /// \param redis_port The GCS Redis port to connect to.
   Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-          int redis_port);
+          int redis_port, const std::string &redis_password);
 
   /// Start the monitor. Listen for heartbeats from Raylets and mark Raylets
   /// that do not send a heartbeat within a given period as dead.
@@ -33,7 +33,9 @@ class Monitor {
   /// Handle a heartbeat from a Raylet.
   ///
   /// \param client_id The client ID of the Raylet that sent the heartbeat.
-  void HandleHeartbeat(const ClientID &client_id);
+  /// \param heartbeat_data The heartbeat sent by the client.
+  void HandleHeartbeat(const ClientID &client_id,
+                       const HeartbeatTableDataT &heartbeat_data);
 
  private:
   /// A client to the GCS, through which heartbeats are received.
@@ -47,6 +49,8 @@ class Monitor {
   std::unordered_map<ClientID, int64_t> heartbeats_;
   /// The Raylets that have been marked as dead in the client table.
   std::unordered_set<ClientID> dead_clients_;
+  /// A buffer containing heartbeats received from node managers in the last tick.
+  std::unordered_map<ClientID, HeartbeatTableDataT> heartbeat_buffer_;
 };
 
 }  // namespace raylet

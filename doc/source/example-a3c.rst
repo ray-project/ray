@@ -9,11 +9,11 @@ View the `code for this example`_.
 
 .. _`A3C`: https://arxiv.org/abs/1602.01783
 .. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/a3c
 
 .. note::
 
-    For an overview of Ray's reinforcement learning library, see `Ray RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+    For an overview of Ray's reinforcement learning library, see `RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
 To run the application, first install **ray** and then some dependencies:
 
@@ -29,7 +29,7 @@ You can run the code with
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Pong-ram-v4 --run=A3C --config='{"num_workers": N}'
+  rllib train --env=Pong-ram-v4 --run=A3C --config='{"num_workers": N}'
 
 Reinforcement Learning
 ----------------------

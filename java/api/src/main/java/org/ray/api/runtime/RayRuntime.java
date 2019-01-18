@@ -6,6 +6,9 @@ import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.BaseTaskOptions;
+import org.ray.api.options.CallOptions;
 
 /**
  * Base interface of a Ray runtime.
@@ -65,9 +68,10 @@ public interface RayRuntime {
    *
    * @param func The remote function to run.
    * @param args The arguments of the remote function.
+   * @param options The options for this call.
    * @return The result object.
    */
-  RayObject call(RayFunc func, Object[] args);
+  RayObject call(RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote function on an actor.
@@ -85,7 +89,9 @@ public interface RayRuntime {
    * @param actorFactoryFunc A remote function whose return value is the actor object.
    * @param args The arguments for the remote function.
    * @param <T> The type of the actor object.
+   * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args);
+  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+      ActorCreationOptions options);
 }

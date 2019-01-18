@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "arrow/util/logging.h"
+
 #include "ray/object_manager/object_manager.h"
 
 namespace ray {
@@ -24,7 +26,8 @@ class MockServer {
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config,
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -64,9 +67,10 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection =
-        TcpClientConnection::Create(client_handler, message_handler,
-                                    std::move(object_manager_socket_), "object manager");
+    auto new_connection = TcpClientConnection::Create(
+        client_handler, message_handler, std::move(object_manager_socket_),
+        "object manager",
+        static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
 
@@ -138,8 +142,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client1.Connect(store_id_1));
+    ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -232,13 +236,13 @@ class TestObjectManager : public TestObjectManagerBase {
   void TestNotifications() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT &object_info) {
           object_added_handler_2(ObjectID::from_binary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
@@ -285,8 +289,9 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
-        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &clients,
-                                           const ray::ObjectID &object_id) {
+        [this, sub_id, object_1, object_2](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients, bool created) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -447,13 +452,15 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server client ids:"
                    << "\n";
-    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    ClientTableDataT data;
+    gcs_client_1->client_table().GetClient(client_id_1, data);
+    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id).is_nil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
     ASSERT_EQ(client_id_1, ClientID::from_binary(data.client_id));
-    const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+    ClientTableDataT data2;
+    gcs_client_1->client_table().GetClient(client_id_2, data2);
     RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
     RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
     RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;

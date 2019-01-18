@@ -13,29 +13,35 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
                const std::string &node_ip_address, const std::string &redis_address,
-               int redis_port, const NodeManagerConfig &node_manager_config,
+               int redis_port, const std::string &redis_password,
+               const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
-      object_manager_(main_service, object_manager_config, gcs_client),
-      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_),
+      object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
+      object_manager_(main_service, object_manager_config, object_directory_),
+      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
+                    object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
       object_manager_acceptor_(
-          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+          main_service,
+          boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(),
+                                         object_manager_config.object_manager_port)),
       object_manager_socket_(main_service),
-      node_manager_acceptor_(
-          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+      node_manager_acceptor_(main_service, boost::asio::ip::tcp::endpoint(
+                                               boost::asio::ip::tcp::v4(),
+                                               node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(node_ip_address, socket_name_,
-                           object_manager_config.store_socket_name, redis_address,
-                           redis_port, main_service, node_manager_config));
+  RAY_CHECK_OK(RegisterGcs(
+      node_ip_address, socket_name_, object_manager_config.store_socket_name,
+      redis_address, redis_port, redis_password, main_service, node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
@@ -52,6 +58,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                                 const std::string &raylet_socket_name,
                                 const std::string &object_store_socket_name,
                                 const std::string &redis_address, int redis_port,
+                                const std::string &redis_password,
                                 boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
   RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
@@ -94,7 +101,8 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
     };
     // Accept a new TCP client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
-        client_handler, message_handler, std::move(node_manager_socket_), "node manager");
+        client_handler, message_handler, std::move(node_manager_socket_), "node manager",
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.
   DoAcceptNodeManager();
@@ -115,9 +123,10 @@ void Raylet::HandleAcceptObjectManager(const boost::system::error_code &error) {
     object_manager_.ProcessClientMessage(client, message_type, message);
   };
   // Accept a new TCP client and dispatch it to the node manager.
-  auto new_connection =
-      TcpClientConnection::Create(client_handler, message_handler,
-                                  std::move(object_manager_socket_), "object manager");
+  auto new_connection = TcpClientConnection::Create(
+      client_handler, message_handler, std::move(object_manager_socket_),
+      "object manager",
+      static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
   DoAcceptObjectManager();
 }
 
@@ -137,8 +146,9 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
       node_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = LocalClientConnection::Create(client_handler, message_handler,
-                                                        std::move(socket_), "worker");
+    auto new_connection = LocalClientConnection::Create(
+        client_handler, message_handler, std::move(socket_), "worker",
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.
   DoAccept();

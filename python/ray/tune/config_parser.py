@@ -11,38 +11,8 @@ from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Resources, Trial
+from ray.tune.trial import Trial, json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
-
-
-def json_to_resources(data):
-    if data is None or data == "null":
-        return None
-    if isinstance(data, string_types):
-        data = json.loads(data)
-    for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
-            raise TuneError(
-                "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k))
-        if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
-                    k, Resources._fields))
-    return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
-
-
-def resources_to_json(resources):
-    if resources is None:
-        return None
-    return {
-        "cpu": resources.cpu,
-        "gpu": resources.gpu,
-        "extra_cpu": resources.extra_cpu,
-        "extra_gpu": resources.extra_gpu,
-    }
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -83,7 +53,7 @@ def make_parser(parser_creator=None, **kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--trial-resources",
+        "--resources-per-trial",
         default=None,
         type=json_to_resources,
         help="Override the machine resources to allocate per trial, e.g. "
@@ -106,6 +76,21 @@ def make_parser(parser_creator=None, **kwargs):
         default="",
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
+    parser.add_argument(
+        "--trial-name-creator",
+        default=None,
+        help="Optional creator function for the trial string, used in "
+        "generating a trial directory.")
+    parser.add_argument(
+        "--sync-function",
+        default=None,
+        help="Function for syncing the local_dir to upload_dir. If string, "
+        "then it must be a string template for syncer to run and needs to "
+        "include replacement fields '{local_dir}' and '{remote_dir}'.")
+    parser.add_argument(
+        "--custom-loggers",
+        default=None,
+        help="List of custom logger creators to be used with each Trial.")
     parser.add_argument(
         "--checkpoint-freq",
         default=0,
@@ -182,8 +167,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         args = parser.parse_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
-    if "trial_resources" in spec:
-        trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
+    if "resources_per_trial" in spec:
+        trial_kwargs["resources"] = json_to_resources(
+            spec["resources_per_trial"])
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
@@ -198,5 +184,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
+        trial_name_creator=spec.get("trial_name_creator"),
+        custom_loggers=spec.get("custom_loggers"),
+        # str(None) doesn't create None
+        sync_function=spec.get("sync_function"),
         max_failures=args.max_failures,
         **trial_kwargs)

@@ -11,7 +11,7 @@ std::shared_ptr<SenderConnection> SenderConnection::Create(
   Status status = TcpConnect(socket, ip, port);
   if (status.ok()) {
     std::shared_ptr<TcpServerConnection> conn =
-        std::make_shared<TcpServerConnection>(std::move(socket));
+        TcpServerConnection::Create(std::move(socket));
     return std::make_shared<SenderConnection>(std::move(conn), client_id);
   } else {
     return nullptr;

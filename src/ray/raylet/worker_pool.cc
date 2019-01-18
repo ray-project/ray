@@ -12,7 +12,7 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
     const std::shared_ptr<ray::LocalClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -24,15 +24,9 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool RemoveWorker(std::list<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
                   const std::shared_ptr<ray::raylet::Worker> &worker) {
-  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
-    if (*it == worker) {
-      worker_pool.erase(it);
-      return true;
-    }
-  }
-  return false;
+  return worker_pool.erase(worker) > 0;
 }
 
 }  // namespace
@@ -48,7 +42,9 @@ WorkerPool::WorkerPool(
     int maximum_startup_concurrency,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
-      maximum_startup_concurrency_(maximum_startup_concurrency) {
+      multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
+      last_warning_multiple_(0) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -118,12 +114,18 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
 
   // Launch the process to create the worker.
   pid_t pid = fork();
-  if (pid != 0) {
+  if (pid < 0) {
+    // Failure case.
+    RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
+    return;
+  } else if (pid > 0) {
+    // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
     return;
   }
 
+  // Child process case.
   // Reset the SIGCHLD handler for the worker.
   signal(SIGCHLD, SIG_DFL);
 
@@ -138,14 +140,15 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   int rv = execvp(worker_command_args[0],
                   const_cast<char *const *>(worker_command_args.data()));
   // The worker failed to start. This is a fatal error.
-  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
+  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
+                 << strerror(errno);
 }
 
-void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
+void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  state.registered_workers.push_back(std::move(worker));
+  state.registered_workers.insert(std::move(worker));
 
   auto it = starting_worker_processes_.find(pid);
   RAY_CHECK(it != starting_worker_processes_.end());
@@ -155,10 +158,10 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   }
 }
 
-void WorkerPool::RegisterDriver(std::shared_ptr<Worker> driver) {
+void WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().is_nil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.push_back(driver);
+  state.registered_drivers.insert(std::move(driver));
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
@@ -183,14 +186,14 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
   return nullptr;
 }
 
-void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
+void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().is_nil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
   // Add the worker to the idle pool.
   if (worker->GetActorId().is_nil()) {
-    state.idle.push_back(std::move(worker));
+    state.idle.insert(std::move(worker));
   } else {
     state.idle_actor[worker->GetActorId()] = std::move(worker);
   }
@@ -202,8 +205,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   std::shared_ptr<Worker> worker = nullptr;
   if (actor_id.is_nil()) {
     if (!state.idle.empty()) {
-      worker = std::move(state.idle.back());
-      state.idle.pop_back();
+      worker = std::move(*state.idle.begin());
+      state.idle.erase(state.idle.begin());
     }
   } else {
     auto actor_entry = state.idle_actor.find(actor_id);
@@ -215,13 +218,13 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   return worker;
 }
 
-bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
+bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
   return RemoveWorker(state.idle, worker);
 }
 
-void WorkerPool::DisconnectDriver(std::shared_ptr<Worker> driver) {
+void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
 }
@@ -247,6 +250,36 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
   }
 
   return workers;
+}
+
+std::string WorkerPool::WarningAboutSize() {
+  int64_t num_workers_started_or_registered = starting_worker_processes_.size();
+  for (const auto &entry : states_by_lang_) {
+    num_workers_started_or_registered +=
+        static_cast<int64_t>(entry.second.registered_workers.size());
+  }
+  int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
+  std::stringstream warning_message;
+  if (multiple >= 3 && multiple > last_warning_multiple_) {
+    last_warning_multiple_ = multiple;
+    warning_message << "WARNING: " << num_workers_started_or_registered
+                    << " workers have been started. This could be a result of using "
+                    << "a large number of actors, or it could be a consequence of "
+                    << "using nested tasks "
+                    << "(see https://github.com/ray-project/ray/issues/3644) for "
+                    << "some a discussion of workarounds.";
+  }
+  return warning_message.str();
+}
+
+std::string WorkerPool::DebugString() const {
+  std::stringstream result;
+  result << "WorkerPool:";
+  for (const auto &entry : states_by_lang_) {
+    result << "\n- num workers: " << entry.second.registered_workers.size();
+    result << "\n- num drivers: " << entry.second.registered_drivers.size();
+  }
+  return result.str();
 }
 
 }  // namespace raylet

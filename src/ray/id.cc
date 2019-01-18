@@ -6,9 +6,15 @@
 #include <mutex>
 #include <random>
 
-#include "common/common.h"
 #include "ray/constants.h"
 #include "ray/status.h"
+
+extern "C" {
+#include "thirdparty/sha256.h"
+}
+
+// Definitions for computing hash digests.
+#define DIGEST_SIZE SHA256_BLOCK_SIZE
 
 namespace ray {
 
@@ -16,6 +22,11 @@ std::mt19937 RandomlySeededMersenneTwister() {
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   std::mt19937 seeded_engine(seed);
   return seeded_engine;
+}
+
+UniqueID::UniqueID() {
+  // Set the ID to nil.
+  std::fill_n(id_, kUniqueIDSize, 255);
 }
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
@@ -44,11 +55,9 @@ UniqueID UniqueID::from_binary(const std::string &binary) {
   return id;
 }
 
-const UniqueID UniqueID::nil() {
-  UniqueID result;
-  uint8_t *data = result.mutable_data();
-  std::fill_n(data, kUniqueIDSize, 255);
-  return result;
+const UniqueID &UniqueID::nil() {
+  static const UniqueID nil_id;
+  return nil_id;
 }
 
 bool UniqueID::is_nil() const {
@@ -61,17 +70,11 @@ bool UniqueID::is_nil() const {
   return true;
 }
 
-const uint8_t *UniqueID::data() const {
-  return id_;
-}
+const uint8_t *UniqueID::data() const { return id_; }
 
-uint8_t *UniqueID::mutable_data() {
-  return id_;
-}
+uint8_t *UniqueID::mutable_data() { return id_; }
 
-size_t UniqueID::size() const {
-  return kUniqueIDSize;
-}
+size_t UniqueID::size() const { return kUniqueIDSize; }
 
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
@@ -152,7 +155,11 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
-  os << id.hex();
+  if (id.is_nil()) {
+    os << "NIL_ID";
+  } else {
+    os << id.hex();
+  }
   return os;
 }
 

@@ -2,40 +2,61 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import os
 import pytest
 import time
 
 import ray
+import ray.tempfile_services
+from ray.test.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture
-def ray_start_regular():
+@pytest.fixture(params=[1, 20])
+def ray_start_sharded(request):
+    num_redis_shards = request.param
+
+    if os.environ.get("RAY_USE_NEW_GCS") == "on":
+        num_redis_shards = 1
+        # For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports
+        # 1-node chain for that shard only.
+
     # Start the Ray processes.
-    ray.init(num_cpus=10)
+    ray.init(
+        num_cpus=10, num_redis_shards=num_redis_shards, redis_max_memory=10**7)
+
     yield None
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_combination(request):
-    num_local_schedulers = request.param[0]
+    num_nodes = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
-    ray.worker._init(
-        start_ray_local=True,
-        num_workers=num_workers_per_scheduler,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=10)
-    yield num_local_schedulers, num_workers_per_scheduler
+    cluster = Cluster(
+        initialize_head=True,
+        head_node_args={
+            "num_cpus": 10,
+            "redis_max_memory": 10**7
+        })
+    for i in range(num_nodes - 1):
+        cluster.add_node(num_cpus=10)
+    ray.init(redis_address=cluster.redis_address)
+
+    yield num_nodes, num_workers_per_scheduler, cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    cluster.shutdown()
 
 
 def test_submitting_tasks(ray_start_combination):
+    _, _, cluster = ray_start_combination
+
     @ray.remote
     def f(x):
         return x
@@ -52,10 +73,12 @@ def test_submitting_tasks(ray_start_combination):
     for _ in range(1000):
         ray.get([f.remote(1) for _ in range(1)])
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 def test_dependencies(ray_start_combination):
+    _, _, cluster = ray_start_combination
+
     @ray.remote
     def f(x):
         return x
@@ -75,10 +98,10 @@ def test_dependencies(ray_start_combination):
         xs.append(g.remote(1))
     ray.get(xs)
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
-def test_submitting_many_tasks(ray_start_regular):
+def test_submitting_many_tasks(ray_start_sharded):
     @ray.remote
     def f(x):
         return 1
@@ -90,10 +113,34 @@ def test_submitting_many_tasks(ray_start_regular):
         return x
 
     ray.get([g(1000) for _ in range(100)])
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
-def test_getting_and_putting(ray_start_regular):
+def test_submitting_many_actors_to_one(ray_start_sharded):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Worker(object):
+        def __init__(self, actor):
+            self.actor = actor
+
+        def ping(self):
+            return ray.get(self.actor.ping.remote())
+
+    a = Actor.remote()
+    workers = [Worker.remote(a) for _ in range(100)]
+    for _ in range(10):
+        out = ray.get([w.ping.remote() for w in workers])
+        assert out == [None for _ in workers]
+
+
+def test_getting_and_putting(ray_start_sharded):
     for n in range(8):
         x = np.zeros(10**n)
 
@@ -104,10 +151,10 @@ def test_getting_and_putting(ray_start_regular):
         for _ in range(1000):
             ray.get(x_id)
 
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
-def test_getting_many_objects(ray_start_regular):
+def test_getting_many_objects(ray_start_sharded):
     @ray.remote
     def f():
         return 1
@@ -116,12 +163,12 @@ def test_getting_many_objects(ray_start_regular):
     lst = ray.get([f.remote() for _ in range(n)])
     assert lst == n * [1]
 
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 def test_wait(ray_start_combination):
-    num_local_schedulers, num_workers_per_scheduler = ray_start_combination
-    num_workers = num_local_schedulers * num_workers_per_scheduler
+    num_nodes, num_workers_per_scheduler, cluster = ray_start_combination
+    num_workers = num_nodes * num_workers_per_scheduler
 
     @ray.remote
     def f(x):
@@ -143,91 +190,48 @@ def test_wait(ray_start_combination):
         ]
         ray.wait(x_ids, num_returns=len(x_ids))
 
-    assert ray.services.all_processes_alive()
+    assert cluster.remaining_processes_alive()
 
 
 @pytest.fixture(params=[1, 4])
 def ray_start_reconstruction(request):
-    num_local_schedulers = request.param
+    num_nodes = request.param
 
-    # Start the Redis global state store.
-    node_ip_address = "127.0.0.1"
-    use_raylet = os.environ.get("RAY_USE_XRAY") == "1"
-    redis_address, redis_shards = ray.services.start_redis(
-        node_ip_address, use_raylet=use_raylet)
-    redis_ip_address = ray.services.get_ip_address(redis_address)
-    redis_port = ray.services.get_port(redis_address)
-    time.sleep(0.1)
-
-    # Start the Plasma store instances with a total of 1GB memory.
     plasma_store_memory = 10**9
-    plasma_addresses = []
-    objstore_memory = plasma_store_memory // num_local_schedulers
-    for i in range(num_local_schedulers):
-        store_stdout_file, store_stderr_file = ray.services.new_log_files(
-            "plasma_store_{}".format(i), True)
-        manager_stdout_file, manager_stderr_file = (ray.services.new_log_files(
-            "plasma_manager_{}".format(i), True))
-        plasma_addresses.append(
-            ray.services.start_plasma_store(
-                node_ip_address,
-                redis_address,
-                objstore_memory=objstore_memory,
-                store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
 
-    # Start the rest of the services in the Ray cluster.
-    address_info = {
-        "redis_address": redis_address,
-        "redis_shards": redis_shards,
-        "object_store_addresses": plasma_addresses
-    }
-    ray.worker._init(
-        address_info=address_info,
-        start_ray_local=True,
-        num_workers=1,
-        num_local_schedulers=num_local_schedulers,
-        num_cpus=[1] * num_local_schedulers,
-        redirect_output=True)
+    cluster = Cluster(
+        initialize_head=True,
+        head_node_args={
+            "num_cpus": 1,
+            "object_store_memory": plasma_store_memory // num_nodes,
+            "redis_max_memory": 10**7,
+            "redirect_output": True,
+            "_internal_config": json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200
+            })
+        })
+    for i in range(num_nodes - 1):
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=plasma_store_memory // num_nodes,
+            redirect_output=True,
+            _internal_config=json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200
+            }))
+    ray.init(redis_address=cluster.redis_address)
 
-    yield (redis_ip_address, redis_port, plasma_store_memory,
-           num_local_schedulers)
-
-    # The code after the yield will run as teardown code.
-    assert ray.services.all_processes_alive()
-
-    # Determine the IDs of all local schedulers that had a task scheduled
-    # or submitted.
-    state = ray.experimental.state.GlobalState()
-    state._initialize_global_state(redis_ip_address, redis_port)
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        tasks = state.task_table()
-        local_scheduler_ids = {
-            task["LocalSchedulerID"]
-            for task in tasks.values()
-        }
-
-    # Make sure that all nodes in the cluster were used by checking that
-    # the set of local scheduler IDs that had a task scheduled or submitted
-    # is equal to the total number of local schedulers started. We add one
-    # to the total number of local schedulers to account for
-    # NIL_LOCAL_SCHEDULER_ID. This is the local scheduler ID associated
-    # with the driver task, since it is not scheduled by a particular local
-    # scheduler.
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        assert len(local_scheduler_ids) == num_local_schedulers + 1
+    yield plasma_store_memory, num_nodes, cluster
 
     # Clean up the Ray cluster.
     ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -257,18 +261,26 @@ def test_simple(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
-    num_chunks = 4 * num_local_schedulers
+    num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
+
+    assert cluster.remaining_processes_alive()
+
+
+def sorted_random_indexes(total, output_num):
+    random_indexes = [np.random.randint(total) for _ in range(output_num)]
+    random_indexes.sort()
+    return random_indexes
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -308,23 +320,26 @@ def test_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
     # Get values sequentially, in chunks.
-    num_chunks = 4 * num_local_schedulers
+    num_chunks = 4 * num_nodes
     chunk = num_objects // num_chunks
     for i in range(num_chunks):
         values = ray.get(args[i * chunk:(i + 1) * chunk])
         del values
 
+    assert cluster.remaining_processes_alive()
 
+
+@pytest.mark.skip(reason="This test often hangs or fails in CI.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
-    _, _, plasma_store_memory, _ = ray_start_reconstruction
+    plasma_store_memory, _, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -368,10 +383,12 @@ def test_multiple_recursive(ray_start_reconstruction):
         value = ray.get(args[i])
         assert value[0] == i
     # Get 10 values randomly.
-    for _ in range(10):
-        i = np.random.randint(num_objects)
+    random_indexes = sorted_random_indexes(num_objects, 10)
+    for i in random_indexes:
         value = ray.get(args[i])
         assert value[0] == i
+
+    assert cluster.remaining_processes_alive()
 
 
 def wait_for_errors(error_check):
@@ -390,14 +407,12 @@ def wait_for_errors(error_check):
     return errors
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_XRAY") == "1",
-    reason="This test does not work with xray yet.")
+@pytest.mark.skip("This test does not work yet.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_nondeterministic_task(ray_start_reconstruction):
-    _, _, plasma_store_memory, num_local_schedulers = ray_start_reconstruction
+    plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
     # combined allotted memory.
@@ -441,7 +456,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
         assert value[0] == i
 
     def error_check(errors):
-        if num_local_schedulers == 1:
+        if num_nodes == 1:
             # In a single-node setting, each object is evicted and
             # reconstructed exactly once, so exactly half the objects will
             # produce an error during reconstruction.
@@ -457,6 +472,8 @@ def test_nondeterministic_task(ray_start_reconstruction):
     # Make sure all the errors have the correct type.
     assert all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
                for error in errors)
+
+    assert cluster.remaining_processes_alive()
 
 
 @pytest.fixture
@@ -507,8 +524,8 @@ def test_driver_put_errors(ray_start_driver_put_errors):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.local_scheduler_client.reconstruct_objects(
-        [args[0]], False)
+    ray.worker.global_worker.raylet_client.fetch_or_reconstruct([args[0]],
+                                                                False)
 
     def error_check(errors):
         return len(errors) > 1

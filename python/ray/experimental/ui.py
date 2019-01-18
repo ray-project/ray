@@ -1,20 +1,23 @@
-import ipywidgets as widgets
+import logging
 import numpy as np
 import os
 import pprint
-import ray
 import shutil
 import tempfile
 import time
 
+import ipywidgets as widgets
 from IPython.display import display, IFrame, clear_output
+
+import ray
+
+logger = logging.getLogger(__name__)
+
 
 # Instances of this class maintains keep track of whether or not a
 # callback is currently executing. Since the execution of the callback
 # may trigger more calls to the callback, this is used to prevent infinite
 # recursions.
-
-
 class _EventRecursionContextManager(object):
     def __init__(self):
         self.should_recurse = True
@@ -185,36 +188,6 @@ def get_sliders(update):
                         range_slider.value = (100 + int(
                             100 * float(num_tasks_box.value) / num_tasks), 100)
 
-                if not update:
-                    return
-
-                diff = largest - smallest
-
-                # Low and high are used to scale the times that are
-                # queried to be relative to the absolute time.
-                low, high = map(lambda x: x / 100., range_slider.value)
-
-                # Queries to task_profiles based on the slider and text
-                # box values.
-                # (Querying based on the % total amount of time.)
-                if breakdown_opt.value == total_time_value:
-                    tasks = _truncated_task_profiles(
-                        start=(smallest + diff * low),
-                        end=(smallest + diff * high))
-
-                # (Querying based on % of total number of tasks that were
-                # run.)
-                elif breakdown_opt.value == total_tasks_value:
-                    if range_slider.value[0] == 0:
-                        tasks = _truncated_task_profiles(
-                            num_tasks=(int(num_tasks * high)), fwd=True)
-                    else:
-                        tasks = _truncated_task_profiles(
-                            num_tasks=(int(num_tasks * (high - low))),
-                            fwd=False)
-
-                update(smallest, largest, num_tasks, tasks)
-
     # Get updated values from a slider or text box, and update the rest of
     # them accordingly.
     range_slider.observe(update_wrapper, names="value")
@@ -268,20 +241,6 @@ def task_search_bar():
 MAX_TASKS_TO_VISUALIZE = 10000
 
 
-# Wrapper that enforces a limit on the number of tasks to visualize
-def _truncated_task_profiles(start=None, end=None, num_tasks=None, fwd=True):
-    if num_tasks is None:
-        num_tasks = MAX_TASKS_TO_VISUALIZE
-        print("Warning: at most {} tasks will be fetched within this "
-              "time range.".format(MAX_TASKS_TO_VISUALIZE))
-    elif num_tasks > MAX_TASKS_TO_VISUALIZE:
-        print("Warning: too many tasks to visualize, "
-              "fetching only the first {} of {}.".format(
-                  MAX_TASKS_TO_VISUALIZE, num_tasks))
-        num_tasks = MAX_TASKS_TO_VISUALIZE
-    return ray.global_state.task_profiles(num_tasks, start, end, fwd)
-
-
 # Helper function that guarantees unique and writeable temp files.
 # Prevents clashes in task trace files when multiple notebooks are running.
 def _get_temp_file_path(**kwargs):
@@ -293,32 +252,6 @@ def _get_temp_file_path(**kwargs):
 
 
 def task_timeline():
-    path_input = widgets.Button(description="View task timeline")
-
-    breakdown_basic = "Basic"
-    breakdown_task = "Task Breakdowns"
-
-    breakdown_opt = widgets.Dropdown(
-        options=["Basic", "Task Breakdowns"],
-        value="Task Breakdowns",
-        disabled=False,
-    )
-    obj_dep = widgets.Checkbox(
-        value=True, disabled=False, layout=widgets.Layout(width='20px'))
-    task_dep = widgets.Checkbox(
-        value=True, disabled=False, layout=widgets.Layout(width='20px'))
-    # Labels to bypass width limitation for descriptions.
-    label_tasks = widgets.Label(
-        value='Task submissions', layout=widgets.Layout(width='110px'))
-    label_objects = widgets.Label(
-        value='Object dependencies', layout=widgets.Layout(width='130px'))
-    label_options = widgets.Label(
-        value='View options:', layout=widgets.Layout(width='100px'))
-    start_box, end_box, range_slider, time_opt = get_sliders(False)
-    display(widgets.HBox([task_dep, label_tasks, obj_dep, label_objects]))
-    display(widgets.HBox([label_options, breakdown_opt]))
-    display(path_input)
-
     # Check that the trace viewer renderer file is present, and copy it to the
     # current working directory if it is not present.
     if not os.path.exists("trace_viewer_full.html"):
@@ -328,76 +261,69 @@ def task_timeline():
                 "../core/src/catapult_files/trace_viewer_full.html"),
             "trace_viewer_full.html")
 
-    def handle_submit(sender):
-        json_tmp = tempfile.mktemp() + ".json"
+    trace_viewer_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../core/src/catapult_files/index.html")
 
-        # Determine whether task components should be displayed or not.
-        if breakdown_opt.value == breakdown_basic:
-            breakdown = False
-        elif breakdown_opt.value == breakdown_task:
-            breakdown = True
-        else:
-            raise ValueError("Unexpected breakdown value '{}'".format(
-                breakdown_opt.value))
+    html_file_path = _get_temp_file_path(suffix=".html")
+    json_file_path = _get_temp_file_path(suffix=".json")
 
-        low, high = map(lambda x: x / 100., range_slider.value)
+    ray.global_state.chrome_tracing_dump(filename=json_file_path)
 
-        smallest, largest, num_tasks = ray.global_state._job_length()
-        diff = largest - smallest
+    with open(trace_viewer_path) as f:
+        data = f.read()
 
-        if time_opt.value == total_time_value:
-            tasks = _truncated_task_profiles(
-                start=smallest + diff * low, end=smallest + diff * high)
-        elif time_opt.value == total_tasks_value:
-            if range_slider.value[0] == 0:
-                tasks = _truncated_task_profiles(
-                    num_tasks=int(num_tasks * high), fwd=True)
-            else:
-                tasks = _truncated_task_profiles(
-                    num_tasks=int(num_tasks * (high - low)), fwd=False)
-        else:
-            raise ValueError("Unexpected time value '{}'".format(
-                time_opt.value))
-        # Write trace to a JSON file
-        print("Collected profiles for {} tasks.".format(len(tasks)))
-        print("Dumping task profile data to {}, "
-              "this might take a while...".format(json_tmp))
-        ray.global_state.dump_catapult_trace(
-            json_tmp,
-            tasks,
-            breakdowns=breakdown,
-            obj_dep=obj_dep.value,
-            task_dep=task_dep.value)
-        print("Opening html file in browser...")
+    # Replace the demo data path with our own
+    # https://github.com/catapult-project/catapult/blob/
+    # 33a9271eb3cf5caf925293ec6a4b47c94f1ac968/tracing/bin/index.html#L107
+    data = data.replace("../test_data/big_trace.json", json_file_path)
 
-        trace_viewer_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "../core/src/catapult_files/index.html")
+    with open(html_file_path, "w+") as f:
+        f.write(data)
 
-        html_file_path = _get_temp_file_path(suffix=".html")
-        json_file_path = _get_temp_file_path(suffix=".json")
+    # Display the task trace within the Jupyter notebook
+    clear_output(wait=True)
+    logger.info("To view fullscreen, open chrome://tracing in Google Chrome "
+                "and load `{}`".format(os.path.abspath(json_file_path)))
+    display(IFrame(html_file_path, 900, 800))
 
-        print("Pointing to {} named {}".format(json_tmp, json_file_path))
-        shutil.copy(json_tmp, json_file_path)
 
-        with open(trace_viewer_path) as f:
-            data = f.read()
+def object_transfer_timeline():
+    # Check that the trace viewer renderer file is present, and copy it to the
+    # current working directory if it is not present.
+    if not os.path.exists("trace_viewer_full.html"):
+        shutil.copy(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "../core/src/catapult_files/trace_viewer_full.html"),
+            "trace_viewer_full.html")
 
-        # Replace the demo data path with our own
-        # https://github.com/catapult-project/catapult/blob/
-        # 33a9271eb3cf5caf925293ec6a4b47c94f1ac968/tracing/bin/index.html#L107
-        data = data.replace("../test_data/big_trace.json", json_file_path)
+    trace_viewer_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../core/src/catapult_files/index.html")
 
-        with open(html_file_path, "w+") as f:
-            f.write(data)
+    html_file_path = _get_temp_file_path(suffix=".html")
+    json_file_path = _get_temp_file_path(suffix=".json")
 
-        # Display the task trace within the Jupyter notebook
-        clear_output(wait=True)
-        print("To view fullscreen, open chrome://tracing in Google Chrome "
-              "and load `{}`".format(json_tmp))
-        display(IFrame(html_file_path, 900, 800))
+    ray.global_state.chrome_tracing_object_transfer_dump(
+        filename=json_file_path)
 
-    path_input.on_click(handle_submit)
+    with open(trace_viewer_path) as f:
+        data = f.read()
+
+    # Replace the demo data path with our own
+    # https://github.com/catapult-project/catapult/blob/
+    # 33a9271eb3cf5caf925293ec6a4b47c94f1ac968/tracing/bin/index.html#L107
+    data = data.replace("../test_data/big_trace.json", json_file_path)
+
+    with open(html_file_path, "w+") as f:
+        f.write(data)
+
+    # Display the task trace within the Jupyter notebook
+    clear_output(wait=True)
+    logger.info("To view fullscreen, open chrome://tracing in Google Chrome "
+                "and load `{}`".format(os.path.abspath(json_file_path)))
+    display(IFrame(html_file_path, 900, 800))
 
 
 def task_completion_time_distribution():
@@ -562,12 +488,7 @@ def cpu_usage():
     output_notebook(resources=CDN)
 
     # Parse the client table to determine how many CPUs are available
-    num_cpus = 0
-    client_table = ray.global_state.client_table()
-    for node_ip, client_list in client_table.items():
-        for client in client_list:
-            if "CPU" in client:
-                num_cpus += client["CPU"]
+    num_cpus = ray.global_state.cluster_resources()["CPU"]
 
     # Update the plot based on the sliders
     def plot_utilization():

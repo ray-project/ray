@@ -112,6 +112,6 @@ public class UniqueId implements Serializable {
 
   @Override
   public String toString() {
-    return DatatypeConverter.printHexBinary(id);
+    return DatatypeConverter.printHexBinary(id).toLowerCase();
   }
 }

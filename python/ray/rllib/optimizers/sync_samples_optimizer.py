@@ -3,10 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+import logging
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
+
+logger = logging.getLogger(__name__)
 
 
 class SyncSamplesOptimizer(PolicyOptimizer):
@@ -17,6 +21,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
+    @override(PolicyOptimizer)
     def _init(self, num_sgd_iter=1, train_batch_size=1):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
@@ -26,6 +31,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         self.train_batch_size = train_batch_size
         self.learner_stats = {}
 
+    @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
             if self.remote_evaluators:
@@ -52,13 +58,14 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 if "stats" in fetches:
                     self.learner_stats = fetches["stats"]
                 if self.num_sgd_iter > 1:
-                    print(i, fetches)
+                    logger.debug("{} {}".format(i, fetches))
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
         return fetches
 
+    @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{

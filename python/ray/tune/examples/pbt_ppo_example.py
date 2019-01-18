@@ -13,7 +13,7 @@ from __future__ import print_function
 import random
 
 import ray
-from ray.tune import run_experiments
+from ray.tune import run_experiments, sample_from
 from ray.tune.schedulers import PopulationBasedTraining
 
 if __name__ == "__main__":
@@ -63,12 +63,12 @@ if __name__ == "__main__":
                     "clip_param": 0.2,
                     "lr": 1e-4,
                     # These params start off randomly drawn from a set.
-                    "num_sgd_iter":
-                        lambda spec: random.choice([10, 20, 30]),
-                    "sgd_minibatch_size":
-                        lambda spec: random.choice([128, 512, 2048]),
-                    "train_batch_size":
-                        lambda spec: random.choice([10000, 20000, 40000])
+                    "num_sgd_iter": sample_from(
+                        lambda spec: random.choice([10, 20, 30])),
+                    "sgd_minibatch_size": sample_from(
+                        lambda spec: random.choice([128, 512, 2048])),
+                    "train_batch_size": sample_from(
+                        lambda spec: random.choice([10000, 20000, 40000]))
                 },
             },
         },

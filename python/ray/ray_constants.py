@@ -5,8 +5,6 @@ from __future__ import print_function
 
 import os
 
-import ray
-
 
 def env_integer(key, default):
     if key in os.environ:
@@ -15,7 +13,17 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ray.ObjectID(ID_SIZE * b"\xff")
+
+# The default maximum number of bytes to allocate to the object store unless
+# overridden by the user.
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
+# The smallest cap on the memory used by the object store that we allow.
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
+# The default maximum number of bytes that the non-primary Redis shards are
+# allowed to use unless overridden by the user.
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
+# The smallest cap on the memory used by Redis that we allow.
+REDIS_MINIMUM_MEMORY_BYTES = 10**7
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
@@ -40,8 +48,8 @@ CHECKPOINT_PUSH_ERROR = "checkpoint"
 REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
+WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
-HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
@@ -77,3 +85,8 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
+
+# A constant indicating that an actor doesn't need reconstructions.
+NO_RECONSTRUCTION = 0
+# A constant indicating that an actor should be reconstructed infinite times.
+INFINITE_RECONSTRUCTION = 2**30

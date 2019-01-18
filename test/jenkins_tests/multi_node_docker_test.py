@@ -80,12 +80,11 @@ class DockerRunner(object):
             head node.
     """
 
-    def __init__(self, use_raylet):
+    def __init__(self):
         """Initialize the DockerRunner."""
         self.head_container_id = None
         self.worker_container_ids = []
         self.head_container_ip = None
-        self.use_raylet = use_raylet
 
     def _get_container_id(self, stdout_data):
         """Parse the docker container ID from stdout_data.
@@ -149,8 +148,6 @@ class DockerRunner(object):
             "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus),
             "--no-ui"
         ])
-        if self.use_raylet:
-            command.append("--use-raylet")
         print("Starting head node with command:{}".format(command))
 
         proc = subprocess.Popen(
@@ -177,8 +174,6 @@ class DockerRunner(object):
             "--redis-address={:s}:6379".format(self.head_container_ip),
             "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus)
         ])
-        if self.use_raylet:
-            command.append("--use-raylet")
         print("Starting worker node with command:{}".format(command))
         proc = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -325,19 +320,13 @@ class DockerRunner(object):
 
         # Start the different drivers.
         driver_processes = []
-        if self.use_raylet:
-            use_raylet_env = 1
-        else:
-            use_raylet_env = 0
         for i in range(len(driver_locations)):
             # Get the container ID to run the ith driver in.
             container_id = all_container_ids[driver_locations[i]]
             command = [
-                "docker", "exec", container_id, "/bin/bash",
-                "-c", ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
-                       "RAY_USE_XRAY={} python {}".format(
-                           self.head_container_ip, i, use_raylet_env,
-                           test_script))
+                "docker", "exec", container_id, "/bin/bash", "-c",
+                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} "
+                 "python {}".format(self.head_container_ip, i, test_script))
             ]
             print("Starting driver with command {}.".format(test_script))
             # Start the driver.
@@ -404,8 +393,6 @@ if __name__ == "__main__":
         "--development-mode",
         action="store_true",
         help="use local copies of the test scripts")
-    parser.add_argument(
-        "--use-raylet", action="store_true", help="use raylet mode in Docker")
     args = parser.parse_args()
 
     # Parse the number of CPUs and GPUs to use for each worker.
@@ -419,7 +406,7 @@ if __name__ == "__main__":
     driver_locations = (None if args.driver_locations is None else
                         [int(i) for i in args.driver_locations.split(",")])
 
-    d = DockerRunner(args.use_raylet)
+    d = DockerRunner()
     d.start_ray(
         docker_image=args.docker_image,
         mem_size=args.mem_size,

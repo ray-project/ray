@@ -1,5 +1,5 @@
-Resource (CPUs, GPUs)
-=====================
+Resources (CPUs, GPUs)
+======================
 
 This document describes how resources are managed in Ray. Each node in a Ray
 cluster knows its own resource capacities, and each task specifies its resource
@@ -39,7 +39,8 @@ Specifying a task's CPU and GPU requirements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and
-``num_gpus`` arguments into the remote decorator.
+``num_gpus`` arguments into the remote decorator. Note that Ray supports
+**fractional** resource requirements.
 
 .. code-block:: python
 
@@ -47,7 +48,11 @@ To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and
   def f():
       return 1
 
-When ``f`` tasks will be scheduled on machines that have at least 4 CPUs and 2
+  @ray.remote(num_gpus=0.5)
+  def h():
+      return 1
+
+The ``f`` tasks will be scheduled on machines that have at least 4 CPUs and 2
 GPUs, and when one of the ``f`` tasks executes, 4 CPUs and 2 GPUs will be
 reserved for that task. The IDs of the GPUs that are reserved for the task can
 be accessed with ``ray.get_gpu_ids()``. Ray will automatically set the
@@ -108,3 +113,9 @@ decorator.
   @ray.remote(resources={'Resource2': 1})
   def f():
       return 1
+
+Fractional Resources
+--------------------
+
+Task and actor resource requirements can be fractional. This is particularly
+useful if you want multiple tasks or actors to share a single GPU.

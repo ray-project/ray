@@ -2,14 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import pickle
+
+logger = logging.getLogger(__name__)
 
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    print("Couldn't import `requests` library. Be sure to install it on"
-          " the client side.")
+    logger.warning(
+        "Couldn't import `requests` library. Be sure to install it on"
+        " the client side.")
 
 
 class PolicyClient(object):
@@ -109,8 +113,7 @@ class PolicyClient(object):
         payload = pickle.dumps(data)
         response = requests.post(self._address, data=payload)
         if response.status_code != 200:
-            print("Request failed", data)
-            print(response.text)
+            logger.error("Request failed {}: {}".format(response.text, data))
         response.raise_for_status()
         parsed = pickle.loads(response.content)
         return parsed

@@ -41,6 +41,3 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
     message (WARNING "NOT FIND JNI")
   endif()
 endif()
-
-include_directories(${CMAKE_SOURCE_DIR}/src/common)
-include_directories(${CMAKE_SOURCE_DIR}/src/common/thirdparty)

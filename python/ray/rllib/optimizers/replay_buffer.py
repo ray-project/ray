@@ -93,14 +93,15 @@ class ReplayBuffer(object):
         self._num_sampled += batch_size
         return self._encode_sample(idxes)
 
-    def stats(self):
+    def stats(self, debug=False):
         data = {
             "added_count": self._num_added,
             "sampled_count": self._num_sampled,
             "est_size_bytes": self._est_size_bytes,
             "num_entries": len(self._storage),
         }
-        data.update(self._evicted_hit_stats.stats())
+        if debug:
+            data.update(self._evicted_hit_stats.stats())
         return data
 
 
@@ -233,7 +234,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
             self._max_priority = max(self._max_priority, priority)
 
-    def stats(self):
-        parent = ReplayBuffer.stats(self)
-        parent.update(self._prio_change_stats.stats())
+    def stats(self, debug=False):
+        parent = ReplayBuffer.stats(self, debug)
+        if debug:
+            parent.update(self._prio_change_stats.stats())
         return parent

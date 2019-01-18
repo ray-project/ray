@@ -9,7 +9,7 @@ To use Ray, you need to understand the following:
 Overview
 --------
 
-Ray is a Python-based distributed execution engine. The same code can be run on
+Ray is a distributed execution engine. The same code can be run on
 a single machine to achieve efficient multiprocessing, and it can be used on a
 cluster for large computations.
 
@@ -21,8 +21,6 @@ When using Ray, several processes are involved.
   allows workers to efficiently share objects on the same node with minimal
   copying and deserialization.
 - One **local scheduler** per node assigns tasks to workers on the same node.
-- A **global scheduler** receives tasks from local schedulers and assigns them
-  to other local schedulers.
 - A **driver** is the Python process that the user controls. For example, if the
   user is running a script or using a Python shell, then the driver is the Python
   process that runs the script or the shell. A driver is similar to a worker in

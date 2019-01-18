@@ -9,3 +9,4 @@ walker2d-v1-ppo:
         train_batch_size: 320000
         num_workers: 64
         num_gpus: 4
+        batch_mode: complete_episodes

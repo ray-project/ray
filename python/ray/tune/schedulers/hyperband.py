@@ -223,8 +223,11 @@ class HyperBandScheduler(FIFOScheduler):
         """
 
         for hyperband in self._hyperbands:
+            # band will have None entries if no resources
+            # are to be allocated to that bracket.
+            scrubbed = [b for b in hyperband if b is not None]
             for bracket in sorted(
-                    hyperband, key=lambda b: b.completion_percentage()):
+                    scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
                             and trial_runner.has_resources(trial.resources)):

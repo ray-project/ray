@@ -7,9 +7,6 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from ray.rllib.models import ModelCatalog, Model
-import tensorflow.contrib.slim as slim
-from ray.rllib.models.misc import normc_initializer
 
 
 def compute_ranks(x):
@@ -62,21 +59,3 @@ def batched_weighted_sum(weights, vecs, batch_size):
             np.asarray(batch_vecs, dtype=np.float32))
         num_items_summed += len(batch_weights)
     return total, num_items_summed
-
-
-class LinearNetwork(Model):
-    """Generic linear network."""
-
-    def _build_layers(self, inputs, num_outputs, _):
-        with tf.name_scope("linear"):
-            output = slim.fully_connected(
-                inputs,
-                num_outputs,
-                weights_initializer=normc_initializer(0.01),
-                activation_fn=None,
-            )
-            return output, inputs
-
-
-def register_linear_network():
-    ModelCatalog.register_custom_model("LinearNetwork", LinearNetwork)

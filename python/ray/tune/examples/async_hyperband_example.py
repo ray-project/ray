@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run_experiments
+from ray.tune import Trainable, run_experiments, sample_from
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -71,13 +71,15 @@ if __name__ == "__main__":
                     "training_iteration": 1 if args.smoke_test else 99999
                 },
                 "num_samples": 20,
-                "trial_resources": {
+                "resources_per_trial": {
                     "cpu": 1,
                     "gpu": 0
                 },
                 "config": {
-                    "width": lambda spec: 10 + int(90 * random.random()),
-                    "height": lambda spec: int(100 * random.random()),
+                    "width": sample_from(
+                        lambda spec: 10 + int(90 * random.random())),
+                    "height": sample_from(
+                        lambda spec: int(100 * random.random())),
                 },
             }
         },

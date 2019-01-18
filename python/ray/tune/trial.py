@@ -3,15 +3,23 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import ray.cloudpickle as cloudpickle
+import copy
 from datetime import datetime
 import logging
+import json
 import time
 import tempfile
 import os
 from numbers import Number
 
+# For compatibility under py2 to consider unicode as str
+from six import string_types
+from numbers import Number
+
 import ray
 from ray.tune import TuneError
+from ray.tune.log_sync import validate_sync_function
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -19,7 +27,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL)
-from ray.utils import random_string, binary_to_hex
+from ray.utils import random_string, binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -34,6 +42,8 @@ class Resources(
         namedtuple("Resources", ["cpu", "gpu", "extra_cpu",
                                  "extra_gpu", "custom_resources"])):
     """Ray resources required to schedule a trial.
+
+    TODO: Custom resources.
 
     Attributes:
         cpu (float): Number of CPUs to allocate to the trial.
@@ -50,6 +60,7 @@ class Resources(
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0, custom_resources=None):
         for entry in [cpu, gpu, extra_cpu, extra_gpu]:
             assert isinstance(entry, Number), "Improper resource value."
+            assert entry >= 0, "Resource cannot be negative."
         return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
                                              extra_gpu, custom_resources)
 
@@ -97,6 +108,36 @@ class Resources(
             original.gpu - additional.gpu_total()
             custom_resources=new_customs)
 
+def json_to_resources(data):
+    if data is None or data == "null":
+        return None
+    if isinstance(data, string_types):
+        data = json.loads(data)
+    for k in data:
+        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
+            raise TuneError(
+                "The field `{}` is no longer supported. Use `extra_cpu` "
+                "or `extra_gpu` instead.".format(k))
+        if k not in Resources._fields:
+            raise TuneError(
+                "Unknown resource type {}, must be one of {}".format(
+                    k, Resources._fields))
+    return Resources(
+        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
+        data.get("extra_gpu", 0))
+
+
+def resources_to_json(resources):
+    if resources is None:
+        return None
+    return {
+        "cpu": resources.cpu,
+        "gpu": resources.gpu,
+        "extra_cpu": resources.extra_cpu,
+        "extra_gpu": resources.extra_gpu,
+    }
+
+
 def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
@@ -116,9 +157,10 @@ class Checkpoint(object):
     MEMORY = "memory"
     DISK = "disk"
 
-    def __init__(self, storage, value):
+    def __init__(self, storage, value, last_result=None):
         self.storage = storage
         self.value = value
+        self.last_result = last_result
 
     @staticmethod
     def from_object(value=None):
@@ -154,18 +196,17 @@ class Trial(object):
                  checkpoint_at_end=False,
                  restore_path=None,
                  upload_dir=None,
+                 trial_name_creator=None,
+                 custom_loggers=None,
+                 sync_function=None,
                  max_failures=0):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-        if not has_trainable(trainable_name):
-            # Make sure rllib agents are registered
-            from ray import rllib  # noqa: F401
-            if not has_trainable(trainable_name):
-                raise TuneError("Unknown trainable: " + trainable_name)
 
+        Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
@@ -176,26 +217,39 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.custom_loggers = custom_loggers
+        self.sync_function = sync_function
+        validate_sync_function(sync_function)
         self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
         self.last_result = None
+        self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
-        self.location = None
         self.logdir = None
+        self.runner = None
         self.result_logger = None
         self.last_debug = 0
-        if trial_id is not None:
-            self.trial_id = trial_id
-        else:
-            self.trial_id = Trial.generate_id()
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
+
+        self.trial_name = None
+        if trial_name_creator:
+            self.trial_name = trial_name_creator(self)
+
+    @classmethod
+    def _registration_check(cls, trainable_name):
+        if not has_trainable(trainable_name):
+            # Make sure rllib agents are registered
+            from ray import rllib  # noqa: F401
+            if not has_trainable(trainable_name):
+                raise TuneError("Unknown trainable: " + trainable_name)
 
     @classmethod
     def generate_id(cls):
@@ -207,12 +261,28 @@ class Trial(object):
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
-            self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                dir=self.local_dir)
-            self.result_logger = UnifiedLogger(self.config, self.logdir,
-                                               self.upload_dir)
+            if not self.logdir:
+                self.logdir = tempfile.mkdtemp(
+                    prefix="{}_{}".format(
+                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                    dir=self.local_dir)
+            elif not os.path.exists(self.logdir):
+                os.makedirs(self.logdir)
+
+            self.result_logger = UnifiedLogger(
+                self.config,
+                self.logdir,
+                upload_uri=self.upload_dir,
+                custom_loggers=self.custom_loggers,
+                sync_function=self.sync_function)
+
+    def sync_logger_to_new_location(self, worker_ip):
+        """Updates the logger location.
+
+        Also pushes logdir to worker_ip, allowing for cross-node recovery.
+        """
+        if self.result_logger:
+            self.result_logger.sync_results_to_new_location(worker_ip)
 
     def close_logger(self):
         """Close logger."""
@@ -246,16 +316,18 @@ class Trial(object):
 
         return False
 
-    def should_checkpoint(self, result):
+    def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        result = self.last_result or {}
 
         if result.get(DONE) and self.checkpoint_at_end:
             return True
 
-        if not self.checkpoint_freq:
+        if self.checkpoint_freq:
+            return result.get(TRAINING_ITERATION,
+                              0) % self.checkpoint_freq == 0
+        else:
             return False
-
-        return self.last_result[TRAINING_ITERATION] % self.checkpoint_freq == 0
 
     def progress_string(self):
         """Returns a progress message for printing out to the console."""
@@ -308,16 +380,29 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def clear_checkpoint(self):
+        self._checkpoint.value = None
+
+    def should_recover(self):
+        """Returns whether the trial qualifies for restoring.
+
+        This is if a checkpoint frequency is set and has not failed more than
+        max_failures. This may return true even when there may not yet
+        be a checkpoint.
+        """
+        return (self.checkpoint_freq > 0
+                and self.num_failures < self.max_failures)
+
     def update_last_result(self, result, terminate=False):
         if terminate:
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            logger.info("Result for {}:".format(self))
-            logger.info("  {}".format(
-                pretty_print(result).replace("\n", "\n  ")))
+            print("Result for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
+        self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
 
     def _get_trainable_cls(self):
@@ -334,12 +419,67 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Can be overriden with a custom string creator.
+        """
+        if self.trial_name:
+            return self.trial_name
+
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+            env = self.config["env"]
+            if isinstance(env, type):
+                env = env.__name__
+            identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier
+        return identifier.replace("/", "_")
+
+    def __getstate__(self):
+        """Memento generator for Trial.
+
+        Sets RUNNING trials to PENDING, and flushes the result logger.
+        Note this can only occur if the trial holds a DISK checkpoint.
+        """
+        assert self._checkpoint.storage == Checkpoint.DISK, (
+            "Checkpoint must not be in-memory.")
+        state = self.__dict__.copy()
+        state["resources"] = resources_to_json(self.resources)
+
+        pickle_data = {
+            "_checkpoint": self._checkpoint,
+            "config": self.config,
+            "custom_loggers": self.custom_loggers,
+            "sync_function": self.sync_function,
+            "last_result": self.last_result
+        }
+
+        for key, value in pickle_data.items():
+            state[key] = binary_to_hex(cloudpickle.dumps(value))
+
+        state["runner"] = None
+        state["result_logger"] = None
+        if self.status == Trial.RUNNING:
+            state["status"] = Trial.PENDING
+        if self.result_logger:
+            self.result_logger.flush()
+            state["__logger_started__"] = True
+        else:
+            state["__logger_started__"] = False
+        return copy.deepcopy(state)
+
+    def __setstate__(self, state):
+        logger_started = state.pop("__logger_started__")
+        state["resources"] = json_to_resources(state["resources"])
+        for key in [
+                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "last_result"
+        ]:
+            state[key] = cloudpickle.loads(hex_to_binary(state[key]))
+
+        self.__dict__.update(state)
+        Trial._registration_check(self.trainable_name)
+        if logger_started:
+            self.init_logger()

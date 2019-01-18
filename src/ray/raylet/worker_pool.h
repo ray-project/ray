@@ -2,9 +2,9 @@
 #define RAY_RAYLET_WORKER_POOL_H
 
 #include <inttypes.h>
-#include <list>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/gcs/format/util.h"
@@ -57,12 +57,12 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(std::shared_ptr<Worker> worker);
+  void RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> worker);
+  void RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -84,17 +84,17 @@ class WorkerPool {
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(std::shared_ptr<Worker> worker);
+  bool DisconnectWorker(const std::shared_ptr<Worker> &worker);
 
   /// Disconnect a registered driver.
   ///
   /// \param The driver to disconnect. The driver must be registered.
-  void DisconnectDriver(std::shared_ptr<Worker> driver);
+  void DisconnectDriver(const std::shared_ptr<Worker> &driver);
 
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
-  void PushWorker(std::shared_ptr<Worker> worker);
+  void PushWorker(const std::shared_ptr<Worker> &worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -118,6 +118,18 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
       const DriverID &driver_id) const;
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+
+  /// Generate a warning about the number of workers that have registered or
+  /// started if appropriate.
+  ///
+  /// \return An empty string if no warning should be generated and otherwise a
+  /// string with a warning message.
+  std::string WarningAboutSize();
+
  protected:
   /// A map from the pids of starting worker processes
   /// to the number of their unregistered workers.
@@ -131,25 +143,30 @@ class WorkerPool {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
     /// The pool of idle non-actor workers.
-    std::list<std::shared_ptr<Worker>> idle;
+    std::unordered_set<std::shared_ptr<Worker>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
-    // TODO(swang): Make this a map to make GetRegisteredWorker faster.
-    std::list<std::shared_ptr<Worker>> registered_workers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
-    std::list<std::shared_ptr<Worker>> registered_drivers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
   };
 
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   inline State &GetStateForLanguage(const Language &language);
 
+  /// We'll push a warning to the user every time a multiple of this many
+  /// workers has been started.
+  int multiple_for_warning_;
   /// The maximum number of workers that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
+  /// The last size at which a warning about the number of registered workers
+  /// was generated.
+  int64_t last_warning_multiple_;
 };
 
 }  // namespace raylet

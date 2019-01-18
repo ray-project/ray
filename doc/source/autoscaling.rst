@@ -1,7 +1,9 @@
-Cloud Setup and Auto-Scaling
-============================
+Cluster Setup and Auto-Scaling
+==============================
 
-The ``ray up`` command starts or updates an AWS or GCP Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+This document provides instructions for launching a Ray cluster either privately, on AWS, or on GCP.
+
+The ``ray up`` command starts or updates a Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
 Quick start (AWS)
 -----------------
@@ -50,6 +52,28 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
     # Teardown the cluster
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
+Quick start (Private Cluster)
+-----------------------------
+
+This is used when you have a list of machine IP addresses to connect in a Ray cluster. You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
+
+Try it out by running these commands from your personal computer. Once the cluster is started, you can then
+SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+
+.. code-block:: bash
+
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to SSH into the cluster head node.
+    $ ray up ray/python/ray/autoscaler/local/example-full.yaml
+
+    # Reconfigure autoscaling behavior without interrupting running jobs
+    $ ray up ray/python/ray/autoscaler/local/example-full.yaml \
+        --max-workers=N --no-restart
+
+    # Teardown the cluster
+    $ ray down ray/python/ray/autoscaler/local/example-full.yaml
+
 Running commands on new and existing clusters
 ---------------------------------------------
 
@@ -70,8 +94,19 @@ You can use ``ray exec`` to conveniently run commands on clusters. Note that scr
     $ ray exec cluster.yaml 'echo "hello world"' \
         --start --stop --cluster-name experiment-1
 
+    # Run a command in a detached tmux session
+    $ ray exec cluster.yaml 'echo "hello world"' --tmux
+
     # Run a command in a screen (experimental)
     $ ray exec cluster.yaml 'echo "hello world"' --screen
+
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments.
+
+.. code-block:: bash
+
+    # Run a Python script in a detached tmux session
+    $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+
 
 Attaching to the cluster
 ------------------------
@@ -85,6 +120,10 @@ You can use ``ray attach`` to attach to an interactive console on the cluster.
 
     # Open a screen on a new cluster called 'session-1'
     $ ray attach cluster.yaml --start --cluster-name=session-1
+
+    # Attach to tmux session on cluster (creates a new one if none available)
+    $ ray attach cluster.yaml --tmux
+
 
 Port-forwarding applications
 ----------------------------
@@ -129,7 +168,8 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 -------------------------
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
+You can monitor cluster usage and auto-scaling status by tailing the autoscaling
+logs in ``/tmp/ray/session_*/logs/monitor*``.
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
@@ -181,7 +221,8 @@ The ``example-full.yaml`` configuration is enough to get started with Ray, but f
         InstanceType: p2.8xlarge
 
 **Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster. This currently does not have GPU support.
+and opens all the necessary ports to support the Ray cluster. It will also automatically install
+Docker if Docker is not installed. This currently does not have GPU support.
 
 .. code-block:: yaml
 
@@ -248,3 +289,15 @@ Additional Cloud providers
 --------------------------
 
 To use Ray autoscaling on other Cloud providers or cluster management systems, you can implement the ``NodeProvider`` interface (~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__. Contributions are welcome!
+
+Questions or Issues?
+--------------------
+
+You can post questions or issues or feedback through the following channels:
+
+1. `Our Mailing List`_: For discussions about development, questions about
+   usage, or any general questions and feedback.
+2. `GitHub Issues`_: For bug reports and feature requests.
+
+.. _`Our Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues

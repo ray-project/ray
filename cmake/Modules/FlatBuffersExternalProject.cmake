@@ -10,22 +10,17 @@
 #  - FLATBUFFERS_COMPILER
 #  - FBS_DEPENDS, to keep compatible
 
-# The following is needed because in CentOS, the lib directory is named lib64
-if(EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(LIB_SUFFIX 64)
-endif()
-
-if(DEFINED ENV{FLATBUFFERS_HOME} AND EXISTS ENV{FLATBUFFERS_HOME})
-  set(FLATBUFFERS_HOME "$ENV{FLATBUFFERS_HOME}")
+if(DEFINED ENV{RAY_FLATBUFFERS_HOME} AND EXISTS $ENV{RAY_FLATBUFFERS_HOME})
+  set(FLATBUFFERS_HOME "$ENV{RAY_FLATBUFFERS_HOME}")
   set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_HOME}/include")
   set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_HOME}/lib${LIB_SUFFIX}/libflatbuffers.a")
   set(FLATBUFFERS_COMPILER "${FLATBUFFERS_HOME}/bin/flatc")
 
   add_custom_target(flatbuffers_ep)
 else()
-  set(flatbuffers_VERSION "1.9.0")
+  set(flatbuffers_VERSION "1.10.0")
   set(flatbuffers_URL "https://github.com/google/flatbuffers/archive/v${flatbuffers_VERSION}.tar.gz")
-  set(flatbuffers_URL_MD5 "8be7513bf960034f6873326d09521a4b")
+  set(flatbuffers_URL_MD5 "f7d19a3f021d93422b0bc287d7148cd2")
 
   set(FLATBUFFERS_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/external/flatbuffers-install")
 

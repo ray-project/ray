@@ -1,7 +1,10 @@
 #include "task_spec.h"
 
-#include "common.h"
-#include "common_protocol.h"
+#include <sstream>
+
+#include "ray/common/common_protocol.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -14,7 +17,7 @@ TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectID> &re
 
 flatbuffers::Offset<Arg> TaskArgumentByReference::ToFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb) const {
-  return CreateArg(fbb, to_flatbuf(fbb, references_));
+  return CreateArg(fbb, object_ids_to_flatbuf(fbb, references_));
 }
 
 TaskArgumentByValue::TaskArgumentByValue(const uint8_t *value, size_t length) {
@@ -25,12 +28,24 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb) const {
   auto arg =
       fbb.CreateString(reinterpret_cast<const char *>(value_.data()), value_.size());
-  auto empty_ids = fbb.CreateVectorOfStrings({});
+  const auto &empty_ids = fbb.CreateString("");
   return CreateArg(fbb, empty_ids, arg);
 }
 
 void TaskSpecification::AssignSpecification(const uint8_t *spec, size_t spec_size) {
   spec_.assign(spec, spec + spec_size);
+  // Initialize required_resources_ and required_placement_resources_
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  auto required_placement_resources =
+      map_from_flatbuf(*message->required_placement_resources());
+  // If the required_placement_resources field is empty, then the placement
+  // resources default to the required resources.
+  if (required_placement_resources.size() == 0) {
+    required_placement_resources = required_resources;
+  }
+  required_resources_ = ResourceSet(required_resources);
+  required_placement_resources_ = ResourceSet(required_placement_resources);
 }
 
 TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
@@ -43,23 +58,25 @@ TaskSpecification::TaskSpecification(const std::string &string) {
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
-    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const Language &language)
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
-                        ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
-                        function_id, task_arguments, num_returns, required_resources,
-                        language) {}
+                        ObjectID::nil(), 0, ActorID::nil(), ActorHandleID::nil(), -1, {},
+                        task_arguments, num_returns, required_resources,
+                        std::unordered_map<std::string, double>(), language,
+                        function_descriptor) {}
 
 TaskSpecification::TaskSpecification(
     const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
-    const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
-    const FunctionID &function_id,
+    const int64_t max_actor_reconstructions, const ActorID &actor_id,
+    const ActorHandleID &actor_handle_id, int64_t actor_counter,
+    const std::vector<ActorHandleID> &new_actor_handles,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
-    const Language &language)
+    const std::unordered_map<std::string, double> &required_placement_resources,
+    const Language &language, const std::vector<std::string> &function_descriptor)
     : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -71,35 +88,22 @@ TaskSpecification::TaskSpecification(
     arguments.push_back(argument->ToFlatbuffer(fbb));
   }
 
-  // Add return object IDs.
-  std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
-  for (int64_t i = 1; i < num_returns + 1; i++) {
-    ObjectID return_id = ComputeReturnId(task_id, i);
-    returns.push_back(to_flatbuf(fbb, return_id));
-  }
-
-  // convert Language to TaskLanguage
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  TaskLanguage task_language = TaskLanguage::PYTHON;
-  switch (language) {
-  case Language::PYTHON:
-    task_language = TaskLanguage::PYTHON;
-    break;
-  case Language::JAVA:
-    task_language = TaskLanguage::JAVA;
-    break;
-  default:
-    RAY_LOG(FATAL) << "Unknown language: " << static_cast<int32_t>(language);
+  // Generate return ids.
+  std::vector<ray::ObjectID> returns;
+  for (int64_t i = 1; i < num_returns + 1; ++i) {
+    returns.push_back(ComputeReturnId(task_id, i));
   }
 
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
-      to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
-      to_flatbuf(fbb, actor_handle_id), actor_counter, false,
-      to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
-      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources), task_language);
+      to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
+      to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
+      object_ids_to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments),
+      object_ids_to_flatbuf(fbb, returns), map_to_flatbuf(fbb, required_resources),
+      map_to_flatbuf(fbb, required_placement_resources), language,
+      string_vec_to_flatbuf(fbb, function_descriptor));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -125,14 +129,31 @@ UniqueID TaskSpecification::DriverId() const {
   return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->parent_task_id());
 }
 int64_t TaskSpecification::ParentCounter() const {
-  throw std::runtime_error("Method not implemented");
-}
-FunctionID TaskSpecification::FunctionId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf(*message->function_id());
+  return message->parent_counter();
+}
+std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return string_vec_from_flatbuf(*message->function_descriptor());
+}
+
+std::string TaskSpecification::FunctionDescriptorString() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto list = string_vec_from_flatbuf(*message->function_descriptor());
+  std::ostringstream stream;
+  // The 4th is the code hash which is binary bits. No need to output it.
+  int size = std::min(static_cast<size_t>(3), list.size());
+  for (int i = 0; i < size; ++i) {
+    if (i != 0) {
+      stream << ",";
+    }
+    stream << list[i];
+  }
+  return stream.str();
 }
 
 int64_t TaskSpecification::NumArgs() const {
@@ -142,12 +163,12 @@ int64_t TaskSpecification::NumArgs() const {
 
 int64_t TaskSpecification::NumReturns() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return message->returns()->size();
+  return (message->returns()->size() / kUniqueIDSize);
 }
 
 ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf(*message->returns()->Get(return_index));
+  return object_ids_from_flatbuf(*message->returns())[return_index];
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
@@ -157,47 +178,50 @@ bool TaskSpecification::ArgByRef(int64_t arg_index) const {
 int TaskSpecification::ArgIdCount(int64_t arg_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto ids = message->args()->Get(arg_index)->object_ids();
-  return ids->size();
+  return (ids->size() / kUniqueIDSize);
 }
 
 ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  return from_flatbuf(*message->args()->Get(arg_index)->object_ids()->Get(id_index));
+  const auto &object_ids =
+      object_ids_from_flatbuf(*message->args()->Get(arg_index)->object_ids());
+  return object_ids[id_index];
 }
+
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
-}
-size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
-}
-double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
-  throw std::runtime_error("Method not implemented");
-}
-const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  auto required_resources = map_from_flatbuf(*message->required_resources());
-  return ResourceSet(required_resources);
+  return reinterpret_cast<const uint8_t *>(
+      message->args()->Get(arg_index)->data()->c_str());
+}
+
+size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->Get(arg_index)->data()->size();
+}
+
+double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
+  RAY_CHECK(required_resources_.GetResourceMap().empty() == false);
+  auto it = required_resources_.GetResourceMap().find(resource_name);
+  RAY_CHECK(it != required_resources_.GetResourceMap().end());
+  return it->second;
+}
+
+const ResourceSet TaskSpecification::GetRequiredResources() const {
+  return required_resources_;
+}
+
+const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
+  return required_placement_resources_;
 }
 
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
-  return FunctionId().is_nil();
+  return FunctionDescriptor().empty();
 }
 
 Language TaskSpecification::GetLanguage() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
-  // TODO(raulchen): remove this once we get rid of legacy ray.
-  auto language = message->language();
-  switch (language) {
-  case TaskLanguage::PYTHON:
-    return Language::PYTHON;
-  case TaskLanguage::JAVA:
-    return Language::JAVA;
-  default:
-    // This shouldn't be reachable.
-    RAY_LOG(FATAL) << "Unknown task language: " << static_cast<int32_t>(language);
-    return Language::PYTHON;
-  }
+  return message->language();
 }
 
 bool TaskSpecification::IsActorCreationTask() const {
@@ -214,6 +238,11 @@ ActorID TaskSpecification::ActorCreationId() const {
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   return from_flatbuf(*message->actor_creation_dummy_object_id());
+}
+
+int64_t TaskSpecification::MaxActorReconstructions() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->max_actor_reconstructions();
 }
 
 ActorID TaskSpecification::ActorId() const {
@@ -234,6 +263,11 @@ int64_t TaskSpecification::ActorCounter() const {
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
   return ReturnId(NumReturns() - 1);
+}
+
+std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return object_ids_from_flatbuf(*message->new_actor_handles());
 }
 
 }  // namespace raylet

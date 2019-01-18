@@ -42,7 +42,7 @@ import tensorflow as tf
 
 FLAGS = None
 status_reporter = None  # used to report training status back to Ray
-activation_fn = None  # e.g. tf.nn.relu
+activation_fn = tf.nn.relu  # e.g. tf.nn.relu
 
 
 def deepnn(x):

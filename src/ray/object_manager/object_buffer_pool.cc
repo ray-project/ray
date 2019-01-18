@@ -1,12 +1,14 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include "arrow/util/logging.h"
+
 namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
-                                   uint64_t chunk_size, int release_delay)
+                                   uint64_t chunk_size)
     : default_chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
-  ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", release_delay));
+  ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str()));
 }
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -191,7 +193,17 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   for (const auto &id : object_ids) {
     plasma_ids.push_back(id.to_plasma_id());
   }
+  std::lock_guard<std::mutex> lock(pool_mutex_);
   ARROW_CHECK_OK(store_client_.Delete(plasma_ids));
+}
+
+std::string ObjectBufferPool::DebugString() const {
+  std::lock_guard<std::mutex> lock(pool_mutex_);
+  std::stringstream result;
+  result << "BufferPool:";
+  result << "\n- get buffer state map size: " << get_buffer_state_.size();
+  result << "\n- create buffer state map size: " << create_buffer_state_.size();
+  return result.str();
 }
 
 }  // namespace ray

@@ -25,7 +25,7 @@ function usage()
 # Determine how many parallel jobs to use for make based on the number of cores
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
-  PARALLEL=$(nproc)
+  PARALLEL=$(nproc --all)
 elif [[ "$unamestr" == "Darwin" ]]; then
   PARALLEL=$(sysctl -n hw.ncpu)
 else
@@ -101,12 +101,16 @@ fi
 
 pushd "$BUILD_DIR"
 
+# avoid the command failed and exits
+# and cmake will check some directories to determine whether some targets built
+make clean || true
+rm -rf external/arrow-install
+
 cmake -DCMAKE_BUILD_TYPE=$CBUILD_TYPE \
       -DCMAKE_RAY_LANG_JAVA=$RAY_BUILD_JAVA \
       -DCMAKE_RAY_LANG_PYTHON=$RAY_BUILD_PYTHON \
       -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
       -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE $ROOT_DIR
 
-make clean
 make -j${PARALLEL}
 popd

@@ -50,7 +50,7 @@ def driver(redis_address, driver_index):
         while time.time() - start_time < timeout:
             try:
                 actor = actor_class.remote()
-            except Exception as e:
+            except Exception:
                 time.sleep(0.1)
             else:
                 return actor
