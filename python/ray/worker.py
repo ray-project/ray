@@ -95,6 +95,17 @@ except ImportError:
     setproctitle = None
 
 
+class RayNoReturn(object):
+    """Do not store the return value in the object store.
+
+    If a task returns this object, then Ray will not store this object in the
+    object store. Calling `ray.get` on the task's return ObjectIDs may block
+    indefinitely unless the task manually stores a objects corresponding to the
+    ObjectIds.
+    """
+    pass
+
+
 class ActorCheckpointInfo(object):
     """Information used to maintain actor checkpoints."""
 
@@ -877,19 +888,21 @@ class Worker(object):
             self._return_object_ids = []
 
         # Store the outputs in the local object store.
-        try:
-            with profiling.profile("task:store_outputs"):
-                # If this is an actor task, then the last object ID returned by
-                # the task is a dummy output, not returned by the function
-                # itself. Decrement to get the correct number of return values.
-                num_returns = len(return_object_ids)
-                if num_returns == 1:
-                    outputs = (outputs, )
-                self._store_outputs_in_object_store(return_object_ids, outputs)
-        except Exception as e:
-            self._handle_process_task_failure(
-                function_descriptor, return_object_ids, e,
-                ray.utils.format_error_message(traceback.format_exc()))
+       if not isinstance(outputs, RayNoReturn):
+            try:
+                with profiling.profile("task:store_outputs"):
+                    # If this is an actor task, then the last object ID returned by
+                    # the task is a dummy output, not returned by the function
+                    # itself. Decrement to get the correct number of return values.
+                    num_returns = len(return_object_ids)
+                    if num_returns == 1:
+                        outputs = (outputs, )
+                    self._store_outputs_in_object_store(
+                        return_object_ids, outputs)
+            except Exception as e:
+                self._handle_process_task_failure(
+                    function_descriptor, return_object_ids, e,
+                    ray.utils.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
