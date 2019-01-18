@@ -1,18 +1,13 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+cluster_name: <<<CLUSTER_NAME>>>
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: <<<MIN_WORKERS>>>
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
-
-# The initial number of worker nodes to launch in addition to the head
-# node. When the cluster is first brought up (or when it is refreshed with a
-# subsequent `ray up`) this number of nodes will be started.
-initial_workers: 0
+max_workers: <<<MAX_WORKERS>>>
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
@@ -53,14 +48,14 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: <<<HEAD_TYPE>>>
+    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 50
+              VolumeSize: 100
 
     # Additional options in the boto docs.
 
@@ -69,8 +64,8 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: <<<WORKER_TYPE>>>
+    ImageId: ami-0d0ff0945ae093aea  # Amazon Deep Learning AMI (Ubuntu) 12/12/2018
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -90,13 +85,10 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp36-cp36m-manylinux1_x86_64.whl
+    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
+    - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
+    - rllib || pip install -U <<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
+    - pip install -U tensorflow-gpu
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

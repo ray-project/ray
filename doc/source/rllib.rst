@@ -37,7 +37,7 @@ Environments
 * `RLlib Environments Overview <rllib-env.html>`__
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
-* `Multi-Agent <rllib-env.html#multi-agent>`__
+* `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
@@ -73,6 +73,10 @@ Algorithms
 *  Multi-agent specific
 
    -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
+
+*  Offline
+
+   -  `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
 
 Models and Preprocessors
 ------------------------

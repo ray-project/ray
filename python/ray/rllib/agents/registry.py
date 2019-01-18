@@ -79,6 +79,11 @@ def _import_impala():
     return impala.ImpalaAgent
 
 
+def _import_marwil():
+    from ray.rllib.agents import marwil
+    return marwil.MARWILAgent
+
+
 ALGORITHMS = {
     "DDPG": _import_ddpg,
     "APEX_DDPG": _import_apex_ddpg,
@@ -94,6 +99,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
+    "MARWIL": _import_marwil,
 }
 
 

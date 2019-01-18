@@ -33,3 +33,4 @@ pushd "$ROOT_DIR"
 popd
 
 cat $RESULT_FILE
+[ ! -s $RESULT_FILE ] || exit 1
