@@ -209,7 +209,7 @@ class Trainable(object):
     def evaluate(self):
         result = {}
         try:
-            result = self._train(evaluate=True)
+            result = self._train(update=False)
         except TypeError:
             logger.warning("_train is missing an `evaluate` keyword. "
                            "Falling back to `train()`.")
@@ -359,11 +359,11 @@ class Trainable(object):
         self._result_logger.close()
         self._stop()
 
-    def _train(self, evaluate=False):
+    def _train(self, update=True):
         """Subclasses should override this to implement train().
 
         Args:
-            evaluate (bool): If True, the model is not expected to be
+            update (bool): If False, the model is not expected to be
                 updated. The last result will not be updated.
 
         Returns:
