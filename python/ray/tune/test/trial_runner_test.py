@@ -892,7 +892,7 @@ class VariantGeneratorTest(unittest.TestCase):
                     tune.sample_from(lambda spec: spec.config.y * 100),
                     tune.sample_from(lambda spec: spec.config.y * 200)
                 ]),
-                "y": lambda spec: 1,
+                "y": tune.sample_from(lambda spec: 1),
             },
         }, "dependent_grid_search")
         trials = list(trials)
@@ -920,7 +920,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 self.generate_trials({
                     "run": "PPO",
                     "config": {
-                        "foo": lambda spec: spec.config.foo,
+                        "foo": tune.sample_from(lambda spec: spec.config.foo),
                     },
                 }, "recursive_dep"))
         except RecursiveDependencyError as e:
