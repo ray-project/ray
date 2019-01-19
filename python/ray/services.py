@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import json
 import logging
 import multiprocessing
@@ -57,6 +58,11 @@ RAYLET_EXECUTABLE = os.path.join(
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+ProcessInfo = collections.namedtuple("ProcessInfo", [
+    "process", "use_valgrind", "use_gdb", "use_valgrind_profiler",
+    "use_perftools_profiler", "use_tmux"
+])
 
 
 def address(ip_address, port):
@@ -237,7 +243,8 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
 
     Returns:
-        A handle to the process that was started.
+        Inormation about the process that was started including a handle to the
+            process that was started.
     """
     # Detect which flags are set through environment variables.
     valgrind_env_var = "RAY_{}_VALGRIND".format(process_type.upper())
@@ -297,7 +304,13 @@ def start_ray_process(command,
         cwd=cwd,
         stdout=stdout_file,
         stderr=stderr_file)
-    return process
+    return ProcessInfo(
+        process=process,
+        use_valgrind=use_valgrind,
+        use_gdb=use_gdb,
+        use_valgrind_profiler=use_valgrind_profiler,
+        use_perftools_profiler=use_perftools_profiler,
+        use_tmux=use_tmux)
 
 
 def wait_for_redis_to_start(redis_ip_address,
@@ -630,9 +643,9 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             will start LRU eviction of entries.
 
     Returns:
-        A tuple of the port used by Redis and a handle to the process that was
-            started. If a port is passed in, then the returned port value is
-            the same.
+        A tuple of the port used by Redis and ProcessInfo for the process that
+            was started. If a port is passed in, then the returned port value
+            is the same.
 
     Raises:
         Exception: An exception is raised if Redis could not be started.
@@ -663,7 +676,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             command += ["--requirepass", password]
         command += (
             ["--port", str(port), "--loglevel", "warning"] + load_module_args)
-        p = start_ray_process(
+        process_info = start_ray_process(
             command,
             ray.node.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
@@ -671,7 +684,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
         # did not exit within 0.1 seconds).
-        if p.poll() is None:
+        if process_info.process.poll() is None:
             break
         port = new_port()
         counter += 1
@@ -738,7 +751,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         address(node_ip_address, port),
         node_ip_address, [stdout_file, stderr_file],
         password=password)
-    return port, p
+    return port, process_info
 
 
 def start_log_monitor(redis_address,
@@ -759,7 +772,7 @@ def start_log_monitor(redis_address,
         redis_password (str): The password of the redis server.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
@@ -769,7 +782,7 @@ def start_log_monitor(redis_address,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-    p = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_LOG_MONITOR,
         stdout_file=stdout_file,
@@ -778,7 +791,7 @@ def start_log_monitor(redis_address,
         redis_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
-    return p
+    return process_info
 
 
 def start_ui(redis_address, stdout_file=None, stderr_file=None):
@@ -792,7 +805,8 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
             no redirection should happen, then this should be None.
 
     Returns:
-        A tuple of the web UI url and the process that was started.
+        A tuple of the web UI url and ProcessInfo for the process that was
+            started.
     """
 
     port = 8888
@@ -821,7 +835,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
         command.append("--allow-root")
 
     try:
-        ui_process = start_ray_process(
+        process_info = start_ray_process(
             command,
             ray.node.PROCESS_TYPE_WEB_UI,
             env_updates={"REDIS_ADDRESS": redis_address},
@@ -835,7 +849,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
         logger.info("\n" + "=" * 70)
         logger.info("View the web UI at {}".format(webui_url))
         logger.info("=" * 70 + "\n")
-        return webui_url, ui_process
+        return webui_url, process_info
     return None, None
 
 
@@ -944,7 +958,7 @@ def start_raylet(redis_address,
             override defaults in RayConfig.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
@@ -1009,7 +1023,7 @@ def start_raylet(redis_address,
         redis_password or "",
         get_temp_root(),
     ]
-    p = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_RAYLET,
         use_valgrind=use_valgrind,
@@ -1023,7 +1037,7 @@ def start_raylet(redis_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
 
-    return p
+    return process_info
 
 
 def determine_plasma_store_config(object_store_memory=None,
@@ -1135,8 +1149,8 @@ def _start_plasma_store(plasma_store_memory,
             name used by the plasma store.
 
     Return:
-        A tuple of the name of the plasma store socket and the process ID of
-            the plasma store process.
+        A tuple of the name of the plasma store socket and ProcessInfo for the
+            plasma store process.
     """
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
@@ -1165,14 +1179,14 @@ def _start_plasma_store(plasma_store_memory,
         command += ["-d", plasma_directory]
     if huge_pages:
         command += ["-h"]
-    process = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_PLASMA_STORE,
         use_valgrind=use_valgrind,
         use_valgrind_profiler=use_profiler,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    return plasma_store_name, process
+    return plasma_store_name, process_info
 
 
 def start_plasma_store(node_ip_address,
@@ -1203,7 +1217,7 @@ def start_plasma_store(node_ip_address,
         redis_password (str): The password of the redis server.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     object_store_memory, plasma_directory = determine_plasma_store_config(
         object_store_memory, plasma_directory, huge_pages)
@@ -1219,7 +1233,7 @@ def start_plasma_store(node_ip_address,
     logger.info("Starting the Plasma object store with {} GB memory "
                 "using {}.".format(object_store_memory_str, plasma_directory))
     # Start the Plasma store.
-    plasma_store_name, p = _start_plasma_store(
+    plasma_store_name, process_info = _start_plasma_store(
         object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=stdout_file,
@@ -1233,7 +1247,7 @@ def start_plasma_store(node_ip_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
 
-    return p
+    return process_info
 
 
 def start_worker(node_ip_address,
@@ -1259,7 +1273,7 @@ def start_worker(node_ip_address,
             no redirection should happen, then this should be None.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     command = [
         sys.executable, "-u", worker_path,
@@ -1268,14 +1282,14 @@ def start_worker(node_ip_address,
         "--redis-address=" + str(redis_address),
         "--temp-dir=" + get_temp_root()
     ]
-    process = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_WORKER,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     record_log_files_in_redis(redis_address, node_ip_address,
                               [stdout_file, stderr_file])
-    return process
+    return process_info
 
 
 def start_monitor(redis_address,
@@ -1298,7 +1312,7 @@ def start_monitor(redis_address,
         redis_password (str): The password of the redis server.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "monitor.py")
@@ -1310,7 +1324,7 @@ def start_monitor(redis_address,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:
         command.append("--redis-password=" + redis_password)
-    process = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_MONITOR,
         stdout_file=stdout_file,
@@ -1319,7 +1333,7 @@ def start_monitor(redis_address,
         redis_address,
         node_ip_address, [stdout_file, stderr_file],
         password=redis_password)
-    return process
+    return process_info
 
 
 def start_raylet_monitor(redis_address,
@@ -1340,7 +1354,7 @@ def start_raylet_monitor(redis_address,
             override defaults in RayConfig.
 
     Returns:
-        The process that was started.
+        ProcessInfo for the process that was started.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
@@ -1349,9 +1363,9 @@ def start_raylet_monitor(redis_address,
     command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port, config_str]
     if redis_password:
         command += [redis_password]
-    process = start_ray_process(
+    process_info = start_ray_process(
         command,
         ray.node.PROCESS_TYPE_RAYLET_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    return process
+    return process_info
