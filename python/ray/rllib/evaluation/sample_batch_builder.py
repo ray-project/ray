@@ -5,8 +5,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
-from ray.rllib.evaluation.sample_batch_builder import (SampleBatch,
-                                                       MultiAgentBatch)
+from ray.rllib.evaluation.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 
 
