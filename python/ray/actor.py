@@ -779,6 +779,13 @@ class ActorHandle(object):
 
 def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
                checkpoint_interval, max_reconstructions):
+    # Give an error if cls is an old-style class.
+    if not issubclass(cls, object):
+        raise TypeError(
+            "The @ray.remote decorator cannot be applied to old-style "
+            "classes. In Python 2, you must declare the class with "
+            "'class ClassName(object):' instead of 'class ClassName:'.")
+
     if checkpoint_interval is None:
         checkpoint_interval = -1
     if max_reconstructions is None:

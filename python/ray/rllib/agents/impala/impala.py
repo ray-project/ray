@@ -100,10 +100,7 @@ class ImpalaAgent(Agent):
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
-        if self.config["vtrace"]:
-            policy_cls = self._policy_graph
-        else:
-            policy_cls = A3CPolicyGraph
+        policy_cls = self._get_policy_graph()
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, policy_cls)
         self.remote_evaluators = self.make_remote_evaluators(
@@ -124,3 +121,10 @@ class ImpalaAgent(Agent):
         result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
                       prev_steps)
         return result
+
+    def _get_policy_graph(self):
+        if self.config["vtrace"]:
+            policy_cls = self._policy_graph
+        else:
+            policy_cls = A3CPolicyGraph
+        return policy_cls

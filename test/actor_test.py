@@ -98,6 +98,16 @@ def test_actor_init_error_propagated(ray_start_regular):
         ray.get(actor.foo.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 0), reason="This test requires Python 2.")
+def test_old_style_error(ray_start_regular):
+    with pytest.raises(TypeError):
+
+        @ray.remote
+        class Actor:
+            pass
+
+
 def test_keyword_args(ray_start_regular):
     @ray.remote
     class Actor(object):
