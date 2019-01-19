@@ -38,6 +38,7 @@ cc_library(
     ],
     srcs = glob([
       "cpp/src/plasma/*.cc",
+      "cpp/src/plasma/thirdparty/ae/ae.c",
       "cpp/src/arrow/buffer.cc",
       "cpp/src/arrow/memory_pool.cc",
       "cpp/src/arrow/status.cc",
