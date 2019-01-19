@@ -9,6 +9,7 @@ import numpy as np
 from six import string_types
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI
 import pyarrow
 
 logger = logging.getLogger(__name__)

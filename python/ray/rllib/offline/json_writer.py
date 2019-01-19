@@ -18,15 +18,17 @@ except ImportError:
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
 
+    @PublicAPI
     def __init__(self,
                  path,
                  ioctx=None,

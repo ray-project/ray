@@ -12,8 +12,8 @@ class FilterManager(object):
         `get_filters` and `sync_filters`.
     """
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def synchronize(local_filters, remotes, update_remote=True):
         """Aggregates all filters from remote evaluators.
 
