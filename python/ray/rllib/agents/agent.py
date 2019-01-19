@@ -182,6 +182,7 @@ COMMON_CONFIG = {
 # yapf: enable
 
 
+@DeveloperAPI
 def with_common_config(extra_config):
     """Returns the given config dict merged with common agent confs."""
 
@@ -338,7 +339,7 @@ class Agent(Trainable):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
-    @PublicAPI
+    @DeveloperAPI
     def _init(self):
         """Subclasses should override this for custom initialization."""
 
