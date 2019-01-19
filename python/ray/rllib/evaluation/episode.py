@@ -7,7 +7,7 @@ import random
 
 import numpy as np
 
-from ray.rllib.env.async_vector_env import _DUMMY_AGENT_ID
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 
 

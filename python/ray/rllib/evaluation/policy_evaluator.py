@@ -8,7 +8,7 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -217,7 +217,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
-                isinstance(self.env, AsyncVectorEnv):
+                isinstance(self.env, BaseEnv):
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
@@ -278,7 +278,7 @@ class PolicyEvaluator(EvaluatorInterface):
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
             if not (isinstance(self.env, MultiAgentEnv)
-                    or isinstance(self.env, AsyncVectorEnv)):
+                    or isinstance(self.env, BaseEnv)):
                 raise ValueError(
                     "Have multiple policy graphs {}, but the env ".format(
                         self.policy_map) +
@@ -291,7 +291,7 @@ class PolicyEvaluator(EvaluatorInterface):
         }
 
         # Always use vector env for consistency even if num_envs = 1
-        self.async_env = AsyncVectorEnv.wrap_async(
+        self.async_env = BaseEnv.to_base_env(
             self.env, make_env=make_env, num_envs=num_envs)
         self.num_envs = num_envs
 
