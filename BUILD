@@ -220,7 +220,7 @@ cc_library(
     ]),
     includes = [
       "src/ray/thirdparty/hiredis",
-      "src/ray/thirdparty/ae"
+      "src/ray/thirdparty/ae",
     ],
 )
 

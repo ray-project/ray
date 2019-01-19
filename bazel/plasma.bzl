@@ -34,7 +34,7 @@ cc_library(
         "cpp/src/arrow/util/thread-pool.h",
         "cpp/src/arrow/vendored/xxhash/xxhash.h",
         "cpp/src/arrow/vendored/xxhash/xxhash.c",
-        "cpp/src/arrow/util/windows_compatibility.h"
+        "cpp/src/arrow/util/windows_compatibility.h",
     ],
     srcs = glob([
       "cpp/src/plasma/*.cc",
@@ -46,6 +46,9 @@ cc_library(
       "cpp/src/arrow/util/thread-pool.cc",
       "cpp/src/arrow/util/io-util.cc",
     ]),
+    includes = [
+      "cpp/src/plasma/thirdparty/ae/",
+    ],
     deps = [":common_fbs", ":plasma_fbs"],
     strip_include_prefix = "cpp/src",
 )
