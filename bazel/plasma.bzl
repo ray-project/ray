@@ -26,6 +26,8 @@ cc_library(
         "cpp/src/plasma/store.h",
         "cpp/src/plasma/thirdparty/dlmalloc.c",
         "cpp/src/plasma/thirdparty/ae/ae.h",
+        "cpp/src/plasma/thirdparty/ae/config.h",
+        "cpp/src/plasma/thirdparty/ae/zmalloc.h",
         "cpp/src/arrow/io/interfaces.h",
         "cpp/src/arrow/util/io-util.h",
         "cpp/src/arrow/util/logging.h",
