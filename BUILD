@@ -209,7 +209,7 @@ cc_library(
     srcs = glob([
       "src/ray/thirdparty/ae/ae.c",
       "src/ray/thirdparty/hiredis/*.c",
-    ]),
+    ], exclude = ["src/ray/thirdparty/hiredis/test.c"]),
     hdrs = glob([
       "src/ray/thirdparty/ae/*.h",
       "src/ray/thirdparty/hiredis/*.h",
@@ -217,7 +217,7 @@ cc_library(
       "src/ray/thirdparty/hiredis/dict.c",
       "src/ray/thirdparty/ae/ae_kqueue.c",
       "src/ray/thirdparty/ae/ae_epoll.c",
-    ], exclude = ["src/ray/thirdparty/hiredis/test.c"]),
+    ]),
     includes = [
       "src/ray/thirdparty/hiredis",
       "src/ray/thirdparty/ae"
