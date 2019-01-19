@@ -217,7 +217,7 @@ cc_library(
       "src/ray/thirdparty/hiredis/dict.c",
       "src/ray/thirdparty/ae/ae_kqueue.c",
       "src/ray/thirdparty/ae/ae_epoll.c",
-    ]),
+    ], exclude = ["src/ray/thirdparty/hiredis/test.c"]),
     includes = [
       "src/ray/thirdparty/hiredis",
       "src/ray/thirdparty/ae"
