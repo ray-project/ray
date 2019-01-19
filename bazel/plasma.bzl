@@ -46,9 +46,7 @@ cc_library(
       "cpp/src/arrow/util/thread-pool.cc",
       "cpp/src/arrow/util/io-util.cc",
     ]),
-    includes = [
-      "cpp/src/plasma/thirdparty/ae/",
-    ],
+    includes = ["."],
     deps = [":common_fbs", ":plasma_fbs"],
     strip_include_prefix = "cpp/src",
 )
