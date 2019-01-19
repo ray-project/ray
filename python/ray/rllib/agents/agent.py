@@ -263,6 +263,7 @@ class Agent(Trainable):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Trainable)
+    @PublicAPI
     def train(self):
         """Overrides super.train to synchronize global vars."""
 

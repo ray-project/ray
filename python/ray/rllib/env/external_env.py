@@ -6,7 +6,10 @@ from six.moves import queue
 import threading
 import uuid
 
+from ray.rllib.utils.annotations import PublicAPI
 
+
+@PublicAPI
 class ExternalEnv(threading.Thread):
     """An environment that interfaces with external agents.
 
@@ -36,6 +39,7 @@ class ExternalEnv(threading.Thread):
               print(agent.train())
     """
 
+    @PublicAPI
     def __init__(self, action_space, observation_space, max_concurrent=100):
         """Initialize an external env.
 
@@ -57,6 +61,7 @@ class ExternalEnv(threading.Thread):
         self._results_avail_condition = threading.Condition()
         self._max_concurrent_episodes = max_concurrent
 
+    @PublicAPI
     def run(self):
         """Override this to implement the run loop.
 
@@ -73,6 +78,7 @@ class ExternalEnv(threading.Thread):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def start_episode(self, episode_id=None, training_enabled=True):
         """Record the start of an episode.
 
@@ -102,6 +108,7 @@ class ExternalEnv(threading.Thread):
 
         return episode_id
 
+    @PublicAPI
     def get_action(self, episode_id, observation):
         """Record an observation and get the on-policy action.
 
@@ -116,6 +123,7 @@ class ExternalEnv(threading.Thread):
         episode = self._get(episode_id)
         return episode.wait_for_action(observation)
 
+    @PublicAPI
     def log_action(self, episode_id, observation, action):
         """Record an observation and (off-policy) action taken.
 
@@ -128,6 +136,7 @@ class ExternalEnv(threading.Thread):
         episode = self._get(episode_id)
         episode.log_action(observation, action)
 
+    @PublicAPI
     def log_returns(self, episode_id, reward, info=None):
         """Record returns from the environment.
 
@@ -146,6 +155,7 @@ class ExternalEnv(threading.Thread):
         if info:
             episode.cur_info = info or {}
 
+    @PublicAPI
     def end_episode(self, episode_id, observation):
         """Record the end of an episode.
 

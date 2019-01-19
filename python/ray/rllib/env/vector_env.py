@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 
 
+@PublicAPI
 class VectorEnv(object):
     """An environment that supports batch evaluation.
 
@@ -20,6 +21,7 @@ class VectorEnv(object):
     def wrap(make_env=None, existing_envs=None, num_envs=1):
         return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
 
+    @PublicAPI
     def vector_reset(self):
         """Resets all environments.
 
@@ -28,6 +30,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def reset_at(self, index):
         """Resets a single environment.
 
@@ -36,6 +39,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def vector_step(self, actions):
         """Vectorized step.
 
@@ -50,6 +54,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def get_unwrapped(self):
         """Returns the underlying env instances."""
         raise NotImplementedError
