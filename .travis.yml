@@ -31,6 +31,17 @@ matrix:
       script:
       - ./java/test.sh
 
+      # Test Bazel build
+      - OS=linux
+      - ARCH=x86_64
+      - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then OS=darwin; fi
+      - URL="https://github.com/bazelbuild/bazel/releases/download/0.16.0/bazel-0.16.0-installer-${OS}-x86_64.sh"
+      - wget -O install.sh $URL
+      - chmod +x install.sh
+      - ./install.sh --user
+      - rm -f install.sh
+      - bazel build ...
+
     - os: linux
       dist: trusty
       env: LINT=1 PYTHONWARNINGS=ignore

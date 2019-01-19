@@ -215,7 +215,8 @@ cc_library(
       "src/ray/thirdparty/hiredis/*.h",
       "src/ray/thirdparty/hiredis/adapters/*.h",
       "src/ray/thirdparty/hiredis/dict.c",
-      "src/ray/thirdparty/ae/ae_kqueue.c"
+      "src/ray/thirdparty/ae/ae_kqueue.c",
+      "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
     includes = [
       "src/ray/thirdparty/hiredis",
