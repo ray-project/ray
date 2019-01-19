@@ -60,8 +60,8 @@ RAYLET_EXECUTABLE = os.path.join(
 logger = logging.getLogger(__name__)
 
 ProcessInfo = collections.namedtuple("ProcessInfo", [
-    "process", "use_valgrind", "use_gdb", "use_valgrind_profiler",
-    "use_perftools_profiler", "use_tmux"
+    "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
+    "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
 
 
@@ -304,8 +304,11 @@ def start_ray_process(command,
         cwd=cwd,
         stdout=stdout_file,
         stderr=stderr_file)
+
     return ProcessInfo(
         process=process,
+        stdout_file=stdout_file.name if stdout_file is not None else None,
+        stderr_file=stderr_file.name if stderr_file is not None else None,
         use_valgrind=use_valgrind,
         use_gdb=use_gdb,
         use_valgrind_profiler=use_valgrind_profiler,
@@ -678,7 +681,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             ["--port", str(port), "--loglevel", "warning"] + load_module_args)
         process_info = start_ray_process(
             command,
-            ray.node.PROCESS_TYPE_REDIS_SERVER,
+            ray_constants.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
             stderr_file=stderr_file)
         time.sleep(0.1)
@@ -784,7 +787,7 @@ def start_log_monitor(redis_address,
         command += ["--redis-password", redis_password]
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_LOG_MONITOR,
+        ray_constants.PROCESS_TYPE_LOG_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     record_log_files_in_redis(
@@ -837,7 +840,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
     try:
         process_info = start_ray_process(
             command,
-            ray.node.PROCESS_TYPE_WEB_UI,
+            ray_constants.PROCESS_TYPE_WEB_UI,
             env_updates={"REDIS_ADDRESS": redis_address},
             cwd=new_notebook_directory,
             stdout_file=stdout_file,
@@ -1025,7 +1028,7 @@ def start_raylet(redis_address,
     ]
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_RAYLET,
         use_valgrind=use_valgrind,
         use_gdb=False,
         use_valgrind_profiler=use_profiler,
@@ -1181,7 +1184,7 @@ def _start_plasma_store(plasma_store_memory,
         command += ["-h"]
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_PLASMA_STORE,
+        ray_constants.PROCESS_TYPE_PLASMA_STORE,
         use_valgrind=use_valgrind,
         use_valgrind_profiler=use_profiler,
         stdout_file=stdout_file,
@@ -1284,7 +1287,7 @@ def start_worker(node_ip_address,
     ]
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_WORKER,
+        ray_constants.PROCESS_TYPE_WORKER,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     record_log_files_in_redis(redis_address, node_ip_address,
@@ -1326,7 +1329,7 @@ def start_monitor(redis_address,
         command.append("--redis-password=" + redis_password)
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_MONITOR,
+        ray_constants.PROCESS_TYPE_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     record_log_files_in_redis(
@@ -1365,7 +1368,7 @@ def start_raylet_monitor(redis_address,
         command += [redis_password]
     process_info = start_ray_process(
         command,
-        ray.node.PROCESS_TYPE_RAYLET_MONITOR,
+        ray_constants.PROCESS_TYPE_RAYLET_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     return process_info
