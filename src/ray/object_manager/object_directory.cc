@@ -10,8 +10,8 @@ namespace {
 
 /// Process a suffix of the object table log.
 /// If object is inlined (inline_object_flag = TRUE), its data and metadata are
-/// stored with the object's entry so we read them into nline_object_data, and
-/// nline_object_metadata, respectively.
+/// stored with the object's entry so we read them into inline_object_data, and
+/// inline_object_metadata, respectively.
 /// If object is not inlined, store the result in client_ids.
 /// This assumes that client_ids already contains the result of the
 /// object table log up to but not including this suffix.
@@ -33,7 +33,7 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
   // the object, which the following code achieves.
   //
   // If object is inlined each entry contains both the object's data and metadata,
-  // so we don't care about its location. 
+  // so we don't care about its location.
   if (!location_history.empty()) {
     // If there are entries, then the object has been created. Once this flag
     // is set to true, it should never go back to false.
