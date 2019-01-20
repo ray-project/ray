@@ -16,7 +16,6 @@ else
   exit 1
 fi
 
-ARCH=x86_64
 URL="https://github.com/bazelbuild/bazel/releases/download/0.21.0/bazel-0.21.0-installer-${platform}-x86_64.sh"
 wget -O install.sh $URL
 chmod +x install.sh
