@@ -32,6 +32,7 @@ matrix:
       - ./java/test.sh
 
       # Test Bazel build
+      - rm -rf build
       - ./.travis/install-bazel.sh
       - bazel build ...
 
