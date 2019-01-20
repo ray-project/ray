@@ -1,4 +1,4 @@
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
@@ -33,7 +33,7 @@ git_repository(
 
 new_git_repository(
     name = "plasma",
-    build_file = "bazel/plasma.bzl",
+    build_file = "@//bazel:plasma.bzl",
     remote = "https://github.com/pcmoritz/arrow",
     commit = "27bf57e5519086b0374f203de0051479d966e78b"
 )
