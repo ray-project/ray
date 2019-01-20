@@ -363,8 +363,8 @@ class RayConfig {
   int num_workers_per_process_;
 
   /// Maximum size of an inline object (bytes).
-  /// Inline objects are objects whose data and metadata are inlined in the GCS o
-  /// bject table entry, which normally only specifies the object location.
+  /// Inline objects are objects whose data and metadata are inlined in the
+  /// GCS object table entry, which normally only specifies the object locations.
   int inline_object_max_size_bytes_;
 
   // Maximum timeout in milliseconds within which a task lease must be renewed.

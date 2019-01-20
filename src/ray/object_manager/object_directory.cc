@@ -49,7 +49,8 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
                                  object_table_data.inline_object_data.end());
       inline_object_metadata->assign(object_table_data.inline_object_metadata.begin(),
                                      object_table_data.inline_object_metadata.end());
-      break; // We got the data and metadata of the object so exit the loop.
+      // We got the data and metadata of the object so exit the loop.                               
+      break;
     } else {
       if (!object_table_data.is_eviction) {
         client_ids->insert(client_id);

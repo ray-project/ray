@@ -120,7 +120,8 @@ table ObjectTableData {
   // The size of the object.
   object_size: long;
   // Is object in-lined?  Inline objects are objects whose data and metadata are
-  //inlined in the GCS object table entry, which normally only specifies the object location.
+  // inlined in the GCS object table entry, which normally only specifies
+  // the object location.
   inline_object_flag: bool;
   // The node manager ID that this object appeared on or was evicted by.
   manager: string;
