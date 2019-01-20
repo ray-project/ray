@@ -23,8 +23,6 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 
     # == PPO surrogate loss options ==
     "clip_param": 0.4,
-    "kl_coeff": 0.2,
-    "kl_target": 0.01,
 
     # == IMPALA optimizer params (see documentation in impala.py) ==
     "sample_batch_size": 50,
