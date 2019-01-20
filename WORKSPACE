@@ -11,8 +11,8 @@ boost_deps()
 
 git_repository(
     name = "com_github_google_flatbuffers",
-    remote = "https://github.com/ray-project/flatbuffers.git",
-    commit = "4ae340b698b7dd768e8c5a155731c8dee9fce016"
+    remote = "https://github.com/google/flatbuffers.git",
+    commit = "63d51afd1196336a7d1f56a988091ef05deb1c62",
 )
 
 git_repository(
@@ -24,6 +24,6 @@ git_repository(
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
-    remote = "https://github.com/pcmoritz/arrow",
-    commit = "27bf57e5519086b0374f203de0051479d966e78b"
+    remote = "https://github.com/ray-project/arrow",
+    commit = "1e4f867eb1dc31107331ab1defdffb94467f31dc",
 )
