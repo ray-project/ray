@@ -311,7 +311,8 @@ class Node(object):
                 process.wait()
                 if process.returncode != 0:
                     message = ("Valgrind detected some errors in process of "
-                               "type {}.".format(process_type))
+                               "type {}. Error code {}.".format(
+                                   process_type, process.returncode))
                     if process_info.stdout_file is not None:
                         with open(process_info.stdout_file, "r") as f:
                             message += "\nPROCESS STDOUT:\n" + f.read()

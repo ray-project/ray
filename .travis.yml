@@ -78,10 +78,7 @@ matrix:
 
         - export RAY_RAYLET_VALGRIND=1
         - export RAY_PLASMA_STORE_VALGRIND=1
-        # RAY_RAYLET_MONITOR_VALGRIND and RAY_REDIS_SERVER_VALGRIND are
-        # commented out because uncommenting them leads to a valgrind error.
-        # The same is true of all the Python processes.
-        # - export RAY_RAYLET_MONITOR_VALGRIND=1
+        - export RAY_RAYLET_MONITOR_VALGRIND=1
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
         # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
