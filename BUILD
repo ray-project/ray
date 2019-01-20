@@ -49,7 +49,7 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@plasma",
-        "@gtest"
+        "@com_google_googletest//:gtest",
     ],
 )
 
