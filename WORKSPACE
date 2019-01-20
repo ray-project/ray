@@ -21,8 +21,8 @@ http_archive(
 
 git_repository(
     name = "com_github_google_flatbuffers",
-    remote = "https://github.com/google/flatbuffers.git",
-    commit = "63d51afd1196336a7d1f56a988091ef05deb1c62"
+    remote = "https://github.com/ray-project/flatbuffers.git",
+    commit = "ff69ce863eb13211b6bf99fa04b0384483fba1d9"
 )
 
 git_repository(
