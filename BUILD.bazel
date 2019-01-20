@@ -27,19 +27,16 @@ cc_binary(
 
 cc_library(
     name = "raylet_lib",
-    srcs = glob(
-        [
-            "src/ray/raylet/*.cc",
-        ],
-        exclude = [
-            "src/ray/raylet/mock_gcs_client.cc",
-            "src/ray/raylet/monitor_main.cc",
-            "src/ray/raylet/*_test.cc",
-        ],
-    ),
+    srcs = glob([
+        "src/ray/raylet/*.cc"
+    ], exclude = [
+        "src/ray/raylet/mock_gcs_client.cc",
+        "src/ray/raylet/monitor_main.cc",
+        "src/ray/raylet/*_test.cc",
+    ]),
     hdrs = glob([
         "src/ray/raylet/*.h",
-    ],),
+    ]),
     deps = [
         ":gcs",
         ":gcs_fbs",
@@ -153,16 +150,13 @@ cc_binary(
 
 cc_library(
     name = "ray_util",
-    srcs = glob(
-        [
-            "src/ray/*.cc",
-            "src/ray/util/*.cc",
-        ],
-        exclude = [
-            "src/ray/util/logging_test.cc",
-            "src/ray/util/signal_test.cc"
-        ],
-    ),
+    srcs = glob([
+        "src/ray/*.cc",
+        "src/ray/util/*.cc",
+    ], exclude = [
+        "src/ray/util/logging_test.cc",
+        "src/ray/util/signal_test.cc"
+    ]),
     hdrs = glob([
         "src/ray/*.h",
         "src/ray/util/*.h",
@@ -178,10 +172,14 @@ cc_library(
 
 cc_library(
     name = "ray_common",
-    srcs = ["src/ray/common/client_connection.cc",
-          "src/ray/common/common_protocol.cc"],
-    hdrs = ["src/ray/common/client_connection.h",
-          "src/ray/common/common_protocol.h"],
+    srcs = [
+        "src/ray/common/client_connection.cc",
+        "src/ray/common/common_protocol.cc"
+    ],
+    hdrs = [
+        "src/ray/common/client_connection.h",
+        "src/ray/common/common_protocol.h"
+    ],
     includes = [
         "src/ray/gcs/format",
     ],
@@ -207,33 +205,32 @@ cc_library(
 cc_library(
     name = "hiredis",
     srcs = glob([
-      "src/ray/thirdparty/ae/ae.c",
-      "src/ray/thirdparty/hiredis/*.c",
-    ], exclude = ["src/ray/thirdparty/hiredis/test.c"]),
+        "src/ray/thirdparty/ae/ae.c",
+        "src/ray/thirdparty/hiredis/*.c",
+    ], exclude = [
+        "src/ray/thirdparty/hiredis/test.c"
+    ]),
     hdrs = glob([
-      "src/ray/thirdparty/ae/*.h",
-      "src/ray/thirdparty/hiredis/*.h",
-      "src/ray/thirdparty/hiredis/adapters/*.h",
-      "src/ray/thirdparty/hiredis/dict.c",
-      "src/ray/thirdparty/ae/ae_kqueue.c",
-      "src/ray/thirdparty/ae/ae_epoll.c",
+        "src/ray/thirdparty/ae/*.h",
+        "src/ray/thirdparty/hiredis/*.h",
+        "src/ray/thirdparty/hiredis/adapters/*.h",
+        "src/ray/thirdparty/hiredis/dict.c",
+        "src/ray/thirdparty/ae/ae_kqueue.c",
+        "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
     includes = [
-      "src/ray/thirdparty/hiredis",
-      "src/ray/thirdparty/ae",
+        "src/ray/thirdparty/hiredis",
+        "src/ray/thirdparty/ae",
     ],
 )
 
 cc_library(
     name = "gcs",
-    srcs = glob(
-        [
-            "src/ray/gcs/*.cc",
-        ],
-        exclude = [
-            "src/ray/gcs/*_test.cc",
-        ],
-    ),
+    srcs = glob([
+        "src/ray/gcs/*.cc"
+    ], exclude = [
+        "src/ray/gcs/*_test.cc"
+    ]),
     hdrs = glob([
         "src/ray/gcs/*.h",
         "src/ray/gcs/format/*.h",

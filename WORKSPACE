@@ -11,8 +11,8 @@ boost_deps()
 
 git_repository(
     name = "com_github_google_flatbuffers",
-    remote = "https://github.com/google/flatbuffers.git",
-    commit = "63d51afd1196336a7d1f56a988091ef05deb1c62",
+    remote = "https://github.com/ray-project/flatbuffers.git",
+    commit = "4ae340b698b7dd768e8c5a155731c8dee9fce016",
 )
 
 git_repository(
