@@ -31,9 +31,9 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 #endif
 
   // We expect all placeable tasks to be placed on exit from this policy method.
-  RAY_CHECK(scheduling_queue_.GetPlaceableTasks().size() <= 1);
+  RAY_CHECK(scheduling_queue_.GetTasks(TaskState::PLACEABLE).size() <= 1);
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
+  for (const auto &t : scheduling_queue_.GetTasks(TaskState::PLACEABLE)) {
     // Get task's resource demand
     const auto &spec = t.GetTaskSpecification();
     const auto &resource_demand = spec.GetRequiredPlacementResources();
@@ -126,7 +126,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
   // Check if we can accommodate infeasible tasks.
-  for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
+  for (const auto &task : scheduling_queue_.GetTasks(TaskState::INFEASIBLE)) {
     const auto &spec = task.GetTaskSpecification();
     const auto &placement_resources = spec.GetRequiredPlacementResources();
     if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
@@ -136,7 +136,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   }
 
   // Try to accommodate up to a single ready task.
-  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
+  for (const auto &task : scheduling_queue_.GetTasks(TaskState::READY)) {
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       // Make sure the node has enough available resources to prevent forwarding cycles.
