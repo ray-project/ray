@@ -11,7 +11,8 @@ A simple hierarchical formulation involves a high-level agent that issues goals
 (i.e., go north / south / east / west), and a low-level agent that executes
 these goals over a number of time-steps. This can be implemented as a
 multi-agent environment with a top-level agent and low-level agents spawned
-for each higher-level action.
+for each higher-level action. The lower level agent is rewarded for moving
+in the right direction.
 
 You can try this formulation with:
 
@@ -52,8 +53,8 @@ MAP_DATA = """
 #F      #
 #########"""
 
-
 logger = logging.getLogger(__name__)
+
 
 class WindyMazeEnv(gym.Env):
     def __init__(self, env_config):
@@ -67,9 +68,10 @@ class WindyMazeEnv(gym.Env):
                     self.start_pos = (x, y)
                 elif self.map[x][y] == "F":
                     self.end_pos = (x, y)
-        logger.info("Start pos {} end pos {}".format(self.start_pos, self.end_pos))
+        logger.info("Start pos {} end pos {}".format(self.start_pos,
+                                                     self.end_pos))
         self.observation_space = Tuple([
-            Box(0, 100, shape=(2,)),  # (x, y)
+            Box(0, 100, shape=(2, )),  # (x, y)
             Discrete(4),  # wind direction (N, E, S, W)
         ])
         self.action_space = Discrete(2)  # whether to move or not
@@ -194,6 +196,13 @@ if __name__ == "__main__":
         })
     else:
         maze = WindyMazeEnv(None)
+
+        def policy_mapping_fn(agent_id):
+            if agent_id.startswith("low_level_"):
+                return "low_level_policy"
+            else:
+                return "high_level_policy"
+
         run_experiments({
             "maze_hier": {
                 "run": "PPO",
@@ -206,18 +215,18 @@ if __name__ == "__main__":
                         "policy_graphs": {
                             "high_level_policy": (PPOAgent._policy_graph,
                                                   maze.observation_space,
-                                                  Discrete(4), {"gamma": 0.9}),
+                                                  Discrete(4), {
+                                                      "gamma": 0.9
+                                                  }),
                             "low_level_policy": (PPOAgent._policy_graph,
                                                  Tuple([
                                                      maze.observation_space,
                                                      Discrete(4)
-                                                 ]), maze.action_space, {"gamma": 0.0}),
+                                                 ]), maze.action_space, {
+                                                     "gamma": 0.0
+                                                 }),
                         },
-                        "policy_mapping_fn": function(
-                            lambda agent_id: "low_level_policy"
-                            if agent_id.startswith("low_level_")
-                            else "high_level_policy"
-                        ),
+                        "policy_mapping_fn": function(policy_mapping_fn),
                     },
                 },
             },
