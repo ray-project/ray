@@ -118,6 +118,14 @@ Package Reference
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
+Examples
+--------
+* `Custom Environments and Models <rllib-examples.html#custom-environments-and-models>`__
+* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
+* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
+* `Training Workflows <rllib-examples.html#training-workflows>`__
+* `Community Examples <rllib-examples.html#community-examples>`__
+
 Troubleshooting
 ---------------
 
