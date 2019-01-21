@@ -1,0 +1,57 @@
+RLlib Examples
+==============
+
+This page is an index of examples for the various use cases and features of RLlib.
+
+If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
+
+Custom Environments and Models
+----------------------
+
+- `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
+   Example of defining and registering a gym env for use with RLlib.
+- `Carla env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__:
+   Example of a custom env that communicates with an subprocess over RPC.
+- `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
+   Example of adding batch norm layers to a custom model.
+- `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
+   Example of how to handle variable-length or parametric action spaces.
+
+Multi-Agent and Hierarchical
+----------------------------
+
+- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__:
+   Example of how to define weight-sharing layers between two different policies.
+- `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__:
+   Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+- `Multiple trainers <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__:
+   Example of alternating training between two DQN and PPO trainers.
+- `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
+   Example of hierarchical training using the multi-agent API.
+
+Serving and Offline
+-------------------
+- `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
+   Example of online serving of predictions for a simple CartPole policy.
+- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
+   Example of how to externally generate experience batches in RLlib-compatible format.
+
+Training Workflows
+------------------
+
+- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
+   Example of how to adjust the configuration of an environment over time.
+- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
+   Example of how to output custom training metrics to TensorBoard.
+
+Community Examples
+------------------
+
+- `Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+   Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+- `SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
+   Example of training robotic control policies in SageMaker with RLlib.
+- `Network Compression <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_network_compression_ray_custom>`__:
+   Example of optimizing network compression in SageMaker with RLlib.
+- `StarCraft2 <https://github.com/oxwhirl/smac/tree/master/smac>`__:
+   Example of training in StarCraft2 maps with RLlib / multi-agent.
