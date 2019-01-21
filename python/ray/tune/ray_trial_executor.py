@@ -319,8 +319,9 @@ class RayTrialExecutor(TrialExecutor):
             res_str = "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
                                                 self._avail_resources.gpu)
             if self._avail_resources.custom_resources:
-                custom = ", ".join("{} {}".format(
-                    self._avail_resources.get_res_total(name), name)
+                custom = ", ".join(
+                    "{} {}".format(
+                        self._avail_resources.get_res_total(name), name)
                     for name in self._avail_resources.custom_resources)
                 res_str += " ({})".format(custom)
             return res_str
