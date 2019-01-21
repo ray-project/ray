@@ -5,6 +5,14 @@ This page is an index of examples for the various use cases and features of RLli
 
 If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
+Tuned Examples
+--------------
+
+- `Tuned examples <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__.
+   Collection of tuned algorithm hyperparameters.
+- `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__.
+   Collection of reasonably optimized Atari results.
+
 Custom Environments and Models
 ------------------------------
 
