@@ -276,7 +276,7 @@ class RayTrialExecutor(TrialExecutor):
 
         if (resources.cpu_total() > 0 and leftover.cpu <= 0) or \
            (resources.gpu_total() > 0 and leftover.gpu <= 0) or \
-           any((resources.custom_resource_total(res_name) > 0
+           any((resources.get_res_total(res_name) > 0
                 and leftover.custom_resources[res_name] <= 0)
                for res_name in resources.custom_resources):
             can_overcommit = False  # requested resource is already saturated
@@ -302,9 +302,9 @@ class RayTrialExecutor(TrialExecutor):
                 self._committed_resources.gpu, self._avail_resources.gpu)
             customs = ",".join([
                 "{}/{} {}".format(
-                    self._committed_resources.get(name),
-                    self._avail_resources.get(name), name)
-                for name in self._avail_resources
+                    self._committed_resources.get_res_total(name),
+                    self._avail_resources.get_res_total(name), name)
+                for name in self._avail_resources.custom_resources
             ])
             if customs:
                 status += " ({})".format(customs)
@@ -316,8 +316,14 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a string describing the total resources available."""
 
         if self._resources_initialized:
-            return "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
-                                             self._avail_resources.gpu)
+            res_str = "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
+                                                self._avail_resources.gpu)
+            if self._avail_resources.custom_resources:
+                custom = ", ".join("{} {}".format(
+                    self._avail_resources.get_res_total(name), name)
+                    for name in self._avail_resources.custom_resources)
+                res_str += " ({})".format(custom)
+            return res_str
         else:
             return "? CPUs, ? GPUs"
 

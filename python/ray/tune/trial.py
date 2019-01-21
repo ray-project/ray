@@ -87,7 +87,7 @@ class Resources(
         summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
                                             self.gpu + self.extra_gpu)
         custom_summary = ", ".join([
-            "{} {}".format(self.custom_resource_total(res), res)
+            "{} {}".format(self.get_res_total(res), res)
             for res in self.custom_resources
         ])
         if custom_summary:
@@ -100,7 +100,7 @@ class Resources(
     def gpu_total(self):
         return self.gpu + self.extra_gpu
 
-    def custom_resource_total(self, key):
+    def get_res_total(self, key):
         return self.custom_resources.get(
             key, 0) + self.extra_custom_resources.get(key, 0)
 
