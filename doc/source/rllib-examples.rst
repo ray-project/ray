@@ -29,13 +29,6 @@ Multi-Agent and Hierarchical
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 
-Serving and Offline
--------------------
-- `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
-   Example of online serving of predictions for a simple CartPole policy.
-- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
-   Example of how to externally generate experience batches in RLlib-compatible format.
-
 Training Workflows
 ------------------
 
@@ -43,6 +36,13 @@ Training Workflows
    Example of how to adjust the configuration of an environment over time.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
+
+Serving and Offline
+-------------------
+- `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
+   Example of online serving of predictions for a simple CartPole policy.
+- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
+   Example of how to externally generate experience batches in RLlib-compatible format.
 
 Community Examples
 ------------------
