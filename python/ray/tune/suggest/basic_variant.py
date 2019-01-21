@@ -23,11 +23,12 @@ class BasicVariantGenerator(SearchAlgorithm):
         >>> searcher.is_finished == True
     """
 
-    def __init__(self):
+    def __init__(self, shuffle=False):
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._shuffle = shuffle
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -48,6 +49,8 @@ class BasicVariantGenerator(SearchAlgorithm):
             trials (list): Returns a list of trials.
         """
         trials = list(self._trial_generator)
+        if self._shuffle:
+            trials.shuffle()
         self._finished = True
         return trials
 
