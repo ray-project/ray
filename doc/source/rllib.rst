@@ -121,7 +121,7 @@ Package Reference
 Examples
 --------
 
-We maintain an index of RLlib code examples on `this page <rllib-examples.html>`__.
+You can find an index of RLlib code examples on `this page <rllib-examples.html>`__.
 
 Troubleshooting
 ---------------

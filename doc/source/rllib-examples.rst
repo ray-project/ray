@@ -10,8 +10,6 @@ Custom Environments and Models
 
 - `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env for use with RLlib.
-- `Carla env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__:
-   Example of a custom env that communicates with an subprocess over RPC.
 - `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
@@ -22,10 +20,10 @@ Custom Environments and Models
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__:
-   Example of how to define weight-sharing layers between two different policies.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__:
+   Example of how to define weight-sharing layers between two different policies.
 - `Multiple trainers <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__:
    Example of alternating training between two DQN and PPO trainers.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
