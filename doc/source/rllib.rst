@@ -120,11 +120,8 @@ Package Reference
 
 Examples
 --------
-* `Custom Environments and Models <rllib-examples.html#custom-environments-and-models>`__
-* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
-* `Training Workflows <rllib-examples.html#training-workflows>`__
-* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
-* `Community Examples <rllib-examples.html#community-examples>`__
+
+We maintain an index of RLlib code examples on `this page <rllib-examples.html>`__.
 
 Troubleshooting
 ---------------

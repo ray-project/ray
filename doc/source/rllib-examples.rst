@@ -6,12 +6,14 @@ This page is an index of examples for the various use cases and features of RLli
 If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
 Custom Environments and Models
-----------------------
+------------------------------
 
 - `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env for use with RLlib.
 - `Carla env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/carla/env.py>`__:
    Example of a custom env that communicates with an subprocess over RPC.
+- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/test_env_with_subprocess.py>`__:
+   Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
