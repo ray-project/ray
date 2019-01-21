@@ -6,12 +6,10 @@
 
 namespace {
 
-static const std::array<std::string, static_cast<int>(ray::raylet::TaskState::kNumTaskQueues)> task_state_strings = {
-  "waiting",
-  "ready",
-  "running",
-  "infeasible",
-  "waiting for actor creation",
+static const std::array<std::string,
+                        static_cast<int>(ray::raylet::TaskState::kNumTaskQueues)>
+    task_state_strings = {
+        "waiting", "ready", "running", "infeasible", "waiting for actor creation",
 };
 
 inline const std::string &GetTaskStateString(ray::raylet::TaskState task_state) {
@@ -90,7 +88,6 @@ const Task &TaskQueue::GetTask(const TaskID &task_id) const {
   return *it->second;
 }
 
-
 const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
   return current_resource_load_;
 }
@@ -110,7 +107,8 @@ bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_ta
   return TaskQueue::RemoveTask(task_id, removed_tasks);
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>> &ReadyQueue::GetTasksWithResources() const {
+const std::unordered_map<ResourceSet, ordered_set<TaskID>>
+    &ReadyQueue::GetTasksWithResources() const {
   return tasks_with_resources_;
 }
 
@@ -119,9 +117,13 @@ const std::list<Task> &SchedulingQueue::GetTasks(TaskState task_state) const {
   return queue->GetTasks();
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>> &SchedulingQueue::GetReadyTasksWithResources() const { return ready_queue_->GetTasksWithResources(); }
+const std::unordered_map<ResourceSet, ordered_set<TaskID>>
+    &SchedulingQueue::GetReadyTasksWithResources() const {
+  return ready_queue_->GetTasksWithResources();
+}
 
-const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id, TaskState task_state) const {
+const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
+                                            TaskState task_state) const {
   const auto &queue = GetTaskQueue(task_state);
   return queue->GetTask(task_id);
 }
@@ -135,7 +137,8 @@ const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void SchedulingQueue::FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids, TaskState task_state) const {
+void SchedulingQueue::FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids,
+                                           TaskState task_state) const {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     if (queue->HasTask(*it)) {
@@ -193,21 +196,23 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   }
 }
 
-const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(TaskState task_state) const {
+const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(
+    TaskState task_state) const {
   RAY_CHECK(task_state < TaskState::kNumTaskQueues) << static_cast<int>(task_state);
   return task_queues_[static_cast<int>(task_state)];
 }
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-void SchedulingQueue::RemoveTasksFromQueue(ray::raylet::TaskState task_state,
-                          std::unordered_set<ray::TaskID> &task_ids,
-                          std::vector<ray::raylet::Task> *removed_tasks) {
+void SchedulingQueue::RemoveTasksFromQueue(
+    ray::raylet::TaskState task_state, std::unordered_set<ray::TaskID> &task_ids,
+    std::vector<ray::raylet::Task> *removed_tasks) {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;
     if (queue->RemoveTask(task_id, removed_tasks)) {
-      RAY_LOG(DEBUG) << "[SchedulingQueue] Removed task " << task_id << " from " << GetTaskStateString(task_state) << " queue";
+      RAY_LOG(DEBUG) << "[SchedulingQueue] Removed task " << task_id << " from "
+                     << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
       // RUNNING tasks may also be BLOCKED, so also erase from the blocked
       // tasks.
@@ -225,13 +230,9 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   std::vector<Task> removed_tasks;
   // Try to find the tasks to remove from the queues.
   for (const auto &task_state : {
-      TaskState::PLACEABLE,
-      TaskState::WAITING,
-      TaskState::READY,
-      TaskState::RUNNING,
-      TaskState::INFEASIBLE,
-      TaskState::WAITING_FOR_ACTOR_CREATION,
-  }) {
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+       }) {
     RemoveTasksFromQueue(task_state, task_ids, &removed_tasks);
   }
 
@@ -244,13 +245,9 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   std::unordered_set<TaskID> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
   for (const auto &task_state : {
-      TaskState::PLACEABLE,
-      TaskState::WAITING,
-      TaskState::READY,
-      TaskState::RUNNING,
-      TaskState::INFEASIBLE,
-      TaskState::WAITING_FOR_ACTOR_CREATION,
-  }) {
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+       }) {
     RemoveTasksFromQueue(task_state, task_id_set, &removed_tasks);
     if (task_id_set.empty()) {
       // The task was removed from the current queue.
@@ -277,8 +274,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   // Remove the tasks from the specified source queue.
   switch (src_state) {
   case TaskState::PLACEABLE:
-    RemoveTasksFromQueue(TaskState::PLACEABLE, task_ids,
-                         &removed_tasks);
+    RemoveTasksFromQueue(TaskState::PLACEABLE, task_ids, &removed_tasks);
     break;
   case TaskState::WAITING:
     RemoveTasksFromQueue(TaskState::WAITING, task_ids, &removed_tasks);
@@ -290,8 +286,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     RemoveTasksFromQueue(TaskState::RUNNING, task_ids, &removed_tasks);
     break;
   case TaskState::INFEASIBLE:
-    RemoveTasksFromQueue(TaskState::INFEASIBLE, task_ids,
-                         &removed_tasks);
+    RemoveTasksFromQueue(TaskState::INFEASIBLE, task_ids, &removed_tasks);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
@@ -327,7 +322,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_state) {
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
-    RAY_LOG(DEBUG) << "[SchedulingQueue] Added task " << task.GetTaskSpecification().TaskId() << " to " << GetTaskStateString(task_state) << " queue";
+    RAY_LOG(DEBUG) << "[SchedulingQueue] Added task "
+                   << task.GetTaskSpecification().TaskId() << " to "
+                   << GetTaskStateString(task_state) << " queue";
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
 }
@@ -391,17 +388,13 @@ std::string SchedulingQueue::DebugString() const {
   std::stringstream result;
   result << "SchedulingQueue:";
   for (const auto &task_state : {
-      TaskState::PLACEABLE,
-      TaskState::WAITING,
-      TaskState::READY,
-      TaskState::RUNNING,
-      TaskState::INFEASIBLE,
-      TaskState::WAITING_FOR_ACTOR_CREATION,
-  }) {
-    result << "\n- num " << GetTaskStateString(task_state) << " tasks: " << GetTaskQueue(task_state)->GetTasks().size();
+           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
+           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+       }) {
+    result << "\n- num " << GetTaskStateString(task_state)
+           << " tasks: " << GetTaskQueue(task_state)->GetTasks().size();
   }
-  result << "\n- num tasks blocked: "
-         << blocked_task_ids_.size();
+  result << "\n- num tasks blocked: " << blocked_task_ids_.size();
   return result.str();
 }
 

@@ -62,7 +62,8 @@ class TaskQueue {
   ///  removed from the queue, the task data is appended to the vector. Can
   ///  be a nullptr, in which case nothing is appended.
   /// \return Whether the removal succeeds.
-  virtual bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks = nullptr);
+  virtual bool RemoveTask(const TaskID &task_id,
+                          std::vector<Task> *removed_tasks = nullptr);
 
   /// \brief Check if the queue contains a specific task id.
   ///
@@ -134,13 +135,10 @@ class SchedulingQueue {
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
     for (const auto &task_state : {
-        TaskState::PLACEABLE,
-        TaskState::WAITING,
-        TaskState::READY,
-        TaskState::RUNNING,
-        TaskState::INFEASIBLE,
-        TaskState::WAITING_FOR_ACTOR_CREATION,
-    }) {
+             TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
+             TaskState::RUNNING, TaskState::INFEASIBLE,
+             TaskState::WAITING_FOR_ACTOR_CREATION,
+         }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
       } else {
@@ -167,7 +165,8 @@ class SchedulingQueue {
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetReadyTasksWithResources() const;
+  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetReadyTasksWithResources()
+      const;
 
   /// Get a task from the queue of a given state. The caller must ensure that
   /// the task has the given state.
@@ -294,19 +293,21 @@ class SchedulingQueue {
   /// state must correspond to one of the task queues (has value <
   /// TaskState::kNumTaskQueues).
   void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
-                          std::unordered_set<ray::TaskID> &task_ids,
-                          std::vector<ray::raylet::Task> *removed_tasks);
+                            std::unordered_set<ray::TaskID> &task_ids,
+                            std::vector<ray::raylet::Task> *removed_tasks);
 
   /// A helper function to filter out tasks of a given state from the set of
   /// task IDs. The requested task state must correspond to one of the task
   /// queues (has value < TaskState::kNumTaskQueues).
-  void FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids, TaskState task_state) const;
+  void FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids,
+                            TaskState task_state) const;
 
   // A pointer to the ready queue.
   const std::shared_ptr<ReadyQueue> ready_queue_;
   // A pointer to the task queues. These contain all tasks that have a task
   // state < TaskState::kNumTaskQueues.
-  std::array<std::shared_ptr<TaskQueue>, static_cast<int>(TaskState::kNumTaskQueues)> task_queues_;
+  std::array<std::shared_ptr<TaskQueue>, static_cast<int>(TaskState::kNumTaskQueues)>
+      task_queues_;
   /// Tasks that were dispatched to a worker but are blocked on a data
   /// dependency that was missing at runtime.
   std::unordered_set<TaskID> blocked_task_ids_;
