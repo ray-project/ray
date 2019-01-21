@@ -49,11 +49,9 @@ Serving and Offline
 Community Examples
 ------------------
 
-- `Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
-- `SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
+- `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
-- `Network Compression <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_network_compression_ray_custom>`__:
-   Example of optimizing network compression in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac/tree/master/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
