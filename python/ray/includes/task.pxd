@@ -105,3 +105,6 @@ cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
         void IncrementNumForwards()
         const c_vector[CObjectID] &GetDependencies() const
         void CopyTaskExecutionSpec(const RayletTask &task)
+
+    cdef c_string TaskToFlatbuffer(const c_vector[CObjectID] *dependencies,
+        const RayletTaskSpecification *task_spec)

@@ -351,7 +351,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.ObjectID(hex_to_binary(task_id))
+            task_id = ray.TaskID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(
@@ -364,7 +364,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.ObjectID(task_id_binary))
+                    ray.TaskID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):

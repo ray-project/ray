@@ -5,7 +5,7 @@
 
 from ray.includes.common cimport *
 from ray.includes.libraylet cimport CRayletClient, ResourceMappingType, WaitResultPair
-from ray.includes.task cimport RayletTaskSpecification, RayletTaskArgument, RayletTaskArgumentByValue, RayletTaskArgumentByReference
+from ray.includes.task cimport RayletTaskSpecification, RayletTaskArgument, RayletTaskArgumentByValue, RayletTaskArgumentByReference, TaskToFlatbuffer
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode, _random_string
 
@@ -430,6 +430,9 @@ cdef class Task:
             String representing the task specification.
         """
         return self.task_spec.get().ToFlatbuffer()
+
+    def _serialized_raylet_task(self):
+        return TaskToFlatbuffer(self.execution_dependencies.get(), self.task_spec.get())
 
     def driver_id(self):
         """Return the driver ID for this task."""

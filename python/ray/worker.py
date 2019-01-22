@@ -1914,7 +1914,7 @@ def connect(info,
                                       ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                       ray.gcs_utils.TablePubsub.RAYLET_TASK,
                                       driver_task.task_id().binary(),
-                                      driver_task.to_string())
+                                      driver_task._serialized_raylet_task())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
