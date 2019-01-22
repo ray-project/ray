@@ -97,6 +97,10 @@ class Profiler(object):
                 time.sleep(1)
                 self.flush_profile_data()
         except AttributeError:
+            # TODO(suquark): It is a bad idea to ignore "AttributeError".
+            # It has caused some very unexpected behaviors when implementing
+            # new features (related to AttributeError).
+
             # This is to suppress errors that occur at shutdown.
             pass
 
