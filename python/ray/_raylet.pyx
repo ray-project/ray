@@ -29,7 +29,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         return 0
 
     with gil:
-        message = str(status.message())
+        message = status.message().decode()
         raise Exception(message)
 
 
@@ -492,6 +492,7 @@ cdef class Task:
         required_resources = {}
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
+            # TODO(suquark): What is the type of the resource name (bytes, str, unicode)?
             py_resource_name = str(resource_name)  # bytes for Py2, unicode for Py3
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
@@ -522,6 +523,7 @@ cdef class RayletClient:
                   c_bool is_worker,
                   DriverID driver_id):
         # We have known that we are using Python, so just skip the language parameter.
+        # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(raylet_socket.encode("ascii"), client_id.data,
                           is_worker, driver_id.data, LANGUAGE_PYTHON))
 
