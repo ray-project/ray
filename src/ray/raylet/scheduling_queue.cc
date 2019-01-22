@@ -214,11 +214,6 @@ void SchedulingQueue::RemoveTasksFromQueue(
       RAY_LOG(DEBUG) << "[SchedulingQueue] Removed task " << task_id << " from "
                      << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
-      // RUNNING tasks may also be BLOCKED, so also erase from the blocked
-      // tasks.
-      if (task_state == TaskState::RUNNING) {
-        blocked_task_ids_.erase(task_id);
-      }
     } else {
       it++;
     }
