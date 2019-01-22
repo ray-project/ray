@@ -1,31 +1,12 @@
-from libc.stdint cimport int32_t, uint8_t
+from libc.stdint cimport uint8_t
 from libcpp.memory cimport shared_ptr
 from ray.includes.common cimport *
 
 
-cdef extern from "ray/raylet/format/node_manager_generated.h" namespace "ray::protocol" nogil:
-    cdef cppclass TaskExecutionSpecificationT:
-        c_vector[c_string] dependencies
-        double last_timestamp
-        int32_t num_forwards
-        TaskExecutionSpecificationT()
-
-    cdef cppclass TaskExecutionSpecification:
-        double last_timestamp() const
-        c_bool mutate_last_timestamp(double _last_timestamp)
-        int32_t num_forwards() const
-        c_bool mutate_num_forwards(int32_t _num_forwards)
-
-    cdef cppclass _Task "ray::protocol::Task":
-        pass
-
-
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass RayletTaskExecutionSpecification "ray::raylet::TaskExecutionSpecification":
-        RayletTaskExecutionSpecification(const TaskExecutionSpecificationT &execution_spec)
         RayletTaskExecutionSpecification(const c_vector[CObjectID] &&dependencies)
         RayletTaskExecutionSpecification(const c_vector[CObjectID] &&dependencies, int num_forwards)
-        RayletTaskExecutionSpecification(const TaskExecutionSpecification &spec_flatbuffer)
         c_vector[CObjectID] ExecutionDependencies() const
         void SetExecutionDependencies(const c_vector[CObjectID] &dependencies)
         int NumForwards() const
