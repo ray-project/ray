@@ -76,12 +76,12 @@ matrix:
         - bash ../src/ray/test/run_object_manager_valgrind.sh
         - cd ..
 
-        - export RAY_RAYLET_VALGRIND=1
         - export RAY_PLASMA_STORE_VALGRIND=1
+        # - export RAY_RAYLET_VALGRIND=1
         # - export RAY_RAYLET_MONITOR_VALGRIND=1
         # - export RAY_REDIS_SERVER_VALGRIND=1
 
-        # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+        # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
         - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
         - python -m pytest -v --durations=10 test/mini_test.py
         - python -m pytest -v --durations=10 test/array_test.py
