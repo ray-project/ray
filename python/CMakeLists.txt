@@ -29,17 +29,8 @@ set(RAY_SRC_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../src/ray")
 # TODO(suquark): Better ways to find dependencies.
 cython_add_module(
   _raylet
-  ${CMAKE_CURRENT_LIST_DIR}/ray/_raylet.pyx
-  ${RAY_SRC_DIRECTORY}/thirdparty/sha256.c
-  ${RAY_SRC_DIRECTORY}/id.cc
-  ${RAY_SRC_DIRECTORY}/status.cc
-  ${RAY_SRC_DIRECTORY}/util/logging.cc
-  ${RAY_SRC_DIRECTORY}/common/common_protocol.cc
-  ${RAY_SRC_DIRECTORY}/raylet/scheduling_resources.cc
-  ${RAY_SRC_DIRECTORY}/raylet/task.cc
-  ${RAY_SRC_DIRECTORY}/raylet/task_spec.cc
-  ${RAY_SRC_DIRECTORY}/raylet/task_execution_spec.cc
-  ${RAY_SRC_DIRECTORY}/raylet/raylet_client.cc)
+  ${RAY_SRC_DIRECTORY}/raylet/raylet_client.cc
+  ${CMAKE_CURRENT_LIST_DIR}/ray/_raylet.pyx)
 
 add_dependencies(_raylet
     boost_thread
@@ -50,7 +41,9 @@ add_dependencies(_raylet
     ray_static)
 
 if(APPLE)
-    target_link_libraries(_raylet "-undefined dynamic_lookup")
+    target_link_libraries(_raylet "-undefined dynamic_lookup" ray_static)
+else()
+    target_link_libraries(_raylet ray_static)
 endif()
 
 # Make sure that the Python extensions are built before copying the files.
