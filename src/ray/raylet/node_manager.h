@@ -65,7 +65,7 @@ class NodeManager {
   ///
   /// \param client The client to process.
   /// \return Void.
-  void ProcessNewClient(LocalClientConnection &client);
+  void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is

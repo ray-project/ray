@@ -191,7 +191,7 @@ std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
   std::shared_ptr<ClientConnection<T>> self(new ClientConnection(
       message_handler, std::move(socket), debug_label, error_message_type));
   // Let our manager process our new connection.
-  client_handler(*self);
+  client_handler(self);
   return self;
 }
 

@@ -594,9 +594,9 @@ void NodeManager::CleanUpTasksForDeadDriver(const DriverID &driver_id) {
   task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
 }
 
-void NodeManager::ProcessNewClient(LocalClientConnection &client) {
+void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
   // The new client is a worker, so begin listening for messages.
-  client.ProcessMessages();
+  client->ProcessMessages();
 }
 
 // A helper function to create a mapping from resource shapes to

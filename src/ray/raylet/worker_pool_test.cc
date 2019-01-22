@@ -38,8 +38,8 @@ class WorkerPoolTest : public ::testing::Test {
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
-    std::function<void(LocalClientConnection &)> client_handler =
-        [this](LocalClientConnection &client) { HandleNewClient(client); };
+    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler =
+        [this](std::shared_ptr<LocalClientConnection> client) { HandleNewClient(*client); };
     std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
         message_handler = [this](std::shared_ptr<LocalClientConnection> client,
                                  int64_t message_type, const uint8_t *message) {
