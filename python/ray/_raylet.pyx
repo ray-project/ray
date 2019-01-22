@@ -34,10 +34,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
-    """A helper function that converts a Python list of object ids to a vector.
+    """A helper function that converts a Python list of object IDs to a vector.
 
     Args:
-        object_ids(list): The Python list of object ids.
+        object_ids (list): The Python list of object IDs.
 
     Returns:
         The output vector.
@@ -482,7 +482,7 @@ cdef class Task:
         return return_id_list
 
     def required_resources(self):
-        """Return the resource vector of the task."""
+        """Return the resource dictionary of the task."""
         cdef:
             unordered_map[c_string, double] resource_map = self.task_spec.get().GetRequiredResources().GetResourceMap()
             c_string resource_name
@@ -522,7 +522,7 @@ cdef class RayletClient:
                   ClientID client_id,
                   c_bool is_worker,
                   DriverID driver_id):
-        # We have known that we are using Python, so just skip the language parameter.
+        # We know that we are using Python, so just skip the language parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(raylet_socket.encode("ascii"), client_id.data,
                           is_worker, driver_id.data, LANGUAGE_PYTHON))
@@ -592,7 +592,7 @@ cdef class RayletClient:
             GCSProfileEventT *profile_event
             c_string event_type
 
-        if not profile_data:
+        if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
         profile_info.component_type = component_type.encode("ascii")

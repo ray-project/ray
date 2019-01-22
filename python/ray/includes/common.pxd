@@ -5,9 +5,6 @@ from libc.stdint cimport int64_t, int32_t, uint32_t, uint16_t, uint8_t
 from libcpp.memory cimport unique_ptr, shared_ptr, make_shared, static_pointer_cast
 from libcpp.vector cimport vector as c_vector
 from libcpp.unordered_map cimport unordered_map
-from cpython cimport PyObject
-cimport cpython
-
 
 from ray.includes.unique_ids cimport (
     CUniqueID, TaskID as CTaskID, ObjectID as CObjectID,
@@ -146,10 +143,3 @@ cdef extern from "ray/raylet/scheduling_resources.h" namespace "ray::raylet" nog
         c_bool IsEmpty() const
         const unordered_map[c_string, double] &GetResourceMap() const
         const c_string ToString() const
-
-
-cdef inline object PyObject_to_object(PyObject*o):
-    # Cast to "object" increments reference count
-    cdef object result = <object> o
-    cpython.Py_DECREF(result)
-    return result
