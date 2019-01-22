@@ -47,7 +47,7 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
 }
 
 std::string TaskToFlatbuffer(const std::vector<ObjectID> *dependencies,
-     const TaskSpecification *task_spec) {
+                             const TaskSpecification *task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> execution_dependencies(*dependencies);
   TaskExecutionSpecification execution_spec(std::move(execution_dependencies));
