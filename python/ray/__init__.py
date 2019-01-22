@@ -79,8 +79,8 @@ __all__ = [
 ]
 
 __all__ += [
-    "UniqueID", "ObjectID", "DriverID", "ClientID", "ActorID",
-    "ActorHandleID", "FunctionID", "ActorClassID", "TaskID"
+    "UniqueID", "ObjectID", "DriverID", "ClientID", "ActorID", "ActorHandleID",
+    "FunctionID", "ActorClassID", "TaskID"
 ]
 
 import ctypes  # noqa: E402

@@ -17,7 +17,8 @@ import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import _random_string
-from ray import ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID, DriverID
+from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
+                 DriverID)
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
