@@ -187,7 +187,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
-    /// Specify whether the object is inlined.
+    /// Specify whether the object is inlined. The data and the metadata of
+    /// an inlined object are stored in the object's GCS entry. In this flag
+    /// (i.e., the object is inlined) the content of current_object_locations
+    /// can be ignored. 
     bool inline_object_flag;
     /// Inlined object data, if inline_object_flag == true.
     std::vector<uint8_t> inline_object_data;
