@@ -43,7 +43,10 @@ cython_add_module(
   ${RAY_SRC_DIRECTORY}/raylet/task_execution_spec.cc
   ${RAY_SRC_DIRECTORY}/raylet/raylet_client.cc)
 
-add_custom_command(OUTPUT ${ARROW_SOURCE_DIR}/cpp/src/plasma/common.cc COMMAND "" DEPENDS ray_static)
+# Make sure arrow is downloaded before _raylet is compiled. This is a hack
+# that registers ${ARROW_SOURCE_DIR}/cpp/src/plasma/common.cc with CMake.
+add_custom_command(OUTPUT ${ARROW_SOURCE_DIR}/cpp/src/plasma/common.cc
+                   COMMAND "cat ${ARROW_SOURCE_DIR}/cpp/src/plasma/common.cc" DEPENDS ray_static)
 
 add_dependencies(_raylet
     boost_thread
