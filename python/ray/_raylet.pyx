@@ -3,25 +3,28 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
+from libc.stdint cimport int32_t
 from ray.includes.common cimport *
 from ray.includes.libraylet cimport CRayletClient, ResourceMappingType, WaitResultPair
-from ray.includes.task cimport RayletTaskSpecification, RayletTaskArgument, RayletTaskArgumentByValue, RayletTaskArgumentByReference, TaskToFlatbuffer
+from ray.includes.task cimport RayletTaskSpecification
 from ray.includes.ray_config cimport RayConfig
-from ray.utils import decode, _random_string
+from ray.utils import decode
 
 from libcpp.utility cimport pair
 
 from cython.operator import dereference, postincrement
 cimport cpython
 
+include "includes/unique_ids.pxi"
+include "includes/ray_config.pxi"
+include "includes/task.pxi"
+
+
 if cpython.PY_MAJOR_VERSION >= 3:
     import pickle
 else:
     import cPickle as pickle
 import numpy
-
-
-include "includes/unique_ids.pxi"
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -158,152 +161,6 @@ cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
 cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
-cdef class Config:
-    @staticmethod
-    def ray_protocol_version():
-        return RayConfig.instance().ray_protocol_version()
-
-    @staticmethod
-    def handler_warning_timeout_ms():
-        return RayConfig.instance().handler_warning_timeout_ms()
-
-    @staticmethod
-    def heartbeat_timeout_milliseconds():
-        return RayConfig.instance().heartbeat_timeout_milliseconds()
-
-    @staticmethod
-    def debug_dump_period_milliseconds():
-        return RayConfig.instance().debug_dump_period_milliseconds()
-
-    @staticmethod
-    def num_heartbeats_timeout():
-        return RayConfig.instance().num_heartbeats_timeout()
-
-    @staticmethod
-    def num_heartbeats_warning():
-        return RayConfig.instance().num_heartbeats_warning()
-
-    @staticmethod
-    def initial_reconstruction_timeout_milliseconds():
-        return RayConfig.instance().initial_reconstruction_timeout_milliseconds()
-
-    @staticmethod
-    def get_timeout_milliseconds():
-        return RayConfig.instance().get_timeout_milliseconds()
-
-    @staticmethod
-    def max_lineage_size():
-        return RayConfig.instance().max_lineage_size()
-
-    @staticmethod
-    def worker_get_request_size():
-        return RayConfig.instance().worker_get_request_size()
-
-    @staticmethod
-    def worker_fetch_request_size():
-        return RayConfig.instance().worker_fetch_request_size()
-
-    @staticmethod
-    def actor_max_dummy_objects():
-        return RayConfig.instance().actor_max_dummy_objects()
-
-    @staticmethod
-    def num_connect_attempts():
-        return RayConfig.instance().num_connect_attempts()
-
-    @staticmethod
-    def connect_timeout_milliseconds():
-        return RayConfig.instance().connect_timeout_milliseconds()
-
-    @staticmethod
-    def local_scheduler_fetch_timeout_milliseconds():
-        return RayConfig.instance().local_scheduler_fetch_timeout_milliseconds()
-
-    @staticmethod
-    def local_scheduler_reconstruction_timeout_milliseconds():
-        return RayConfig.instance().local_scheduler_reconstruction_timeout_milliseconds()
-
-    @staticmethod
-    def max_num_to_reconstruct():
-        return RayConfig.instance().max_num_to_reconstruct()
-
-    @staticmethod
-    def local_scheduler_fetch_request_size():
-        return RayConfig.instance().local_scheduler_fetch_request_size()
-
-    @staticmethod
-    def kill_worker_timeout_milliseconds():
-        return RayConfig.instance().kill_worker_timeout_milliseconds()
-
-    @staticmethod
-    def max_time_for_handler_milliseconds():
-        return RayConfig.instance().max_time_for_handler_milliseconds()
-
-    @staticmethod
-    def size_limit():
-        return RayConfig.instance().size_limit()
-
-    @staticmethod
-    def num_elements_limit():
-        return RayConfig.instance().num_elements_limit()
-
-    @staticmethod
-    def max_time_for_loop():
-        return RayConfig.instance().max_time_for_loop()
-
-    @staticmethod
-    def redis_db_connect_retries():
-        return RayConfig.instance().redis_db_connect_retries()
-
-    @staticmethod
-    def redis_db_connect_wait_milliseconds():
-        return RayConfig.instance().redis_db_connect_wait_milliseconds()
-
-    @staticmethod
-    def plasma_default_release_delay():
-        return RayConfig.instance().plasma_default_release_delay()
-
-    @staticmethod
-    def L3_cache_size_bytes():
-        return RayConfig.instance().L3_cache_size_bytes()
-
-    @staticmethod
-    def max_tasks_to_spillback():
-        return RayConfig.instance().max_tasks_to_spillback()
-
-    @staticmethod
-    def actor_creation_num_spillbacks_warning():
-        return RayConfig.instance().actor_creation_num_spillbacks_warning()
-
-    @staticmethod
-    def node_manager_forward_task_retry_timeout_milliseconds():
-        return RayConfig.instance().node_manager_forward_task_retry_timeout_milliseconds()
-
-    @staticmethod
-    def object_manager_pull_timeout_ms():
-        return RayConfig.instance().object_manager_pull_timeout_ms()
-
-    @staticmethod
-    def object_manager_push_timeout_ms():
-        return RayConfig.instance().object_manager_push_timeout_ms()
-
-    @staticmethod
-    def object_manager_repeated_push_delay_ms():
-        return RayConfig.instance().object_manager_repeated_push_delay_ms()
-
-    @staticmethod
-    def object_manager_default_chunk_size():
-        return RayConfig.instance().object_manager_default_chunk_size()
-
-    @staticmethod
-    def num_workers_per_process():
-        return RayConfig.instance().num_workers_per_process()
-
-    @staticmethod
-    def max_task_lease_timeout_ms():
-        return RayConfig.instance().max_task_lease_timeout_ms()
-
-
 cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map):
     cdef:
         unordered_map[c_string, double] out
@@ -313,210 +170,6 @@ cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map)
     for key, value in resource_map.items():
         out[key.encode("ascii")] = float(value)
     return out
-
-
-cdef class Task:
-    cdef:
-        unique_ptr[RayletTaskSpecification] task_spec
-        unique_ptr[c_vector[CObjectID]] execution_dependencies
-
-    def __init__(self, DriverID driver_id, function_descriptor, arguments,
-                 int num_returns, TaskID parent_task_id, int parent_counter,
-                 ActorID actor_creation_id,
-                 ObjectID actor_creation_dummy_object_id,
-                 int32_t max_actor_reconstructions, ActorID actor_id,
-                 ActorHandleID actor_handle_id, int actor_counter,
-                 new_actor_handles, execution_arguments, resource_map,
-                 placement_resource_map):
-        cdef:
-            unordered_map[c_string, double] required_resources
-            unordered_map[c_string, double] required_placement_resources
-            c_vector[shared_ptr[RayletTaskArgument]] task_args
-            c_vector[CActorHandleID] task_new_actor_handles
-            c_vector[c_string] c_function_descriptor
-            c_string pickled_str
-            c_vector[CObjectID] references
-
-        for item in function_descriptor:
-            if not isinstance(item, bytes):
-                raise TypeError("'function_descriptor' takes a list of byte strings.")
-            c_function_descriptor.push_back(item)
-
-        # Parse the resource map.
-        if resource_map is not None:
-            required_resources = resource_map_from_python_dict(resource_map)
-        if required_resources.count(b"CPU") == 0:
-            required_resources[b"CPU"] = 1.0
-        if placement_resource_map is not None:
-            required_placement_resources = resource_map_from_python_dict(placement_resource_map)
-
-        # Parse the arguments from the list.
-        for arg in arguments:
-            if isinstance(arg, ObjectID):
-                references = c_vector[CObjectID]()
-                references.push_back((<ObjectID>arg).data)
-                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByReference](make_shared[RayletTaskArgumentByReference](references)))
-            else:
-                pickled_str = pickle.dumps(arg, protocol=pickle.HIGHEST_PROTOCOL)
-                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByValue](make_shared[RayletTaskArgumentByValue](<uint8_t *>pickled_str.c_str(), pickled_str.size())))
-
-        for new_actor_handle in new_actor_handles:
-            task_new_actor_handles.push_back((<ActorHandleID?>new_actor_handle).data)
-
-        self.task_spec.reset(new RayletTaskSpecification(
-            CUniqueID(driver_id.data), parent_task_id.data, parent_counter, actor_creation_id.data,
-            actor_creation_dummy_object_id.data, max_actor_reconstructions, CUniqueID(actor_id.data),
-            CUniqueID(actor_handle_id.data), actor_counter, task_new_actor_handles, task_args, num_returns,
-            required_resources, required_placement_resources, LANGUAGE_PYTHON,
-            c_function_descriptor))
-
-        # Set the task's execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
-        if execution_arguments is not None:
-            for execution_arg in execution_arguments:
-                self.execution_dependencies.get().push_back((<ObjectID?>execution_arg).data)
-
-    @staticmethod
-    cdef make(unique_ptr[RayletTaskSpecification]& task_spec):
-        cdef Task self = Task.__new__(Task)
-        self.task_spec.reset(task_spec.release())
-        # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
-        return self
-
-    @classmethod
-    def create_driver_task(cls, DriverID task_driver_id):
-        cdef int nil_actor_counter = 0
-        return cls(
-            task_driver_id,
-            [],  # function_descriptor
-            [],  # arguments.
-            0,  # num_returns.
-            TaskID(_random_string()),  # parent_task_id.
-            0,  # parent_counter.
-            ActorID.nil(),  # actor_creation_id.
-            ObjectID.nil(),  # actor_creation_dummy_object_id.
-            0,  # max_actor_reconstructions.
-            ActorID.nil(),  # actor_id.
-            ActorHandleID.nil(),  # actor_handle_id.
-            nil_actor_counter,  # actor_counter.
-            [],  # new_actor_handles.
-            [],  # execution_dependencies.
-            {"CPU": 0},  # resource_map.
-            {},  # placement_resource_map.
-        )
-
-    @staticmethod
-    def from_string(const c_string& task_spec_str):
-        """Convert a string to a Ray task specification Python object.
-
-        Args:
-            task_spec_str: String representation of the task specification.
-
-        Returns:
-            Python task specification object.
-        """
-        cdef Task self = Task.__new__(Task)
-        # TODO(pcm): Use flatbuffers validation here.
-        self.task_spec.reset(new RayletTaskSpecification(task_spec_str))
-        # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
-        return self
-
-    def to_string(self):
-        """Convert a Ray task specification Python object to a string.
-
-        Returns:
-            String representing the task specification.
-        """
-        return self.task_spec.get().ToFlatbuffer()
-
-    def _serialized_raylet_task(self):
-        return TaskToFlatbuffer(self.execution_dependencies.get(), self.task_spec.get())
-
-    def driver_id(self):
-        """Return the driver ID for this task."""
-        return DriverID.from_native(self.task_spec.get().DriverId())
-
-    def task_id(self):
-        """Return the task ID for this task."""
-        return TaskID.from_native(self.task_spec.get().TaskId())
-
-    def parent_task_id(self):
-        """Return the task ID of the parent task."""
-        return TaskID.from_native(self.task_spec.get().ParentTaskId())
-
-    def parent_counter(self):
-        """Return the parent counter of this task."""
-        return self.task_spec.get().ParentCounter()
-
-    def function_descriptor_list(self):
-        """Return the function descriptor for this task."""
-        cdef c_vector[c_string] function_descriptor = self.task_spec.get().FunctionDescriptor()
-        results = []
-        for i in range(function_descriptor.size()):
-            results.append(function_descriptor[i])
-        return results
-
-    def arguments(self):
-        """Return the arguments for the task."""
-        cdef:
-            RayletTaskSpecification *task_spec = self.task_spec.get()
-            int64_t num_args = task_spec.NumArgs()
-            int count
-        arg_list = []
-        for i in range(num_args):
-            count = task_spec.ArgIdCount(i)
-            if count > 0:
-                assert count == 1
-                arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
-            else:
-                serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
-                obj = pickle.loads(serialized_str)
-                arg_list.append(obj)
-        return arg_list
-
-    def returns(self):
-        """Return the object IDs for the return values of the task."""
-        cdef RayletTaskSpecification *task_spec = self.task_spec.get()
-        return_id_list = []
-        for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID.from_native(task_spec.ReturnId(i)))
-        return return_id_list
-
-    def required_resources(self):
-        """Return the resource dictionary of the task."""
-        cdef:
-            unordered_map[c_string, double] resource_map = self.task_spec.get().GetRequiredResources().GetResourceMap()
-            c_string resource_name
-            double resource_value
-            unordered_map[c_string, double].iterator iterator = resource_map.begin()
-
-        required_resources = {}
-        while iterator != resource_map.end():
-            resource_name = dereference(iterator).first
-            # TODO(suquark): What is the type of the resource name (bytes, str, unicode)?
-            py_resource_name = str(resource_name)  # bytes for Py2, unicode for Py3
-            resource_value = dereference(iterator).second
-            required_resources[py_resource_name] = resource_value
-            postincrement(iterator)
-        return required_resources
-
-    def actor_creation_id(self):
-        """Return the actor creation ID for the task."""
-        return ActorID.from_native(self.task_spec.get().ActorCreationId())
-
-    def actor_creation_dummy_object_id(self):
-        """Return the actor creation dummy object ID for the task."""
-        return ObjectID.from_native(self.task_spec.get().ActorCreationDummyObjectId())
-
-    def actor_id(self):
-        """Return the actor ID for this task."""
-        return ActorID.from_native(self.task_spec.get().ActorId())
-
-    def actor_counter(self):
-        """Return the actor counter for this task."""
-        return self.task_spec.get().ActorCounter()
 
 
 cdef class RayletClient:

@@ -1,8 +1,8 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 
-from libc.stdint cimport int64_t, int32_t, uint32_t, uint16_t, uint8_t
-from libcpp.memory cimport unique_ptr, shared_ptr, make_shared, static_pointer_cast
+from libc.stdint cimport int64_t
+from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
 from libcpp.unordered_map cimport unordered_map
 
@@ -81,15 +81,15 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
 
-    const CTaskID FinishTaskId(const CTaskID & task_id)
-    const CObjectID ComputeReturnId(const CTaskID & task_id,
+    const CTaskID FinishTaskId(const CTaskID &task_id)
+    const CObjectID ComputeReturnId(const CTaskID &task_id,
                                    int64_t return_index)
-    const CObjectID ComputePutId(const CTaskID & task_id, int64_t put_index)
-    const CTaskID ComputeTaskId(const CObjectID & object_id)
-    const CTaskID GenerateTaskId(const CDriverID & driver_id,
-                                const CTaskID & parent_task_id,
+    const CObjectID ComputePutId(const CTaskID &task_id, int64_t put_index)
+    const CTaskID ComputeTaskId(const CObjectID &object_id)
+    const CTaskID GenerateTaskId(const CDriverID &driver_id,
+                                const CTaskID &parent_task_id,
                                 int parent_task_counter)
-    int64_t ComputeObjectIndex(const CObjectID & object_id)
+    int64_t ComputeObjectIndex(const CObjectID &object_id)
 
 
 cdef extern from "ray/gcs/format/gcs_generated.h" nogil:

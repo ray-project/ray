@@ -1,4 +1,7 @@
+from libc.stdint cimport int32_t, uint8_t
+from libcpp.memory cimport shared_ptr
 from ray.includes.common cimport *
+
 
 cdef extern from "ray/raylet/format/node_manager_generated.h" namespace "ray::protocol" nogil:
     cdef cppclass TaskExecutionSpecificationT:
