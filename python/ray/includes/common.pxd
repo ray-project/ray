@@ -1,49 +1,25 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 
-from libc.stdint cimport int64_t as c_int64, uint32_t as c_uint32, uint16_t as c_uint16, uint8_t as c_uint8
-from libcpp.memory cimport unique_ptr
+from libc.stdint cimport int64_t, int32_t, uint32_t, uint16_t, uint8_t
+from libcpp.memory cimport unique_ptr, shared_ptr, make_shared, static_pointer_cast
 from libcpp.vector cimport vector as c_vector
 from libcpp.unordered_map cimport unordered_map
 from cpython cimport PyObject
 cimport cpython
 
-ctypedef c_uint32 uoffset_t
-ctypedef c_uint16 voffset_t
 
-cdef extern from "flatbuffers/flatbuffers.h" namespace "flatbuffers":
-    # Cython cannot rename a template class.
-    cdef cppclass Offset[T]:
-        uoffset_t o
-        Offset()
-        Offset(T) except +
-        Offset[void] Union() const
-
-    cdef cppclass FlatBufferString "flatbuffers::String":
-        const char *c_str() const
-        c_string str()
-        c_bool operator<(const FlatBufferString &o) const
-
-    cdef T GetRoot[T](void *buf)
-
-    cdef cppclass FlatBufferBuilder:
-        FlatBufferBuilder() except +
-        void Reset()
-        uoffset_t GetSize()
-        void Clear()
-        c_uint8 *GetBufferPointer()
-        c_uint8 *GetCurrentBufferPointer() const
-        void Finish[T](T root)
-        Offset[FlatBufferString] CreateString(char *str, size_t len)
-        void StartVector(size_t len, size_t elemsize)
-        uoffset_t EndVector(size_t len)
-        uoffset_t StartTable()
-        uoffset_t EndTable(uoffset_t start, voffset_t numfields)
+from ray.includes.unique_ids cimport (
+    CUniqueID, TaskID as CTaskID, ObjectID as CObjectID,
+    FunctionID as CFunctionID, ClassID as CClassID, ActorID as CActorID,
+    ActorHandleID as CActorHandleID, WorkerID as CWorkerID,
+    DriverID as CDriverID, ConfigID as CConfigID, ClientID as CClientID,
+)
 
 
 cdef extern from "ray/constants.h" nogil:
-    cdef c_int64 kUniqueIDSize
-    cdef c_int64 kMaxTaskPuts
+    cdef int64_t kUniqueIDSize
+    cdef int64_t kMaxTaskPuts
 
 
 cdef extern from "ray/status.h" namespace "ray" nogil:
@@ -107,48 +83,16 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
-    cdef cppclass UniqueID "ray::UniqueID":
-        # TODO(?): Add Plasma UniqueID support.
-        UniqueID()
-        UniqueID(const UniqueID &from_id)
-        @staticmethod
-        UniqueID from_random()
-        @staticmethod
-        UniqueID from_binary(const c_string & binary)
-        @staticmethod
-        const UniqueID nil()
-        size_t hash() const
-        c_bool is_nil() const
-        c_bool operator==(const UniqueID& rhs) const
-        c_bool operator!=(const UniqueID& rhs) const
-        const c_uint8 *data() const
-        c_uint8 *mutable_data();
-        size_t size() const;
-        c_string binary() const;
-        c_string hex() const;
 
-    # Cython cannot rename typedef. We have to use the original name in C++.
-    ctypedef UniqueID TaskID
-    ctypedef UniqueID JobID
-    ctypedef UniqueID ObjectID
-    ctypedef UniqueID FunctionID
-    ctypedef UniqueID ClassID
-    ctypedef UniqueID ActorID
-    ctypedef UniqueID ActorHandleID
-    ctypedef UniqueID WorkerID
-    ctypedef UniqueID DriverID
-    ctypedef UniqueID ConfigID
-    ctypedef UniqueID ClientID
-
-    const TaskID FinishTaskId(const TaskID & task_id)
-    const ObjectID ComputeReturnId(const TaskID & task_id,
-                                   c_int64 return_index)
-    const ObjectID ComputePutId(const TaskID & task_id, c_int64 put_index)
-    const TaskID ComputeTaskId(const ObjectID & object_id)
-    const TaskID GenerateTaskId(const DriverID & driver_id,
-                                const TaskID & parent_task_id,
+    const CTaskID FinishTaskId(const CTaskID & task_id)
+    const CObjectID ComputeReturnId(const CTaskID & task_id,
+                                   int64_t return_index)
+    const CObjectID ComputePutId(const CTaskID & task_id, int64_t put_index)
+    const CTaskID ComputeTaskId(const CObjectID & object_id)
+    const CTaskID GenerateTaskId(const CDriverID & driver_id,
+                                const CTaskID & parent_task_id,
                                 int parent_task_counter)
-    c_int64 ComputeObjectIndex(const ObjectID & object_id)
+    int64_t ComputeObjectIndex(const CObjectID & object_id)
 
 
 cdef extern from "ray/gcs/format/gcs_generated.h" nogil:

@@ -355,8 +355,8 @@ class FunctionActorManager(object):
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.task_driver_id.binary() + b":" +
-               remote_function._function_descriptor.function_id.binary())
+        key = (b"RemoteFunction:" + self._worker.task_driver_id.binary() + b":"
+               + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hmset(
             key, {
                 "driver_id": self._worker.task_driver_id.binary(),
@@ -378,8 +378,7 @@ class FunctionActorManager(object):
              "module", "resources", "max_calls"
          ])
         function_id = ray.FunctionID(function_id_str)
-        # TODO(suquark): Make sure the type of "driver_id".
-        driver_id = ray.JobID(driver_id_str)
+        driver_id = ray.DriverID(driver_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
@@ -424,7 +423,8 @@ class FunctionActorManager(object):
                     max_calls=max_calls))
             # Add the function to the function table.
             self._worker.redis_client.rpush(
-                b"FunctionTable:" + function_id.binary(), self._worker.worker_id)
+                b"FunctionTable:" + function_id.binary(),
+                self._worker.worker_id)
 
     def get_execution_info(self, driver_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -589,8 +589,7 @@ class FunctionActorManager(object):
 
         class_name = decode(class_name)
         module = decode(module)
-        # TODO(suquark): Ensure the type of "driver_id".
-        driver_id = ray.JobID(driver_id_str)
+        driver_id = ray.DriverID(driver_id_str)
         checkpoint_interval = int(checkpoint_interval)
         actor_method_names = json.loads(decode(actor_method_names))
 

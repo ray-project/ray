@@ -36,7 +36,7 @@ import ray.raylet
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
-from ray import ObjectID, DriverID, ActorID, ActorHandleID, JobID, ClientID, TaskID
+from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
@@ -161,8 +161,9 @@ class Worker(object):
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
-        # Identity of the driver that this worker is processing. It is a JobID.
-        self.task_driver_id = JobID.nil()
+        # Identity of the driver that this worker is processing.
+        # It is a DriverID.
+        self.task_driver_id = DriverID.nil()
         self._task_context = threading.local()
 
     @property
@@ -183,13 +184,13 @@ class Worker(object):
                 # If this is running on the main thread, initialize it to
                 # NIL. The actual value will set when the worker receives
                 # a task from raylet backend.
-                self._task_context.current_task_id = ObjectID.nil()
+                self._task_context.current_task_id = TaskID.nil()
             else:
                 # If this is running on a separate thread, then the mapping
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = ObjectID(random_string())
+                self._task_context.current_task_id = TaskID(random_string())
                 if getattr(self, '_multithreading_warned', False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -623,9 +624,9 @@ class Worker(object):
             # Submit the task to local scheduler.
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
-            assert isinstance(driver_id, JobID)
+            assert isinstance(driver_id, DriverID)
             task = ray.raylet.Task(
-                DriverID(driver_id.binary()),
+                driver_id,
                 function_descriptor_list,
                 args_for_local_scheduler,
                 num_return_vals,
@@ -945,7 +946,7 @@ class Worker(object):
                     # Don't need to reset task_driver_id if the worker is an
                     # actor. Because the following tasks should all have the
                     # same driver id.
-                    self.task_driver_id = JobID.nil()
+                    self.task_driver_id = DriverID.nil()
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
@@ -1099,10 +1100,9 @@ def error_applies_to_driver(error_key, worker=global_worker):
                               + ray_constants.ID_SIZE), error_key
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
-    driver_id = JobID(error_key[len(ERROR_KEY_PREFIX):(
+    driver_id = DriverID(error_key[len(ERROR_KEY_PREFIX):(
         len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)])
-    return (driver_id == worker.task_driver_id
-            or driver_id == JobID.nil())
+    return (driver_id == worker.task_driver_id or driver_id == DriverID.nil())
 
 
 def error_info(worker=global_worker):
@@ -1779,7 +1779,7 @@ def connect(info,
     # responsible for the task so that error messages will be propagated to
     # the correct driver.
     if mode != WORKER_MODE:
-        worker.task_driver_id = JobID(worker.worker_id)
+        worker.task_driver_id = DriverID(worker.worker_id)
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1906,14 +1906,15 @@ def connect(info,
         # driver creates an object that is later evicted, we should notify the
         # user that we're unable to reconstruct the object, since we cannot
         # rerun the driver.
-        driver_task = ray.raylet.Task.create_driver_task(DriverID(worker.task_driver_id.binary()))
+        driver_task = ray.raylet.Task.create_driver_task(
+            DriverID(worker.task_driver_id.binary()))
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
                                       ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                       ray.gcs_utils.TablePubsub.RAYLET_TASK,
                                       driver_task.task_id().binary(),
-                                      driver_task._serialized_raylet_task())
+                                      driver_task.to_string())
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
@@ -1923,7 +1924,7 @@ def connect(info,
         raylet_socket,
         ClientID(worker.worker_id),
         is_worker,
-        JobID(worker.current_task_id.binary()),
+        DriverID(worker.current_task_id.binary()),
     )
 
     # Start the import thread
@@ -2123,7 +2124,7 @@ def register_custom_serializer(cls,
 
     if driver_id is None:
         driver_id = worker.task_driver_id
-    assert isinstance(driver_id, JobID)
+    assert isinstance(driver_id, DriverID)
 
     def register_class_for_serialization(worker_info):
         # TODO(rkn): We need to be more thoughtful about what to do if custom

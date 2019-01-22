@@ -17,7 +17,7 @@ import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import _random_string
-from ray import ObjectID, ActorID, ActorHandleID, ClassID, TaskID, JobID
+from ray import ObjectID, ActorID, ActorHandleID, ClassID, TaskID, DriverID
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -262,7 +262,6 @@ class ActorClass(object):
     def __init__(self, modified_class, class_id, checkpoint_interval,
                  max_reconstructions, num_cpus, num_gpus, resources,
                  actor_method_cpus):
-        assert isinstance(class_id, ClassID)
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -376,7 +375,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ActorID.from_random()
+        actor_id = ActorID(_random_string())
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -510,8 +509,7 @@ class ActorHandle(object):
                  actor_driver_id,
                  actor_handle_id=None):
         assert isinstance(actor_id, ActorID)
-        assert isinstance(actor_cursor, ObjectID)
-        assert isinstance(actor_driver_id, JobID)
+        assert isinstance(actor_driver_id, DriverID)
         self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         # False if this actor handle was created by forking or pickling. True
@@ -708,7 +706,7 @@ class ActorHandle(object):
             "method_num_return_vals": self._ray_method_num_return_vals,
             # Actors in local mode don't have dummy objects.
             "actor_creation_dummy_object_id": self.
-                _ray_actor_creation_dummy_object_id,
+            _ray_actor_creation_dummy_object_id,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id,
             "ray_forking": ray_forking
@@ -722,7 +720,7 @@ class ActorHandle(object):
             # to release, since it could be unpickled and submit another
             # dependent task at any time. Therefore, we notify the backend of a
             # random handle ID that will never actually be used.
-            new_actor_handle_id = ActorHandleID.from_random()
+            new_actor_handle_id = ActorHandleID(_random_string())
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
@@ -887,7 +885,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ClassID.from_random()
+    class_id = ClassID(_random_string())
 
     return ActorClass(Class, class_id, checkpoint_interval,
                       max_reconstructions, num_cpus, num_gpus, resources,

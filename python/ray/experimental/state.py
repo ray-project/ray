@@ -877,7 +877,7 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
-        assert isinstance(job_id, ray.JobID)
+        assert isinstance(job_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
             job_id.binary())
@@ -913,7 +913,7 @@ class GlobalState(object):
                 that job.
         """
         if job_id is not None:
-            assert isinstance(job_id, ray.JobID)
+            assert isinstance(job_id, ray.DriverID)
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
@@ -924,6 +924,6 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
         }

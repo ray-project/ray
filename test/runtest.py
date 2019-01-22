@@ -2442,7 +2442,7 @@ def test_workers(shutdown_only):
 
 
 def test_specific_driver_id():
-    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    dummy_driver_id = ray.DriverID(b"00112233445566778899")
     ray.init(driver_id=dummy_driver_id)
 
     @ray.remote
