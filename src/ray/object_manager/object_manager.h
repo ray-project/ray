@@ -77,6 +77,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
+  /// \param store_client Reference to Plasma store. This is used to get and put
+  /// inlined objects in the local object store.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
@@ -388,7 +390,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// all incoming object transfers.
   std::vector<std::thread> receive_threads_;
 
-  /// Reference to Plasma Store.
+  /// Reference to Plasma Store. This is used to get and put inlined objects in
+  /// the local object store.
   plasma::PlasmaClient &store_client_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.
@@ -398,7 +401,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// including when the object was last pushed to other object managers.
   std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
 
-  /// Set of objects created from inlined data.
+  /// Set of objects created from inlined data. Set of objects created from
+  /// inlined data retrieved from the GCS. Objects in this map will not be
+  /// added to the GCS object table since a GCS entry with the inlined data
+  /// already exists.
   std::unordered_set<ObjectID> local_inlined_objects_;
 
   /// This is used as the callback identifier in Pull for

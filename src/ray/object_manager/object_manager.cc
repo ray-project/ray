@@ -75,6 +75,7 @@ void ObjectManager::HandleObjectAdded(
   if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
     // Inline object. Store the object's data in the object's GCS entry.
     std::vector<plasma::ObjectBuffer> object_buffers;
+    // NOTE: This is a blocking call.
     ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
     inline_object_data.assign(object_buffers[0].data->data(),
@@ -134,8 +135,14 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 void ObjectManager::PutInlineObject(const ObjectID &object_id,
                                     const std::vector<uint8_t> &inline_object_data,
                                     const std::string &inline_object_metadata) {
-  // Called when the object is created from inlined data.
   if (local_objects_.find(object_id) == local_objects_.end()) {
+    // Inline object is not in the local object store. Create it from
+    // inline_object_data, and inline_object_metadata, respectively.
+    //
+    // Since this function is called on notification or when reading the
+    // object's entry from GCS, we know this object's entry is already in GCS.
+    // Remember this by adding the object to local_inlined_objects_. This way
+    // we avoid writing another copy of this object to GCS in HandleObjectAdded().
     local_inlined_objects_.insert(object_id);
     auto status = store_client_.CreateAndSeal(object_id.to_plasma_id(),
                                               std::string(inline_object_data.begin(),
