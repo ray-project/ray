@@ -287,8 +287,9 @@ def start_ray_process(command,
     if use_valgrind:
         command = [
             "valgrind", "--track-origins=yes", "--leak-check=full",
-            "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-            "--error-exitcode=1"
+            "--errors-for-leak-kinds=definite,indirect",
+            "--show-leak-kinds=definite,indirect",
+            "--leak-check-heuristics=stdstring", "--error-exitcode=1"
         ] + command
 
     if use_valgrind_profiler:
