@@ -247,7 +247,7 @@ cdef class FunctionID(UniqueID):
         return "FunctionID(" + self.hex() + ")"
 
 
-cdef class ClassID(UniqueID):
+cdef class ActorClassID(UniqueID):
 
     def __init__(self, id):
         if not id:
@@ -257,14 +257,14 @@ cdef class ClassID(UniqueID):
             self.data = CUniqueID.from_binary(id)
 
     @staticmethod
-    cdef from_native(const CClassID& cpp_id):
-        cdef ClassID self = ClassID.__new__(ClassID)
+    cdef from_native(const CActorClassID& cpp_id):
+        cdef ActorClassID self = ActorClassID.__new__(ActorClassID)
         self.data = cpp_id
         return self
 
     @staticmethod
     def nil():
-        return ClassID.from_native(CClassID.nil())
+        return ActorClassID.from_native(CActorClassID.nil())
 
     def __repr__(self):
-        return "ClassID(" + self.hex() + ")"
+        return "ActorClassID(" + self.hex() + ")"

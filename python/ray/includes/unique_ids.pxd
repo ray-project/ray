@@ -24,10 +24,9 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
 
     ctypedef CUniqueID TaskID
     ctypedef CUniqueID ObjectID
-    ctypedef CUniqueID JobID
     ctypedef CUniqueID FunctionID
-    ctypedef CUniqueID ClassID
     ctypedef CUniqueID ActorID
+    ctypedef CUniqueID ActorClassID
     ctypedef CUniqueID ActorHandleID
     ctypedef CUniqueID WorkerID
     ctypedef CUniqueID DriverID

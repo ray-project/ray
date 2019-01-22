@@ -50,7 +50,7 @@ modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
 from ray.raylet import (ObjectID, DriverID, ClientID, ActorID, ActorHandleID,
-                        FunctionID, ClassID, TaskID, _config)  # noqa: E402
+                        FunctionID, ActorClassID, TaskID, _config)  # noqa: E402
 
 from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
@@ -79,7 +79,7 @@ __all__ = [
 
 __all__ += [
     "ObjectID", "DriverID", "ClientID", "ActorID", "ActorHandleID",
-    "FunctionID", "ClassID", "TaskID"
+    "FunctionID", "ActorClassID", "TaskID"
 ]
 
 import ctypes  # noqa: E402

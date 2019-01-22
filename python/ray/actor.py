@@ -17,7 +17,7 @@ import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import _random_string
-from ray import ObjectID, ActorID, ActorHandleID, ClassID, TaskID, DriverID
+from ray import ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID, DriverID
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -885,7 +885,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ClassID(_random_string())
+    class_id = ActorClassID(_random_string())
 
     return ActorClass(Class, class_id, checkpoint_interval,
                       max_reconstructions, num_cpus, num_gpus, resources,

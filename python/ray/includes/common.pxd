@@ -11,7 +11,7 @@ cimport cpython
 
 from ray.includes.unique_ids cimport (
     CUniqueID, TaskID as CTaskID, ObjectID as CObjectID,
-    FunctionID as CFunctionID, ClassID as CClassID, ActorID as CActorID,
+    FunctionID as CFunctionID, ActorClassID as CActorClassID, ActorID as CActorID,
     ActorHandleID as CActorHandleID, WorkerID as CWorkerID,
     DriverID as CDriverID, ConfigID as CConfigID, ClientID as CClientID,
 )

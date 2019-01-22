@@ -391,7 +391,7 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
   };
 };
 
-using ClassTable = Table<ClassID, ClassTableData>;
+using ClassTable = Table<ActorClassID, ClassTableData>;
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
 /// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
@@ -513,7 +513,8 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   std::string DebugString() const;
 };
 
-using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
+// TODO(suquark): Is the change from "ClassID" to "ActorClassID" reasonable here?
+using CustomSerializerTable = Table<ActorClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
 
