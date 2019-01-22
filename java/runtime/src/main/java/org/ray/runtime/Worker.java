@@ -60,7 +60,7 @@ public class Worker {
           .getFunction(spec.driverId, spec.functionDescriptor);
       // Set context
       runtime.getWorkerContext().setCurrentTask(
-        spec.taskId, spec.driverId, rayFunction.classLoader);
+          spec.taskId, spec.driverId, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       // Get local actor object and arguments.
       Object actor = null;
