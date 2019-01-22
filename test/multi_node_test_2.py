@@ -8,6 +8,7 @@ import pytest
 import time
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.test.cluster_utils import Cluster
 
 logger = logging.getLogger(__name__)
@@ -116,5 +117,5 @@ def test_worker_plasma_store_failure(start_connected_cluster):
     # Log monitor doesn't die for some reason
     worker.kill_log_monitor()
     worker.kill_plasma_store()
-    worker.all_processes[ray.node.PROCESS_TYPE_RAYLET][0].process.wait()
+    worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
