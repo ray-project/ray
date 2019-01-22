@@ -92,6 +92,7 @@ class RayParams(object):
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=None,
+                 checkpoint_store_address=None,
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
@@ -124,6 +125,7 @@ class RayParams(object):
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
         self.redis_password = redis_password
+        self.checkpoint_store_address = checkpoint_store_address
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
         self.huge_pages = huge_pages

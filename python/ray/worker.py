@@ -23,6 +23,7 @@ import traceback
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+import ray.checkpointing
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -157,6 +158,8 @@ class Worker(object):
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
         self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
+        # A client to a backing KV-store to store actor checkpoints
+        self.checkpoint_client = None
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -799,8 +802,7 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if (not task.actor_id().is_nil()
-                or not task.actor_creation_id().is_nil()):
+        if not task.actor_id().is_nil() or not task.actor_creation_id().is_nil():
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -827,8 +829,7 @@ class Worker(object):
         # Execute the task.
         try:
             with profiling.profile("task:execute", worker=self):
-                if (task.actor_id().is_nil()
-                        and task.actor_creation_id().is_nil()):
+                if task.actor_id().is_nil() and task.actor_creation_id().is_nil():
                     outputs = function_executor(*arguments)
                 else:
                     if not task.actor_id().is_nil():
@@ -1266,6 +1267,7 @@ def init(redis_address=None,
          redis_max_clients=None,
          redis_password=None,
          plasma_directory=None,
+         checkpoint_store_address=None,
          huge_pages=False,
          include_webui=True,
          driver_id=None,
@@ -1437,6 +1439,7 @@ def init(redis_address=None,
             redis_max_clients=redis_max_clients,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
+            checkpoint_store_address=checkpoint_store_address,
             huge_pages=huge_pages,
             include_webui=include_webui,
             object_store_memory=object_store_memory,
@@ -1453,8 +1456,8 @@ def init(redis_address=None,
         _global_node = ray.node.Node(
             head=True, shutdown_at_exit=False, ray_params=ray_params)
         address_info["redis_address"] = _global_node.redis_address
-        address_info[
-            "object_store_address"] = _global_node.plasma_store_socket_name
+        address_info["object_store_address"] = _global_node.plasma_store_socket_name
+        address_info["checkpoint_store_address"] = _global_node.checkpoint_store_address
         address_info["webui_url"] = _global_node.webui_url
         address_info["raylet_socket_name"] = _global_node.raylet_socket_name
     else:
@@ -1483,6 +1486,9 @@ def init(redis_address=None,
         if plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
+        if checkpoint_store_address is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "checkpoint_store_address must not be provided.")
         if huge_pages:
             raise Exception("When connecting to an existing cluster, "
                             "huge_pages must not be provided.")
@@ -1514,6 +1520,7 @@ def init(redis_address=None,
             "node_ip_address": node_ip_address,
             "redis_address": address_info["redis_address"],
             "store_socket_name": address_info["object_store_address"],
+            "checkpoint_store_address": address_info["checkpoint_store_address"],
             "webui_url": address_info["webui_url"],
         }
         driver_address_info["raylet_socket_name"] = (
@@ -1563,6 +1570,8 @@ def shutdown(worker=global_worker):
         del worker.raylet_client
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
+    if hasattr(worker, "checkpoint_client"):
+        worker.checkpoint_client.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1880,6 +1889,11 @@ def connect(info,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(info["store_socket_name"]))
+
+    # Parse address and connect to checkpoint store.
+    checkpoint_store_address = info["checkpoint_store_address"]
+    worker.checkpoint_client = KVStoreAddressUtil.parse(checkpoint_store_address)
+    worker.checkpoint_client.connect(checkpoint_store_address)
 
     raylet_socket = info["raylet_socket_name"]
 
