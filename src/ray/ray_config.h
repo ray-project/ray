@@ -14,15 +14,15 @@ class RayConfig {
 /// \param type Type of the config item.
 /// \param name Name of the config item.
 /// \param default_value Default value of the config item.
-#define DEFINE_CONFIG(type, name, default_value) \
- private:                                        \
-  type name##_ = default_value;                  \
-                                                 \
- public:                                         \
+#define RAY_CONFIG(type, name, default_value) \
+ private:                                     \
+  type name##_ = default_value;               \
+                                              \
+ public:                                      \
   inline type name() { return name##_; }
 #include "ray_config_def.h"
 /// -------------------------------------------------------------------------
-#undef DEFINE_CONFIG
+#undef RAY_CONFIG
 
  public:
   static RayConfig &instance() {
@@ -38,14 +38,14 @@ class RayConfig {
 
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
-#define DEFINE_CONFIG(type, name, default_value) \
-  if (pair.first == #name) {                     \
-    name##_ = pair.second;                       \
-    continue;                                    \
+#define RAY_CONFIG(type, name, default_value) \
+  if (pair.first == #name) {                  \
+    name##_ = pair.second;                    \
+    continue;                                 \
   }
 #include "ray_config_def.h"
 /// ---------------------------------------------------------------------------
-#undef DEFINE_CONFIG
+#undef RAY_CONFIG
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
     }
     initialized_ = true;
