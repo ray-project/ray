@@ -69,6 +69,9 @@ class RayParams(object):
         autoscaling_config: path to autoscaling config file.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        include_java(bool): If True, this cluster could enables cross-languages
+            invocation.
+        java_classpath(str): The classpath for Java worker.
     """
 
     def __init__(self,
@@ -103,7 +106,9 @@ class RayParams(object):
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
-                 _internal_config=None):
+                 _internal_config=None,
+                 include_java=False,
+                 java_classpath=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -134,6 +139,8 @@ class RayParams(object):
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self._internal_config = _internal_config
+        self.include_java = include_java
+        self.java_classpath = java_classpath
         self._check_usage()
 
     def update(self, **kwargs):
@@ -143,7 +150,7 @@ class RayParams(object):
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
-            if (hasattr(self, arg)):
+            if hasattr(self, arg):
                 setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError("Invalid RayParams parameter in"
@@ -158,7 +165,7 @@ class RayParams(object):
             kwargs: The keyword arguments to set corresponding fields.
         """
         for arg in kwargs:
-            if (hasattr(self, arg)):
+            if hasattr(self, arg):
                 if getattr(self, arg) is None:
                     setattr(self, arg, kwargs[arg])
             else:

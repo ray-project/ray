@@ -42,6 +42,20 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
                             "clients with this IP address.")
 
 
+def include_java_from_redis(redis_client):
+    """This is used for query include_java bool from redis.
+    """
+    include_java_value = redis_client.get("INCLUDE_JAVA")
+    if include_java_value is not None:
+        return int(include_java_value) == 1
+    else:
+        return False
+
+
+def get_default_java_classpath():
+    return "TODO(qwang)"
+
+
 @click.group()
 @click.option(
     "--logging-level",
@@ -207,6 +221,17 @@ def cli(logging_level, logging_format):
     default=None,
     type=str,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
+@click.option(
+    "--include-java",
+    is_flag=True,
+    default=None,
+    help="Enable cross-languages invocation.")
+@click.option(
+    "--java-classpath",
+    required=False,
+    default=None,
+    type=str,
+    help="Specify classpath for Java worker.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
@@ -214,7 +239,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          internal_config):
+          internal_config, include_java, java_classpath):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -246,7 +271,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        _internal_config=internal_config)
+        _internal_config=internal_config,
+        include_java=include_java,
+        java_classpath=java_classpath)
+
+    ray_params.update_if_absent(java_classpath=get_default_java_classpath())
 
     if head:
         # Start Ray on the head node.
@@ -281,7 +310,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
-            autoscaling_config=autoscaling_config)
+            autoscaling_config=autoscaling_config,
+            include_java=False,
+        )
 
         node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
         redis_address = node.redis_address
@@ -323,6 +354,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if no_ui:
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")
+        if include_java is not None:
+            raise Exception("If --head is not passed in, --include-java must"
+                            " not be provided.")
+
         redis_ip_address, redis_port = redis_address.split(":")
 
         # Wait for the Redis server to be started. And throw an exception if we
@@ -349,6 +384,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
+
+        # For non-head node, query redis whether this cluster includes java.
+        ray_params.update(include_java=include_java_from_redis(redis_client))
 
         node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "

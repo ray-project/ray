@@ -20,7 +20,7 @@ import ray.ray_constants as ray_constants
 import ray.plasma
 
 from ray.tempfile_services import (get_ipython_notebook_path, get_temp_root,
-                                   new_redis_log_file)
+                                   new_redis_log_file, get_logs_dir_path)
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -327,7 +327,8 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                redis_max_memory=None):
+                redis_max_memory=None,
+                include_java=False):
     """Start the Redis global state store.
 
     Args:
@@ -357,6 +358,8 @@ def start_redis(node_ip_address,
             LRU eviction of entries. This only applies to the sharded redis
             tables (task, object, and profile tables). By default, this is
             capped at 10GB but can be set higher.
+        include_java(bool): If True, this cluster will enable cross-languages
+           invocation.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -426,6 +429,10 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     primary_redis_client.set("RedirectOutput", 1
                              if redirect_worker_output else 0)
+
+    # put the include_java bool to primary redis-server, so that other nodes
+    # can access it and know whether or not to enable cross-languages.
+    primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
@@ -805,7 +812,9 @@ def start_raylet(redis_address,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
-                 config=None):
+                 config=None,
+                 include_java=False,
+                 java_classpath=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -834,7 +843,9 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-
+        include_java(bool): If True, this cluster could be used for
+            cross-languages invocation.
+        java_classpath(str): The classpath for Java worker.
     Returns:
         The process that was started.
     """
@@ -860,6 +871,12 @@ def start_raylet(redis_address,
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
+
+    java_worker_command = build_java_worker_command(include_java,
+                                                    java_classpath,
+                                                    redis_address,
+                                                    plasma_store_name,
+                                                    raylet_name)
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -897,7 +914,7 @@ def start_raylet(redis_address,
         resource_argument,
         config_str,
         start_worker_command,
-        "",  # Worker command for Java, not needed for Python.
+        java_worker_command,
         redis_password or "",
         get_temp_root(),
     ]
@@ -931,6 +948,35 @@ def start_raylet(redis_address,
         password=redis_password)
 
     return p
+
+
+def build_java_worker_command(include_java,
+                              java_classpath,
+                              redis_address,
+                              plasma_store_name,
+                              raylet_name):
+    """This method assembles java worker command.
+    """
+    if not include_java:
+        return ""
+
+    if java_classpath is None:
+        raise Exception("java_classpath must not be "
+                        "None if include_java is True.")
+
+    command = ("java -classpath %s " % java_classpath)
+    if redis_address is not None:
+        command += ("-Dray.redis.address=%s" % redis_address)
+
+    if plasma_store_name is not None:
+        command += ("-Dray.object-store.socket-name=%s" % plasma_store_name)
+
+    if raylet_name is not None:
+        command += ("-Dray.raylet.socket-name=%s" % raylet_name)
+
+    command += ("-Dray.log-dir=%s" % get_logs_dir_path())
+    command += "org.ray.runtime.runner.worker.DefaultWorker"
+    return command
 
 
 def determine_plasma_store_config(object_store_memory=None,
