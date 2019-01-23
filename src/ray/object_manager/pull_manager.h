@@ -16,17 +16,15 @@ namespace ray {
 
 class PullManager;
 
+/// \struct PullInfo
+///
+/// This object manages all of the information associated with an attempt to
+/// receive a given object, including a timer that fires if no action has
+/// happened related to that object in a while.
 struct PullInfo {
   PullInfo(bool required, const ObjectID &object_id,
            boost::asio::io_service &main_service,
            const std::function<void()> &timer_callback);
-
-  /// This struct cannot be copied or moved because it has a timer that captures
-  /// the "this" pointer.
-  PullInfo(const PullInfo &other) = delete;
-  PullInfo(PullInfo &&other) = delete;
-  PullInfo &operator=(const PullInfo &other) = delete;
-  PullInfo &operator=(PullInfo &&other) = delete;
 
   /// Fill out the total_num_chunks field. We won't know this until we know the
   /// object size and so can't always fill out this field in the constructor.
@@ -70,17 +68,15 @@ struct PullInfo {
   /// The chunks that have not yet been received. This is the complement of
   /// the values in received_chunk_ids.
   std::unordered_set<int> remaining_chunk_ids;
-  // /// A mapping from chunk index to the number of outstanding receive tasks
-  // /// that are about to read that chunk (for chunks where that number is
-  // /// non-zero). Note that some of these chunks may have already been read.
-  // std::unordered_map<int, int> in_progress_chunk_ids_;
+  /// The number of object chunks that we are in the process of reading.
   int64_t num_in_progress_chunk_ids;
   /// This timer is used for two purposes: 1) If we are receiving the
   /// object from some remote object manager but one of the reads fails,
   /// then this timer will be used to issue new requests. If we have requested
-  ///
-  std::unique_ptr<boost::asio::deadline_timer> retry_timer;
-
+  /// the object but haven't received any chunks in a while, then we consider
+  /// the sending to have failed.
+  boost::asio::deadline_timer retry_timer;
+  /// The callback to call when the timer expires.
   std::function<void()> timer_callback;
 };
 

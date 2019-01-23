@@ -12,6 +12,7 @@ PullInfo::PullInfo(bool required, const ObjectID &object_id,
     : required(required),
       total_num_chunks(-1),
       num_in_progress_chunk_ids(0),
+      retry_timer(main_service),
       timer_callback(timer_callback) {
   RestartTimer(main_service);
 }
@@ -32,16 +33,16 @@ bool PullInfo::LifetimeEnded() {
 }
 
 void PullInfo::RestartTimer(boost::asio::io_service &main_service) {
-  if (retry_timer != nullptr) {
-    retry_timer->cancel();
-  }
-  retry_timer.reset(new boost::asio::deadline_timer(main_service));
+  // Create a new timer. This will cancel the old timer.
+  retry_timer = boost::asio::deadline_timer(main_service);
   boost::posix_time::milliseconds retry_timeout(
       RayConfig::instance().object_manager_pull_timeout_ms());
-  retry_timer->expires_from_now(retry_timeout);
-  retry_timer->async_wait([this](const boost::system::error_code &error) {
+  retry_timer.expires_from_now(retry_timeout);
+  // Pass a copy of the callback into the timer.
+  auto &timer_callback_copy = timer_callback;
+  retry_timer.async_wait([timer_callback_copy](const boost::system::error_code &error) {
     if (!error) {
-      timer_callback();
+      timer_callback_copy();
     } else {
       // Check that the error was due to the timer being canceled.
       RAY_CHECK(error == boost::asio::error::operation_aborted);
