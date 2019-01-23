@@ -12,7 +12,6 @@ import traceback
 
 import ray.cloudpickle as pickle
 from ray.function_manager import FunctionDescriptor
-import ray.raylet
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker

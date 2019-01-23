@@ -49,9 +49,13 @@ except ImportError as e:
 modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
-from ray.raylet import (UniqueID, ObjectID, DriverID, ClientID, ActorID,
-                        ActorHandleID, FunctionID, ActorClassID, TaskID,
-                        _config)  # noqa: E402
+from ray.core.src.ray.raylet._raylet import (
+    UniqueID, ObjectID, DriverID, ClientID, ActorID, ActorHandleID,
+    FunctionID, ActorClassID, TaskID)  # noqa: E402
+
+import ray.core.src.ray.raylet._raylet as raylet
+
+_config = raylet.Config()
 
 from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,

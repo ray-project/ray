@@ -15,7 +15,6 @@ import time
 import uuid
 
 import ray.gcs_utils
-import ray.raylet
 import ray.ray_constants as ray_constants
 
 

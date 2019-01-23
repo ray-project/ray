@@ -32,7 +32,6 @@ import ray.serialization as serialization
 import ray.services as services
 import ray.signature
 import ray.tempfile_services as tempfile_services
-import ray.raylet
 import ray.plasma
 import ray.ray_constants as ray_constants
 from ray import import_thread
