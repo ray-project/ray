@@ -50,8 +50,8 @@ modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
 from ray.core.src.ray.raylet._raylet import (
-    UniqueID, ObjectID, DriverID, ClientID, ActorID, ActorHandleID,
-    FunctionID, ActorClassID, TaskID)  # noqa: E402
+    UniqueID, ObjectID, DriverID, ClientID, ActorID, ActorHandleID, FunctionID,
+    ActorClassID, TaskID)  # noqa: E402
 
 import ray.core.src.ray.raylet._raylet as raylet
 
