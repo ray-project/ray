@@ -12,7 +12,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
+    Categorical, MultiCategorical, Deterministic, DiagGaussian,
+    MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -112,6 +113,8 @@ class ModelCatalog(object):
                         "The squash_to_range option is deprecated. See the "
                         "clip_actions agent option instead.")
                 return dist, action_space.shape[0] * 2
+            elif dist_type == "categorical":
+                return MultiCategorical, None
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
@@ -145,9 +148,11 @@ class ModelCatalog(object):
 
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]), name="action")
+                tf.as_dtype(action_space.dtype),
+                shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None, ), name="action")
+            return tf.placeholder(tf.as_dtype(action_space.dtype),
+                                  shape=(None, ), name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True

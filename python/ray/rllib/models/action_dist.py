@@ -93,6 +93,42 @@ class Categorical(ActionDistribution):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
 
+class MultiCategorical(ActionDistribution):
+    """Categorical distribution for discrete action spaces."""
+
+    def logp(self, actions):
+        cross_entropy = [-tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=log, labels=act) for act, log in zip(actions, self.inputs)]
+        return tf.reduce_sum(tf.stack(cross_entropy), axis=0)
+
+    def entropy(self):
+        return tf.stack([self._entropy(input) for input in self.inputs],
+                        axis=1)
+
+    def _entropy(self, input):
+        # NOTE: The same as the one in Categorical
+        a0 = input - tf.reduce_max(
+            input, axis=1, keepdims=True)
+        ea0 = tf.exp(a0)
+        z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=1)
+
+    def kl(self, other):
+        # TODO: RETURN REAL KL
+        return tf.constant(0.0)
+
+    def sample(self):
+        return tf.squeeze(
+            tf.stack(
+                [tf.multinomial(l,
+                                num_samples=1,
+                                output_dtype=tf.int32
+                                ) for l in self.inputs],
+                axis=1),
+            axis=2)
+
+
 class DiagGaussian(ActionDistribution):
     """Action distribution where each vector element is a gaussian.
 
@@ -111,8 +147,8 @@ class DiagGaussian(ActionDistribution):
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
             tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                tf.reduce_sum(self.log_std, reduction_indices=[1]))
+            0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+            tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     @override(ActionDistribution)
     def kl(self, other):
