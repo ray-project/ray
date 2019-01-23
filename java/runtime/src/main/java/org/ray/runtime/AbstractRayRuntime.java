@@ -299,7 +299,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),
-        (UniqueId[]) actor.getNewActorHandles().toArray(),
+        (UniqueId[]) actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args),
         returnIds,
         resources,
