@@ -48,6 +48,7 @@ MOCK_MODULES = [
     "ray.core.generated.TablePrefix",
     "ray.core.generated.TablePubsub",
     "ray.core.generated.Language",
+    "ray.core.src.ray.raylet._raylet"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
