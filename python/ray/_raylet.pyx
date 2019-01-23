@@ -6,7 +6,7 @@
 from libc.stdint cimport int32_t
 from ray.includes.common cimport *
 from ray.includes.libraylet cimport CRayletClient, ResourceMappingType, WaitResultPair
-from ray.includes.task cimport RayletTaskSpecification
+from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
 
@@ -191,7 +191,7 @@ cdef class RayletClient:
 
     def get_task(self):
         cdef:
-            unique_ptr[RayletTaskSpecification] task_spec
+            unique_ptr[CTaskSpecification] task_spec
 
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))

@@ -96,11 +96,9 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
     cdef cppclass GCSArg "Arg":
         pass
 
-    # Note: This is a C++ enum class.
     cdef cppclass CLanguage "Language":
         pass
 
-    # Note: It is a C++ struct in the header file.
     cdef cppclass GCSProfileEventT "ProfileEventT":
         c_string event_type
         double start_time
@@ -108,7 +106,6 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
         c_string extra_data
         GCSProfileEventT()
 
-    # Note: It is a C++ struct in the header file.
     cdef cppclass GCSProfileTableDataT "ProfileTableDataT":
         c_string component_type
         c_string component_id

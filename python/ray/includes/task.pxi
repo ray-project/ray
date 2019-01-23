@@ -1,13 +1,12 @@
 from libc.stdint cimport uint8_t
 from libcpp.memory cimport shared_ptr, make_shared, static_pointer_cast
-from ray.includes.task cimport RayletTaskSpecification, RayletTaskArgument, RayletTaskArgumentByValue, RayletTaskArgumentByReference, TaskToFlatbuffer
-from ray.includes.common cimport *
+from ray.includes.task cimport CTaskSpecification, CTaskArgument, CTaskArgumentByValue, CTaskArgumentByReference, TaskToFlatbuffer
 
 from ray.utils import _random_string
 
 cdef class Task:
     cdef:
-        unique_ptr[RayletTaskSpecification] task_spec
+        unique_ptr[CTaskSpecification] task_spec
         unique_ptr[c_vector[CObjectID]] execution_dependencies
 
     def __init__(self, DriverID driver_id, function_descriptor, arguments,
@@ -21,7 +20,7 @@ cdef class Task:
         cdef:
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
-            c_vector[shared_ptr[RayletTaskArgument]] task_args
+            c_vector[shared_ptr[CTaskArgument]] task_args
             c_vector[CActorHandleID] task_new_actor_handles
             c_vector[c_string] c_function_descriptor
             c_string pickled_str
@@ -45,15 +44,15 @@ cdef class Task:
             if isinstance(arg, ObjectID):
                 references = c_vector[CObjectID]()
                 references.push_back((<ObjectID>arg).data)
-                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByReference](make_shared[RayletTaskArgumentByReference](references)))
+                task_args.push_back(static_pointer_cast[CTaskArgument, CTaskArgumentByReference](make_shared[CTaskArgumentByReference](references)))
             else:
                 pickled_str = pickle.dumps(arg, protocol=pickle.HIGHEST_PROTOCOL)
-                task_args.push_back(static_pointer_cast[RayletTaskArgument, RayletTaskArgumentByValue](make_shared[RayletTaskArgumentByValue](<uint8_t *>pickled_str.c_str(), pickled_str.size())))
+                task_args.push_back(static_pointer_cast[CTaskArgument, CTaskArgumentByValue](make_shared[CTaskArgumentByValue](<uint8_t *>pickled_str.c_str(), pickled_str.size())))
 
         for new_actor_handle in new_actor_handles:
             task_new_actor_handles.push_back((<ActorHandleID?>new_actor_handle).data)
 
-        self.task_spec.reset(new RayletTaskSpecification(
+        self.task_spec.reset(new CTaskSpecification(
             CUniqueID(driver_id.data), parent_task_id.data, parent_counter, actor_creation_id.data,
             actor_creation_dummy_object_id.data, max_actor_reconstructions, CUniqueID(actor_id.data),
             CUniqueID(actor_handle_id.data), actor_counter, task_new_actor_handles, task_args, num_returns,
@@ -67,7 +66,7 @@ cdef class Task:
                 self.execution_dependencies.get().push_back((<ObjectID?>execution_arg).data)
 
     @staticmethod
-    cdef make(unique_ptr[RayletTaskSpecification]& task_spec):
+    cdef make(unique_ptr[CTaskSpecification]& task_spec):
         cdef Task self = Task.__new__(Task)
         self.task_spec.reset(task_spec.release())
         # The created task does not include any execution dependencies.
@@ -108,7 +107,7 @@ cdef class Task:
         """
         cdef Task self = Task.__new__(Task)
         # TODO(pcm): Use flatbuffers validation here.
-        self.task_spec.reset(new RayletTaskSpecification(task_spec_str))
+        self.task_spec.reset(new CTaskSpecification(task_spec_str))
         # The created task does not include any execution dependencies.
         self.execution_dependencies.reset(new c_vector[CObjectID]())
         return self
@@ -151,7 +150,7 @@ cdef class Task:
     def arguments(self):
         """Return the arguments for the task."""
         cdef:
-            RayletTaskSpecification *task_spec = self.task_spec.get()
+            CTaskSpecification *task_spec = self.task_spec.get()
             int64_t num_args = task_spec.NumArgs()
             int count
         arg_list = []
@@ -168,7 +167,7 @@ cdef class Task:
 
     def returns(self):
         """Return the object IDs for the return values of the task."""
-        cdef RayletTaskSpecification *task_spec = self.task_spec.get()
+        cdef CTaskSpecification *task_spec = self.task_spec.get()
         return_id_list = []
         for i in range(task_spec.NumReturns()):
             return_id_list.append(ObjectID.from_native(task_spec.ReturnId(i)))

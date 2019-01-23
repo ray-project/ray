@@ -16,6 +16,7 @@ include(UseCython)
 include_directories("${NUMPY_INCLUDE_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../src")
 include_directories("${CMAKE_CURRENT_LIST_DIR}")
+
 # Include some generated Arrow headers.
 include_directories("${ARROW_SOURCE_DIR}/../arrow_ep-build/src")
 
@@ -26,19 +27,12 @@ set_source_files_properties(
 
 set(RAY_SRC_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../src/ray")
 
-# TODO(suquark): Better ways to find dependencies.
 cython_add_module(
   _raylet
   ${RAY_SRC_DIRECTORY}/raylet/raylet_client.cc
   ${CMAKE_CURRENT_LIST_DIR}/ray/_raylet.pyx)
 
-add_dependencies(_raylet
-    boost_thread
-    arrow_ep
-    gen_gcs_fbs
-    gen_object_manager_fbs
-    gen_node_manager_fbs
-    ray_static)
+add_dependencies(_raylet ray_static)
 
 if(APPLE)
     target_link_libraries(_raylet "-undefined dynamic_lookup" ray_static)
