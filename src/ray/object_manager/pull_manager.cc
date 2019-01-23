@@ -109,8 +109,8 @@ void PullManager::ReceivePushRequest(const ObjectID &object_id, const ClientID &
     //                       [this, object_id]() { TimerExpires(object_id); }));
 
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, PullInfo(false, object_id, main_service_,
-                            [this, object_id]() { TimerExpires(object_id); })));
+        object_id, std::unique_ptr<PullInfo>(new PullInfo(false, object_id, main_service_,
+                            [this, object_id]() { TimerExpires(object_id); }))));
     // auto insertion_it = pulls_.emplace(
     //     object_id, PullInfo(false, object_id, main_service_,
     //                         [this, object_id]() { TimerExpires(object_id); }));
@@ -120,12 +120,12 @@ void PullManager::ReceivePushRequest(const ObjectID &object_id, const ClientID &
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
 
-    auto &pull_info = it->second;
+    auto &pull_info = *it->second;
     RAY_CHECK(!pull_info.required);
     pull_info.client_receiving_from_ = client_id;
     pull_info.InitializeChunksIfNecessary(num_chunks);
   } else {
-    auto &pull_info = it->second;
+    auto &pull_info = *it->second;
     if (pull_info.client_receiving_from_.is_nil()) {
       pull_info.InitializeChunksIfNecessary(num_chunks);
       pull_info.client_receiving_from_ = client_id;
@@ -144,7 +144,7 @@ void PullManager::ReceivePushRequest(const ObjectID &object_id, const ClientID &
     }
   }
 
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
   pull_info.num_in_progress_chunk_ids++;
 
@@ -162,7 +162,7 @@ void PullManager::NewObjectLocations(
     return;
   }
 
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
   pull_info.clients_with_object_ = clients_with_object;
 
   if (!pull_info.required) {
@@ -200,24 +200,24 @@ void PullManager::PullObject(const ObjectID &object_id) {
     //                       [this, object_id]() { TimerExpires(object_id); }));
 
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, PullInfo(true, object_id, main_service_,
-                            [this, object_id]() { TimerExpires(object_id); })));
+        object_id, std::unique_ptr<PullInfo>(new PullInfo(true, object_id, main_service_,
+                            [this, object_id]() { TimerExpires(object_id); }))));
     // auto insertion_it = pulls_.emplace(
     //     object_id, PullInfo(true, object_id, main_service_,
     //                         [this, object_id]() { TimerExpires(object_id); }));
         // object_id, PullInfo(true, object_id, main_service_,
         //                     []() {}));
     it = insertion_it.first;
-    auto &pull_info = it->second;
+    auto &pull_info = *it->second;
     RAY_CHECK(pull_info.required);
     RAY_CHECK(pull_info.client_receiving_from_.is_nil());
   } else {
-    auto &pull_info = it->second;
+    auto &pull_info = *it->second;
 
     if (!pull_info.required) {
       // In this case, we are already receiving the object, but it was not
       // required before.
-      auto &pull_info = it->second;
+      auto &pull_info = *it->second;
       RAY_CHECK(!pull_info.client_receiving_from_.is_nil());
       pull_info.required = true;
     } else {
@@ -238,7 +238,7 @@ void PullManager::CancelPullObject(const ObjectID &object_id) {
     return;
   }
 
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
   if (!pull_info.required) {
     // This object already was not required, so this cancel message contains no
     // new information.
@@ -270,7 +270,7 @@ void PullManager::ChunkReadSucceeded(const ObjectID &object_id, const ClientID &
   ++total_successful_chunk_reads_;
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
 
   // RAY_CHECK(pull_info.client_receiving_from_.is_nil() ||
     //           client_id == pull_info.client_receiving_from_);
@@ -297,7 +297,7 @@ void PullManager::ChunkReadFailed(const ObjectID &object_id, const ClientID &cli
   ++total_failed_chunk_reads_;
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
 
   pull_info.num_in_progress_chunk_ids--;
   RAY_CHECK(pull_info.num_in_progress_chunk_ids >= 0);
@@ -323,7 +323,7 @@ void PullManager::ChunkReadFailed(const ObjectID &object_id, const ClientID &cli
 void PullManager::TimerExpires(const ObjectID &object_id) {
   auto it = pulls_.find(object_id);
   RAY_CHECK(it != pulls_.end());
-  auto &pull_info = it->second;
+  auto &pull_info = *it->second;
 
   std::vector<ClientID> clients_to_request;
   if (!pull_info.client_receiving_from_.is_nil()) {

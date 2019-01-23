@@ -226,7 +226,9 @@ class PullManager {
   boost::asio::io_service &main_service_;
   ClientID client_id_;
   const ObjectRequestManagementCallback callback_;
-  std::unordered_map<ObjectID, PullInfo> pulls_;
+  /// We use unique_ptr<PullInfo> instead of PullInfo because the PullInfo
+  /// object uses the "this" pointer and so cannot be moved around.
+  std::unordered_map<ObjectID, std::unique_ptr<PullInfo>> pulls_;
   std::mt19937_64 gen_;
 };
 
