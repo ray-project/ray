@@ -1,7 +1,8 @@
 // This header file is used to avoid code duplication.
-// It could be included multiple times in ray_config.h, with each place
-// having a different definition of the RAY_CONFIG macro.
-// Macro definition format: RAY_CONFIG(type, name, default_value)
+// It can be included multiple times in ray_config.h, and each inclusion
+// could use a different definition of the RAY_CONFIG macro.
+// Macro definition format: RAY_CONFIG(type, name, default_value).
+// NOTE: This file should NOT be included in any file other than ray_config.h.
 
 /// In theory, this is used to detect Ray version mismatches.
 RAY_CONFIG(int64_t, ray_protocol_version, 0x0000000000000000);
