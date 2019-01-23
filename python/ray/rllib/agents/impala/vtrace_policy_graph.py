@@ -1,6 +1,6 @@
 """Adapted from A3CPolicyGraph to add V-trace.
 
-Keep in sync with changes to A3CPolicyGraph."""
+Keep in sync with changes to A3CPolicyGraph and VtraceSurrogatePolicyGraph."""
 
 from __future__ import absolute_import
 from __future__ import division

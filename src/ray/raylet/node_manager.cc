@@ -2,6 +2,8 @@
 
 #include <fstream>
 
+#include "ray/status.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -88,7 +90,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -1146,8 +1148,8 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
     if (!status.IsPlasmaObjectExists()) {
       // TODO(rkn): We probably don't want this checks. E.g., if the object
       // store is full, we don't want to kill the raylet.
-      ARROW_CHECK_OK(status);
-      ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
+      RAY_ARROW_CHECK_OK(status);
+      RAY_ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
     }
   }
   // A task failing is equivalent to assigning and finishing the task, so clean
