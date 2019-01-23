@@ -102,9 +102,9 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   if (static_cast<int>(starting_worker_processes_.size()) >=
       maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "[WorkerPool] Worker not started, "
+    RAY_LOG(DEBUG) << "[WorkerPool] Not starting worker because there are "
                    << starting_worker_processes_.size()
-                   << " worker processes pending registration";
+                   << " worker processes pending registration.";
     return;
   }
   auto &state = GetStateForLanguage(language);
