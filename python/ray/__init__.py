@@ -51,11 +51,9 @@ sys.path.append(modin_path)
 
 from ray.core.src.ray.raylet._raylet import (
     UniqueID, ObjectID, DriverID, ClientID, ActorID, ActorHandleID, FunctionID,
-    ActorClassID, TaskID)  # noqa: E402
+    ActorClassID, TaskID, Config as _Config)  # noqa: E402
 
-import ray.core.src.ray.raylet._raylet as raylet
-
-_config = raylet.Config()
+_config = _Config()
 
 from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
