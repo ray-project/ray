@@ -9,11 +9,6 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
-void HandleObjectRequestCancelAbort(const std::vector<ray::ClientID> &clients_to_request,
-                                    const std::vector<ray::ClientID> &clients_to_cancel,
-                                    bool abort_object) {
-}
-
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory)
@@ -26,7 +21,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
-      pull_manager_(*main_service_, client_id_, HandleObjectRequestCancelAbort),
+      pull_manager_(*main_service_, client_id_, [this](
+          const std::vector<ray::ClientID> &clients_to_request,
+          const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
+              HandleObjectRequestCancelAbort(clients_to_request, clients_to_cancel,
+                                             abort_object);
+          }),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
@@ -239,6 +239,14 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     it->second.timer_set = false;
   }
 };
+
+void ObjectManager::HandleObjectRequestCancelAbort(
+    const std::vector<ray::ClientID> &clients_to_request,
+    const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
+  // TODO(rkn): Implement this method. This method is responsible for issuing
+  // the object requests and object cancellation requests decided on by the pull
+  // manager.
+}
 
 void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                             const ClientID &client_id) {

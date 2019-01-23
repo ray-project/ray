@@ -258,6 +258,18 @@ class ObjectManager : public ObjectManagerInterface {
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
 
+  /// This callback is responsible for issuing the object requests and object
+  /// cancellation requests decided on by the pull manager.
+  ///
+  /// \param clients_to_request The object managers to issue object requests to.
+  /// \param clients_to_cancel The object managers to issue cancellation
+  /// requests to.
+  /// \param abort_object True if the object creation should be aborted.
+  /// \return Void.
+  void HandleObjectRequestCancelAbort(
+      const std::vector<ray::ClientID> &clients_to_request,
+      const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object);
+
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
