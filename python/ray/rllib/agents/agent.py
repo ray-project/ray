@@ -185,7 +185,13 @@ COMMON_CONFIG = {
 def with_common_config(extra_config):
     """Returns the given config dict merged with common agent confs."""
 
-    config = copy.deepcopy(COMMON_CONFIG)
+    return with_base_config(COMMON_CONFIG, extra_config)
+
+
+def with_base_config(base_config, extra_config):
+    """Returns the given config dict merged with a base agent conf."""
+
+    config = copy.deepcopy(base_config)
     config.update(extra_config)
     return config
 
@@ -271,6 +277,8 @@ class Agent(Trainable):
                 ev.set_global_vars.remote(self.global_vars)
             logger.debug("updated global vars: {}".format(self.global_vars))
 
+        result = Trainable.train(self)
+
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
                 and hasattr(self, "local_evaluator")):
             FilterManager.synchronize(
@@ -280,12 +288,12 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
-        result = Trainable.train(self)
         if self.config["callbacks"].get("on_train_result"):
             self.config["callbacks"]["on_train_result"]({
                 "agent": self,
                 "result": result,
             })
+
         return result
 
     @override(Trainable)
@@ -489,8 +497,8 @@ class Agent(Trainable):
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers` and other configs. See the "
-                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "setting `num_workers`, `num_gpus`, and other configs. See "
+                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @staticmethod

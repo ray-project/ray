@@ -450,7 +450,7 @@ class FunctionActorManager(object):
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
                        "driver_id: %s, function_descriptor: %s. Message: %s" %
-                       driver_id, function_descriptor, e)
+                       (driver_id, function_descriptor, e))
             raise KeyError(message)
         return info
 

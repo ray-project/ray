@@ -36,8 +36,10 @@ class BasicMultiAgent(MultiAgentEnv):
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
+        self.resetted = False
 
     def reset(self):
+        self.resetted = True
         self.dones = set()
         return {i: a.reset() for i, a in enumerate(self.agents)}
 
@@ -172,6 +174,12 @@ class TestMultiAgentEnv(unittest.TestCase):
             self.assertEqual(done["__all__"], False)
         obs, rew, done, info = env.step({0: 0})
         self.assertEqual(done["__all__"], True)
+
+    def testNoResetUntilPoll(self):
+        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 1)
+        self.assertFalse(env.get_unwrapped()[0].resetted)
+        env.poll()
+        self.assertTrue(env.get_unwrapped()[0].resetted)
 
     def testVectorizeBasic(self):
         env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 2)
