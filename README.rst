@@ -74,9 +74,11 @@ Getting Involved
 ----------------
 
 - Ask questions on our mailing list `ray-dev@googlegroups.com`_.
+- Questions about how to use Ray should be asked on `StackOverflow`_.
 - Please report bugs by submitting a `GitHub issue`_.
 - Submit contributions using `pull requests`_.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub issue`: https://github.com/ray-project/ray/issues
 .. _`pull requests`: https://github.com/ray-project/ray/pulls
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray

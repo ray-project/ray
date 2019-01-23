@@ -5,8 +5,9 @@ Reporting bugs and asking questions
 -----------------------------------
 
 We use `GitHub issues`_ for bug reports and feature requests. For discussions
-about development, questions about usage, or any general questions, we use our
-mailing list `ray-dev@googlegroups.com`_.
+about development or any general questions, we use our mailing list
+`ray-dev@googlegroups.com`_. For questions about how to use Ray, please post on
+`StackOverflow`_.
 
 To contribute a patch:
 ----------------------
@@ -19,3 +20,4 @@ To contribute a patch:
 
 .. _`GitHub issues`: https://github.com/ray-project/ray/issues
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
