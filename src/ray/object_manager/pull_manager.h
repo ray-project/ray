@@ -21,11 +21,26 @@ struct PullInfo {
            boost::asio::io_service &main_service,
            const std::function<void()> &timer_callback);
 
+  /// Fill out the total_num_chunks field. We won't know this until we know the
+  /// object size and so can't always fill out this field in the constructor.
+  ///
+  /// \param num_chunks The number of chunks.
+  /// \return Void.
   void InitializeChunksIfNecessary(int64_t num_chunks);
+
+  /// Check if this PullInfo object can safely be cleaned up because the object
+  /// is not required, and we are not receiving the object from anywhere, and
+  /// there are no chunks in the process of being read for this object.
+  ///
+  /// \return True if this object can be cleaned up and false otherwise.
   bool LifetimeEnded();
+
+  /// Restart the timer. This happens when we successfully read a chunk of the
+  /// object or when we become aware of new object locations (because we want to
+  /// give more time for the transfer to finish before retrying). It also can
+  /// happen when the timer expires.
   void RestartTimer(boost::asio::io_service &main_service);
-  // void StartTimer();
-  // void ExtendTimer();
+
   /// True if we must pull this object. False if we are simply receiving the
   /// object but do not need to pull the object (meaning we do not have to
   /// guarantee that the object appears locally).
@@ -168,7 +183,6 @@ class PullManager {
   /// \param num_chunks The total number of chunks that the object is divided
   /// into.
   /// \return Void.
-  /// TODO(rkn): Should we actually return a bool saying whether to read or ignore the object?
   void ReceivePushRequest(const ObjectID &object_id, const ClientID &client_id,
                           int64_t chunk_index, int64_t num_chunks);
 
@@ -206,6 +220,9 @@ class PullManager {
   void ChunkReadFailed(const ObjectID &object_id, const ClientID &client_id,
                        int64_t chunk_index);
 
+  /// Print out a human-readable string describing the PullManager's state.
+  ///
+  /// \return A human-readable string.
   std::string DebugString() const;
 
  private:
@@ -215,16 +232,27 @@ class PullManager {
   /// \return Void.
   void TimerExpires(const ObjectID &object_id);
 
+  /// The total number of times PullObject has been called.
   int64_t total_pull_calls_;
+  /// The total number of times CancelObject has been called.
   int64_t total_cancel_calls_;
+  /// The total number of times ChunkReadSucceeded has been called.
   int64_t total_successful_chunk_reads_;
+  /// The total number of times ChunkReadFailed has been called.
   int64_t total_failed_chunk_reads_;
+  /// The service to use for setting timers.
   boost::asio::io_service &main_service_;
+  /// The client ID of the object manager that this pull manager is part of.
   ClientID client_id_;
+  /// The callback to use for instructing the object manager to issue new
+  /// object requests or object cancellation requests.
   const ObjectRequestManagementCallback callback_;
-  /// We use unique_ptr<PullInfo> instead of PullInfo because the PullInfo
-  /// object uses the "this" pointer and so cannot be moved around.
+  /// This is a map from object ID that we are pulling to the information
+  /// associated with that pull. NOTE: We use unique_ptr<PullInfo> instead of
+  /// PullInfo because the PullInfo object uses the "this" pointer and so cannot
+  /// be moved around.
   std::unordered_map<ObjectID, std::unique_ptr<PullInfo>> pulls_;
+  /// A random number generator.
   std::mt19937_64 gen_;
 };
 
