@@ -6,7 +6,6 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.ray.api.RayActor;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Sha1Digestor;
@@ -94,7 +93,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     ret.numForks = 0;
     ret.taskCursor = this.taskCursor;
     ret.handleId = this.computeNextActorHandleId();
-    newActorHandles.add(ret.handleId.copy());
+    newActorHandles.add(ret.handleId);
     return ret;
   }
 
