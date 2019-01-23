@@ -2229,9 +2229,9 @@ def test_actor_reconstruction(ray_start_regular):
     for _ in range(3):
         ray.get(actor.increase.remote())
     # Call increase again with some delay.
-    result = actor.increase.remote(delay=1.0)
+    result = actor.increase.remote(delay=0.5)
     # Sleep some time to wait for the above task to start execution.
-    time.sleep(0.1)
+    time.sleep(0.2)
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, signal.SIGKILL)
     # Check that the above task didn't fail and the actor is reconstructed.

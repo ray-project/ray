@@ -842,7 +842,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     // If the worker was running a task, clean up the task and push an error to
     // the driver, unless the worker is already dead.
     if (!task_id.is_nil() && !worker->IsDead()) {
-      // If the worker was an actor, the task was already cleaned up.
+      // If the worker was an actor, the task was already cleaned up in
+      // `HandleDisconnectedActor`.
       if (actor_id.is_nil()) {
         const Task &task = local_queues_.RemoveTask(task_id);
         TreatTaskAsFailed(task);
