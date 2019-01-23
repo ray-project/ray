@@ -21,6 +21,13 @@ struct PullInfo {
            boost::asio::io_service &main_service,
            const std::function<void()> &timer_callback);
 
+  /// This struct cannot be copied or moved because it has a timer that captures
+  /// the "this" pointer.
+  PullInfo(const PullInfo &other) = delete;
+  PullInfo(PullInfo &&other) = delete;
+  PullInfo &operator=(const PullInfo &other) = delete;
+  PullInfo &operator=(PullInfo &&other) = delete;
+
   /// Fill out the total_num_chunks field. We won't know this until we know the
   /// object size and so can't always fill out this field in the constructor.
   ///
