@@ -21,11 +21,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
-      pull_manager_(*main_service_, client_id_, [this](
-          const std::vector<ray::ClientID> &clients_to_request,
-          const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
-              HandleObjectRequestCancelAbort(clients_to_request, clients_to_cancel,
-                                             abort_object);
+      pull_manager_(
+          *main_service_, client_id_,
+          [this](const std::vector<ray::ClientID> &clients_to_request,
+                 const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
+            HandleObjectRequestCancelAbort(clients_to_request, clients_to_cancel,
+                                           abort_object);
           }),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
