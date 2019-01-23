@@ -17,7 +17,8 @@ namespace ray {
 class PullManager;
 
 struct PullInfo {
-  PullInfo(bool required, const ObjectID &object_id, boost::asio::io_service &main_service,
+  PullInfo(bool required, const ObjectID &object_id,
+           boost::asio::io_service &main_service,
            const std::function<void()> &timer_callback);
 
   void InitializeChunksIfNecessary(int64_t num_chunks);
@@ -135,7 +136,7 @@ class PullManager {
   /// \param callback The callback that the pull manager can use to request
   /// objects, cancel requests, and abort object creations.
   PullManager(boost::asio::io_service &main_service, const ClientID &client_id,
-               const ObjectRequestManagementCallback &callback);
+              const ObjectRequestManagementCallback &callback);
 
   PullManager(const PullManager &other) = delete;
 
@@ -208,11 +209,11 @@ class PullManager {
   std::string DebugString() const;
 
  private:
-   /// Handle the fact that the timer for a pull has expired.
-   ///
-   /// \param object_id The ID of the object that the pull is for.
-   /// \return Void.
-   void TimerExpires(const ObjectID &object_id);
+  /// Handle the fact that the timer for a pull has expired.
+  ///
+  /// \param object_id The ID of the object that the pull is for.
+  /// \return Void.
+  void TimerExpires(const ObjectID &object_id);
 
   int64_t total_pull_calls_;
   int64_t total_cancel_calls_;

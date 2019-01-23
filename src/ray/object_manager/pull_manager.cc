@@ -7,8 +7,8 @@
 namespace ray {
 
 PullInfo::PullInfo(bool required, const ObjectID &object_id,
-                                boost::asio::io_service &main_service,
-                                const std::function<void()> &timer_callback)
+                   boost::asio::io_service &main_service,
+                   const std::function<void()> &timer_callback)
     : required(required),
       total_num_chunks(-1),
       num_in_progress_chunk_ids(0),
@@ -39,15 +39,14 @@ void PullInfo::RestartTimer(boost::asio::io_service &main_service) {
   boost::posix_time::milliseconds retry_timeout(
       RayConfig::instance().object_manager_pull_timeout_ms());
   retry_timer->expires_from_now(retry_timeout);
-  retry_timer->async_wait(
-      [this](const boost::system::error_code &error) {
-        if (!error) {
-          timer_callback();
-        } else {
-          // Check that the error was due to the timer being canceled.
-          RAY_CHECK(error == boost::asio::error::operation_aborted);
-        }
-      });
+  retry_timer->async_wait([this](const boost::system::error_code &error) {
+    if (!error) {
+      timer_callback();
+    } else {
+      // Check that the error was due to the timer being canceled.
+      RAY_CHECK(error == boost::asio::error::operation_aborted);
+    }
+  });
 }
 
 PullManager::PullManager(boost::asio::io_service &main_service, const ClientID &client_id,
@@ -69,8 +68,9 @@ void PullManager::ReceivePushRequest(const ObjectID &object_id, const ClientID &
   auto it = pulls_.find(object_id);
   if (it == pulls_.end()) {
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(false, object_id, main_service_,
-                            [this, object_id]() { TimerExpires(object_id); }))));
+        object_id, std::unique_ptr<PullInfo>(
+                       new PullInfo(false, object_id, main_service_,
+                                    [this, object_id]() { TimerExpires(object_id); }))));
 
     RAY_CHECK(insertion_it.second);
     it = insertion_it.first;
@@ -132,7 +132,7 @@ void PullManager::NewObjectLocations(
 
   std::vector<ClientID> clients_to_request;
   for (auto const &client_id : pull_info.clients_with_object) {
-    if (pull_info.clients_requested_from.count(client_id) == 0){
+    if (pull_info.clients_requested_from.count(client_id) == 0) {
       clients_to_request.push_back(client_id);
       pull_info.clients_requested_from.insert(client_id);
     }
@@ -150,8 +150,9 @@ void PullManager::PullObject(const ObjectID &object_id) {
 
   if (it == pulls_.end()) {
     auto insertion_it = pulls_.insert(std::make_pair(
-        object_id, std::unique_ptr<PullInfo>(new PullInfo(true, object_id, main_service_,
-                            [this, object_id]() { TimerExpires(object_id); }))));
+        object_id, std::unique_ptr<PullInfo>(
+                       new PullInfo(true, object_id, main_service_,
+                                    [this, object_id]() { TimerExpires(object_id); }))));
     it = insertion_it.first;
     auto &pull_info = *it->second;
     RAY_CHECK(pull_info.required);

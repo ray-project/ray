@@ -9,9 +9,9 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
-void HandleObjectRequestCancelAbort(
-    const std::vector<ray::ClientID> &clients_to_request,
-    const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
+void HandleObjectRequestCancelAbort(const std::vector<ray::ClientID> &clients_to_request,
+                                    const std::vector<ray::ClientID> &clients_to_cancel,
+                                    bool abort_object) {
 }
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
@@ -829,7 +829,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
   pull_manager_.ReceivePushRequest(object_id, client_id, chunk_index, num_chunks);
 
-  receive_service_.post([this, object_id, client_id, data_size, metadata_size, chunk_index, conn]() {
+  receive_service_.post([this, object_id, client_id, data_size, metadata_size,
+                         chunk_index, conn]() {
     double start_time = current_sys_time_seconds();
 
     auto status = ExecuteReceiveObject(client_id, object_id, data_size, metadata_size,
