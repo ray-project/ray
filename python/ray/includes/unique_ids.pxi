@@ -5,6 +5,7 @@ See https://github.com/ray-project/ray/issues/3721.
 """
 
 from ray.includes.common cimport *
+from ray.utils import decode
 
 
 def check_id(b):
@@ -65,7 +66,7 @@ cdef class UniqueID:
         return self.binary()
 
     def hex(self):
-        return self.data.hex().decode()
+        return decode(self.data.hex())
 
     def __hex__(self):
         return self.hex()
