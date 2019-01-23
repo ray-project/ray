@@ -29,7 +29,7 @@ public class ArgumentsBuilder {
       byte[] data = null;
       if (arg == null) {
         data = Serializer.encode(null);
-      } else if (arg instanceof RayActor<?>) {
+      } else if (arg instanceof RayActor) {
         data = Serializer.encode(arg);
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();

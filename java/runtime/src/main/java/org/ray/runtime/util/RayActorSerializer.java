@@ -13,13 +13,13 @@ public class RayActorSerializer extends FSTBasicObjectSerializer {
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
       FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
-    ((RayActorImpl<?>) toWrite).fork().writeExternal(out);
+    ((RayActorImpl) toWrite).fork().writeExternal(out);
   }
 
   @Override
   public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
                          FSTFieldInfo referencedBy) throws Exception {
     super.readObject(in, toRead, clzInfo, referencedBy);
-    ((RayActorImpl<?>) toRead).readExternal(in);
+    ((RayActorImpl) toRead).readExternal(in);
   }
 }
