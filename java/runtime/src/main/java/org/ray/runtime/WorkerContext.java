@@ -40,14 +40,15 @@ public class WorkerContext {
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
     currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
       workerId = driverId;
       currentTaskId.set(UniqueId.randomId());
       currentDriverId = driverId;
-      currentClassLoader = null;
     } else {
       workerId = UniqueId.randomId();
-      setCurrentTask(null, null, null);
+      this.currentTaskId.set(UniqueId.NIL);
+      this.currentDriverId = UniqueId.NIL;
     }
   }
 
@@ -63,15 +64,15 @@ public class WorkerContext {
    * Set the current task which is being executed by the current worker. Note, this method can only
    * be called from the main thread.
    */
-  public void setCurrentTask(UniqueId currentTaskId,
-      UniqueId currentDriverId, ClassLoader classLoader) {
+  public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
     Preconditions.checkState(
         Thread.currentThread().getId() == mainThreadId,
         "This method should only be called from the main thread."
     );
 
-    this.currentTaskId.set(currentTaskId);
-    this.currentDriverId = currentDriverId;
+    Preconditions.checkNotNull(task);
+    this.currentTaskId.set(task.taskId);
+    this.currentDriverId = task.driverId;
     taskIndex.set(0);
     putIndex.set(0);
     currentClassLoader = classLoader;
