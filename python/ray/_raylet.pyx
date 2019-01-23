@@ -3,14 +3,24 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from libc.stdint cimport int32_t
-from ray.includes.common cimport *
-from ray.includes.libraylet cimport CRayletClient, ResourceMappingType, WaitResultPair
+from libc.stdint cimport int32_t, int64_t
+from libcpp cimport bool as c_bool
+from libcpp.memory cimport unique_ptr
+from libcpp.string cimport string as c_string
+from libcpp.utility cimport pair
+from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector as c_vector
+
+from ray.includes.common cimport (
+    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
+    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
+    CLanguage, CRayStatus, LANGUAGE_CPP, LANGUAGE_JAVA, LANGUAGE_PYTHON)
+from ray.includes.libraylet cimport (
+    CRayletClient, GCSProfileTableDataT, GCSProfileEventT,
+    ResourceMappingType, WaitResultPair)
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
-
-from libcpp.utility cimport pair
 
 from cython.operator import dereference, postincrement
 cimport cpython
@@ -120,12 +130,20 @@ cdef c_bool is_simple_value(value, int *num_elements_contained):
 
 
 def check_simple_value(value):
-    """This method checks if a Python object is sufficiently simple that it can be
+    """Check if value is simple enough to be send by value.
+
+    This method checks if a Python object is sufficiently simple that it can be
     serialized and passed by value as an argument to a task (without being put in
     the object store). The details of which objects are sufficiently simple are
     defined by this method and are not particularly important. But for
     performance reasons, it is better to place "small" objects in the task itself
     and "large" objects in the object store.
+
+    Args:
+        value: Python object that should be checked.
+
+    Returns:
+        True if the value should be send by value, False otherwise.
     """
 
     cdef int num_elements_contained = 0

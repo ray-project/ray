@@ -4,7 +4,11 @@ We define different types for different IDs for type safe.
 See https://github.com/ray-project/ray/issues/3721.
 """
 
-from ray.includes.common cimport *
+from ray.includes.common cimport (
+    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
+    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
+    ComputePutId, ComputeTaskId)
+
 from ray.utils import decode
 
 
@@ -13,6 +17,11 @@ def check_id(b):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != kUniqueIDSize:
         raise ValueError("ID string needs to have length " + str(kUniqueIDSize))
+
+
+cdef extern from "ray/constants.h" nogil:
+    cdef int64_t kUniqueIDSize
+    cdef int64_t kMaxTaskPuts
 
 
 cdef class UniqueID:

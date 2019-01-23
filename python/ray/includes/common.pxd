@@ -2,21 +2,14 @@ from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 
 from libc.stdint cimport int64_t
-from libcpp.memory cimport unique_ptr
-from libcpp.vector cimport vector as c_vector
 from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CUniqueID, TaskID as CTaskID, ObjectID as CObjectID,
     FunctionID as CFunctionID, ActorClassID as CActorClassID, ActorID as CActorID,
     ActorHandleID as CActorHandleID, WorkerID as CWorkerID,
-    DriverID as CDriverID, ConfigID as CConfigID, ClientID as CClientID,
-)
-
-
-cdef extern from "ray/constants.h" nogil:
-    cdef int64_t kUniqueIDSize
-    cdef int64_t kMaxTaskPuts
+    DriverID as CDriverID, ConfigID as CConfigID, ClientID as CClientID)
 
 
 cdef extern from "ray/status.h" namespace "ray" nogil:
@@ -80,7 +73,6 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 
 
 cdef extern from "ray/id.h" namespace "ray" nogil:
-
     const CTaskID FinishTaskId(const CTaskID &task_id)
     const CObjectID ComputeReturnId(const CTaskID &task_id,
                                    int64_t return_index)
@@ -98,20 +90,6 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
 
     cdef cppclass CLanguage "Language":
         pass
-
-    cdef cppclass GCSProfileEventT "ProfileEventT":
-        c_string event_type
-        double start_time
-        double end_time
-        c_string extra_data
-        GCSProfileEventT()
-
-    cdef cppclass GCSProfileTableDataT "ProfileTableDataT":
-        c_string component_type
-        c_string component_id
-        c_string node_ip_address
-        c_vector[unique_ptr[GCSProfileEventT]] profile_events
-        GCSProfileTableDataT()
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding representation.

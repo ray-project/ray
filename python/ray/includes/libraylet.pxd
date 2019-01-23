@@ -1,11 +1,38 @@
-from ray.includes.common cimport *
-from ray.includes.task cimport *
-
+from libc.stdint cimport int64_t
+from libcpp cimport bool as c_bool
+from libcpp.memory cimport unique_ptr
+from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector as c_vector
+
+
+from ray.includes.common cimport (
+    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
+    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
+    CLanguage, CRayStatus)
+from ray.includes.task cimport CTaskSpecification
+
+
+cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
+    cdef cppclass GCSProfileEventT "ProfileEventT":
+        c_string event_type
+        double start_time
+        double end_time
+        c_string extra_data
+        GCSProfileEventT()
+
+    cdef cppclass GCSProfileTableDataT "ProfileTableDataT":
+        c_string component_type
+        c_string component_id
+        c_string node_ip_address
+        c_vector[unique_ptr[GCSProfileEventT]] profile_events
+        GCSProfileTableDataT()
+
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] ResourceMappingType
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
+
 
 cdef extern from "ray/raylet/raylet_client.h" nogil:
     cdef cppclass CRayletClient "RayletClient":

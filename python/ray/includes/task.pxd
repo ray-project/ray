@@ -1,6 +1,14 @@
-from libc.stdint cimport uint8_t
-from libcpp.memory cimport shared_ptr
-from ray.includes.common cimport *
+from libc.stdint cimport int64_t, uint8_t
+from libcpp cimport bool as c_bool
+from libcpp.memory cimport unique_ptr, shared_ptr
+from libcpp.string cimport string as c_string
+from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector as c_vector
+
+from ray.includes.common cimport (
+    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
+    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
+    CLanguage, ResourceSet)
 
 
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
