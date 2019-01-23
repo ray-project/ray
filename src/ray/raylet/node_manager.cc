@@ -808,12 +808,12 @@ void NodeManager::ProcessDisconnectClientMessage(
 
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
-  if (is_worker && worker->IsDead()) {
-    // Don't need to unblock the client if it's a worker and is already dead.
-    // Because in this case, its task is already cleaned up.
-    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-  } else {
-    if (worker) {
+  if (worker) {
+    if (is_worker && worker->IsDead()) {
+      // Don't need to unblock the client if it's a worker and is already dead.
+      // Because in this case, its task is already cleaned up.
+      RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
+    } else {
       while (!worker->GetBlockedTaskIds().empty()) {
         // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
         // not safe to pass in the iterator directly.
@@ -826,29 +826,29 @@ void NodeManager::ProcessDisconnectClientMessage(
   if (is_worker) {
     // The client is a worker.
     if (worker->IsDead()) {
-      // If the worker was killed by us because the driver exists,
+      // If the worker was killed by us because the driver exited,
       // treat it as intentionally disconnected.
       intentional_disconnect = true;
     }
 
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.is_nil()) {
-      // If the worker was an actor, update actor state, reconstrut the actor if needed,
+      // If the worker was an actor, update actor state, reconstruct the actor if needed,
       // and clean up actor's tasks if the actor is permanently dead.
       HandleDisconnectedActor(actor_id, true, intentional_disconnect);
     }
 
     const TaskID &task_id = worker->GetAssignedTaskId();
-    if (!task_id.is_nil()) {
-      // If the worker was running a task, we should clean up the task unless
-      // the worker is an actor or the worker was already killed because driver exited.
-      // In both cases, the task was alredy cleaned up.
-      if (actor_id.is_nil() && !worker->IsDead()) {
+    // If the worker was running a task, clean up the task and push an error to
+    // the driver, unless the worker is already dead.
+    if (!task_id.is_nil() && !worker->IsDead()) {
+      // If the worker was an actor, the task was already cleaned up.
+      if (actor_id.is_nil()) {
         const Task &task = local_queues_.RemoveTask(task_id);
         TreatTaskAsFailed(task);
       }
 
-      if (!intentional_disconnect && !worker->IsDead()) {
+      if (!intentional_disconnect) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedDriverId();
         // TODO(rkn): Define this constant somewhere else.
