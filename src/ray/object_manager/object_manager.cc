@@ -109,8 +109,7 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "[ObjectManager] Pull on " << client_id_ << " of object "
-                 << object_id;
+  RAY_LOG(DEBUG) << "Pull on " << client_id_ << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_.count(object_id) != 0) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
@@ -291,8 +290,8 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                                        const ClientID &client_id, uint64_t chunk_index,
                                        double start_time, double end_time,
                                        ray::Status status) {
-  RAY_LOG(DEBUG) << "[ObjectManager] HandleSendFinished on " << client_id_ << " to "
-                 << client_id << " of object " << object_id << " chunk " << chunk_index
+  RAY_LOG(DEBUG) << "HandleSendFinished on " << client_id_ << " to " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index
                  << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
@@ -331,8 +330,8 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
-  RAY_LOG(DEBUG) << "[ObjectManager] Push on " << client_id_ << " to " << client_id
-                 << " of object " << object_id;
+  RAY_LOG(DEBUG) << "Push on " << client_id_ << " to " << client_id << " of object "
+                 << object_id;
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
     auto &clients = unfulfilled_push_requests_[object_id];
@@ -427,8 +426,8 @@ ray::Status ObjectManager::ExecuteSendObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index,
     const RemoteConnectionInfo &connection_info) {
-  RAY_LOG(DEBUG) << "[ObjectManager] ExecuteSendObject on " << client_id_ << " to "
-                 << client_id << " of object " << object_id << " chunk " << chunk_index;
+  RAY_LOG(DEBUG) << "ExecuteSendObject on " << client_id_ << " to " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index;
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
   connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id, &conn);
@@ -511,7 +510,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 int64_t timeout_ms, uint64_t num_required_objects,
                                 bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::from_random();
-  RAY_LOG(DEBUG) << "[ObjectManager] Wait request " << wait_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << client_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
                                    wait_local, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
@@ -576,9 +575,8 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
-            RAY_LOG(DEBUG) << "[ObjectManager] Wait request " << wait_id << ": "
-                           << client_ids.size() << " locations found for object "
-                           << lookup_object_id;
+            RAY_LOG(DEBUG) << "Wait request " << wait_id << ": " << client_ids.size()
+                           << " locations found for object " << lookup_object_id;
             wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
               SubscribeRemainingWaitObjects(wait_id);
@@ -602,8 +600,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
   // locations from the object directory.
   for (const auto &object_id : wait_state.object_id_order) {
     if (wait_state.remaining.count(object_id) > 0) {
-      RAY_LOG(DEBUG) << "[ObjectManager] Wait request " << wait_id
-                     << ": subscribing to object " << object_id;
+      RAY_LOG(DEBUG) << "Wait request " << wait_id << ": subscribing to object "
+                     << object_id;
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
@@ -611,7 +609,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<ClientID> &client_ids, bool created) {
             if (!client_ids.empty()) {
-              RAY_LOG(DEBUG) << "[ObjectManager] Wait request " << wait_id
+              RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
@@ -689,8 +687,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   }
   wait_state.callback(found, remaining);
   active_wait_requests_.erase(wait_id);
-  RAY_LOG(DEBUG) << "[ObjectManager] Wait request " << wait_id << " finished: found "
-                 << found.size() << " remaining " << remaining.size();
+  RAY_LOG(DEBUG) << "Wait request " << wait_id << " finished: found " << found.size()
+                 << " remaining " << remaining.size();
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
@@ -723,8 +721,11 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
-  auto message_type_value =
+  const auto message_type_value =
       static_cast<object_manager_protocol::MessageType>(message_type);
+  RAY_LOG(DEBUG) << "[ObjectManager] Message "
+                 << object_manager_protocol::EnumNameMessageType(message_type_value)
+                 << "(" << message_type << ") from object manager";
   switch (message_type_value) {
   case object_manager_protocol::MessageType::PushRequest: {
     ReceivePushRequest(conn, message);
@@ -822,8 +823,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
 ray::Status ObjectManager::ExecuteReceiveObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index, TcpClientConnection &conn) {
-  RAY_LOG(DEBUG) << "[ObjectManager] ExecuteReceiveObject on " << client_id_ << " from "
-                 << client_id << " of object " << object_id << " chunk " << chunk_index;
+  RAY_LOG(DEBUG) << "ExecuteReceiveObject on " << client_id_ << " from " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
@@ -841,8 +842,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(DEBUG) << "[ObjectManager] ExecuteReceiveObject failed: "
-                   << chunk_status.second.message();
+    RAY_LOG(DEBUG) << "ExecuteReceiveObject failed: " << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
@@ -857,9 +857,9 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   conn.ProcessMessages();
-  RAY_LOG(DEBUG) << "[ObjectManager] ExecuteReceiveObject completed on " << client_id_
-                 << " from " << client_id << " of object " << object_id << " chunk "
-                 << chunk_index << " at " << current_sys_time_ms();
+  RAY_LOG(DEBUG) << "ExecuteReceiveObject completed on " << client_id_ << " from "
+                 << client_id << " of object " << object_id << " chunk " << chunk_index
+                 << " at " << current_sys_time_ms();
 
   return chunk_status.second;
 }

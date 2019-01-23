@@ -103,6 +103,7 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
     // Accept a new TCP client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(node_manager_socket_), "node manager",
+        protocol::EnumNamesMessageType(),
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.
@@ -126,7 +127,7 @@ void Raylet::HandleAcceptObjectManager(const boost::system::error_code &error) {
   // Accept a new TCP client and dispatch it to the node manager.
   auto new_connection = TcpClientConnection::Create(
       client_handler, message_handler, std::move(object_manager_socket_),
-      "object manager",
+      "object manager", object_manager::protocol::EnumNamesMessageType(),
       static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
   DoAcceptObjectManager();
 }
@@ -149,6 +150,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = LocalClientConnection::Create(
         client_handler, message_handler, std::move(socket_), "worker",
+        protocol::EnumNamesMessageType(),
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.

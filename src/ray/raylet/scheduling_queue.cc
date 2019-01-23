@@ -211,7 +211,7 @@ void SchedulingQueue::RemoveTasksFromQueue(
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;
     if (queue->RemoveTask(task_id, removed_tasks)) {
-      RAY_LOG(DEBUG) << "[SchedulingQueue] Removed task " << task_id << " from "
+      RAY_LOG(DEBUG) << "Removed task " << task_id << " from "
                      << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
     } else {
@@ -317,8 +317,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_state) {
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
-    RAY_LOG(DEBUG) << "[SchedulingQueue] Added task "
-                   << task.GetTaskSpecification().TaskId() << " to "
+    RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
                    << GetTaskStateString(task_state) << " queue";
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
@@ -352,25 +351,25 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
 }
 
 void SchedulingQueue::AddBlockedTaskId(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "[SchedulingQueue] Added blocked task " << task_id;
+  RAY_LOG(DEBUG) << "Added blocked task " << task_id;
   auto inserted = blocked_task_ids_.insert(task_id);
   RAY_CHECK(inserted.second);
 }
 
 void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "[SchedulingQueue] Removed blocked task " << task_id;
+  RAY_LOG(DEBUG) << "Removed blocked task " << task_id;
   auto erased = blocked_task_ids_.erase(task_id);
   RAY_CHECK(erased == 1);
 }
 
 void SchedulingQueue::AddDriverTaskId(const TaskID &driver_id) {
-  RAY_LOG(DEBUG) << "[SchedulingQueue] Added driver task " << driver_id;
+  RAY_LOG(DEBUG) << "Added driver task " << driver_id;
   auto inserted = driver_task_ids_.insert(driver_id);
   RAY_CHECK(inserted.second);
 }
 
 void SchedulingQueue::RemoveDriverTaskId(const TaskID &driver_id) {
-  RAY_LOG(DEBUG) << "[SchedulingQueue] Removed driver task " << driver_id;
+  RAY_LOG(DEBUG) << "Removed driver task " << driver_id;
   auto erased = driver_task_ids_.erase(driver_id);
   RAY_CHECK(erased == 1);
 }

@@ -187,9 +187,10 @@ template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
     boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
-    int64_t error_message_type) {
-  std::shared_ptr<ClientConnection<T>> self(new ClientConnection(
-      message_handler, std::move(socket), debug_label, error_message_type));
+    const char *const *message_type_enum_names, int64_t error_message_type) {
+  std::shared_ptr<ClientConnection<T>> self(
+      new ClientConnection(message_handler, std::move(socket), debug_label,
+                           message_type_enum_names, error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
@@ -199,10 +200,12 @@ template <class T>
 ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
                                       boost::asio::basic_stream_socket<T> &&socket,
                                       const std::string &debug_label,
+                                      const char *const *message_type_enum_names,
                                       int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
       message_handler_(message_handler),
       debug_label_(debug_label),
+      message_type_enum_names_(message_type_enum_names),
       error_message_type_(error_message_type) {}
 
 template <class T>
@@ -261,8 +264,14 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
-    RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_
-                     << " took " << interval << " ms.";
+    const char *message_type;
+    if (message_type_enum_names_ == nullptr) {
+      message_type = std::to_string(read_type_).c_str();
+    } else {
+      message_type = message_type_enum_names_[read_type_];
+    }
+    RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type "
+                     << message_type << " took " << interval << " ms.";
   }
 }
 

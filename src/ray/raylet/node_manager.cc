@@ -993,7 +993,11 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
                                             int64_t message_type,
                                             const uint8_t *message_data) {
-  switch (static_cast<protocol::MessageType>(message_type)) {
+  const auto message_type_value = static_cast<protocol::MessageType>(message_type);
+  RAY_LOG(DEBUG) << "[NodeManager] Message "
+                 << protocol::EnumNameMessageType(message_type_value) << "("
+                 << message_type << ") from node manager";
+  switch (message_type_value) {
   case protocol::MessageType::ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
