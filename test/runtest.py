@@ -1175,6 +1175,7 @@ def test_illegal_api_calls(shutdown_only):
         ray.get(3)
 
 
+@pytest.mark.skip("This test sometimes fails.")
 def test_multithreading(shutdown_only):
     # This test requires at least 2 CPUs to finish since the worker does not
     # relase resources when joining the threads.

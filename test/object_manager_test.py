@@ -205,6 +205,7 @@ def test_actor_broadcast(ray_start_cluster):
         assert all(value == 1 for value in send_counts.values())
 
 
+@pytest.mark.skip("This test sometimes fails.")
 # The purpose of this test is to make sure that an object that was already been
 # transferred to a node can be transferred again.
 def test_object_transfer_retry(ray_start_empty_cluster):

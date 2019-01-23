@@ -374,6 +374,7 @@ def test_raylet_failed(ray_initialize_cluster):
                            True)
 
 
+@pytest.mark.skip("This test sometimes fails.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")

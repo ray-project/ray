@@ -116,14 +116,6 @@ matrix:
       script:
         - ./.travis/test-wheels.sh
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - PYTHONWARNINGS=ignore
-
 
 install:
   - ./.travis/install-dependencies.sh

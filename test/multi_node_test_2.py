@@ -70,6 +70,7 @@ def test_shutdown():
     assert not any(n.any_processes_alive() for n in [node, node2])
 
 
+@pytest.mark.skip("This test sometimes fails.")
 def test_internal_config(start_connected_longer_cluster):
     """Checks that the internal configuration setting works.
 

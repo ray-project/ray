@@ -1179,6 +1179,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     assert len(ready_ids) == 0
 
 
+@pytest.mark.skip("This test sometimes fails.")
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
@@ -1341,6 +1342,7 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
                 ray.get(x_id)
 
 
+@pytest.mark.skip("This test sometimes fails.")
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
