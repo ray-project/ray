@@ -19,11 +19,6 @@ class PullManager;
 struct PullInfo {
   PullInfo(bool required, const ObjectID &object_id, boost::asio::io_service &main_service,
            const std::function<void()> &timer_callback);
-  // ~PullInfo();
-
-  // PullInfo(const PullInfo &other) = delete;
-  //
-  // PullInfo &operator=(const PullInfo &other) = delete;
 
   void InitializeChunksIfNecessary(int64_t num_chunks);
   bool LifetimeEnded();
@@ -35,23 +30,23 @@ struct PullInfo {
   /// guarantee that the object appears locally).
   bool required;
   /// Our most recent estimate of which object managers have the object.
-  std::unordered_set<ClientID> clients_with_object_;
+  std::unordered_set<ClientID> clients_with_object;
   /// The IDs of the remote object managers that we have already requested
   /// the object from. If we cancel a request, then we will remove that
   /// client from this set.
-  std::unordered_set<ClientID> clients_requested_from_;
+  std::unordered_set<ClientID> clients_requested_from;
   /// If this object manager is currently receiving the object from a remote
   /// object manager, this will be the client ID of the remote object
   /// manager. Otherwise, it will be nil.
-  ClientID client_receiving_from_;
+  ClientID client_receiving_from;
   /// The total number of chunks that the object is divided into. If this is
   /// -1, then the number is not known.
   int64_t total_num_chunks;
   /// The chunk IDs that have successfully been received.
-  std::unordered_set<int> received_chunk_ids_;
+  std::unordered_set<int> received_chunk_ids;
   /// The chunks that have not yet been received. This is the complement of
-  /// the values in received_chunk_ids_.
-  std::unordered_set<int> remaining_chunk_ids_;
+  /// the values in received_chunk_ids.
+  std::unordered_set<int> remaining_chunk_ids;
   // /// A mapping from chunk index to the number of outstanding receive tasks
   // /// that are about to read that chunk (for chunks where that number is
   // /// non-zero). Note that some of these chunks may have already been read.
