@@ -30,12 +30,6 @@ class RayConfig {
     return config;
   }
 
-  void initialize(const std::unordered_map<std::string, int> &config_map) {
-    RAY_CHECK(!initialized_);
-    for (auto const &pair : config_map) {
-      // We use a big chain of if else statements because C++ doesn't allow
-      // switch statements on strings.
-
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
@@ -43,13 +37,20 @@ class RayConfig {
     name##_ = pair.second;                    \
     continue;                                 \
   }
+
+  void initialize(const std::unordered_map<std::string, int> &config_map) {
+    RAY_CHECK(!initialized_);
+    for (auto const &pair : config_map) {
+      // We use a big chain of if else statements because C++ doesn't allow
+      // switch statements on strings.
 #include "ray_config_def.h"
-/// ---------------------------------------------------------------------------
-#undef RAY_CONFIG
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
     }
     initialized_ = true;
   }
+
+/// ---------------------------------------------------------------------
+#undef RAY_CONFIG
 
   /// Whether the initialization of the instance has been called before.
   /// The RayConfig instance can only (and must) be initialized once.
