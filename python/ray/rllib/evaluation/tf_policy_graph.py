@@ -10,13 +10,14 @@ import numpy as np
 import ray
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.models.lstm import chop_into_sequences
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TFPolicyGraph(PolicyGraph):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -41,6 +42,7 @@ class TFPolicyGraph(PolicyGraph):
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
+    @DeveloperAPI
     def __init__(self,
                  observation_space,
                  action_space,
@@ -208,35 +210,62 @@ class TFPolicyGraph(PolicyGraph):
             saver = tf.train.Saver()
             saver.save(self._sess, save_path)
 
+    @DeveloperAPI
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders.
 
         Optional, only required to work with the multi-GPU optimizer."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def extra_compute_action_feed_dict(self):
         """Extra dict to pass to the compute actions session run."""
         return {}
 
+    @DeveloperAPI
     def extra_compute_action_fetches(self):
         """Extra values to fetch and return from compute_actions()."""
         return {}  # e.g, value function
 
+    @DeveloperAPI
     def extra_compute_grad_feed_dict(self):
         """Extra dict to pass to the compute gradients session run."""
         return {}  # e.g, kl_coeff
 
+    @DeveloperAPI
     def extra_compute_grad_fetches(self):
         """Extra values to fetch and return from compute_gradients()."""
         return {}  # e.g, td error
 
+    @DeveloperAPI
     def extra_apply_grad_feed_dict(self):
         """Extra dict to pass to the apply gradients session run."""
         return {}
 
+    @DeveloperAPI
     def extra_apply_grad_fetches(self):
         """Extra values to fetch and return from apply_gradients()."""
         return {}  # e.g., batch norm updates
+
+    @DeveloperAPI
+    def optimizer(self):
+        """TF optimizer to use for policy optimization."""
+        return tf.train.AdamOptimizer()
+
+    @DeveloperAPI
+    def gradients(self, optimizer):
+        """Override for custom gradient computation."""
+        return optimizer.compute_gradients(self._loss)
+
+    @DeveloperAPI
+    def _get_is_training_placeholder(self):
+        """Get the placeholder for _is_training, i.e., for batch norm layers.
+
+        This can be called safely before __init__ has run.
+        """
+        if not hasattr(self, "_is_training"):
+            self._is_training = tf.placeholder_with_default(False, ())
+        return self._is_training
 
     def _extra_input_signature_def(self):
         """Extra input signatures to add when exporting tf model.
@@ -257,14 +286,6 @@ class TFPolicyGraph(PolicyGraph):
             k: tf.saved_model.utils.build_tensor_info(fetches[k])
             for k in fetches.keys()
         }
-
-    def optimizer(self):
-        """TF optimizer to use for policy optimization."""
-        return tf.train.AdamOptimizer()
-
-    def gradients(self, optimizer):
-        """Override for custom gradient computation."""
-        return optimizer.compute_gradients(self._loss)
 
     def _build_signature_def(self):
         """Build signature def map for tensorflow SavedModelBuilder.
@@ -364,15 +385,6 @@ class TFPolicyGraph(PolicyGraph):
         ])
         return fetches[1], fetches[2]
 
-    def _get_is_training_placeholder(self):
-        """Get the placeholder for _is_training, i.e., for batch norm layers.
-
-        This can be called safely before __init__ has run.
-        """
-        if not hasattr(self, "_is_training"):
-            self._is_training = tf.placeholder_with_default(False, ())
-        return self._is_training
-
     def _get_loss_inputs_dict(self, batch):
         feed_dict = {}
         if self._batch_divisibility_req > 1:
@@ -414,9 +426,11 @@ class TFPolicyGraph(PolicyGraph):
         return feed_dict
 
 
+@DeveloperAPI
 class LearningRateSchedule(object):
     """Mixin for TFPolicyGraph that adds a learning rate schedule."""
 
+    @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf.get_variable("lr", initializer=lr)
         if lr_schedule is None:
