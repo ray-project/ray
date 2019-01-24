@@ -27,6 +27,7 @@ RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
+RAY_HOME = os.path.join(os.path.dirname(__file__), "../..")
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/thirdparty/redis/src/redis-server")
@@ -974,8 +975,10 @@ def build_java_worker_command(include_java,
     if raylet_name is not None:
         command += ("-Dray.raylet.socket-name=%s" % raylet_name)
 
+    command += ("-Dray.home=%s" % RAY_HOME)
     command += ("-Dray.log-dir=%s" % get_logs_dir_path())
     command += "org.ray.runtime.runner.worker.DefaultWorker"
+
     return command
 
 
