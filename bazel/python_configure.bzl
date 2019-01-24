@@ -1,4 +1,8 @@
+# Adapted with a minor modification from grpc/third_party/py/python_configure.bzl:
+# Changed "//third_party/py:%s.tpl" -> "@//bazel:%s.tpl"
+
 # Adapted with modifications from tensorflow/third_party/py/
+
 """Repository rule for Python autoconfiguration.
 `python_configure` depends on the following environment variables:
   * `PYTHON_BIN_PATH`: location of python binary.

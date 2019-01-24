@@ -1,5 +1,6 @@
 """Custom rules for gRPC Python"""
 
+# Adapted with minor from grpc/bazel/cython_library.bzl
 
 # Adapted with modifications from
 # tensorflow/tensorflow/core/platform/default/build_config.bzl
