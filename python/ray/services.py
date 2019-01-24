@@ -296,7 +296,11 @@ def start_ray_process(command,
         use_tmux = True
 
     if use_gdb:
-        raise NotImplementedError
+        # cwd is RAY_DIRECTORY/python/ray
+        cwd = os.path.abspath(os.path.dirname(__file__))
+        run_args = ' '.join(["'{}'".format(arg) for arg in lst])
+        with open(cwd + ".gdbinit", "w") as gdbinit:
+            gdbinit.write("define run_ray\n\trun {}\nend".format(run_args))
     if use_tmux:
         raise NotImplementedError
     if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
