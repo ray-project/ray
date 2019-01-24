@@ -2311,7 +2311,7 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_id_hex = ray.ObjectID.nil_id().hex()
+    nil_id_hex = ray.ObjectID.nil().hex()
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
@@ -2442,17 +2442,17 @@ def test_workers(shutdown_only):
 
 
 def test_specific_driver_id():
-    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    dummy_driver_id = ray.DriverID(b"00112233445566778899")
     ray.init(driver_id=dummy_driver_id)
 
     @ray.remote
     def f():
-        return ray.worker.global_worker.task_driver_id.id()
+        return ray.worker.global_worker.task_driver_id.binary()
 
-    assert_equal(dummy_driver_id.id(), ray.worker.global_worker.worker_id)
+    assert_equal(dummy_driver_id.binary(), ray.worker.global_worker.worker_id)
 
     task_driver_id = ray.get(f.remote())
-    assert_equal(dummy_driver_id.id(), task_driver_id)
+    assert_equal(dummy_driver_id.binary(), task_driver_id)
 
     ray.shutdown()
 
@@ -2460,8 +2460,8 @@ def test_specific_driver_id():
 def test_object_id_properties():
     id_bytes = b"00112233445566778899"
     object_id = ray.ObjectID(id_bytes)
-    assert object_id.id() == id_bytes
-    object_id = ray.ObjectID.nil_id()
+    assert object_id.binary() == id_bytes
+    object_id = ray.ObjectID.nil()
     assert object_id.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(id_bytes + b"1234")
@@ -2469,7 +2469,7 @@ def test_object_id_properties():
         ray.ObjectID(b"0123456789")
     object_id = ray.ObjectID(_random_string())
     assert not object_id.is_nil()
-    assert object_id.id() != id_bytes
+    assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
@@ -2506,7 +2506,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.wait([x_id])
     ray.wait([f.remote()])
     assert not ray.worker.global_worker.plasma_client.contains(
-        ray.pyarrow.plasma.ObjectID(x_id.id()))
+        ray.pyarrow.plasma.ObjectID(x_id.binary()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
@@ -2534,7 +2534,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ObjectID.nil_id()
+    driver_id = ray.DriverID.nil()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2544,13 +2544,13 @@ def test_duplicate_error_messages(shutdown_only):
     r = ray.worker.global_worker.redis_client
 
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
                       error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
                       error_data)
 
 
