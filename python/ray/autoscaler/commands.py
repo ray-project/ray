@@ -98,7 +98,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     # Loop here to check that both the head and worker nodes are actually
     #   really gone
     A = remaining_nodes()
-    with LogTimer("teardown_cluster", "Termination done.") as _:
+    with LogTimer("teardown_cluster", "Termination done."):
         while A:
             logInfo("teardown_cluster",
                 "Terminating {} nodes...".format(len(A)))

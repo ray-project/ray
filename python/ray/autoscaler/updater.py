@@ -101,7 +101,7 @@ class NodeUpdater(object):
         # We assume that this never changes.
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
-        with LogTimer("NodeUpdater", "{}: Got IP".format(self.node_id)) as _:
+        with LogTimer("NodeUpdater", "{}: Got IP".format(self.node_id)):
             ip = self.wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
 
@@ -129,7 +129,7 @@ class NodeUpdater(object):
         )
         try:
             m = "{}: Applied config {}".format(self.node_id, self.runtime_hash)
-            with LogTimer("NodeUpdater", m) as _:
+            with LogTimer("NodeUpdater", m):
                 self.do_update()
         except Exception as e:
             error_str = str(e)
@@ -184,7 +184,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         # Wait for SSH access
-        with LogTimer("NodeUpdater", "{}: Got SSH".format(self.node_id)) as _:
+        with LogTimer("NodeUpdater", "{}: Got SSH".format(self.node_id)):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
@@ -203,7 +203,7 @@ class NodeUpdater(object):
 
             m = "{}: Synced {} to {}".format(
                 self.node_id, local_path, remote_path)
-            with LogTimer("NodeUpdater", m) as _:
+            with LogTimer("NodeUpdater", m):
                 self.ssh_cmd(
                     "mkdir -p {}".format(os.path.dirname(remote_path)),
                     redirect=open("/dev/null", "w"),
@@ -216,7 +216,7 @@ class NodeUpdater(object):
 
         m = "{}: Setup commands completed".format(
             self.node_id)
-        with LogTimer("NodeUpdater", m) as _:
+        with LogTimer("NodeUpdater", m):
             for cmd in self.setup_cmds:
                 self.ssh_cmd(
                     cmd,

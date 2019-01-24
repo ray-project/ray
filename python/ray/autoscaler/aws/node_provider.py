@@ -59,27 +59,29 @@ class AWSNodeProvider(NodeProvider):
         self.cached_nodes = {}
 
     def _node_tag_update_loop(self):
+        """ Update the AWS tags for a cluster periodically.
+
+        The purpose of this loop is to avoid excessive EC2 calls when a large
+        number of nodes are being launched simultaneously.
+        """
         while True:
             self.tag_cache_update_event.wait()
             self.tag_cache_update_event.clear()
 
-            DD = defaultdict(list)
+            batch_updates = defaultdict(list)
 
             with self.tag_cache_lock:
-                if self.tag_cache_pending:
-                    for node_id, tags in self.tag_cache_pending.items():
-                        for x in tags.items():
-                            DD[x].append(node_id)
+                for node_id, tags in self.tag_cache_pending.items():
+                    for x in tags.items():
+                        batch_updates[x].append(node_id)
+                    self.tag_cache[node_id].update(tags)
 
-                    for node_id, tags in self.tag_cache_pending.items():
-                        self.tag_cache[node_id].update(tags)
+                self.tag_cache_pending = {}
 
-                    self.tag_cache_pending = {}
-
-            for (k, v), node_ids in DD.items():
+            for (k, v), node_ids in batch_updates.items():
                 m = "Set tag {}={} on {}".format(k, v, node_ids)
-                with LogTimer("AWSNodeProvider", m) as _:
-                    if k == TAG_RAY_NODE_NAME:  # TODO: to_aws_format
+                with LogTimer("AWSNodeProvider", m):
+                    if k == TAG_RAY_NODE_NAME:
                         k = "Name"
                     self.ec2.meta.client.create_tags(
                         Resources=node_ids,
@@ -136,7 +138,7 @@ class AWSNodeProvider(NodeProvider):
         with self.tag_cache_lock:
             d1 = self.tag_cache[node_id]
             d2 = self.tag_cache_pending.get(node_id, {})
-            return {**d1, **d2}
+            return dict(d1, **d2)
 
     def external_ip(self, node_id):
         return self._node(node_id).public_ip_address
