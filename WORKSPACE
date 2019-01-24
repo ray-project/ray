@@ -22,8 +22,20 @@ git_repository(
 )
 
 new_git_repository(
-    name = "plasma",
-    build_file = "@//bazel:BUILD.plasma",
-    remote = "https://github.com/ray-project/arrow",
-    commit = "1e4f867eb1dc31107331ab1defdffb94467f31dc",
+   name = "plasma",
+   build_file = "@//bazel:BUILD.plasma",
+   remote = "https://github.com/pcmoritz/arrow",
+   commit = "dfec3d108ead6a40f2bc662c0d6ee6cd66e65f30"
 )
+
+new_http_archive(
+    name="cython",
+    urls=[
+        "https://github.com/cython/cython/archive/49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e.tar.gz",
+    ],
+    strip_prefix="cython-49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e",
+    build_file="@//bazel:BUILD.cython",
+)
+
+load("@//bazel:python_configure.bzl", "python_configure")
+python_configure(name="local_config_python")
