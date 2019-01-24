@@ -967,16 +967,16 @@ def build_java_worker_command(include_java,
 
     command = ("java -classpath %s " % java_classpath)
     if redis_address is not None:
-        command += ("-Dray.redis.address=%s" % redis_address)
+        command += ("-Dray.redis.address=%s " % redis_address)
 
     if plasma_store_name is not None:
-        command += ("-Dray.object-store.socket-name=%s" % plasma_store_name)
+        command += ("-Dray.object-store.socket-name=%s " % plasma_store_name)
 
     if raylet_name is not None:
-        command += ("-Dray.raylet.socket-name=%s" % raylet_name)
+        command += ("-Dray.raylet.socket-name=%s " % raylet_name)
 
-    command += ("-Dray.home=%s" % RAY_HOME)
-    command += ("-Dray.log-dir=%s" % get_logs_dir_path())
+    command += ("-Dray.home=%s " % RAY_HOME)
+    command += ("-Dray.log-dir=%s " % get_logs_dir_path())
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command

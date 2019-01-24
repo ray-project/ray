@@ -220,7 +220,10 @@ class Node(object):
             use_profiler=use_profiler,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            config=self._config)
+            config=self._config,
+            include_java=self._ray_params.include_java,
+            java_classpath=self._ray_params.java_classpath,
+        )
         assert PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[PROCESS_TYPE_RAYLET] = [
             ProcessInfo(
