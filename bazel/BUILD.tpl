@@ -1,3 +1,5 @@
+# Adapted from grpc/third_party/py/BUILD.tpl
+
 # Adapted with modifications from tensorflow/third_party/py/
 
 package(default_visibility=["//visibility:public"])
