@@ -27,6 +27,11 @@ DEFAULT_CONFIG = with_common_config({
     # target noise limit (bound)
     "noise_clip": 0.5,
 
+    # === Handling parameterized (i.e., hybrid) action space ===
+    # Bounded parameter space learning: https://www.cs.utexas.edu/~pstone/Papers/bib2html/b2hd-ICLR16-hausknecht.html
+    # options include "zeroing", "squashing" (default to use sigmoid), "inverting"
+    "bounded": "squashing",
+
     # === Model ===
     # Hidden layer sizes of the policy network
     "actor_hiddens": [64, 64],

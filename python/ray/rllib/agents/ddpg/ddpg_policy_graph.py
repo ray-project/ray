@@ -30,7 +30,7 @@ class PNetwork(object):
     value from (0, 1) due to the sigmoid function."""
 
     def __init__(self, model, dim_actions, hiddens=[64, 64],
-                 activation="relu"):
+                 activation="relu", bounded="squashing"):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
@@ -38,8 +38,12 @@ class PNetwork(object):
                 action_out, num_outputs=hidden, activation_fn=activation)
         # Use sigmoid layer to bound values within (0, 1)
         # shape of action_scores is [batch_size, dim_actions]
-        self.action_scores = layers.fully_connected(
-            action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+        if bounded == "squashing":
+            self.action_scores = layers.fully_connected(
+                action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+        else:
+            self.action_scores = layers.fully_connected(
+                action_out, num_outputs=dim_actions, activation_fn=None)
         self.model = model
 
 
@@ -60,11 +64,15 @@ class ActionNetwork(object):
                  act_noise=0.1,
                  is_target=False,
                  target_noise=0.2,
-                 noise_clip=0.5):
+                 noise_clip=0.5,
+                 bounded="squashing"):
 
         # shape is [None, dim_action]
-        deterministic_actions = (
-            (high_action - low_action) * p_values + low_action)
+        if bounded == "squashing":
+            deterministic_actions = (
+                (high_action - low_action) * p_values + low_action)
+        else:
+            deterministic_actions = p_values
 
         if use_gaussian_noise:
             if is_target:
@@ -256,6 +264,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 self.p_t,
                 stochastic=tf.constant(value=False, dtype=tf.bool),
                 eps=.0)
+            # for bounded parameter space
+            self.bounded_p = output_actions
             output_actions_estimated = self._build_action_network(
                 p_tp1,
                 stochastic=tf.constant(
@@ -380,11 +390,15 @@ class DDPGPolicyGraph(TFPolicyGraph):
     @override(TFPolicyGraph)
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
-            actor_grads_and_vars = _minimize_and_clip(
+            actor_grads_and_vars = _minimize_and_bound_and_clip(
                 optimizer,
                 self.loss.actor_loss,
                 var_list=self.p_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
+                clip_val=self.config["grad_norm_clipping"],
+                bounded=self.config["bounded"],
+                low_action=self.low_action,
+                high_action=self.high_action,
+                bounded_p=self.bounded_p)
             critic_grads_and_vars = _minimize_and_clip(
                 optimizer,
                 self.loss.critic_loss,
@@ -459,7 +473,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
                 "is_training": self._get_is_training_placeholder(),
             }, obs_space, 1, self.config["model"]), self.dim_actions,
             self.config["actor_hiddens"],
-            self.config["actor_hidden_activation"])
+            self.config["actor_hidden_activation"],
+            self.config["bounded"])
         return policy_net.action_scores, policy_net.model
 
     def _build_action_network(self, p_values, stochastic, eps,
@@ -510,3 +525,30 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
+
+
+def _minimize_and_bound_and_clip(optimizer, objective, var_list, clip_val=10,
+                                 bounded="squashing", low_action=None,
+                                 high_action=None, bounded_p=None):
+    """Minimized `objective` using `optimizer` w.r.t. variables in
+    `var_list` where gradients are modified according to bounded strategy
+    while ensure the norm of the gradients for each
+    variable is clipped to `clip_val`
+    """
+    if bounded == "squashing":
+        gradients = optimizer.compute_gradients(objective, var_list=var_list)
+    elif bounded == "zeroing":
+        pgrad = tf.gradients(ys=objective, xs=bounded_p)
+        pgrad = [grad*tf.to_float(tf.logical_and(tf.greater(bounded_p, low_action), tf.less(bounded_p, high_action))) for grad in pgrad]
+        gradients = tf.gradients(ys=bounded_p, xs=var_list, grad_ys=pgrad)
+        gradients = [(grad, var) for grad, var in zip(gradients, var_list)]
+    else:
+        pgrad = tf.gradients(ys=objective, xs=bounded_p)# a list containing one tensor element
+        pgrad = [(1.0-tf.to_float(tf.greater(grad, 0))) * grad * tf.divide((high_action-bounded_p), high_action-low_action) + tf.to_float(tf.greater(grad, 0)) * grad * tf.divide(bounded_p-low_action, high_action-low_action) for grad in pgrad]
+        gradients = tf.gradients(ys=bounded_p, xs=var_list, grad_ys=pgrad)
+        gradients = [(grad, var) for grad, var in zip(gradients, var_list)]
+
+    for i, (grad, var) in enumerate(gradients):
+        if grad is not None:
+            gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
+    return gradients
