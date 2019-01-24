@@ -176,7 +176,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def testNoResetUntilPoll(self):
-        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 1)
+        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 1)
         self.assertFalse(env.get_unwrapped()[0].resetted)
         env.poll()
         self.assertTrue(env.get_unwrapped()[0].resetted)

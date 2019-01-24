@@ -324,7 +324,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             self.dones.remove(env_id)
         return obs
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def get_unwrapped(self):
         return [state.env for state in self.env_states]
 
