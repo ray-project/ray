@@ -619,6 +619,9 @@ class Worker(object):
             self.task_context.task_index += 1
             # The parent task must be set for the submitted task.
             assert not self.current_task_id.is_nil()
+            # Current driver id must not be nil when submitting a task.
+            # Because every task must belong to a driver.
+            assert not self.task_driver_id.is_nil()
             # Submit the task to local scheduler.
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())

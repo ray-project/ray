@@ -8,10 +8,12 @@ import collections
 
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def collect_metrics(local_evaluator, remote_evaluators=[],
                     timeout_seconds=180):
     """Gathers episode metrics from PolicyEvaluator instances."""
@@ -22,6 +24,7 @@ def collect_metrics(local_evaluator, remote_evaluators=[],
     return metrics
 
 
+@DeveloperAPI
 def collect_episodes(local_evaluator,
                      remote_evaluators=[],
                      timeout_seconds=180):
@@ -43,6 +46,7 @@ def collect_episodes(local_evaluator,
     return episodes, num_metric_batches_dropped
 
 
+@DeveloperAPI
 def summarize_episodes(episodes, new_episodes, num_dropped):
     """Summarizes a set of episode metrics tuples.
 

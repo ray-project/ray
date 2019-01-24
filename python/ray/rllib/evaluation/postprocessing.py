@@ -5,12 +5,14 @@ from __future__ import print_function
 import numpy as np
 import scipy.signal
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
+@DeveloperAPI
 def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its value targets and the advantage.
 
@@ -54,6 +56,7 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     return SampleBatch(traj)
 
 
+@DeveloperAPI
 def compute_targets(rollout, action_space, last_r=0.0, gamma=0.9, lambda_=1.0):
     """Given a rollout, compute targets.
 
