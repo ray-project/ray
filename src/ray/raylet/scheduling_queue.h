@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <array>
 
 #include "ray/raylet/task.h"
 #include "ray/util/logging.h"
