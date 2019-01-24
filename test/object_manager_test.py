@@ -226,7 +226,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     x_ids = [f.remote(10**i) for i in [1, 2, 3, 4, 5, 6, 7]]
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     start_time = time.time()
 
@@ -240,7 +240,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
         ray.put(x)
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     end_time = time.time()
 
@@ -264,7 +264,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
         ray.put(x)
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     time.sleep(repeated_push_delay)
     ray.get(x_ids)

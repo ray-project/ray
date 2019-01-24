@@ -155,6 +155,13 @@ class TaskSpecification {
   flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const;
 
+  std::string SerializeAsString() const {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto string = ToFlatbuffer(fbb);
+    fbb.Finish(string);
+    return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+  }
+
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
   UniqueID DriverId() const;
