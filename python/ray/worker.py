@@ -929,6 +929,7 @@ class Worker(object):
             with profiling.profile("task", extra_data=extra_data, worker=self):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
+                    self._handle_actor_checkpoint(task)
                 # Reset the state fields so the next task can run.
                 self.task_context.current_task_id = TaskID.nil()
                 self.task_context.task_index = 0
@@ -948,6 +949,56 @@ class Worker(object):
         if reached_max_executions:
             self.raylet_client.disconnect()
             sys.exit(0)
+
+    def _handle_actor_checkpoint(self, task):
+        """Handle actor checkpoint, if the worker is a checkpointable
+        actor.
+        """
+        is_actor_creation_task = not task.actor_creation_id().is_nil()
+        is_actor_task = not task.actor_id().is_nil()
+        if not is_actor_creation_task and not is_actor_task:
+            return
+        actor_id = self.actor_id
+        actor = self.actors[actor_id]
+        # An actor that needs checkpointing must inherent the `Checkpointable`
+        # interface.
+        if not isinstance(actor, ray.actor.Checkpointable):
+            return
+
+        if is_actor_creation_task:
+            self._num_tasks_since_last_checkpoint = 0
+            self._last_checkpoint_timestamp = int(1000 * time.time())
+            checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
+            if len(checkpoints) > 0:
+                # If we found previously saved checkpoints for this actor,
+                # call the `load_checkpoint` callback.
+                checkpoint_id = actor.load_checkpoint(actor_id, checkpoints)
+                if checkpoint_id is not None:
+                    # Check that the returned checkpoint id is in the
+                    # `available_checkpoints` list.
+                    msg = (
+                        "`load_checkpoint must return a checkpoint id that " +
+                        "exists in the `available_checkpoints` list, or None.")
+                    assert any(checkpoint_id == checkpoint.checkpoint_id
+                               for checkpoint in checkpoints), msg
+                    # Notify raylet that this actor has been resumed from
+                    # a checkpoint.
+                    self.raylet_client.notify_actor_resumed_from_checkpoint(
+                        actor_id, checkpoint_id)
+        elif is_actor_task:
+            self._num_tasks_since_last_checkpoint += 1
+            now = int(1000 * time.time())
+            checkpoint_context = ray.actor.CheckpointContext(
+                actor_id, self._num_tasks_since_last_checkpoint,
+                now - self._last_checkpoint_timestamp)
+            if actor.should_checkpoint(checkpoint_context):
+                # If `should_checkpoint` returns True, notify raylet to prepare
+                # a checkpoint and then call `save_checkpoint`.
+                checkpoint_id = self.raylet_client.prepare_actor_checkpoint(
+                    actor_id)
+                actor.save_checkpoint(actor_id, checkpoint_id)
+                self._num_tasks_since_last_checkpoint = 0
+                self._last_checkpoint_timestamp = now
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.

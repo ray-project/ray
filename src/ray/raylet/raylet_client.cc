@@ -358,3 +358,31 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
   auto status = conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
   return status;
 }
+
+ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
+                                                 ActorCheckpointID &checkpoint_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
+  fbb.Finish(message);
+
+  std::unique_ptr<uint8_t[]> reply;
+  auto status =
+      conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
+                                MessageType::PrepareActorCheckpointReply, reply, &fbb);
+  if (!status.ok()) return status;
+  auto reply_message =
+      flatbuffers::GetRoot<ray::protocol::PrepareActorCheckpointReply>(reply.get());
+  checkpoint_id = ObjectID::from_binary(reply_message->checkpoint_id()->str());
+  return ray::Status::OK();
+}
+
+ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyActorResumedFromCheckpoint(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
+  fbb.Finish(message);
+
+  return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
+}

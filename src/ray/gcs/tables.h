@@ -443,6 +443,30 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   }
 };
 
+class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
+ public:
+  ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                       AsyncGcsClient *client)
+      : Table(contexts, client) {
+    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
+  };
+};
+
+class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
+ public:
+  ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                         AsyncGcsClient *client)
+      : Table(contexts, client) {
+    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
+  };
+
+  /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
+  /// total number of checkpoints in GCS has exceeded
+  /// `RayConfig::instance().num_actor_checkpoints_to_keep()`
+  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
+                         const UniqueID &checkpoint_id);
+};
+
 namespace raylet {
 
 class TaskTable : public Table<TaskID, ray::protocol::Task> {

@@ -23,6 +23,8 @@ def ray_start_regular():
     # Start the Ray processes.
     ray.init(
         num_cpus=1,
+        # redirect_output=True,
+        # redirect_worker_output=True,
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200,
             "num_heartbeats_timeout": 10,
@@ -2380,3 +2382,84 @@ def test_multiple_actor_reconstruction(head_node_cluster):
     for _, result_id_list in result_ids.items():
         results = list(range(1, len(result_id_list) + 1))
         assert ray.get(result_id_list) == results
+
+
+def test_actor_checkpointing(ray_start_regular):
+    """Test actor checkpointing and restoring form a checkpoint."""
+
+    @ray.remote(max_reconstructions=2)
+    class CheckpointableActor(ray.actor.Checkpointable):
+        def __init__(self, checkpoint_dir):
+            self.value = 0
+            self.resumed_from_checkpoint = False
+            self.increase_called = False
+            self.checkpoint_dir = checkpoint_dir
+
+        def increase(self):
+            self.increase_called = True
+            self.value += 1
+            return self.value
+
+        def was_resumed_from_checkpoint(self):
+            return self.resumed_from_checkpoint
+
+        def get_pid(self):
+            return os.getpid()
+
+        def should_checkpoint(self, checkpoint_context):
+            # Checkpoint the actor when value is increased to 3.
+            should_checkpoint = self.increase_called and self.value == 3
+            self.increase_called = False
+            return should_checkpoint
+
+        def save_checkpoint(self, actor_id, checkpoint_id):
+            actor_id, checkpoint_id = actor_id.hex(), checkpoint_id.hex()
+            # Save checkpoint into a file.
+            with open(self.checkpoint_dir + actor_id, "w") as f:
+                print(checkpoint_id, self.value, file=f)
+
+        def load_checkpoint(self, actor_id, available_checkpoints):
+            actor_id = actor_id.hex()
+            filename = self.checkpoint_dir + actor_id
+            # Load checkpoint from the file.
+            if not os.path.isfile(filename):
+                return None
+            else:
+                with open(filename, "r") as f:
+                    line = f.readline()
+                    checkpoint_id, value = line.split(" ")
+                    self.value = int(value)
+                    self.resumed_from_checkpoint = True
+                    checkpoint_id = ray.ActorCheckpointID(
+                        ray.utils.hex_to_binary(checkpoint_id))
+                    assert any(checkpoint_id == checkpoint.checkpoint_id
+                               for checkpoint in available_checkpoints)
+                    return checkpoint_id
+
+    def kill_actor(actor):
+        """Kill actor process."""
+        pid = ray.get(actor.get_pid.remote())
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+
+    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
+    if not os.path.isdir(checkpoint_dir):
+        os.mkdir(checkpoint_dir)
+
+    actor = CheckpointableActor.remote(checkpoint_dir)
+    # Call increase 3 times
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+    # Assert that the actor wasn't resumed from a checkpoint.
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+    # kill actor process.
+    kill_actor(actor)
+    # Assert that the actor was resumed from a checkpoint and its value is
+    # still correct.
+    assert ray.get(actor.increase.remote()) == 4
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+    # Kill actor again and check that reconstruction still works after the
+    # actor resuming from a checkpoint.
+    kill_actor(actor)
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True

@@ -20,6 +20,9 @@ enum TablePrefix:int {
   DRIVER,
   PROFILE,
   TASK_LEASE,
+  ACTOR_CHECKPOINT,
+  // The table that stores the actor-to-checkpoint-ids mapping.
+  ACTOR_CHECKPOINT_ID,
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -317,4 +320,33 @@ table DriverTableData {
   driver_id: string;
   // Whether it's dead.
   is_dead: bool;
+}
+
+// This table stores the actor checkpoint data. An actor checkpoint
+// is the snapshot of an actor's state in the actor registration.
+// See `actor_registration.h` for more detailed explanation of these fields.
+table ActorCheckpointData {
+  // ID of this actor.
+  actor_id: string;
+  // The dummy object ID of actor's most recently executed task.
+  execution_dependency: string;
+  // A list of IDs of this actor's handles.
+  handle_ids: [string];
+  // The task counters of the above handles.
+  task_counters: [long];
+  // The frontier dependencies of the above handles.
+  frontier_dependencies: [string];
+  // A list of unreleased dummy objects from this actor.
+  unreleased_dummy_objects: [string];
+  // The numbers of dependencies for the above unreleased dummy objects.
+  num_dummy_object_dependencies: [int];
+}
+
+table ActorCheckpointIdData {
+  // ID of this actor.
+  actor_id: string;
+  // A list of the available checkpoint IDs for this actor.
+  checkpoint_ids: [string];
+  // A list of the timestamps for each of the above `checkpoint_ids`.
+  timestamps: [long];
 }

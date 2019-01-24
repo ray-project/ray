@@ -49,9 +49,20 @@ except ImportError as e:
 modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
-from ray._raylet import (UniqueID, ObjectID, DriverID, ClientID, ActorID,
-                         ActorHandleID, FunctionID, ActorClassID, TaskID,
-                         _ID_TYPES, Config as _Config)  # noqa: E402
+from ray._raylet import (
+    ActorCheckpointID,
+    ActorClassID,
+    ActorHandleID,
+    ActorID,
+    ClientID,
+    Config as _Config,
+    DriverID,
+    FunctionID,
+    ObjectID,
+    TaskID,
+    UniqueID,
+    _ID_TYPES,
+)  # noqa: E402
 
 _config = _Config()
 
@@ -82,8 +93,16 @@ __all__ = [
 ]
 
 __all__ += [
-    "UniqueID", "ObjectID", "DriverID", "ClientID", "ActorID", "ActorHandleID",
-    "FunctionID", "ActorClassID", "TaskID"
+    "ActorCheckpointID",
+    "ActorClassID",
+    "ActorHandleID",
+    "ActorID",
+    "ClientID",
+    "DriverID",
+    "FunctionID",
+    "ObjectID",
+    "TaskID",
+    "UniqueID",
 ]
 
 import ctypes  # noqa: E402

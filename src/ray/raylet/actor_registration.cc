@@ -77,6 +77,22 @@ void ActorRegistration::AddHandle(const ActorHandleID &handle_id,
 
 int ActorRegistration::NumHandles() const { return frontier_.size(); }
 
+void ActorRegistration::RestoreFrontier(const ObjectID &actor_creation_dependency,
+                                        const ActorCheckpointDataT &checkpoint_data) {
+  execution_dependency_ = ObjectID::from_binary(checkpoint_data.execution_dependency);
+  for (size_t i = 0; i < checkpoint_data.handle_ids.size(); i++) {
+    auto handle_id = ActorHandleID::from_binary(checkpoint_data.handle_ids[i]);
+    auto &frontier_entry = frontier_[handle_id];
+    frontier_entry.task_counter = checkpoint_data.task_counters[i];
+    frontier_entry.execution_dependency =
+        ObjectID::from_binary(checkpoint_data.frontier_dependencies[i]);
+  }
+  for (size_t i = 0; i < checkpoint_data.unreleased_dummy_objects.size(); i++) {
+    auto dummy = ObjectID::from_binary(checkpoint_data.unreleased_dummy_objects[i]);
+    dummy_objects_[dummy] = checkpoint_data.num_dummy_object_dependencies[i];
+  }
+}
+
 }  // namespace raylet
 
 }  // namespace ray

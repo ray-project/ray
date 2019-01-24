@@ -906,3 +906,37 @@ class GlobalState(object):
             binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
         }
+
+    def actor_checkpoint_info(self, actor_id):
+        """Get checkpoint info for the given actor id.
+         Args:
+            actor_id: Actor's ID.
+         Returns:
+            A dictionary with information about the actor's checkpoint IDs and
+            their timestamps.
+        """
+        self._check_connected()
+        message = self._execute_command(
+            actor_id,
+            "RAY.TABLE_LOOKUP",
+            ray.gcs_utils.TablePrefix.ACTOR_CHECKPOINT_ID,
+            "",
+            actor_id.binary(),
+        )
+        if message is None:
+            return None
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            message, 0)
+        entry = (
+            ray.gcs_utils.ActorCheckpointIdData.GetRootAsActorCheckpointIdData(
+                gcs_entry.Entries(0), 0))
+        return {
+            "ActorID": ray.utils.binary_to_hex(entry.ActorId()),
+            "CheckpointIds": [
+                ray.ObjectID(entry.CheckpointIds(i))
+                for i in range(entry.CheckpointIdsLength())
+            ],
+            "Timestamps": [
+                entry.Timestamps(i) for i in range(entry.TimestampsLength())
+            ],
+        }

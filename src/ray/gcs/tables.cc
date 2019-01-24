@@ -2,6 +2,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
+#include "ray/ray_config.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -438,6 +440,40 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
+                                                  const ActorID &actor_id,
+                                                  const UniqueID &checkpoint_id) {
+  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+                             const ActorCheckpointIdDataT &data) {
+    std::shared_ptr<ActorCheckpointIdDataT> copy =
+        std::make_shared<ActorCheckpointIdDataT>(data);
+    copy->timestamps.push_back(current_sys_time_ms());
+    copy->checkpoint_ids.push_back(checkpoint_id.binary());
+    auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
+    while (copy->timestamps.size() > num_to_keep) {
+      // Delete the checkpoint from actor checkpoint table.
+      const auto &checkpoint_id = UniqueID::from_binary(*copy->checkpoint_ids.begin());
+      RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor " << actor_id;
+      copy->timestamps.erase(copy->timestamps.begin());
+      copy->checkpoint_ids.erase(copy->checkpoint_ids.begin());
+      // TODO(hchen): also delete checkpoint data from GCS.
+    }
+    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+  };
+  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+    std::shared_ptr<ActorCheckpointIdDataT> data =
+        std::make_shared<ActorCheckpointIdDataT>();
+    data->actor_id = id.binary();
+    data->timestamps.push_back(current_sys_time_ms());
+    data->checkpoint_ids.push_back(checkpoint_id.binary());
+    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+  };
+  return Lookup(job_id, actor_id, lookup_callback, failure_callback);
+}
+
+
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
@@ -451,6 +487,8 @@ template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 template class Log<JobID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
+template class Table<ActorCheckpointID, ActorCheckpointData>;
+template class Table<ActorID, ActorCheckpointIdData>;
 
 }  // namespace gcs
 

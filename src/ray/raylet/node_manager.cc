@@ -681,6 +681,12 @@ void NodeManager::ProcessClientMessage(
     std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
     object_manager_.FreeObjects(object_ids, message->local_only());
   } break;
+  case protocol::MessageType::PrepareActorCheckpointRequest: {
+    ProcessPrepareActorCheckpointRequest(client, message_data);
+  } break;
+  case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
+    ProcessNotifyActorResumedFromCheckpoint(message_data);
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -993,6 +999,87 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
                                                             timestamp));
+}
+
+void NodeManager::ProcessPrepareActorCheckpointRequest(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  auto message =
+      flatbuffers::GetRoot<protocol::PrepareActorCheckpointRequest>(message_data);
+  ActorID actor_id = from_flatbuf(*message->actor_id());
+  RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
+  const auto &actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  RAY_CHECK(worker && worker->GetActorId() == actor_id);
+
+  // Find the running task to get its actor handle id and dummy object id.
+  const auto task_id = worker->GetAssignedTaskId();
+  const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+  const auto actor_handle_id = task.GetTaskSpecification().ActorHandleId();
+  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+  // Make a copy of the actor registration, and extend its frontier.
+  // NOTE(hchen): Here we do `ExtendFrontier` on the copy of actor registration.
+  // Later we'll do `ExtendFrontier` again on the original actor registration in
+  // `FinishAssignedTask` function. This is needed because we need to include the
+  // latest finished task's dummy object in the checkpoint. We may want to consolidate
+  // the code, so there's only one call site of `ExtendFrontier`.
+  ActorRegistration actor_registration = actor_entry->second;
+  actor_registration.ExtendFrontier(actor_handle_id, dummy_object);
+
+  // Generate checkpoint data based on the actor registration.
+  ActorCheckpointID checkpoint_id = UniqueID::from_random();
+  auto checkpoint_data = std::make_shared<ActorCheckpointDataT>();
+  checkpoint_data->actor_id = actor_id.binary();
+  checkpoint_data->execution_dependency =
+      actor_registration.GetExecutionDependency().binary();
+  for (const auto &frontier : actor_registration.GetFrontier()) {
+    checkpoint_data->handle_ids.push_back(frontier.first.binary());
+    checkpoint_data->task_counters.push_back(frontier.second.task_counter);
+    checkpoint_data->frontier_dependencies.push_back(
+        frontier.second.execution_dependency.binary());
+  }
+  for (const auto &entry : actor_registration.GetDummyObjects()) {
+    checkpoint_data->unreleased_dummy_objects.push_back(entry.first.binary());
+    checkpoint_data->num_dummy_object_dependencies.push_back(entry.second);
+  }
+
+  // Write checkpoint data to GCS.
+  RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
+      UniqueID::nil(), checkpoint_id, checkpoint_data,
+      [worker, actor_id, this](ray::gcs::AsyncGcsClient *client,
+                               const UniqueID &checkpoint_id,
+                               const ActorCheckpointDataT &data) {
+        RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
+                       << worker->GetActorId();
+        // Save this actor-to-checkpoint mapping, and remove old checkpoints associated
+        // with this actor.
+        RAY_CHECK_OK(gcs_client_->actor_checkpoint_id_table().AddCheckpointId(
+            JobID::nil(), actor_id, checkpoint_id));
+        // Send reply to worker.
+        flatbuffers::FlatBufferBuilder fbb;
+        auto reply = ray::protocol::CreatePrepareActorCheckpointReply(
+            fbb, to_flatbuf(fbb, checkpoint_id));
+        fbb.Finish(reply);
+        worker->Connection()->WriteMessageAsync(
+            static_cast<int64_t>(protocol::MessageType::PrepareActorCheckpointReply),
+            fbb.GetSize(), fbb.GetBufferPointer(), [](const ray::Status &status) {
+              if (!status.ok()) {
+                RAY_LOG(WARNING)
+                    << "Failed to send PrepareActorCheckpointReply to client";
+              }
+            });
+      }));
+}
+
+void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data) {
+  auto message =
+      flatbuffers::GetRoot<protocol::NotifyActorResumedFromCheckpoint>(message_data);
+  ActorID actor_id = from_flatbuf(*message->actor_id());
+  ActorCheckpointID checkpoint_id = from_flatbuf(*message->checkpoint_id());
+  RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
+                 << checkpoint_id;
+  checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
 }
 
 void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client) {
@@ -1699,35 +1786,74 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   }
 
   // Update the actor's frontier.
+  UpdateActorFrontier(task);
+}
+
+void NodeManager::UpdateActorFrontier(const Task &task) {
   ActorID actor_id;
   ActorHandleID actor_handle_id;
+  bool resumed_from_checkpoint = false;
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
     actor_handle_id = ActorHandleID::nil();
+    if (checkpoint_id_to_restore_.count(actor_id) > 0) {
+      resumed_from_checkpoint = true;
+    }
   } else {
     actor_id = task.GetTaskSpecification().ActorId();
     actor_handle_id = task.GetTaskSpecification().ActorHandleId();
   }
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
-  // Extend the actor's frontier to include the executed task.
-  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-  const ObjectID object_to_release =
-      actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
-  if (!object_to_release.is_nil()) {
-    // If there were no new actor handles created, then no other actor task
-    // will depend on this execution dependency, so it safe to release.
-    HandleObjectMissing(object_to_release);
+
+  if (!resumed_from_checkpoint) {
+    // Extend the actor's frontier to include the executed task.
+    const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+    const ObjectID object_to_release =
+        actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
+    if (!object_to_release.is_nil()) {
+      // If there were no new actor handles created, then no other actor task
+      // will depend on this execution dependency, so it safe to release.
+      HandleObjectMissing(object_to_release);
+    }
+    // Mark the dummy object as locally available to indicate that the actor's
+    // state has changed and the next method can run. This is not added to the
+    // object table, so the update will be invisible to both the local object
+    // manager and the other nodes.
+    // NOTE(swang): The dummy objects must be marked as local whenever
+    // ExtendFrontier is called, and vice versa, so that we can clean up the
+    // dummy objects properly in case the actor fails and needs to be
+    // reconstructed.
+    HandleObjectLocal(dummy_object);
+  } else {
+    // If this actor was resumed from a checkpoint.
+    // Look up the checkpoint in GCS and use it to restore actor registration.
+    const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
+    checkpoint_id_to_restore_.erase(actor_id);
+    RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
+                   << actor_id;
+    RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
+        JobID::nil(), checkpoint_id,
+        [this, actor_entry](ray::gcs::AsyncGcsClient *client,
+                            const UniqueID &checkpoint_id,
+                            const ActorCheckpointDataT &checkpoint_data) {
+          RAY_LOG(INFO) << "Restoring registration for actor " << actor_entry->first
+                        << " from checkpoint " << checkpoint_id;
+          actor_entry->second.RestoreFrontier(
+              actor_entry->second.GetActorCreationDependency(), checkpoint_data);
+          // Mark the unreleased dummy objects as local.
+          for (const auto &entry : actor_entry->second.GetDummyObjects()) {
+            HandleObjectLocal(entry.first);
+          }
+        },
+        [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
+          RAY_LOG(WARNING) << "Couldn't find checkpoint " << checkpoint_id
+                           << " for actor " << actor_id << " in GCS. This is likely"
+                           << " because the worker sent us a wrong or expired"
+                           << " checkpoint id.";
+          // TODO(hchen): what should we do here? Notify or kill the actor?
+        }));
   }
-  // Mark the dummy object as locally available to indicate that the actor's
-  // state has changed and the next method can run. This is not added to the
-  // object table, so the update will be invisible to both the local object
-  // manager and the other nodes.
-  // NOTE(swang): The dummy objects must be marked as local whenever
-  // ExtendFrontier is called, and vice versa, so that we can clean up the
-  // dummy objects properly in case the actor fails and needs to be
-  // reconstructed.
-  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {

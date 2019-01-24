@@ -385,6 +385,19 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
+  /// XXX
+  void ProcessPrepareActorCheckpointRequest(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// XXX
+  void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
+
+  /// If the task is an actor creation task and the actor was resumed from a checkpoint,
+  /// restore the frontier from the checkpoint. Otherwise, extend actor frontier.
+  ///
+  /// \param task The task that just finished.
+  void UpdateActorFrontier(const Task &task);
+
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.
   /// This function needs to be called either when actor process dies or when
@@ -446,6 +459,10 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
+
+  /// This map stores actor ID to the ID of the checkpoint with which we should use to
+  /// restore the actor.
+  std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 };
 
 }  // namespace raylet

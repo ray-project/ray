@@ -119,6 +119,10 @@ class ActorRegistration {
   /// \return int.
   int NumHandles() const;
 
+  /// XXX
+  void RestoreFrontier(const ObjectID &actor_creation_dependency,
+                       const ActorCheckpointDataT &checkpoint_data);
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.

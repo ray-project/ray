@@ -75,6 +75,16 @@ class TaskQueue {
   /// \return Whether the task_id exists in this queue.
   bool HasTask(const TaskID &task_id) const;
 
+  /// \brief Get task associated to task_id in this queue.
+  ///
+  /// \param task_id The task ID for the task to get.
+  /// \return The task corresponding to task_id.
+  const Task &GetTask(const TaskID &task_id) const {
+    auto it = task_map_.find(task_id);
+    RAY_CHECK(it != task_map_.end());
+    return *it->second;
+  }
+
   /// \brief Return the task list of the queue.
   ///
   /// \return A list of tasks contained in this queue.

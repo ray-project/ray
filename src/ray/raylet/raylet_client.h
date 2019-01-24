@@ -10,6 +10,7 @@
 #include "ray/status.h"
 
 using ray::ActorID;
+using ray::ActorCheckpointID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
@@ -145,6 +146,14 @@ class RayletClient {
   /// or send it to all the object stores.
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+
+  /// XXX
+  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                     ActorCheckpointID &checkpoint_id);
+
+  /// XXX
+  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                               const ActorCheckpointID &checkpoint_id);
 
   Language GetLanguage() const { return language_; }
 
