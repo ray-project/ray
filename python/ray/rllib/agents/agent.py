@@ -430,7 +430,10 @@ class Agent(Trainable):
         """
         self.local_evaluator.set_weights(weights)
 
-    def make_local_evaluator(self, env_creator, policy_graph):
+    def make_local_evaluator(self,
+                             env_creator,
+                             policy_graph,
+                             extra_config=None):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
@@ -438,11 +441,14 @@ class Agent(Trainable):
             env_creator,
             policy_graph,
             0,
-            # important: allow local tf to use more CPUs for optimization
-            merge_dicts(self.config, {
-                "tf_session_args": self.
-                config["local_evaluator_tf_session_args"]
-            }))
+            merge_dicts(
+                # important: allow local tf to use more CPUs for optimization
+                merge_dicts(
+                    self.config, {
+                        "tf_session_args": self.
+                        config["local_evaluator_tf_session_args"]
+                    }),
+                extra_config or {}))
 
     def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
