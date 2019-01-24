@@ -53,7 +53,8 @@ def include_java_from_redis(redis_client):
 
 
 def get_default_java_classpath():
-    return "TODO(qwang)"
+    this_dir = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(this_dir, "../../../build/java/*")
 
 
 @click.group()
