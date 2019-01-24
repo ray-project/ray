@@ -67,7 +67,8 @@ def push_error_to_driver(worker,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.DriverID.nil()
+        driver_id = ray.ObjectID.nil()
+    # TODO(suquark): How should we use data here?
     data = {} if data is None else data
     worker.raylet_client.push_error(driver_id, error_type, message,
                                     time.time())
@@ -96,7 +97,8 @@ def push_error_to_driver_through_redis(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.DriverID.nil()
+        driver_id = ray.ObjectID.nil()
+    # TODO(suquark): How should we use data here?
     data = {} if data is None else data
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
@@ -132,7 +134,7 @@ def is_function_or_method(obj):
     Returns:
         True if the object is an function or method.
     """
-    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
 
 
 def is_class_method(f):
@@ -367,7 +369,6 @@ def get_system_memory():
     except ImportError:
         pass
 
-    memory_in_bytes = None
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
     elif sys.platform == "linux" or sys.platform == "linux2":

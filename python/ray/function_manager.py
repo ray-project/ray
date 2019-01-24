@@ -506,7 +506,6 @@ class FunctionActorManager(object):
         Args:
             key: The key to store the actor class info at.
             actor_class_info: Information about the actor class.
-            worker: The worker to use to connect to Redis.
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
@@ -577,7 +576,6 @@ class FunctionActorManager(object):
 
         Args:
             actor_class_key: The key in Redis to use to fetch the actor.
-            worker: The worker to use.
         """
         actor_id = self._worker.actor_id
         (driver_id_str, class_name, module, pickled_class, checkpoint_interval,
@@ -680,7 +678,6 @@ class FunctionActorManager(object):
         necessary checkpointing operations.
 
         Args:
-            worker (Worker): The worker that is executing the actor.
             method_name (str): The name of the actor method.
             method (instancemethod): The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an

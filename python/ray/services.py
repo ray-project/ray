@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import collections
 import json
 import logging
@@ -46,6 +47,11 @@ CREDIS_MASTER_MODULE = os.path.join(
 CREDIS_MEMBER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/build/src/libmember.so")
+
+# Location of the plasma object store executable.
+PLASMA_STORE_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/plasma/plasma_store_server")
 
 # Location of the raylet executables.
 RAYLET_MONITOR_EXECUTABLE = os.path.join(
@@ -493,45 +499,32 @@ def start_redis(node_ip_address,
 
     if use_credis is None:
         use_credis = ("RAY_USE_NEW_GCS" in os.environ)
-    if use_credis and password is not None:
-        # TODO(pschafhalter) remove this once credis supports
-        # authenticating Redis ports
-        raise Exception("Setting the `redis_password` argument is not "
-                        "supported in credis. To run Ray with "
-                        "password-protected Redis ports, ensure that "
-                        "the environment variable `RAY_USE_NEW_GCS=off`.")
-    if not use_credis:
-        assigned_port, p = _start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=port,
-            redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            password=password,
-            # Below we use None to indicate no limit on the memory of the
-            # primary Redis shard.
-            redis_max_memory=None)
-        processes.append(p)
-    else:
-        assigned_port, p = _start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=port,
-            redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            executable=CREDIS_EXECUTABLE,
-            # It is important to load the credis module BEFORE the ray module,
-            # as the latter contains an extern declaration that the former
-            # supplies.
-            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE],
-            password=password,
-            # Below we use None to indicate no limit on the memory of the
-            # primary Redis shard.
-            redis_max_memory=None)
-        processes.append(p)
-    if port is not None:
-        assert assigned_port == port
-    port = assigned_port
+    if use_credis:
+        if password is not None:
+            # TODO(pschafhalter) remove this once credis supports
+            # authenticating Redis ports
+            raise Exception("Setting the `redis_password` argument is not "
+                            "supported in credis. To run Ray with "
+                            "password-protected Redis ports, ensure that "
+                            "the environment variable `RAY_USE_NEW_GCS=off`.")
+        assert num_redis_shards == 1, (
+            "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
+            "supports 1-node chain for that shard only.")
+
+    port, p = _start_redis(
+        node_ip_address,
+        port=port,
+        redis_max_clients=redis_max_clients,
+        password=password,
+        use_credis=use_credis,
+        # It is important to load the credis module BEFORE the ray module,
+        # as the latter contains an extern declaration that the former
+        # supplies.
+        redis_max_memory=None,
+        stdout_file=redis_stdout_file,
+        stderr_file=redis_stderr_file)
+    processes.append(p)
+
     redis_address = address(node_ip_address, port)
 
     # Register the number of Redis shards in the primary shard, so that clients
@@ -563,37 +556,18 @@ def start_redis(node_ip_address,
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_redis_log_file(
             redirect_output, shard_number=i)
-        if not use_credis:
-            redis_shard_port, p = _start_redis_instance(
-                node_ip_address=node_ip_address,
-                port=redis_shard_ports[i],
-                redis_max_clients=redis_max_clients,
-                stdout_file=redis_stdout_file,
-                stderr_file=redis_stderr_file,
-                password=password,
-                redis_max_memory=redis_max_memory)
-            processes.append(p)
-        else:
-            assert num_redis_shards == 1, \
-                "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
-                "supports 1-node chain for that shard only."
-            redis_shard_port, p = _start_redis_instance(
-                node_ip_address=node_ip_address,
-                port=redis_shard_ports[i],
-                redis_max_clients=redis_max_clients,
-                stdout_file=redis_stdout_file,
-                stderr_file=redis_stderr_file,
-                password=password,
-                executable=CREDIS_EXECUTABLE,
-                # It is important to load the credis module BEFORE the ray
-                # module, as the latter contains an extern declaration that the
-                # former supplies.
-                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE],
-                redis_max_memory=redis_max_memory)
-            processes.append(p)
 
-        if redis_shard_ports[i] is not None:
-            assert redis_shard_port == redis_shard_ports[i]
+        redis_shard_port, p = _start_redis(
+            node_ip_address,
+            port=redis_shard_ports[i],
+            redis_max_clients=redis_max_clients,
+            password=password,
+            use_credis=use_credis,
+            redis_max_memory=redis_max_memory,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file)
+        processes.append(p)
+
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
@@ -611,21 +585,87 @@ def start_redis(node_ip_address,
     return redis_address, redis_shards, processes
 
 
-def _start_redis_instance(node_ip_address="127.0.0.1",
+def _start_redis(node_ip_address,
+                 port=None,
+                 redis_max_clients=None,
+                 password=None,
+                 use_credis=None,
+                 redis_max_memory=None,
+                 stdout_file=None,
+                 stderr_file=None):
+    """Start a single Redis server.
+
+    Args:
+        node_ip_address: The IP address of the current node. This is only used
+            for recording the log filenames in Redis.
+        port (int): If provided, start a Redis server with this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
+        use_credis: If True, additionally load the chain-replicated libraries
+            into the redis servers.  Defaults to None, which means its value is
+            set by the presence of "RAY_USE_NEW_GCS" in os.environ.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
+
+    Returns:
+        A tuple of the port used by Redis and ProcessInfo for the process that
+            was started. If a port is passed in, then the returned port value
+            is the same.
+
+    Raises:
+        Exception: An exception is raised if Redis could not be started.
+    """
+    if use_credis:
+        redis_executable = CREDIS_EXECUTABLE
+        # It is important to load the credis module BEFORE the ray module,
+        # as the latter contains an extern declaration that the former
+        # supplies.
+        redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+    else:
+        redis_executable = REDIS_EXECUTABLE
+        redis_modules = [REDIS_MODULE]
+
+    assigned_port, p = _start_redis_instance(
+        redis_executable,
+        modules=redis_modules,
+        port=port,
+        redis_max_clients=redis_max_clients,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        password=password,
+        redis_max_memory=redis_max_memory)
+    if port is not None:
+        assert assigned_port == port
+    # Record the log files in Redis.
+    record_log_files_in_redis(
+        address(node_ip_address, port),
+        node_ip_address, [stdout_file, stderr_file],
+        password=password)
+    return assigned_port, p
+
+
+def _start_redis_instance(executable,
+                          modules,
                           port=None,
                           redis_max_clients=None,
                           num_retries=20,
                           stdout_file=None,
                           stderr_file=None,
                           password=None,
-                          executable=REDIS_EXECUTABLE,
-                          modules=None,
                           redis_max_memory=None):
     """Start a single Redis server.
 
     Args:
-        node_ip_address (str): The IP address of the current node. This is only
-            used for recording the log filenames in Redis.
+        executable (str): Full path of the redis-server executable.
+        modules (list of str): A list of pathnames, pointing to the redis
+            module(s) that will be loaded in this redis server.
         port (int): If provided, start a Redis server with this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
@@ -637,10 +677,6 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             no redirection should happen, then this should be None.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        executable (str): Full path tho the redis-server executable.
-        modules (list of str): A list of pathnames, pointing to the redis
-            module(s) that will be loaded in this redis server.  If None, load
-            the default Ray redis module.
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
@@ -654,8 +690,6 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         Exception: An exception is raised if Redis could not be started.
     """
     assert os.path.isfile(executable)
-    if modules is None:
-        modules = [REDIS_MODULE]
     for module in modules:
         assert os.path.isfile(module)
     counter = 0
@@ -749,11 +783,6 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                             " ".join(cur_config_list))
     # Put a time stamp in Redis to indicate when it was started.
     redis_client.set("redis_start_time", time.time())
-    # Record the log files in Redis.
-    record_log_files_in_redis(
-        address(node_ip_address, port),
-        node_ip_address, [stdout_file, stderr_file],
-        password=password)
     return port, process_info
 
 
@@ -821,10 +850,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
             break
         except socket.error:
             port += 1
+
+    notebook_name = get_ipython_notebook_path()
+    new_notebook_directory = os.path.dirname(notebook_name)
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
-    new_notebook_directory, webui_url, token = (
-        get_ipython_notebook_path(port))
+    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
     # The --ip=0.0.0.0 flag is intended to enable connecting to a notebook
     # running within a docker container (from the outside).
     command = [
@@ -849,6 +880,8 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
         logger.warning("Failed to start the UI, you may need to run "
                        "'pip install jupyter'.")
     else:
+        webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
+            port, os.path.basename(notebook_name), token))
         print("\n" + "=" * 70)
         print("View the web UI at {}".format(webui_url))
         print("=" * 70 + "\n")
@@ -1170,12 +1203,8 @@ def _start_plasma_store(plasma_store_memory,
     if not isinstance(plasma_store_memory, int):
         raise Exception("plasma_store_memory should be an integer.")
 
-    plasma_store_executable = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)),
-        "core/src/plasma/plasma_store_server")
-    plasma_store_name = socket_name
     command = [
-        plasma_store_executable, "-s", plasma_store_name, "-m",
+        PLASMA_STORE_EXECUTABLE, "-s", socket_name, "-m",
         str(plasma_store_memory)
     ]
     if plasma_directory is not None:
@@ -1189,7 +1218,7 @@ def _start_plasma_store(plasma_store_memory,
         use_valgrind_profiler=use_profiler,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    return plasma_store_name, process_info
+    return process_info
 
 
 def start_plasma_store(node_ip_address,
@@ -1236,7 +1265,7 @@ def start_plasma_store(node_ip_address,
     logger.info("Starting the Plasma object store with {} GB memory "
                 "using {}.".format(object_store_memory_str, plasma_directory))
     # Start the Plasma store.
-    plasma_store_name, process_info = _start_plasma_store(
+    process_info = _start_plasma_store(
         object_store_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=stdout_file,
@@ -1255,7 +1284,7 @@ def start_plasma_store(node_ip_address,
 
 def start_worker(node_ip_address,
                  object_store_name,
-                 local_scheduler_name,
+                 raylet_name,
                  redis_address,
                  worker_path,
                  stdout_file=None,
@@ -1265,8 +1294,8 @@ def start_worker(node_ip_address,
     Args:
         node_ip_address (str): The IP address of the node that this worker is
             running on.
-        object_store_name (str): The name of the object store.
-        local_scheduler_name (str): The name of the local scheduler.
+        object_store_name (str): The socket name of the object store.
+        raylet_name (str): The socket name of the raylet server.
         redis_address (str): The address that the Redis server is listening on.
         worker_path (str): The path of the source code which the worker process
             will run.
@@ -1282,6 +1311,7 @@ def start_worker(node_ip_address,
         sys.executable, "-u", worker_path,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
+        "--raylet-name=" + raylet_name,
         "--redis-address=" + str(redis_address),
         "--temp-dir=" + get_temp_root()
     ]

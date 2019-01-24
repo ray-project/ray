@@ -83,7 +83,6 @@ class RayTaskError(Exception):
     Attributes:
         function_name (str): The name of the function that failed and produced
             the RayTaskError.
-        exception (Exception): The exception object thrown by the failed task.
         traceback_str (str): The traceback from the exception.
     """
 
@@ -522,8 +521,7 @@ class Worker(object):
                     num_return_vals=None,
                     resources=None,
                     placement_resources=None,
-                    driver_id=None,
-                    language=ray.gcs_utils.Language.PYTHON):
+                    driver_id=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with
@@ -658,7 +656,7 @@ class Worker(object):
                 takes only one argument, a worker info dict. If it returns
                 anything, its return values will not be used.
             run_on_other_drivers: The boolean that indicates whether we want to
-                run this funtion on other drivers. One case is we may need to
+                run this function on other drivers. One case is we may need to
                 share objects across drivers.
         """
         # If ray.init has not been called yet, then cache the function and
@@ -1089,19 +1087,6 @@ def print_failed_task(task_status):
                task_status["error_message"]))
 
 
-def error_applies_to_driver(error_key, worker=global_worker):
-    """Return True if the error is for this driver and false otherwise."""
-    # TODO(rkn): Should probably check that this is only called on a driver.
-    # Check that the error key is formatted as in push_error_to_driver.
-    assert len(error_key) == (len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE + 1
-                              + ray_constants.ID_SIZE), error_key
-    # If the driver ID in the error message is a sequence of all zeros, then
-    # the message is intended for all drivers.
-    driver_id = DriverID(error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + ray_constants.ID_SIZE)])
-    return (driver_id == worker.task_driver_id or driver_id == DriverID.nil())
-
-
 def error_info(worker=global_worker):
     """Return information about failed tasks."""
     worker.check_connected()
@@ -1513,9 +1498,8 @@ def init(redis_address=None,
             "redis_address": address_info["redis_address"],
             "store_socket_name": address_info["object_store_address"],
             "webui_url": address_info["webui_url"],
+            "raylet_socket_name": address_info["raylet_socket_name"],
         }
-        driver_address_info["raylet_socket_name"] = (
-            address_info["raylet_socket_name"])
 
     # We only pass `temp_dir` to a worker (WORKER_MODE).
     # It can't be a worker here.
@@ -1680,49 +1664,6 @@ def is_initialized():
     return ray.worker.global_worker.connected
 
 
-def print_error_messages(worker):
-    """Print error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and prints error messages in
-    the background.
-    """
-    # TODO(rkn): All error messages should have a "component" field indicating
-    # which process the error came from (e.g., a worker or a plasma store).
-    # Currently all error messages come from workers.
-
-    worker.error_message_pubsub_client = worker.redis_client.pubsub()
-    # Exports that are published after the call to
-    # error_message_pubsub_client.subscribe and before the call to
-    # error_message_pubsub_client.listen will still be processed in the loop.
-    worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
-    num_errors_received = 0
-
-    # Get the exports that occurred before the call to subscribe.
-    with worker.lock:
-        error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
-        for error_key in error_keys:
-            if error_applies_to_driver(error_key, worker=worker):
-                error_message = ray.utils.decode(
-                    worker.redis_client.hget(error_key, "message"))
-                logger.error(error_message)
-            num_errors_received += 1
-
-    try:
-        for msg in worker.error_message_pubsub_client.listen():
-            with worker.lock:
-                for error_key in worker.redis_client.lrange(
-                        "ErrorKeys", num_errors_received, -1):
-                    if error_applies_to_driver(error_key, worker=worker):
-                        error_message = ray.utils.decode(
-                            worker.redis_client.hget(error_key, "message"))
-                        logger.error(error_message)
-                    num_errors_received += 1
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
-
-
 def connect(info,
             redis_password=None,
             object_id_seed=None,
@@ -1817,9 +1758,32 @@ def connect(info,
 
     worker.lock = threading.Lock()
 
-    # Check the RedirectOutput key in Redis and based on its value redirect
-    # worker output and error to their own files.
-    if mode == WORKER_MODE:
+    # Create an object for interfacing with the global state.
+    global_state._initialize_global_state(
+        redis_ip_address, int(redis_port), redis_password=redis_password)
+
+    # Register the worker with Redis.
+    if mode == SCRIPT_MODE:
+        # The concept of a driver is the same as the concept of a "job".
+        # Register the driver/job with Redis here.
+        import __main__ as main
+        driver_info = {
+            "node_ip_address": worker.node_ip_address,
+            "driver_id": worker.worker_id,
+            "start_time": time.time(),
+            "plasma_store_socket": info["store_socket_name"],
+            "raylet_socket": info.get("raylet_socket_name"),
+            "name": (main.__file__
+                     if hasattr(main, "__file__") else "INTERACTIVE MODE")
+        }
+        worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
+        if (not worker.redis_client.exists("webui")
+                and info["webui_url"] is not None):
+            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
+        is_worker = False
+    elif mode == WORKER_MODE:
+        # Check the RedirectOutput key in Redis and based on its value redirect
+        # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
@@ -1838,31 +1802,6 @@ def connect(info,
                 info["redis_address"],
                 info["node_ip_address"], [log_stdout_file, log_stderr_file],
                 password=redis_password)
-
-    # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(
-        redis_ip_address, int(redis_port), redis_password=redis_password)
-
-    # Register the worker with Redis.
-    if mode == SCRIPT_MODE:
-        # The concept of a driver is the same as the concept of a "job".
-        # Register the driver/job with Redis here.
-        import __main__ as main
-        driver_info = {
-            "node_ip_address": worker.node_ip_address,
-            "driver_id": worker.worker_id,
-            "start_time": time.time(),
-            "plasma_store_socket": info["store_socket_name"],
-            "raylet_socket": info.get("raylet_socket_name")
-        }
-        driver_info["name"] = (main.__file__ if hasattr(main, "__file__") else
-                               "INTERACTIVE MODE")
-        worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
-        if (not worker.redis_client.exists("webui")
-                and info["webui_url"] is not None):
-            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
-        is_worker = False
-    elif mode == WORKER_MODE:
         # Register the worker with Redis.
         worker_dict = {
             "node_ip_address": worker.node_ip_address,
