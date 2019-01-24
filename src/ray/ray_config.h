@@ -30,13 +30,11 @@ class RayConfig {
     return config;
   }
 
+// clang-format off
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
-  if (pair.first == #name) {                  \
-    name##_ = pair.second;                    \
-    continue;                                 \
-  }
+  if (pair.first == #name) { name##_ = pair.second; continue; }
 
   void initialize(const std::unordered_map<std::string, int> &config_map) {
     RAY_CHECK(!initialized_);
@@ -48,7 +46,6 @@ class RayConfig {
     }
     initialized_ = true;
   }
-
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
 
@@ -56,5 +53,6 @@ class RayConfig {
   /// The RayConfig instance can only (and must) be initialized once.
   bool initialized_ = false;
 };
+// clang-format on
 
 #endif  // RAY_CONFIG_H
