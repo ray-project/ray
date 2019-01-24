@@ -577,6 +577,7 @@ class PolicyEvaluator(EvaluatorInterface):
         preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
+            logger.debug("Creating policy graph for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
