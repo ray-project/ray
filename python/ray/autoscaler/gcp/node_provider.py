@@ -4,14 +4,15 @@ from __future__ import print_function
 
 from uuid import uuid4
 import time
+import logging
 
 from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
-from ray.autoscaler.log_timer import (logInfo, logError, logException,
-                                      logCritical, LogTimer)
+
+logger = logging.getLogger(__name__)
 
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
@@ -19,7 +20,7 @@ INSTANCE_NAME_UUID_LEN = 8
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for compute zone operation until finished."""
-    logInfo("wait_for_compute_zone_operation",
+    logger.info("wait_for_compute_zone_operation: "
         "Waiting for operation {} to finish...".format(operation["name"]))
 
     for _ in range(MAX_POLLS):
@@ -30,7 +31,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            logInfo("wait_for_compute_zone_opration",
+            logger.info("wait_for_compute_zone_operation: "
                 "Operation {} finished.".format(operation["name"]))
             break
 

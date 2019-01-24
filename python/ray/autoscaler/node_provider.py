@@ -3,11 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import logging
 import os
 import yaml
 
-from ray.autoscaler.log_timer import (logInfo, logError, logException,
-                                      logCritical, LogTimer)
+logger = logging.getLogger(__name__)
 
 
 def import_aws():
@@ -181,7 +181,7 @@ class NodeProvider(object):
     def terminate_nodes(self, node_ids):
         """Terminates a set of nodes. May be overridden with a batch method."""
         for node_id in node_ids:
-            logInfo("NodeProvider", "{}: Terminating node".format(node_id))
+            logger.info("NodeProvider: " "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
 
     def cleanup(self):

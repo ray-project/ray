@@ -12,8 +12,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
-from ray.autoscaler.log_timer import (logInfo, logError, logException,
-                                      logCritical, LogTimer)
+from ray.autoscaler.log_timer import LogTimer
 
 
 def to_aws_format(tags):
@@ -80,7 +79,7 @@ class AWSNodeProvider(NodeProvider):
 
             for (k, v), node_ids in batch_updates.items():
                 m = "Set tag {}={} on {}".format(k, v, node_ids)
-                with LogTimer("AWSNodeProvider", m):
+                with LogTimer("AWSNodeProvider: {}".format(m)):
                     if k == TAG_RAY_NODE_NAME:
                         k = "Name"
                     self.ec2.meta.client.create_tags(

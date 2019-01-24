@@ -12,6 +12,7 @@ from six import string_types
 from six.moves import queue
 import subprocess
 import threading
+import logging
 import time
 
 from collections import defaultdict
@@ -30,10 +31,10 @@ from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  TAG_RAY_NODE_NAME)
-from ray.autoscaler.log_timer import (logInfo, logWarning, logError,
-                                      logException, logCritical, LogTimer)
 
 import ray.services as services
+
+logger = logging.getLogger(__name__)
 
 REQUIRED, OPTIONAL = True, False
 
@@ -158,11 +159,11 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                logInfo("LoadMetrics", "Removed mapping: {} - {}".format(
+                logger.info("LoadMetrics: " "Removed mapping: {} - {}".format(
                     unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
             if unwanted:
-                logInfo("LoadMetrics",
+                logger.info("LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
 
@@ -245,7 +246,7 @@ class NodeLauncher(threading.Thread):
             }, count)
         after = self.provider.nodes(tag_filters=tag_filters)
         if set(after).issubset(before):
-            logError("NodeLauncher",
+            logger.error("NodeLauncher: "
                 "No new nodes reported after node creation")
 
     def run(self):
@@ -348,17 +349,17 @@ class StandardAutoscaler(object):
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
-        logInfo("StandardAutoscaler", self.config)
+        logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
         try:
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            logException("StandardAutoscaler", "Error during autoscaling.")
+            logger.exception("StandardAutoscaler: " "Error during autoscaling.")
             self.num_failures += 1
             if self.num_failures > self.max_failures:
-                logCritical("StandardAutoscaler", "Too many errors, abort.")
+                logger.critical("StandardAutoscaler: " "Too many errors, abort.")
                 raise e
 
     def _update(self):
@@ -386,11 +387,11 @@ class StandardAutoscaler(object):
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
                     len(nodes) - len(nodes_to_terminate) > target_workers:
-                logInfo("StandardAutoscaler",
+                logger.info("StandardAutoscaler: "
                     "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
-                logInfo("StandardAutoscaler",
+                logger.info("StandardAutoscaler: "
                     "{}: Terminating outdated node".format(node_id))
                 nodes_to_terminate.append(node_id)
 
@@ -402,7 +403,7 @@ class StandardAutoscaler(object):
         # Terminate nodes if there are too many
         nodes_to_terminate = []
         while len(nodes) > self.config["max_workers"]:
-            logInfo("StandardAutoscaler",
+            logger.info("StandardAutoscaler: "
                 "{}: Terminating unneeded node".format(nodes[-1]))
             nodes_to_terminate.append(nodes[-1])
             nodes = nodes[:-1]
@@ -480,7 +481,7 @@ class StandardAutoscaler(object):
             if errors_fatal:
                 raise e
             else:
-                logException("StandardAutoscaler", "Error parsing config.")
+                logger.exception("StandardAutoscaler: " "Error parsing config.")
 
     def target_num_workers(self):
         initial_workers = self.config["initial_workers"]
@@ -505,7 +506,7 @@ class StandardAutoscaler(object):
     def files_up_to_date(self, node_id):
         applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.runtime_hash:
-            logInfo("StandardAutoscaler",
+            logger.info("StandardAutoscaler: "
                 "{}: Runtime state is {}, want {}".format(
                     node_id, applied, self.runtime_hash
                 )
@@ -523,7 +524,7 @@ class StandardAutoscaler(object):
         delta = now - last_heartbeat_time
         if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        logWarning("StandardAutoscaler", "{}: No heartbeat in {}s, "
+        logger.warning("StandardAutoscaler: " "{}: No heartbeat in {}s, "
            "restarting Ray to recover...".format(node_id, delta))
         updater = NodeUpdaterThread(
             node_id,
@@ -583,7 +584,7 @@ class StandardAutoscaler(object):
         return True
 
     def launch_new_node(self, count):
-        logInfo("StandardAutoscaler", "Launching {} new nodes".format(count))
+        logger.info("StandardAutoscaler: " "Launching {} new nodes".format(count))
         self.num_launches_pending.inc(count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count))
@@ -592,8 +593,8 @@ class StandardAutoscaler(object):
         return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes):
-        logInfo("StandardAutoscaler", self.info_string(nodes))
-        logInfo("LoadMetrics", self.load_metrics.info_string())
+        logger.info("StandardAutoscaler: {}".format(self.info_string(nodes)))
+        logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
 
     def info_string(self, nodes):
         suffix = ""

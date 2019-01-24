@@ -6,7 +6,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
-import logging  # TODO TODO TODO remove
+import logging
 import os
 import subprocess
 import sys
@@ -17,8 +17,9 @@ from threading import Thread
 
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
-from ray.autoscaler.log_timer import (logDebug, logInfo, logError,
-                                      logException, logCritical, LogTimer)
+from ray.autoscaler.log_timer import LogTimer
+
+logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
@@ -85,7 +86,7 @@ class NodeUpdater(object):
     def wait_for_ip(self, deadline):
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            logInfo("NodeUpdater",
+            logger.info("NodeUpdater: "
                 "Waiting for IP of {}...".format(self.node_id))
             ip = self.get_node_ip()
             if ip is not None:
@@ -101,7 +102,7 @@ class NodeUpdater(object):
         # We assume that this never changes.
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
-        with LogTimer("NodeUpdater", "{}: Got IP".format(self.node_id)):
+        with LogTimer("NodeUpdater: " "{}: Got IP".format(self.node_id)):
             ip = self.wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
 
@@ -122,21 +123,21 @@ class NodeUpdater(object):
                 stderr=redirect)
 
     def run(self):
-        logInfo("NodeUpdater",
+        logger.info("NodeUpdater: "
             "{}: Updating to {}".format(
                 self.node_id, self.runtime_hash
             )
         )
         try:
             m = "{}: Applied config {}".format(self.node_id, self.runtime_hash)
-            with LogTimer("NodeUpdater", m):
+            with LogTimer("NodeUpdater: {}".format(m)):
                 self.do_update()
         except Exception as e:
             error_str = str(e)
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, " ".join(e.cmd))
-            logError("NodeUpdater",
+            logger.error("NodeUpdater: "
                 "{}: Error updating {}".format(self.node_id, error_str))
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "update-failed"})
@@ -151,13 +152,13 @@ class NodeUpdater(object):
         self.exitcode = 0
 
     def wait_for_ssh(self, deadline):
-        logInfo("NodeUpdater", "{}: Waiting for SSH...".format(
+        logger.info("NodeUpdater: " "{}: Waiting for SSH...".format(
                 self.node_id))
 
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
-                logDebug("NodeUpdater", "{}: Waiting for SSH...".format(
+                logger.debug("NodeUpdater: " "{}: Waiting for SSH...".format(
                         self.node_id))
                 self.ssh_cmd(
                     "uptime",
@@ -170,7 +171,7 @@ class NodeUpdater(object):
                 if hasattr(e, "cmd"):
                     retry_str = "(Exit Status {}): {}".format(
                         e.returncode, " ".join(e.cmd))
-                logDebug("NodeUpdater", "{}: SSH not up, retrying: {}".format(
+                logger.debug("NodeUpdater: " "{}: SSH not up, retrying: {}".format(
                     self.node_id, retry_str))
                 time.sleep(SSH_CHECK_INTERVAL)
 
@@ -184,7 +185,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         # Wait for SSH access
-        with LogTimer("NodeUpdater", "{}: Got SSH".format(self.node_id)):
+        with LogTimer("NodeUpdater: " "{}: Got SSH".format(self.node_id)):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
@@ -192,7 +193,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            logInfo("NodeUpdater", "{}: Syncing {} to {}...".format(
+            logger.info("NodeUpdater: " "{}: Syncing {} to {}...".format(
                 self.node_id, local_path, remote_path))
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
@@ -203,7 +204,7 @@ class NodeUpdater(object):
 
             m = "{}: Synced {} to {}".format(
                 self.node_id, local_path, remote_path)
-            with LogTimer("NodeUpdater", m):
+            with LogTimer("NodeUpdater {}".format(m)):
                 self.ssh_cmd(
                     "mkdir -p {}".format(os.path.dirname(remote_path)),
                     redirect=open("/dev/null", "w"),
@@ -216,7 +217,7 @@ class NodeUpdater(object):
 
         m = "{}: Setup commands completed".format(
             self.node_id)
-        with LogTimer("NodeUpdater", m):
+        with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.setup_cmds:
                 self.ssh_cmd(
                     cmd,
@@ -261,7 +262,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         if verbose:
-            logInfo("NodeUpdater", "Running {} on {}...".format(
+            logger.info("NodeUpdater: " "Running {} on {}...".format(
                 cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:

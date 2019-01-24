@@ -3,13 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import logging
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.log_timer import (logInfo, logError, logException,
-                                      logCritical, LogTimer)
+logger = logging.getLogger(__name__)
 
 
 def dockerize_if_needed(config):
@@ -19,7 +19,7 @@ def dockerize_if_needed(config):
     cname = config["docker"].get("container_name")
     if not docker_image:
         if cname:
-            logWarning("dockerize_if_needed",
+            logger.warning("dockerize_if_needed "
                 "Container name given but no Docker image - continuing...")
         return config
     else:

@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import time
+import logging
 import sys
 import click
 import random
@@ -24,8 +25,9 @@ from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.log_timer import (logInfo, logError, logException,
-                                      logCritical, LogTimer)
+from ray.autoscaler.log_timer import LogTimer
+
+logger = logging.getLogger(__name__)
 
 
 def create_or_update_cluster(config_file, override_min_workers,
@@ -98,9 +100,9 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     # Loop here to check that both the head and worker nodes are actually
     #   really gone
     A = remaining_nodes()
-    with LogTimer("teardown_cluster", "Termination done."):
+    with LogTimer("teardown_cluster: " "Termination done."):
         while A:
-            logInfo("teardown_cluster",
+            logger.info("teardown_cluster: "
                 "Terminating {} nodes...".format(len(A)))
             provider.terminate_nodes(A)
             time.sleep(1)
@@ -122,7 +124,7 @@ def kill_node(config_file, yes, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     node = random.choice(nodes)
-    logInfo("kill_node", "Terminating worker {}".format(node))
+    logger.info("kill_node: " "Terminating worker {}".format(node))
     updater = NodeUpdaterProcess(
         node,
         config["provider"],
@@ -161,10 +163,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         if head_node is not None:
             confirm("Head node config out-of-date. It will be terminated", yes)
-            logInfo("get_or_create_head_node",
+            logger.info("get_or_create_head_node: "
                 "Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
-        logInfo("get_or_create_head_node", "Launching new head node...")
+        logger.info("get_or_create_head_node: " "Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
         head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
             config["cluster_name"])
@@ -177,7 +179,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     # TODO(ekl) right now we always update the head node even if the hash
     # matches. We could prompt the user for what they want to do in this case.
     runtime_hash = hash_runtime_conf(config["file_mounts"], config)
-    logInfo("get_or_create_head_node", "Updating files on head node...")
+    logger.info("get_or_create_head_node: " "Updating files on head node...")
 
     # Rewrite the auth config so that the head node can update the workers
     remote_key_path = "~/ray_bootstrap_key.pem"
@@ -228,10 +230,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     provider.nodes(head_node_tags)
 
     if updater.exitcode != 0:
-        logError("get_or_create_head_node", "Updating {} failed".format(
+        logger.error("get_or_create_head_node: " "Updating {} failed".format(
             provider.external_ip(head_node)))
         sys.exit(1)
-    logInfo("get_or_create_head_node",
+    logger.info("get_or_create_head_node: "
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
 
