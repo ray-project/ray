@@ -331,7 +331,7 @@ def test_random_id_generation(ray_start_regular):
     random.seed(1234)
     f2 = Foo.remote()
 
-    assert f1._ray_actor_id.binary() != f2._ray_actor_id.binary()
+    assert f1._ray_actor_id != f2._ray_actor_id
 
 
 def test_actor_class_name(ray_start_regular):

@@ -216,8 +216,7 @@ class GlobalState(object):
         """Fetch and parse the object table information for a single object ID.
 
         Args:
-            object_id_binary: A string of bytes with the object ID to get
-                information about.
+            object_id: An object ID to get information about.
 
         Returns:
             A dictionary with information about the object ID in question.
@@ -284,12 +283,12 @@ class GlobalState(object):
         """Fetch and parse the task table information for a single task ID.
 
         Args:
-            task_id_binary: A string of bytes with the task ID to get
-                information about.
+            task_id: A task ID to get information about.
 
         Returns:
             A dictionary with information about the task ID in question.
         """
+        assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                         "", task_id.binary())
@@ -303,23 +302,23 @@ class GlobalState(object):
 
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
-        task_spec = ray.raylet.Task.from_string(task_spec)
-        function_descriptor_list = task_spec.function_descriptor_list()
+        task = ray._raylet.Task.from_string(task_spec)
+        function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
         task_spec_info = {
-            "DriverID": task_spec.driver_id().hex(),
-            "TaskID": task_spec.task_id().hex(),
-            "ParentTaskID": task_spec.parent_task_id().hex(),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": (task_spec.actor_id().hex()),
-            "ActorCreationID": task_spec.actor_creation_id().hex(),
+            "DriverID": task.driver_id().hex(),
+            "TaskID": task.task_id().hex(),
+            "ParentTaskID": task.parent_task_id().hex(),
+            "ParentCounter": task.parent_counter(),
+            "ActorID": (task.actor_id().hex()),
+            "ActorCreationID": task.actor_creation_id().hex(),
             "ActorCreationDummyObjectID": (
-                task_spec.actor_creation_dummy_object_id().hex()),
-            "ActorCounter": task_spec.actor_counter(),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources(),
+                task.actor_creation_dummy_object_id().hex()),
+            "ActorCounter": task.actor_counter(),
+            "Args": task.arguments(),
+            "ReturnObjectIDs": task.returns(),
+            "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
             "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,

@@ -100,8 +100,8 @@ class Task {
   std::vector<ObjectID> dependencies_;
 };
 
-std::string TaskToFlatbuffer(const std::vector<ObjectID> *dependencies,
-                             const TaskSpecification *task_spec);
+std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+                                  const TaskSpecification *task_spec);
 
 }  // namespace raylet
 

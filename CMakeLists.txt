@@ -144,7 +144,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
   # copy Cython files
   add_custom_command(TARGET copy_ray POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/python/_raylet.so ${CMAKE_SOURCE_DIR}/python/ray/core/src/ray/raylet/)
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/python/_raylet.so ${CMAKE_SOURCE_DIR}/python/ray/)
 
 endif()
 

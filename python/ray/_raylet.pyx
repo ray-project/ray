@@ -81,9 +81,6 @@ def compute_task_id(ObjectID object_id):
 
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
-    # Because "RayConfig" have a private destructor,
-    # we need to call "RayConfig.instance()" instead of defining a new variable.
-
     num_elements_contained[0] += 1
 
     if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
@@ -108,7 +105,7 @@ cdef c_bool is_simple_value(value, int *num_elements_contained):
         return num_elements_contained[0] < RayConfig.instance().num_elements_limit()
 
     if cpython.PyDict_CheckExact(value) and cpython.PyDict_Size(value) < RayConfig.instance().size_limit():
-        # TODO(suquark): Use "items" in Python2 would be not very efficient.
+        # TODO(suquark): Using "items" in Python2 is not very efficient.
         for k, v in value.items():
             if not (is_simple_value(k, num_elements_contained) and is_simple_value(v, num_elements_contained)):
                 return False

@@ -160,7 +160,7 @@ class Monitor(object):
         object_table_objects = self.state.object_table()
         driver_object_id_bins = set()
         for object_id, _ in object_table_objects.items():
-            task_id_bin = ray.raylet.compute_task_id(object_id).binary()
+            task_id_bin = ray._raylet.compute_task_id(object_id).binary()
             if task_id_bin in driver_task_id_bins:
                 driver_object_id_bins.add(object_id.binary())
 

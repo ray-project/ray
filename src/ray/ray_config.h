@@ -19,10 +19,13 @@
  public:                                         \
   inline type name() { return name##_; }
 
-class RayConfig {
-  // Note: below are the definitions of all config items. If you add or remove
-  // any items, you should also modify the `initialize` method accordingly.
+// IF YOU MODIFY THIS CLASS and add a configuration parameter, you must change
+// at least three additional things:
+//     1. You must update the "initialize" method in the "RayConfig" class.
+//     2. You must update the file "ray/python/ray/includes/ray_config.pxd".
+//     3. You must update the file "ray/python/ray/includes/ray_config.pxi".
 
+class RayConfig {
   /// In theory, this is used to detect Ray version mismatches.
   DEFINE_CONFIG(int64_t, ray_protocol_version, 0x0000000000000000);
 

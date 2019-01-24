@@ -513,8 +513,7 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
   std::string DebugString() const;
 };
 
-// TODO(suquark): Is the change from "ClassID" to "ActorClassID" reasonable here?
-using CustomSerializerTable = Table<ActorClassID, CustomSerializerData>;
+using CustomSerializerTable = Table<UniqueID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
 

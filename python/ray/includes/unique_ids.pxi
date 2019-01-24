@@ -1,5 +1,5 @@
 """This is a module for unique IDs in Ray.
-We define different types for different IDs for type safe.
+We define different types for different IDs for type safety.
 
 See https://github.com/ray-project/ray/issues/3721.
 """

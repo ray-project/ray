@@ -584,7 +584,7 @@ class Worker(object):
             for arg in args:
                 if isinstance(arg, ObjectID):
                     args_for_local_scheduler.append(arg)
-                elif ray.raylet.check_simple_value(arg):
+                elif ray._raylet.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
                     args_for_local_scheduler.append(put(arg))
@@ -623,7 +623,7 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(driver_id, DriverID)
-            task = ray.raylet.Task(
+            task = ray._raylet.Task(
                 driver_id,
                 function_descriptor_list,
                 args_for_local_scheduler,
@@ -1904,8 +1904,27 @@ def connect(info,
         # driver creates an object that is later evicted, we should notify the
         # user that we're unable to reconstruct the object, since we cannot
         # rerun the driver.
-        driver_task = ray.raylet.Task.create_driver_task(
-            DriverID(worker.task_driver_id.binary()))
+        nil_actor_counter = 0
+
+        function_descriptor = FunctionDescriptor.for_driver_task()
+        driver_task = ray._raylet.Task(
+            worker.task_driver_id,
+            function_descriptor.get_function_descriptor_list(),
+            [],  # arguments.
+            0,  # num_returns.
+            TaskID(random_string()),  # parent_task_id.
+            0,  # parent_counter.
+            ActorID.nil(),  # actor_creation_id.
+            ObjectID.nil(),  # actor_creation_dummy_object_id.
+            0,  # max_actor_reconstructions.
+            ActorID.nil(),  # actor_id.
+            ActorHandleID.nil(),  # actor_handle_id.
+            nil_actor_counter,  # actor_counter.
+            [],  # new_actor_handles.
+            [],  # execution_dependencies.
+            {"CPU": 0},  # resource_map.
+            {},  # placement_resource_map.
+        )
 
         # Add the driver task to the task table.
         global_state._execute_command(driver_task.task_id(), "RAY.TABLE_ADD",
@@ -1918,7 +1937,7 @@ def connect(info,
         # driver task.
         worker.task_context.current_task_id = driver_task.task_id()
 
-    worker.raylet_client = ray.raylet.RayletClient(
+    worker.raylet_client = ray._raylet.RayletClient(
         raylet_socket,
         ClientID(worker.worker_id),
         is_worker,
@@ -2207,7 +2226,7 @@ def put(value, worker=global_worker):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
-        object_id = ray.raylet.compute_put_id(
+        object_id = ray._raylet.compute_put_id(
             worker.current_task_id,
             worker.task_context.put_index,
         )

@@ -53,7 +53,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
             const unordered_map[c_string, double] &required_placement_resources,
             const CLanguage &language, const c_vector[c_string] &function_descriptor)
         CTaskSpecification(const c_string &string)
-        c_string ToFlatbuffer() const
+        c_string SerializeAsString() const
 
         CTaskID TaskId() const
         CDriverID DriverId() const
@@ -98,5 +98,5 @@ cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
         const c_vector[CObjectID] &GetDependencies() const
         void CopyTaskExecutionSpec(const CTask &task)
 
-    cdef c_string TaskToFlatbuffer(const c_vector[CObjectID] *dependencies,
+    cdef c_string SerializeTaskAsString(const c_vector[CObjectID] *dependencies,
         const CTaskSpecification *task_spec)

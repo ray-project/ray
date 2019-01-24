@@ -29,7 +29,7 @@ def pin_in_object_store(obj):
 def get_pinned_object(pinned_id):
     """Retrieve a pinned object from the object store."""
 
-    from ray.raylet import ObjectID
+    from ray import ObjectID
 
     return _from_pinnable(
         ray.get(

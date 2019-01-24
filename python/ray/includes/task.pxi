@@ -1,6 +1,6 @@
 from libc.stdint cimport uint8_t
 from libcpp.memory cimport shared_ptr, make_shared, static_pointer_cast
-from ray.includes.task cimport CTaskSpecification, CTaskArgument, CTaskArgumentByValue, CTaskArgumentByReference, TaskToFlatbuffer
+from ray.includes.task cimport CTaskSpecification, CTaskArgument, CTaskArgumentByValue, CTaskArgumentByReference, SerializeTaskAsString
 
 from ray.utils import _random_string
 
@@ -73,28 +73,6 @@ cdef class Task:
         self.execution_dependencies.reset(new c_vector[CObjectID]())
         return self
 
-    @classmethod
-    def create_driver_task(cls, DriverID task_driver_id):
-        cdef int nil_actor_counter = 0
-        return cls(
-            task_driver_id,
-            [],  # function_descriptor
-            [],  # arguments.
-            0,  # num_returns.
-            TaskID(_random_string()),  # parent_task_id.
-            0,  # parent_counter.
-            ActorID.nil(),  # actor_creation_id.
-            ObjectID.nil(),  # actor_creation_dummy_object_id.
-            0,  # max_actor_reconstructions.
-            ActorID.nil(),  # actor_id.
-            ActorHandleID.nil(),  # actor_handle_id.
-            nil_actor_counter,  # actor_counter.
-            [],  # new_actor_handles.
-            [],  # execution_dependencies.
-            {"CPU": 0},  # resource_map.
-            {},  # placement_resource_map.
-        )
-
     @staticmethod
     def from_string(const c_string& task_spec_str):
         """Convert a string to a Ray task specification Python object.
@@ -118,10 +96,10 @@ cdef class Task:
         Returns:
             String representing the task specification.
         """
-        return self.task_spec.get().ToFlatbuffer()
+        return self.task_spec.get().SerializeAsString()
 
     def _serialized_raylet_task(self):
-        return TaskToFlatbuffer(self.execution_dependencies.get(), self.task_spec.get())
+        return SerializeTaskAsString(self.execution_dependencies.get(), self.task_spec.get())
 
     def driver_id(self):
         """Return the driver ID for this task."""
@@ -184,7 +162,6 @@ cdef class Task:
         required_resources = {}
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
-            # TODO(suquark): What is the type of the resource name (bytes, str, unicode)?
             py_resource_name = str(resource_name)  # bytes for Py2, unicode for Py3
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
