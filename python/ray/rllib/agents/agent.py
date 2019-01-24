@@ -440,7 +440,6 @@ class Agent(Trainable):
             0,
             # important: allow local tf to use more CPUs for optimization
             merge_dicts(self.config, {
-                "env_config": {"remote_evaluator": False},
                 "tf_session_args": self.
                 config["local_evaluator_tf_session_args"]
             }))
@@ -455,13 +454,9 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
-        return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
-                                 merge_dicts(self.config,
-                                             {"env_config":
-                                              {"remote_evaluator": True}}))
-            for i in range(count)
-        ]
+        return [self._make_evaluator(
+                cls, env_creator, policy_graph, i + 1, self.config)
+                for i in range(count)]
 
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
