@@ -91,7 +91,7 @@ def test_dying_worker_get(shutdown_only):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a get, the plasma
@@ -134,7 +134,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 # This test checks that when a worker dies in the middle of a wait, the plasma
@@ -176,7 +176,7 @@ def test_dying_worker_wait(shutdown_only):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a wait, the plasma
@@ -219,7 +219,7 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.all_processes_alive()
+    assert ray.services.remaining_processes_alive()
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
@@ -242,6 +242,23 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
 
     @ray.remote
+    def get_pids():
+        time.sleep(0.25)
+        return os.getpid()
+
+    start_time = time.time()
+    pids = set()
+    while len(pids) < num_nodes * num_initial_workers:
+        new_pids = ray.get([
+            get_pids.remote()
+            for _ in range(2 * num_nodes * num_initial_workers)
+        ])
+        for pid in new_pids:
+            pids.add(pid)
+        if time.time() - start_time > 60:
+            raise Exception("Timed out while waiting to get worker PIDs.")
+
+    @ray.remote
     def f(x):
         time.sleep(0.5)
         return x
@@ -253,13 +270,16 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     # Allow the tasks some time to begin executing.
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
-    for worker in (
-            ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER]):
-        worker.terminate()
+    for pid in pids:
+        os.kill(pid, signal.SIGKILL)
         time.sleep(0.1)
-    # Make sure that we can still get the objects after the executing tasks
-    # died.
-    ray.get(object_ids)
+    # Make sure that we either get the object or we get an appropriate
+    # exception.
+    for object_id in object_ids:
+        try:
+            ray.get(object_id)
+        except ray.worker.RayTaskError:
+            pass
 
 
 @pytest.fixture
@@ -278,13 +298,13 @@ def ray_initialize_cluster():
             }))
     ray.init(redis_address=cluster.redis_address)
 
-    yield None
+    yield cluster
 
     ray.shutdown()
     cluster.shutdown()
 
 
-def _test_component_failed(component_type):
+def _test_component_failed(cluster, component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
     # Submit many tasks with many dependencies.
     @ray.remote
@@ -299,8 +319,10 @@ def _test_component_failed(component_type):
     # execute. Do this in a loop while submitting tasks between each
     # component failure.
     time.sleep(0.1)
-    components = ray.services.all_processes[component_type]
-    for process in components[1:]:
+    worker_nodes = cluster.list_all_nodes()[1:]
+    assert len(worker_nodes) > 0
+    for node in worker_nodes:
+        process = node.all_processes[component_type][0].process
         # Submit a round of tasks with many dependencies.
         x = 1
         for _ in range(1000):
@@ -324,40 +346,43 @@ def _test_component_failed(component_type):
         ray.get(xs)
 
 
-def check_components_alive(component_type, check_component_alive):
-    """Check that a given component type is alive on all worker nodes.
-    """
-    components = ray.services.all_processes[component_type][1:]
-    for component in components:
+def check_components_alive(cluster, component_type, check_component_alive):
+    """Check that a given component type is alive on all worker nodes."""
+    worker_nodes = cluster.list_all_nodes()[1:]
+    assert len(worker_nodes) > 0
+    for node in worker_nodes:
+        process = node.all_processes[component_type][0].process
         if check_component_alive:
-            assert component.poll() is None
+            assert process.poll() is None
         else:
             print("waiting for " + component_type + " with PID " +
-                  str(component.pid) + "to terminate")
-            component.wait()
+                  str(process.pid) + "to terminate")
+            process.wait()
             print("done waiting for " + component_type + " with PID " +
-                  str(component.pid) + "to terminate")
-            assert not component.poll() is None
+                  str(process.pid) + "to terminate")
+            assert not process.poll() is None
 
 
 def test_raylet_failed(ray_initialize_cluster):
+    cluster = ray_initialize_cluster
     # Kill all local schedulers on worker nodes.
-    _test_component_failed(ray.services.PROCESS_TYPE_RAYLET)
+    _test_component_failed(cluster, ray.node.PROCESS_TYPE_RAYLET)
 
     # The plasma stores should still be alive on the worker nodes.
-    check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, True)
+    check_components_alive(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE, True)
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_plasma_store_failed(ray_initialize_cluster):
+    cluster = ray_initialize_cluster
     # Kill all plasma stores on worker nodes.
-    _test_component_failed(ray.services.PROCESS_TYPE_PLASMA_STORE)
+    _test_component_failed(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE)
 
     # No processes should be left alive on the worker nodes.
-    check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE, False)
-    check_components_alive(ray.services.PROCESS_TYPE_RAYLET, False)
+    check_components_alive(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE, False)
+    check_components_alive(cluster, ray.node.PROCESS_TYPE_RAYLET, False)
 
 
 def test_actor_creation_node_failure(ray_start_cluster):
@@ -406,42 +431,39 @@ def test_actor_creation_node_failure(ray_start_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_sequential():
-    ray.worker.init()
-    all_processes = ray.services.all_processes
-    processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_RAYLET])
+def test_driver_lives_sequential(shutdown_only):
+    ray.init(num_cpus=1)
+    ray.worker._global_node.kill_raylet()
+    ray.worker._global_node.kill_plasma_store()
+    ray.worker._global_node.kill_log_monitor()
+    ray.worker._global_node.kill_monitor()
+    ray.worker._global_node.kill_raylet_monitor()
 
-    # Kill all the components sequentially.
-    for process in processes:
-        process.terminate()
-        time.sleep(0.1)
-        process.kill()
-        process.wait()
-
-    ray.shutdown()
     # If the driver can reach the tearDown method, then it is still alive.
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-def test_driver_lives_parallel():
-    ray.worker.init()
-    all_processes = ray.services.all_processes
-    processes = (all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE] +
-                 all_processes[ray.services.PROCESS_TYPE_RAYLET])
+def test_driver_lives_parallel(shutdown_only):
+    ray.init(num_cpus=1)
+    all_processes = ray.worker._global_node.all_processes
+    process_infos = (all_processes[ray.node.PROCESS_TYPE_PLASMA_STORE] +
+                     all_processes[ray.node.PROCESS_TYPE_RAYLET] +
+                     all_processes[ray.node.PROCESS_TYPE_LOG_MONITOR] +
+                     all_processes[ray.node.PROCESS_TYPE_MONITOR] +
+                     all_processes[ray.node.PROCESS_TYPE_RAYLET_MONITOR])
+    assert len(process_infos) == 5
 
     # Kill all the components in parallel.
-    for process in processes:
-        process.terminate()
+    for process_info in process_infos:
+        process_info.process.terminate()
 
     time.sleep(0.1)
-    for process in processes:
-        process.kill()
+    for process_info in process_infos:
+        process_info.process.kill()
 
-    for process in processes:
-        process.wait()
+    for process_info in process_infos:
+        process_info.process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
-    ray.shutdown()

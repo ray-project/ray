@@ -31,6 +31,11 @@ matrix:
       script:
       - ./java/test.sh
 
+      # Test Bazel build
+      - rm -rf build
+      - ./.travis/install-bazel.sh
+      - bazel build ...
+
     - os: linux
       dist: trusty
       env: LINT=1 PYTHONWARNINGS=ignore
@@ -157,7 +162,7 @@ script:
   - python -m pytest -v --durations=10 python/ray/test/test_global_state.py
   - python -m pytest -v --durations=10 python/ray/test/test_queue.py
   - python -m pytest -v --durations=10 python/ray/test/test_ray_init.py
-  - python -m pytest -v --durations=10 test/xray_test.py
+  - python -m pytest -v --durations=10 test/mini_test.py
 
   - python -m pytest -v --durations=10 test/runtest.py
   - python -m pytest -v --durations=10 test/array_test.py

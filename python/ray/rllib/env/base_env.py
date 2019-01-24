@@ -324,14 +324,21 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             self.dones.remove(env_id)
         return obs
 
+    @override(AsyncVectorEnv)
+    def get_unwrapped(self):
+        return [state.env for state in self.env_states]
+
 
 class _MultiAgentEnvState(object):
     def __init__(self, env):
         assert isinstance(env, MultiAgentEnv)
         self.env = env
-        self.reset()
+        self.initialized = False
 
     def poll(self):
+        if not self.initialized:
+            self.reset()
+            self.initialized = True
         obs, rew, dones, info = (self.last_obs, self.last_rewards,
                                  self.last_dones, self.last_infos)
         self.last_obs = {}

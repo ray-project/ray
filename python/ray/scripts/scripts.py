@@ -15,8 +15,6 @@ from ray.autoscaler.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.parameter import RayParams
-
 logger = logging.getLogger(__name__)
 
 
@@ -231,7 +229,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    ray_params = RayParams(
+    ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
@@ -285,8 +283,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             include_webui=(not no_ui),
             autoscaling_config=autoscaling_config)
 
-        address_info = services.start_ray_head(ray_params, cleanup=False)
-        logger.info(address_info)
+        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
+        redis_address = node.redis_address
+
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
@@ -299,9 +298,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                address_info["redis_address"], " --redis-password "
+                redis_address, " --redis-password "
                 if redis_password else "", redis_password if redis_password
-                else "", address_info["redis_address"], "\", redis_password=\""
+                else "", redis_address, "\", redis_password=\""
                 if redis_password else "", redis_password
                 if redis_password else ""))
     else:
@@ -349,9 +348,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # if the Redis server already has clients on this node.
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
-        ray_params.redis_address = redis_address
-        address_info = services.start_ray_node(ray_params, cleanup=False)
-        logger.info(address_info)
+        ray_params.update(redis_address=redis_address)
+
+        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")

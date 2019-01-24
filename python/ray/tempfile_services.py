@@ -230,3 +230,10 @@ def new_monitor_log_file(redirect_output):
     monitor_stdout_file, monitor_stderr_file = new_log_files(
         "monitor", redirect_output)
     return monitor_stdout_file, monitor_stderr_file
+
+
+def new_raylet_monitor_log_file(redirect_output):
+    """Create new logging files for the raylet monitor."""
+    raylet_monitor_stdout_file, raylet_monitor_stderr_file = new_log_files(
+        "raylet_monitor", redirect_output)
+    return raylet_monitor_stdout_file, raylet_monitor_stderr_file

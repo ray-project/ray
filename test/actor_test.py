@@ -98,6 +98,16 @@ def test_actor_init_error_propagated(ray_start_regular):
         ray.get(actor.foo.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 0), reason="This test requires Python 2.")
+def test_old_style_error(ray_start_regular):
+    with pytest.raises(TypeError):
+
+        @ray.remote
+        class Actor:
+            pass
+
+
 def test_keyword_args(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1312,7 +1322,7 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
     # Create an actor that is not on the local scheduler.
     actor = Counter.remote()
     while (ray.get(actor.local_plasma.remote()) !=
-           remote_node.get_plasma_store_name()):
+           remote_node.plasma_store_socket_name):
         actor = Counter.remote()
 
     # Kill the second node.
@@ -1456,15 +1466,13 @@ def setup_counter_actor(test_checkpoint=False,
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpointing(two_node_cluster):
+    cluster = two_node_cluster
     actor, ids = setup_counter_actor(test_checkpoint=True)
     # Wait for the last task to finish running.
     ray.get(ids[-1])
 
     # Kill the corresponding plasma store to get rid of the cached objects.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(actor.test_restore.remote())
@@ -1484,16 +1492,14 @@ def test_checkpointing(two_node_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint(two_node_cluster):
+    cluster = two_node_cluster
     actor, ids = setup_counter_actor(test_checkpoint=True)
 
     # Do a remote checkpoint call and wait for it to finish.
     ray.get(actor.__ray_checkpoint__.remote())
 
     # Kill the corresponding plasma store to get rid of the cached objects.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(actor.test_restore.remote())
@@ -1513,15 +1519,13 @@ def test_remote_checkpoint(two_node_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_lost_checkpoint(two_node_cluster):
+    cluster = two_node_cluster
     actor, ids = setup_counter_actor(test_checkpoint=True)
     # Wait for the first fraction of tasks to finish running.
     ray.get(ids[len(ids) // 10])
 
     # Kill the corresponding plasma store to get rid of the cached objects.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(actor.test_restore.remote())
@@ -1542,15 +1546,13 @@ def test_lost_checkpoint(two_node_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpoint_exception(two_node_cluster):
+    cluster = two_node_cluster
     actor, ids = setup_counter_actor(test_checkpoint=True, save_exception=True)
     # Wait for the last task to finish running.
     ray.get(ids[-1])
 
     # Kill the corresponding plasma store to get rid of the cached objects.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that we can submit another call on the actor and get the
     # correct counter result.
@@ -1573,16 +1575,14 @@ def test_checkpoint_exception(two_node_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_checkpoint_resume_exception(two_node_cluster):
+    cluster = two_node_cluster
     actor, ids = setup_counter_actor(
         test_checkpoint=True, resume_exception=True)
     # Wait for the last task to finish running.
     ray.get(ids[-1])
 
     # Kill the corresponding plasma store to get rid of the cached objects.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that we can submit another call on the actor and get the
     # correct counter result.
@@ -1603,6 +1603,7 @@ def test_checkpoint_resume_exception(two_node_cluster):
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_distributed_handle(two_node_cluster):
+    cluster = two_node_cluster
     counter, ids = setup_counter_actor(test_checkpoint=False)
 
     @ray.remote
@@ -1625,10 +1626,7 @@ def test_distributed_handle(two_node_cluster):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding local scheduler to exit.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
     assert not ray.get(counter.test_restore.remote())
@@ -1643,6 +1641,7 @@ def test_distributed_handle(two_node_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(two_node_cluster):
+    cluster = two_node_cluster
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1666,10 +1665,7 @@ def test_remote_checkpoint_distributed_handle(two_node_cluster):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding local scheduler to exit.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())
@@ -1686,6 +1682,7 @@ def test_remote_checkpoint_distributed_handle(two_node_cluster):
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_checkpoint_distributed_handle(two_node_cluster):
+    cluster = two_node_cluster
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -1708,10 +1705,7 @@ def test_checkpoint_distributed_handle(two_node_cluster):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding local scheduler to exit.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())
@@ -1721,8 +1715,8 @@ def test_checkpoint_distributed_handle(two_node_cluster):
     assert x == count + 1
 
 
-def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
-                                          num_forks_to_wait):
+def _test_nondeterministic_reconstruction(
+        cluster, num_forks, num_items_per_fork, num_forks_to_wait):
     # Make a shared queue.
     @ray.remote
     class Queue(object):
@@ -1774,10 +1768,7 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding local scheduler to exit.
-    process = ray.services.all_processes[
-        ray.services.PROCESS_TYPE_PLASMA_STORE][1]
-    process.kill()
-    process.wait()
+    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Read the queue again and check for deterministic reconstruction.
     ray.get(enqueue_tasks)
@@ -1794,14 +1785,16 @@ def _test_nondeterministic_reconstruction(num_forks, num_items_per_fork,
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Currently doesn't work with the new GCS.")
 def test_nondeterministic_reconstruction(two_node_cluster):
-    _test_nondeterministic_reconstruction(10, 100, 10)
+    cluster = two_node_cluster
+    _test_nondeterministic_reconstruction(cluster, 10, 100, 10)
 
 
 @pytest.mark.skip("Nondeterministic reconstruction currently not supported "
                   "when there are concurrent forks that didn't finish "
                   "initial execution.")
 def test_nondeterministic_reconstruction_concurrent_forks(two_node_cluster):
-    _test_nondeterministic_reconstruction(10, 100, 1)
+    cluster = two_node_cluster
+    _test_nondeterministic_reconstruction(cluster, 10, 100, 1)
 
 
 @pytest.fixture
@@ -2278,7 +2271,7 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
     def kill_node(object_store_socket):
         node_to_remove = None
         for node in cluster.worker_nodes:
-            if object_store_socket == node.get_plasma_store_name():
+            if object_store_socket == node.plasma_store_socket_name:
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
 

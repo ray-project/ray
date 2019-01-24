@@ -68,8 +68,7 @@ TEST(SignalTest, SIGILL_Test) {
   pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
-    // This code will cause SIGILL sent.
-    asm("ud2");
+    raise(SIGILL);
   } else {
     Sleep();
     RAY_LOG(ERROR) << "SIGILL_Test: kill pid " << pid
