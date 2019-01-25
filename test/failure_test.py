@@ -675,8 +675,6 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(
-            ray.raylet.RayCommonError,
-            match=r".*raylet client may be closed.*"):
+    with pytest.raises(Exception, match=r".*Connection closed unexpectedly.*"):
         ray.get(nonexistent_id)
     thread.join()

@@ -8,7 +8,7 @@ import logging
 import numpy as np
 import gym
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -16,6 +16,7 @@ ATARI_RAM_OBS_SHAPE = (128, )
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class Preprocessor(object):
     """Defines an abstract observation preprocessor function.
 
@@ -23,25 +24,30 @@ class Preprocessor(object):
         shape (obj): Shape of the preprocessed output.
     """
 
+    @PublicAPI
     def __init__(self, obs_space, options=None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         self._options = options or {}
         self.shape = self._init_shape(obs_space, options)
 
+    @PublicAPI
     def _init_shape(self, obs_space, options):
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
+    @PublicAPI
     def transform(self, observation):
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
     @property
+    @PublicAPI
     def size(self):
         return int(np.product(self.shape))
 
     @property
+    @PublicAPI
     def observation_space(self):
         obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
@@ -186,6 +192,7 @@ class DictFlatteningPreprocessor(Preprocessor):
         ])
 
 
+@PublicAPI
 def get_preprocessor(space):
     """Returns an appropriate preprocessor class for the given space."""
 

@@ -17,7 +17,7 @@ from ray.rllib.test.test_policy_evaluator import MockEnv, MockEnv2, \
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.env.async_vector_env import _MultiAgentEnvToAsync
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
 
@@ -176,13 +176,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def testNoResetUntilPoll(self):
-        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 1)
+        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 1)
         self.assertFalse(env.get_unwrapped()[0].resetted)
         env.poll()
         self.assertTrue(env.get_unwrapped()[0].resetted)
 
     def testVectorizeBasic(self):
-        env = _MultiAgentEnvToAsync(lambda v: BasicMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
@@ -258,7 +258,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             })
 
     def testVectorizeRoundRobin(self):
-        env = _MultiAgentEnvToAsync(lambda v: RoundRobinMultiAgent(2), [], 2)
+        env = _MultiAgentEnvToBaseEnv(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {0: None}, 1: {0: None}})

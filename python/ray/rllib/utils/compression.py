@@ -9,6 +9,8 @@ import numpy as np
 import pyarrow
 from six import string_types
 
+from ray.rllib.utils.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -21,6 +23,7 @@ except ImportError:
     LZ4_ENABLED = False
 
 
+@DeveloperAPI
 def pack(data):
     if LZ4_ENABLED:
         data = pyarrow.serialize(data).to_buffer().to_pybytes()
@@ -31,12 +34,14 @@ def pack(data):
     return data
 
 
+@DeveloperAPI
 def pack_if_needed(data):
     if isinstance(data, np.ndarray):
         data = pack(data)
     return data
 
 
+@DeveloperAPI
 def unpack(data):
     if LZ4_ENABLED:
         data = base64.b64decode(data)
@@ -45,6 +50,7 @@ def unpack(data):
     return data
 
 
+@DeveloperAPI
 def unpack_if_needed(data):
     if isinstance(data, bytes) or isinstance(data, string_types):
         data = unpack(data)

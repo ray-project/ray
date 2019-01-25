@@ -331,7 +331,7 @@ def test_random_id_generation(ray_start_regular):
     random.seed(1234)
     f2 = Foo.remote()
 
-    assert f1._ray_actor_id.id() != f2._ray_actor_id.id()
+    assert f1._ray_actor_id != f2._ray_actor_id
 
 
 def test_actor_class_name(ray_start_regular):
@@ -2215,30 +2215,32 @@ def test_actor_reconstruction(ray_start_regular):
         def __init__(self):
             self.value = 0
 
-        def increase(self):
+        def increase(self, delay=0):
+            time.sleep(delay)
             self.value += 1
             return self.value
 
         def get_pid(self):
             return os.getpid()
 
-    def kill_actor(actor):
-        """Kill actor process."""
-        pid = ray.get(actor.get_pid.remote())
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
-
     actor = ReconstructableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
     # Call increase 3 times
     for _ in range(3):
         ray.get(actor.increase.remote())
-    # kill actor process
-    kill_actor(actor)
-    # Call increase again.
-    # Check that actor is reconstructed and value is 4.
-    assert ray.get(actor.increase.remote()) == 4
+    # Call increase again with some delay.
+    result = actor.increase.remote(delay=0.5)
+    # Sleep some time to wait for the above task to start execution.
+    time.sleep(0.2)
+    # Kill actor process, while the above task is still being executed.
+    os.kill(pid, signal.SIGKILL)
+    # Check that the above task didn't fail and the actor is reconstructed.
+    assert ray.get(result) == 4
+    # Check that we can still call the actor.
+    assert ray.get(actor.increase.remote()) == 5
     # kill actor process one more time.
-    kill_actor(actor)
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
     # The actor has exceeded max reconstructions, and this task should fail.
     with pytest.raises(ray.worker.RayTaskError):
         ray.get(actor.increase.remote())
