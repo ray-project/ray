@@ -6,6 +6,7 @@ import numpy as np
 import json
 import os
 import ray
+import redis
 import sys
 import tempfile
 import threading
@@ -616,6 +617,44 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 
     [g.remote() for _ in range(num_cpus * 4)]
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
+
+
+def test_redis_module_failure(shutdown_only):
+    address_info = ray.init()
+    redis_address = address_info['redis_address']
+    redis_address = redis_address.split(':')
+    assert len(redis_address) == 2
+
+    def run_failure_test(expecting_message, *command):
+        with pytest.raises(
+                Exception, match=".*{}.*".format(expecting_message)):
+            client = redis.StrictRedis(
+                host=redis_address[0], port=int(redis_address[1]))
+            client.execute_command(*command)
+
+    def run_one_command(*command):
+        client = redis.StrictRedis(
+            host=redis_address[0], port=int(redis_address[1]))
+        client.execute_command(*command)
+
+    run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
+    run_failure_test("Prefix must in the TablePrefix range", "RAY.TABLE_ADD",
+                     100000, 1, 1, 1)
+    run_failure_test("Prefix must in the TablePrefix range",
+                     "RAY.TABLE_REQUEST_NOTIFICATIONS", 100000, 1, 1, 1)
+    run_failure_test("Prefix must be a valid TablePrefix integer",
+                     "RAY.TABLE_ADD", b'a', 1, 1, 1)
+    run_failure_test("Pubsub channel must in the TablePubsub range",
+                     "RAY.TABLE_ADD", 1, 10000, 1, 1)
+    run_failure_test("Pubsub channel must be a valid integer", "RAY.TABLE_ADD",
+                     1, b'a', 1, 1)
+    run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+                     -1)
+    run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+                     b'a')
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 1, 1)
+    run_failure_test("Appended a duplicate entry", "RAY.TABLE_APPEND", 1, 1, 1,
+                     1, 1)
 
 
 @pytest.fixture
