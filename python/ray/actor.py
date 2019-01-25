@@ -112,11 +112,7 @@ def save_and_log_checkpoint(worker, actor):
             worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
-            driver_id=worker.task_driver_id,
-            data={
-                "actor_class": actor.__class__.__name__,
-                "function_name": actor.__ray_checkpoint__.__name__
-            })
+            driver_id=worker.task_driver_id)
 
 
 def restore_and_log_checkpoint(worker, actor):
@@ -136,11 +132,7 @@ def restore_and_log_checkpoint(worker, actor):
             worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
-            driver_id=worker.task_driver_id,
-            data={
-                "actor_class": actor.__class__.__name__,
-                "function_name": actor.__ray_checkpoint_restore__.__name__
-            })
+            driver_id=worker.task_driver_id)
     return checkpoint_resumed
 
 

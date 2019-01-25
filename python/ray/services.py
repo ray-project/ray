@@ -93,7 +93,7 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def remaining_processes_alive(exclude=None):
+def remaining_processes_alive():
     """See if the remaining processes are alive or not.
 
     Note that this ignores processes that have been explicitly killed,
@@ -513,13 +513,12 @@ def start_redis(node_ip_address,
 
     port, p = _start_redis(
         node_ip_address,
+        use_credis=use_credis,
         port=port,
         redis_max_clients=redis_max_clients,
         password=password,
-        use_credis=use_credis,
-        # It is important to load the credis module BEFORE the ray module,
-        # as the latter contains an extern declaration that the former
-        # supplies.
+        # Below we use None to indicate no limit on the memory of the
+        # primary Redis shard.
         redis_max_memory=None,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file)
@@ -559,10 +558,10 @@ def start_redis(node_ip_address,
 
         redis_shard_port, p = _start_redis(
             node_ip_address,
+            use_credis=use_credis,
             port=redis_shard_ports[i],
             redis_max_clients=redis_max_clients,
             password=password,
-            use_credis=use_credis,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file)
@@ -586,10 +585,10 @@ def start_redis(node_ip_address,
 
 
 def _start_redis(node_ip_address,
+                 use_credis,
                  port=None,
                  redis_max_clients=None,
                  password=None,
-                 use_credis=None,
                  redis_max_memory=None,
                  stdout_file=None,
                  stderr_file=None):
@@ -645,7 +644,7 @@ def _start_redis(node_ip_address,
         assert assigned_port == port
     # Record the log files in Redis.
     record_log_files_in_redis(
-        address(node_ip_address, port),
+        address(node_ip_address, assigned_port),
         node_ip_address, [stdout_file, stderr_file],
         password=password)
     return assigned_port, p

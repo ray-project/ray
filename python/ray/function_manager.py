@@ -403,12 +403,10 @@ class FunctionActorManager(object):
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                traceback_str,
-                driver_id=driver_id,
-                data={
-                    "function_id": function_id.binary(),
-                    "function_name": function_name
-                })
+                "Failed to unpickle the remote function '{}' with function ID "
+                "{}. Traceback:\n{}".format(
+                    function_name, function_id.hex(), traceback_str),
+                driver_id=driver_id)
         else:
             # The below line is necessary. Because in the driver process,
             # if the function is defined in the file where the python script
@@ -642,9 +640,10 @@ class FunctionActorManager(object):
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                traceback_str,
-                driver_id,
-                data={"actor_id": actor_id.binary()})
+                "Failed to unpickle actor class '{}' for actor ID {}. "
+                "Traceback:\n{}".format(
+                    class_name, actor_id.hex(), traceback_str),
+                driver_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.

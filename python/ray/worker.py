@@ -862,7 +862,6 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        function_id = function_descriptor.function_id
         failure_object = RayTaskError(function_name, backtrace)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
@@ -873,13 +872,7 @@ class Worker(object):
             self,
             ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
-            driver_id=self.task_driver_id,
-            data={
-                "function_id": function_id.binary(),
-                "function_name": function_name,
-                "module_name": function_descriptor.module_name,
-                "class_name": function_descriptor.class_name
-            })
+            driver_id=self.task_driver_id)
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
