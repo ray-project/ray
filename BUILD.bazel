@@ -2,7 +2,6 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("@//bazel:cython_library.bzl", "pyx_library")
 
 cc_binary(
     name = "raylet",
@@ -28,6 +27,7 @@ cc_binary(
 
 cc_library(
     name = "raylet_lib",
+    visibility = ["//visibility:public"],
     srcs = glob([
         "src/ray/raylet/*.cc"
     ], exclude = [
@@ -304,14 +304,4 @@ flatbuffer_cc_library(
     srcs = ["src/ray/object_manager/format/object_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/object_manager/format/",
-)
-
-pyx_library(
-    name = "_raylet",
-    srcs = glob([
-        "python/ray/_raylet.pyx",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi"
-    ]),
-    deps = [":raylet_lib"]
 )
