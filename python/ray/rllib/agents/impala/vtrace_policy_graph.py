@@ -282,10 +282,25 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         # KL divergence between worker and learner logits for debugging
         model_dist = MultiCategorical(unpacked_outputs)
         behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
-        self.KLs = model_dist.kl(behaviour_dist)
-        self.mean_KL = tf.reduce_mean(self.KLs)
-        self.max_KL = tf.reduce_max(self.KLs)
-        self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
+
+        KLs = model_dist.kl(behaviour_dist)
+        if isinstance(KLs, list):
+            self.KL_stats = {}
+
+            for i, kl in enumerate(KLs):
+                self.KL_stats.update({
+                    f"mean_KL_{i}": tf.reduce_mean(kl),
+                    f"max_KL_{i}": tf.reduce_max(kl),
+                    f"median_KL_{i}": tf.contrib.distributions.percentile(
+                        kl, 50.0),
+                })
+        else:
+            self.KL_stats = {
+                "mean_KL": tf.reduce_mean(kl),
+                "max_KL": tf.reduce_max(kl),
+                "median_KL": tf.contrib.distributions.percentile(
+                    kl, 50.0),
+            }
 
         # Initialize TFPolicyGraph
         loss_in = [
@@ -329,9 +344,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.vtrace_returns.vs, [-1]),
                     tf.reshape(make_time_major(values, True), [-1])),
-                "mean_KL": self.mean_KL,
-                "max_KL": self.max_KL,
-                "median_KL": self.median_KL,
+                **self.KL_stats,
             },
         }
 
