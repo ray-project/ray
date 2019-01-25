@@ -8,9 +8,9 @@ If any example is broken, or if you'd like to add an example to this page, feel 
 Tuned Examples
 --------------
 
-- `Tuned examples <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__.
+- `Tuned examples <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__:
    Collection of tuned algorithm hyperparameters.
-- `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__.
+- `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
    Collection of reasonably optimized Atari results.
 
 Custom Environments and Models
