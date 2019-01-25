@@ -1,28 +1,70 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
 cc_library(
-    name = "plasma",
+    name = "arrow",
+    hdrs = [
+        "cpp/src/arrow/buffer.h",
+        "cpp/src/arrow/memory_pool.h",
+        "cpp/src/arrow/status.h",
+        "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/util/bit-util.h",
+        "cpp/src/arrow/util/io-util.h",
+        "cpp/src/arrow/util/logging.h",
+        "cpp/src/arrow/util/macros.h",
+        "cpp/src/arrow/util/string_builder.h",
+        "cpp/src/arrow/util/string_view.h",
+        "cpp/src/arrow/util/type_traits.h",
+        "cpp/src/arrow/util/thread-pool.h",
+        "cpp/src/arrow/util/visibility.h",
+        "cpp/src/arrow/util/windows_compatibility.h",
+        "cpp/src/arrow/vendored/string_view.hpp",
+        "cpp/src/arrow/vendored/xxhash/xxhash.h",
+        "cpp/src/arrow/vendored/xxhash/xxhash.c",
+    ],
+    srcs = [
+        "cpp/src/arrow/buffer.cc",
+        "cpp/src/arrow/memory_pool.cc",
+        "cpp/src/arrow/status.cc",
+        "cpp/src/arrow/util/logging.cc",
+        "cpp/src/arrow/util/thread-pool.cc",
+        "cpp/src/arrow/util/io-util.cc",
+    ],
+    strip_include_prefix = "cpp/src",
+)
+
+cc_library(
+    name = "plasma_client",
     visibility = ["//visibility:public"],
     hdrs = [
         "cpp/src/plasma/client.h",
         "cpp/src/plasma/common.h",
         "cpp/src/plasma/compat.h",
-        "cpp/src/plasma/events.h",
-        "cpp/src/arrow/buffer.h",
-        "cpp/src/arrow/memory_pool.h",
-        "cpp/src/arrow/status.h",
-        "cpp/src/arrow/util/macros.h",
-        "cpp/src/arrow/util/visibility.h",
-        "cpp/src/arrow/util/string_builder.h",
-        # private headers
-        "cpp/src/plasma/common_generated.h",
-        "cpp/src/plasma/plasma_generated.h",
-        "cpp/src/plasma/eviction_policy.h",
         "cpp/src/plasma/fling.h",
         "cpp/src/plasma/io.h",
         "cpp/src/plasma/malloc.h",
         "cpp/src/plasma/plasma.h",
         "cpp/src/plasma/protocol.h",
+        "cpp/src/plasma/common_generated.h",
+        "cpp/src/plasma/plasma_generated.h",
+    ],
+    srcs = [
+        "cpp/src/plasma/client.cc",
+        "cpp/src/plasma/common.cc",
+        "cpp/src/plasma/fling.cc",
+        "cpp/src/plasma/io.cc",
+        "cpp/src/plasma/malloc.cc",
+        "cpp/src/plasma/plasma.cc",
+        "cpp/src/plasma/protocol.cc",
+    ],
+    deps = [":common_fbs", ":plasma_fbs", ":arrow"],
+    strip_include_prefix = "cpp/src",
+)
+
+cc_library(
+    name = "plasma_lib",
+    hdrs = [
+        "cpp/src/plasma/events.h",
+        "cpp/src/plasma/eviction_policy.h",
         "cpp/src/plasma/store.h",
         "cpp/src/plasma/thirdparty/dlmalloc.c",
         "cpp/src/plasma/thirdparty/ae/ae.h",
@@ -32,30 +74,25 @@ cc_library(
         "cpp/src/plasma/thirdparty/ae/ae_select.c",
         "cpp/src/plasma/thirdparty/ae/config.h",
         "cpp/src/plasma/thirdparty/ae/zmalloc.h",
-        "cpp/src/arrow/io/interfaces.h",
-        "cpp/src/arrow/util/bit-util.h",
-        "cpp/src/arrow/util/io-util.h",
-        "cpp/src/arrow/util/logging.h",
-        "cpp/src/arrow/util/string_view.h",
-        "cpp/src/arrow/util/type_traits.h",
-        "cpp/src/arrow/vendored/string_view.hpp",
-        "cpp/src/arrow/util/thread-pool.h",
-        "cpp/src/arrow/vendored/xxhash/xxhash.h",
-        "cpp/src/arrow/vendored/xxhash/xxhash.c",
-        "cpp/src/arrow/util/windows_compatibility.h",
     ],
-    srcs = glob([
-      "cpp/src/plasma/*.cc",
-      "cpp/src/plasma/thirdparty/ae/ae.c",
-      "cpp/src/arrow/buffer.cc",
-      "cpp/src/arrow/memory_pool.cc",
-      "cpp/src/arrow/status.cc",
-      "cpp/src/arrow/util/logging.cc",
-      "cpp/src/arrow/util/thread-pool.cc",
-      "cpp/src/arrow/util/io-util.cc",
-    ]),
-    deps = [":common_fbs", ":plasma_fbs"],
+    srcs = [
+        "cpp/src/plasma/dlmalloc.cc",
+        "cpp/src/plasma/eviction_policy.cc",
+        "cpp/src/plasma/events.cc",
+    ],
+    deps = [":plasma_client"],
     strip_include_prefix = "cpp/src",
+)
+
+
+cc_binary(
+    name = "plasma_server",
+    visibility = ["//visibility:public"],
+    srcs = glob([
+      "cpp/src/plasma/store.cc",
+      "cpp/src/plasma/thirdparty/ae/ae.c",
+    ], exclude = ["cpp/src/plasma/dlmalloc.cc", "cpp/src/plasma/events.cc"]),
+    deps = [":plasma_lib"],
 )
 
 FLATC_ARGS = [

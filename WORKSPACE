@@ -25,5 +25,15 @@ new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
     remote = "https://github.com/ray-project/arrow",
-    commit = "1e4f867eb1dc31107331ab1defdffb94467f31dc",
+    commit = "f5d1be2fed69899aea636bd074aaeaa4149acc79",
 )
+
+new_git_repository(
+    name="cython",
+    build_file="@//bazel:BUILD.cython",
+    remote = "https://github.com/cython/cython",
+    commit = "49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e",
+)
+
+load("@//bazel:python_configure.bzl", "python_configure")
+python_configure(name="local_config_python")
