@@ -119,11 +119,13 @@ class MultiVTraceLoss(object):
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_logits: A list with length of ACTION_SPACE of float32 tensors of shapes
+            behaviour_logits: A list with length of ACTION_SPACE of float32
+                tensors of shapes
                 [T, B, OUTPUT_HIDDEN_SHAPE[0]],
                 ...,
                 [T, B, OUTPUT_HIDDEN_SHAPE[-1]]
-            target_logits: A list with length of ACTION_SPACE of float32 tensors of shapes
+            target_logits: A list with length of ACTION_SPACE of float32
+                tensors of shapes
                 [T, B, OUTPUT_HIDDEN_SHAPE[0]],
                 ...,
                 [T, B, OUTPUT_HIDDEN_SHAPE[-1]]
@@ -248,10 +250,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 B = tf.shape(tensor)[0] // T
             rs = tf.reshape(tensor,
                             tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+
             # swap B and T axes
-            return tf.transpose(
+            res = tf.transpose(
                 rs,
                 [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+
+            if drop_last:
+                return res[:-1]
+            return res
 
         if self.model.state_in:
             max_seq_len = tf.reduce_max(self.model.seq_lens) - 1

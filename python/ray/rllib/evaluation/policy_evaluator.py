@@ -114,7 +114,10 @@ class PolicyEvaluator(EvaluatorInterface):
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation_method=None,
-                 output_creator=lambda ioctx: NoopOutput()):
+                 output_creator=lambda ioctx: NoopOutput(),
+                 remote_worker_envs=False,
+                 build_base_env=False,
+                 build_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -194,7 +197,6 @@ class PolicyEvaluator(EvaluatorInterface):
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
-        env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
@@ -212,6 +214,8 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
 
+        env_context = EnvContext(
+            env_config or {}, worker_index, placeholder_env=not build_base_env)
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
@@ -237,17 +241,12 @@ class PolicyEvaluator(EvaluatorInterface):
                     env = _monitor(env, monitor_path)
                 return env
         else:
-
             def wrap(env):
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
 
         self.env = wrap(self.env)
-
-        def make_env(vector_index):
-            return wrap(
-                env_creator(env_context.with_vector_index(vector_index)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -257,7 +256,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     and not ray.get_gpu_ids()):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
-                            " on CPU (please ignore any CUDA init errors)")
+                    " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -287,9 +286,17 @@ class PolicyEvaluator(EvaluatorInterface):
             for (policy_id, policy) in self.policy_map.items()
         }
 
+
+        def make_env(vector_index):
+            return wrap(
+                env_creator(env_context.align(vector_index=vector_index,
+                                              remote=remote_worker_envs and build_worker_envs,
+                                              placeholder_env=not build_worker_envs)))
+
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = AsyncVectorEnv.wrap_async(
-            self.env, make_env=make_env, num_envs=num_envs)
+                self.env, make_env=make_env, num_envs=num_envs,
+                remote_envs=remote_worker_envs and build_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":

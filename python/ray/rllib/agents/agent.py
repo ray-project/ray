@@ -177,6 +177,9 @@ COMMON_CONFIG = {
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
     },
+
+    # Whether environments are in remote process or not
+    "remote_worker_envs": False,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -214,7 +217,8 @@ class Agent(Trainable):
         "custom_resources_per_worker"
     ]
 
-    def __init__(self, config=None, env=None, logger_creator=None):
+    def __init__(self, config=None, env=None, logger_creator=None,
+                 is_rollout=False):
         """Initialize an RLLib agent.
 
         Args:
@@ -227,6 +231,7 @@ class Agent(Trainable):
 
         config = config or {}
 
+        self._is_rollout = is_rollout
         # Vars to synchronize to evaluators on each train call
         self.global_vars = {"timestep": 0}
 
@@ -442,7 +447,10 @@ class Agent(Trainable):
             merge_dicts(self.config, {
                 "tf_session_args": self.
                 config["local_evaluator_tf_session_args"]
-            }))
+            }),
+            build_base_env=self._is_rollout,
+            build_worker_envs=False
+        )
 
     def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
@@ -455,8 +463,14 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
         return [self._make_evaluator(
-                cls, env_creator, policy_graph, i + 1, self.config)
-                for i in range(count)]
+            cls,
+            env_creator,
+            policy_graph,
+            i + 1,
+            self.config,
+            build_base_env=False,
+            build_worker_envs=True)
+            for i in range(count)]
 
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
@@ -520,7 +534,7 @@ class Agent(Trainable):
                 "`input_evaluation` should not be set when input=sampler")
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config):
+                        config, build_base_env=True, build_worker_envs=True):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -580,7 +594,10 @@ class Agent(Trainable):
             callbacks=config["callbacks"],
             input_creator=input_creator,
             input_evaluation_method=config["input_evaluation"],
-            output_creator=output_creator)
+            output_creator=output_creator,
+            remote_worker_envs=config["remote_worker_envs"],
+            build_base_env=build_base_env,
+            build_worker_envs=build_worker_envs)
 
     def __getstate__(self):
         state = {}

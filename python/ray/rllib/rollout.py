@@ -93,7 +93,7 @@ def run(args, parser):
     ray.init()
 
     cls = get_agent_class(args.run)
-    agent = cls(env=args.env, config=config)
+    agent = cls(env=args.env, config=config, is_rollout=True)
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
     rollout(agent, args.env, num_steps, args.out, args.no_render)

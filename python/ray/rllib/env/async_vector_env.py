@@ -65,12 +65,14 @@ class AsyncVectorEnv(object):
     """
 
     @staticmethod
-    def wrap_async(env, make_env=None, num_envs=1):
+    def wrap_async(env, make_env=None, num_envs=1, remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
         if not isinstance(env, AsyncVectorEnv):
             if isinstance(env, MultiAgentEnv):
+                # NOTE: Probably should handle remote_envs in
+                #       _MultiAgentEnvToAsync as well
                 env = _MultiAgentEnvToAsync(
-                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
+                    make_env=make_env, existing_envs=[], num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
@@ -80,7 +82,8 @@ class AsyncVectorEnv(object):
                 env = _VectorEnvToAsync(env)
             else:
                 env = VectorEnv.wrap(
-                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
+                    make_env=make_env, num_envs=num_envs, remote_envs=remote_envs,
+                    action_space=env.action_space, observation_space=env.observation_space)
                 env = _VectorEnvToAsync(env)
         assert isinstance(env, AsyncVectorEnv)
         return env

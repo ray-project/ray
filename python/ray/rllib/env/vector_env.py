@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
 from ray.rllib.utils.annotations import override
 
 
@@ -17,8 +18,12 @@ class VectorEnv(object):
     """
 
     @staticmethod
-    def wrap(make_env=None, existing_envs=None, num_envs=1):
-        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
+    def wrap(make_env=None, num_envs=1, remote_envs=False, action_space=None, observation_space=None):
+        if remote_envs:
+            return _RemoteVectorizedGymEnv(make_env, [], num_envs,
+                                           action_space, observation_space)
+        return _VectorizedGymEnv(make_env, [], num_envs,
+                                 action_space, observation_space)
 
     def vector_reset(self):
         """Resets all environments.
@@ -65,14 +70,16 @@ class _VectorizedGymEnv(VectorEnv):
         num_envs (int): Desired num gym envs to keep total.
     """
 
-    def __init__(self, make_env, existing_envs, num_envs):
+    def __init__(self, make_env, existing_envs, num_envs,
+                 action_space=None, observation_space=None):
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
-        self.action_space = self.envs[0].action_space
-        self.observation_space = self.envs[0].observation_space
+        self.action_space = action_space or self.envs[0].action_space
+        self.observation_space = observation_space or \
+            self.envs[0].observation_space
 
     @override(VectorEnv)
     def vector_reset(self):
@@ -96,3 +103,30 @@ class _VectorizedGymEnv(VectorEnv):
     @override(VectorEnv)
     def get_unwrapped(self):
         return self.envs
+
+
+class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
+    """Internal wrapper for gym envs to implement VectorEnv as remote workers.
+    """
+
+    @override(_VectorizedGymEnv)
+    def vector_reset(self):
+        return ray.get([env.reset.remote() for env in self.envs])
+
+    @override(_VectorizedGymEnv)
+    def reset_at(self, index):
+        return ray.get(self.envs[index].reset.remote())
+
+    @override(_VectorizedGymEnv)
+    def vector_step(self, actions):
+        step_outs = ray.get([env.step.remote(act)
+                             for env, act in zip(self.envs, actions)])
+
+        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        for step_out in step_outs:
+            obs, rew, done, info = step_out
+            obs_batch.append(obs)
+            rew_batch.append(rew)
+            done_batch.append(done)
+            info_batch.append(info)
+        return obs_batch, rew_batch, done_batch, info_batch
