@@ -588,11 +588,11 @@ class Agent(Trainable):
         exported = {}
         if ExportFormat.CHECKPOINT in export_formats:
             path = os.path.join(export_dir, ExportFormat.CHECKPOINT)
-            self.export_policy_checkpoint(export_dir)
+            self.export_policy_checkpoint(path)
             exported[ExportFormat.CHECKPOINT] = path
         if ExportFormat.MODEL in export_formats:
             path = os.path.join(export_dir, ExportFormat.MODEL)
-            self.export_policy_model(export_dir)
+            self.export_policy_model(path)
             exported[ExportFormat.MODEL] = path
         return exported
 
