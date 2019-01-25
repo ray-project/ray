@@ -198,7 +198,9 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
 
 const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(
     TaskState task_state) const {
-  RAY_CHECK(task_state < TaskState::kNumTaskQueues) << static_cast<int>(task_state);
+  RAY_CHECK(task_state < TaskState::kNumTaskQueues)
+      << static_cast<int>(task_state) << "Task state " << static_cast<int>(task_state)
+      << " does not correspond to a task queue";
   return task_queues_[static_cast<int>(task_state)];
 }
 

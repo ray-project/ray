@@ -1,11 +1,11 @@
 #ifndef RAY_RAYLET_SCHEDULING_QUEUE_H
 #define RAY_RAYLET_SCHEDULING_QUEUE_H
 
+#include <array>
 #include <list>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <array>
 
 #include "ray/raylet/task.h"
 #include "ray/util/logging.h"

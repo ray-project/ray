@@ -153,7 +153,8 @@ class ClientConnection : public ServerConnection<T> {
   static std::shared_ptr<ClientConnection<T>> Create(
       ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
       boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
-      const char *const *message_type_enum_names, int64_t error_message_type);
+      const std::vector<std::string> &message_type_enum_names,
+      int64_t error_message_type);
 
   std::shared_ptr<ClientConnection<T>> shared_ClientConnection_from_this() {
     return std::static_pointer_cast<ClientConnection<T>>(shared_from_this());
@@ -175,7 +176,7 @@ class ClientConnection : public ServerConnection<T> {
   ClientConnection(MessageHandler<T> &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket,
                    const std::string &debug_label,
-                   const char *const *message_type_enum_names,
+                   const std::vector<std::string> &message_type_enum_names,
                    int64_t error_message_type);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
@@ -192,7 +193,7 @@ class ClientConnection : public ServerConnection<T> {
   const std::string debug_label_;
   /// A table of printable enum names for the message types, used for debug
   /// messages.
-  const char *const *message_type_enum_names_;
+  const std::vector<std::string> message_type_enum_names_;
   /// The value for disconnect client message.
   int64_t error_message_type_;
   /// Buffers for the current message being read from the client.

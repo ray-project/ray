@@ -69,7 +69,7 @@ class MockServer {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager", object_manager::protocol::EnumNamesMessageType(),
+        "object manager", {},
         static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
