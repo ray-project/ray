@@ -62,6 +62,8 @@ You can also register a custom env creator function with a string name. This fun
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
 
+For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
+
 Configuring Environments
 ------------------------
 
