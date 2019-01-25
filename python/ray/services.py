@@ -477,7 +477,7 @@ def start_redis(node_ip_address,
             LRU eviction of entries. This only applies to the sharded redis
             tables (task, object, and profile tables). By default, this is
             capped at 10GB but can be set higher.
-        include_java(bool): If True, the raylet backend can also support
+        include_java (bool): If True, the raylet backend can also support
             Java worker.
 
     Returns:
@@ -969,9 +969,9 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        include_java(bool): If True, the raylet backend can also support
+        include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_classpath(str): The classpath for Java worker.
+        java_classpath (str): The classpath for Java worker.
     Returns:
         ProcessInfo for the process that was started.
     """
