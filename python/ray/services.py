@@ -301,11 +301,12 @@ def start_ray_process(command,
         use_gdb = True
 
     if use_gdb:
-        # cwd is RAY_DIRECTORY/python/ray
-        cwd = os.path.abspath(os.path.dirname(__file__))
         gdbinit_path = get_gdbinit_path()
-        logger.info("Launch gdb with 'gdb {ray_file} -x {gdb_file}'".format(ray_file=command[-16], gdb_file=gdbinit_path))
-        run_args = ' '.join(["'{}'".format(arg) for arg in command[-15:]])
+        ray_process_path = command[-16]
+        ray_process_args = command[-15:]
+        logger.info("Launch gdb with 'gdb %s -x %s'",
+                    ray_process_path, gdbinit_path))
+        run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
         with open(gdbinit_path, "w") as gdbinit_file:
             gdbinit_file.write("define run_ray\n\trun {}\nend".format(run_args))
     if use_tmux:
