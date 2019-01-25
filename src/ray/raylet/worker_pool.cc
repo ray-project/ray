@@ -71,10 +71,10 @@ WorkerPool::~WorkerPool() {
     for (const auto &worker : entry.second.registered_workers) {
       pids_to_kill.insert(worker->Pid());
     }
-  }
-  // Kill all the workers that have been started but not registered.
-  for (const auto &entry : starting_worker_processes_) {
-    pids_to_kill.insert(entry.first);
+    // Kill all the workers that have been started but not registered.
+    for (const auto &starting_worker : entry.second.starting_worker_processes) {
+      pids_to_kill.insert(starting_worker.first);
+    }
   }
   for (const auto &pid : pids_to_kill) {
     RAY_CHECK(pid > 0);
@@ -97,16 +97,18 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language) {
+  auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
-  if (static_cast<int>(starting_worker_processes_.size()) >=
+  if (static_cast<int>(state.starting_worker_processes.size()) >=
       maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_worker_processes_.size()
-                   << " worker processes pending registration";
+    RAY_LOG(DEBUG) << "Worker not started, "
+                   << state.starting_worker_processes.size() << " worker processes"
+                   << " of language type " << static_cast<int>(language)
+                   << " pending registration";
     return;
   }
-  auto &state = GetStateForLanguage(language);
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
@@ -121,7 +123,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   } else if (pid > 0) {
     // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
-    starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
+    state.starting_worker_processes.emplace(std::make_pair(pid, num_workers_per_process_));
     return;
   }
 
@@ -150,11 +152,11 @@ void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   state.registered_workers.insert(std::move(worker));
 
-  auto it = starting_worker_processes_.find(pid);
-  RAY_CHECK(it != starting_worker_processes_.end());
+  auto it = state.starting_worker_processes.find(pid);
+  RAY_CHECK(it != state.starting_worker_processes.end());
   it->second--;
   if (it->second == 0) {
-    starting_worker_processes_.erase(it);
+    state.starting_worker_processes.erase(it);
   }
 }
 
@@ -229,7 +231,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
 }
 
-inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
+WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
   auto state = states_by_lang_.find(language);
   RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;

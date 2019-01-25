@@ -131,13 +131,6 @@ class WorkerPool {
   std::string WarningAboutSize();
 
  protected:
-  /// A map from the pids of starting worker processes
-  /// to the number of their unregistered workers.
-  std::unordered_map<pid_t, int> starting_worker_processes_;
-  /// The number of workers per process.
-  int num_workers_per_process_;
-
- private:
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -151,19 +144,28 @@ class WorkerPool {
     std::unordered_set<std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
+    /// A map from the pids of starting worker processes
+    /// to the number of their unregistered workers.
+    std::unordered_map<pid_t, int> starting_worker_processes;
   };
 
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  inline State &GetStateForLanguage(const Language &language);
+  State &GetStateForLanguage(const Language &language);
 
+  /// Pool states per language.
+  std::unordered_map<Language, State> states_by_lang_;
+
+  /// The number of workers per process.
+  int num_workers_per_process_;
+
+  /// The maximum number of workers that can be started concurrently.
+  int maximum_startup_concurrency_;
+
+ private:
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
   int multiple_for_warning_;
-  /// The maximum number of workers that can be started concurrently.
-  int maximum_startup_concurrency_;
-  /// Pool states per language.
-  std::unordered_map<Language, State> states_by_lang_;
   /// The last size at which a warning about the number of registered workers
   /// was generated.
   int64_t last_warning_multiple_;

@@ -13,23 +13,37 @@ int NUM_WORKERS_PER_PROCESS = 3;
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 1,
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 5,
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
                     {Language::JAVA, {"dummy_java_worker_command"}}}) {}
+  ~WorkerPoolMock() {
+    // Avoid killing real processes
+    states_by_lang_.clear();
+  }
 
   void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON) {
-    if (starting_worker_processes_.size() > 0) {
+    auto &state = GetStateForLanguage(language);
+    if (static_cast<int>(state.starting_worker_processes.size()) >=
+        maximum_startup_concurrency_) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << starting_worker_processes_.size()
-                     << " worker processes pending registration";
+      RAY_LOG(DEBUG) << state.starting_worker_processes.size() << " worker processes"
+                     << " of language type " << static_cast<int>(language)
+                     << " pending registration";
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.
     RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size(language);
-    starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
+    state.starting_worker_processes.emplace(
+        std::make_pair(pid, num_workers_per_process_));
   }
 
-  int NumWorkerProcessesStarting() const { return starting_worker_processes_.size(); }
+  int NumWorkerProcessesStarting() const {
+    int total = 0;
+    for (auto &entry : states_by_lang_) {
+      total += entry.second.starting_worker_processes.size();
+    }
+    return total;
+  }
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -95,6 +109,17 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
   }
+}
+
+TEST_F(WorkerPoolTest, StartupWorkerCount) {
+  int desired_initial_worker_count_per_language = 20;
+  for (int i = 0; i < desired_initial_worker_count_per_language; i++) {
+    worker_pool_.StartWorkerProcess(1000 + i, Language::PYTHON);
+    worker_pool_.StartWorkerProcess(2000 + i, Language::JAVA);
+  }
+  // Check that number of starting worker processes equals to
+  // maximum_startup_concurrency_ * 2. (because we started both python and java workers)
+  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 5 * 2);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
