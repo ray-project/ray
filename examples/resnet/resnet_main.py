@@ -89,7 +89,7 @@ class ResNetTrainActor(object):
             # Build the model.
             images, labels = cifar_input.build_input(data,
                                                      hps.batch_size, dataset,
-                                                     False)
+                                                     True)
             self.model = resnet_model.ResNet(hps, images, labels, "train")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)
