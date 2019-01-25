@@ -9,6 +9,7 @@ __all__ = [
     "SearchAlgorithm",
     "BasicVariantGenerator",
     "HyperOptSearch",
+    "NevergradSearch",
     "SuggestionAlgorithm",
     "grid_search",
     "function",
