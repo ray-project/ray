@@ -8,9 +8,9 @@ namespace {
 
 static const std::array<std::string,
                         static_cast<int>(ray::raylet::TaskState::kNumTaskQueues)>
-    task_state_strings = {
+    task_state_strings = {{
         "waiting", "ready", "running", "infeasible", "waiting for actor creation",
-};
+    }};
 
 inline const std::string &GetTaskStateString(ray::raylet::TaskState task_state) {
   return task_state_strings[static_cast<int>(task_state)];
