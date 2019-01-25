@@ -283,11 +283,11 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         model_dist = MultiCategorical(unpacked_outputs)
         behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
 
-        KLs = model_dist.kl(behaviour_dist)
-        if isinstance(KLs, list):
+        kls = model_dist.kl(behaviour_dist)
+        if isinstance(kls, list):
             self.KL_stats = {}
 
-            for i, kl in enumerate(KLs):
+            for i, kl in enumerate(kls):
                 self.KL_stats.update({
                     f"mean_KL_{i}": tf.reduce_mean(kl),
                     f"max_KL_{i}": tf.reduce_max(kl),
@@ -296,10 +296,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 })
         else:
             self.KL_stats = {
-                "mean_KL": tf.reduce_mean(kl),
-                "max_KL": tf.reduce_max(kl),
+                "mean_KL": tf.reduce_mean(kls),
+                "max_KL": tf.reduce_max(kls),
                 "median_KL": tf.contrib.distributions.percentile(
-                    kl, 50.0),
+                    kls, 50.0),
             }
 
         # Initialize TFPolicyGraph
