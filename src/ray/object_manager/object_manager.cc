@@ -87,10 +87,10 @@ void ObjectManager::HandleObjectAdded(
   // If this object was created from inlined data, this means it is already in GCS,
   // so no need to write it again.
   if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
-    ray::Status status =
+    RAY_CHECK_OK(
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info,
                                            inline_object_flag, inline_object_data,
-                                           inline_object_metadata);
+                                           inline_object_metadata));
   }
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
@@ -115,10 +115,10 @@ void ObjectManager::HandleObjectAdded(
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  const object_manager::protocol::ObjectInfoT &object_info =
-      local_objects_[object_id].object_info;
-  if (object_info.data_size > RayConfig::instance().inline_object_max_size_bytes()) {
-    ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
+  if (it->second.object_info.data_size > RayConfig::instance().inline_object_max_size_bytes()) {
+    // Inline object data can be retrieved by any node by contacting the GCS,
+    // so only report that the object was evicted if it wasn't inlined.
+    RAY_CHECK_OK(object_directory_->ReportObjectRemoved(object_id, client_id_));
   }
   local_objects_.erase(it);
   local_inlined_objects_.erase(object_id);
