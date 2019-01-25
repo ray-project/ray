@@ -304,11 +304,11 @@ def start_ray_process(command,
         gdbinit_path = get_gdbinit_path()
         ray_process_path = command[-16]
         ray_process_args = command[-15:]
-        logger.info("Launch gdb with 'gdb %s -x %s'",
                     ray_process_path, gdbinit_path))
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
         with open(gdbinit_path, "w") as gdbinit_file:
             gdbinit_file.write("define run_ray\n\trun {}\nend".format(run_args))
+        command = ["gdb", ray_process_path, "-x", gdbinit_path]
     if use_tmux:
         raise NotImplementedError
     if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
