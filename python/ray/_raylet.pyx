@@ -11,6 +11,13 @@ from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
+from cython.operator import dereference, postincrement
+cimport cpython
+
+include "includes/unique_ids.pxi"
+include "includes/ray_config.pxi"
+include "includes/task.pxi"
+
 from ray.includes.common cimport (
     CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
     CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
@@ -21,13 +28,6 @@ from ray.includes.libraylet cimport (
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
-
-from cython.operator import dereference, postincrement
-cimport cpython
-
-include "includes/unique_ids.pxi"
-include "includes/ray_config.pxi"
-include "includes/task.pxi"
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
