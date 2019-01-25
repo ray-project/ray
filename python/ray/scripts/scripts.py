@@ -226,7 +226,7 @@ def cli(logging_level, logging_format):
     "--include-java",
     is_flag=True,
     default=None,
-    help="Enable cross-languages invocation.")
+    help="Enable support Java worker in backend.")
 @click.option(
     "--java-classpath",
     required=False,

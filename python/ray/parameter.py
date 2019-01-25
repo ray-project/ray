@@ -67,11 +67,11 @@ class RayParams(object):
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
-        include_java(bool): If True, this cluster could enables cross-languages
-            invocation.
-        java_classpath(str): The classpath for Java worker.
+        include_java qq(bool): If True, the raylet backend can also support
+            Java worker.
+        java_classpath (str): The classpath for Java worker.
+        _internal_config (str): JSON configuration for overriding
     """
 
     def __init__(self,
@@ -106,9 +106,9 @@ class RayParams(object):
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
-                 _internal_config=None,
                  include_java=False,
-                 java_classpath=None):
+                 java_classpath=None,
+                 _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -138,9 +138,9 @@ class RayParams(object):
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
-        self._internal_config = _internal_config
         self.include_java = include_java
         self.java_classpath = java_classpath
+        self._internal_config = _internal_config
         self._check_usage()
 
     def update(self, **kwargs):

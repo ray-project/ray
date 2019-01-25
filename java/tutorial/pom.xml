@@ -52,7 +52,6 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
         <executions>
-
           <execution>
             <id>copy-dependencies</id>
             <phase>package</phase>
@@ -66,21 +65,6 @@
               <overWriteIfNewer>true</overWriteIfNewer>
             </configuration>
           </execution>
-
-          <execution>
-            <id>copy-dependencies-to-build</id>
-            <phase>package</phase>
-            <goals>
-              <goal>copy-dependencies</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${basedir}/../../build/java</outputDirectory>
-              <overWriteReleases>false</overWriteReleases>
-              <overWriteSnapshots>false</overWriteSnapshots>
-              <overWriteIfNewer>true</overWriteIfNewer>
-            </configuration>
-          </execution>
-
         </executions>
       </plugin>
     </plugins>
