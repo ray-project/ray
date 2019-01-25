@@ -189,6 +189,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     RAY_CHECK(client_id != client_id_);
   }
 
+  RAY_LOG(DEBUG) << "Sending pull request from " << client_id_ << " to " << client_id
+                 << " of object " << object_id;
   // Try pulling from the client.
   PullEstablishConnection(object_id, client_id);
 
@@ -380,6 +382,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
       // again.
+      RAY_LOG(DEBUG) << "Object " << object_id << " recently pushed to " << client_id;
       return;
     } else {
       it->second = current_time;
