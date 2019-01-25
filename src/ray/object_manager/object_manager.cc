@@ -115,10 +115,12 @@ void ObjectManager::HandleObjectAdded(
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  local_objects_.erase(it);
-  if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
+  const object_manager::protocol::ObjectInfoT &object_info =
+      local_objects_[object_id].object_info;
+  if (object_info.data_size > RayConfig::instance().inline_object_max_size_bytes()) {
     ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
   }
+  local_objects_.erase(it);
   local_inlined_objects_.erase(object_id);
 }
 
