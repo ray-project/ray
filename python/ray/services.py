@@ -294,12 +294,16 @@ def start_ray_process(command,
     if os.environ.get(tmux_env_var) == "1":
         logger.info("Detected environment variable '%s'.", tmux_env_var)
         use_tmux = True
+    gdb_env_var = "RAY_{}_GDB".format(process_type.upper())
+    if os.environ.get(gdb_env_var) == "1":
+        logger.info("Detected environment variable '%s'.", gdb_env_var)
+        use_gdb = True
 
     if use_gdb:
         # cwd is RAY_DIRECTORY/python/ray
         cwd = os.path.abspath(os.path.dirname(__file__))
-        run_args = ' '.join(["'{}'".format(arg) for arg in lst])
-        with open(cwd + ".gdbinit", "w") as gdbinit:
+        run_args = ' '.join(["'{}'".format(arg) for arg in command])
+        with open(cwd + "/.gdbinit", "w") as gdbinit:
             gdbinit.write("define run_ray\n\trun {}\nend".format(run_args))
     if use_tmux:
         raise NotImplementedError
