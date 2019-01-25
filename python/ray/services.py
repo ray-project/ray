@@ -302,8 +302,10 @@ def start_ray_process(command,
     if use_gdb:
         # cwd is RAY_DIRECTORY/python/ray
         cwd = os.path.abspath(os.path.dirname(__file__))
-        run_args = ' '.join(["'{}'".format(arg) for arg in command])
-        with open(cwd + "/.gdbinit", "w") as gdbinit:
+        gdb_file = cwd + "/.gdbinit"
+        logger.info("Launch gdb with 'gdb {ray_file} -x {gdb_file}'".format(ray_file=command[-16], gdb_file=gdb_file))
+        run_args = ' '.join(["'{}'".format(arg) for arg in command[-15:]])
+        with open(gdb_file, "w") as gdbinit:
             gdbinit.write("define run_ray\n\trun {}\nend".format(run_args))
     if use_tmux:
         raise NotImplementedError
