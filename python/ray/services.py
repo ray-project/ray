@@ -22,6 +22,7 @@ import ray
 import ray.ray_constants as ray_constants
 
 from ray.tempfile_services import (
+    get_gdbinit_path,
     get_ipython_notebook_path,
     get_logs_dir_path,
     get_temp_root,
@@ -302,11 +303,11 @@ def start_ray_process(command,
     if use_gdb:
         # cwd is RAY_DIRECTORY/python/ray
         cwd = os.path.abspath(os.path.dirname(__file__))
-        gdb_file = cwd + "/.gdbinit"
-        logger.info("Launch gdb with 'gdb {ray_file} -x {gdb_file}'".format(ray_file=command[-16], gdb_file=gdb_file))
+        gdbinit_path = get_gdbinit_path()
+        logger.info("Launch gdb with 'gdb {ray_file} -x {gdb_file}'".format(ray_file=command[-16], gdb_file=gdbinit_path))
         run_args = ' '.join(["'{}'".format(arg) for arg in command[-15:]])
-        with open(gdb_file, "w") as gdbinit:
-            gdbinit.write("define run_ray\n\trun {}\nend".format(run_args))
+        with open(gdbinit_path, "w") as gdbinit_file:
+            gdbinit_file.write("define run_ray\n\trun {}\nend".format(run_args))
     if use_tmux:
         raise NotImplementedError
     if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:

@@ -142,6 +142,10 @@ def get_ipython_notebook_path():
     return notebook_name
 
 
+def get_gdbinit_path():
+    return make_inc_temp(prefix="gdbinit", directory_name=get_temp_root())
+
+
 def new_log_files(name, redirect_output):
     """Generate partially randomized filenames for log files.
 
