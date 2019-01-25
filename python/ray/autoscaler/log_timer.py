@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class LogTimer:
     def __init__(self, message):
         self._message = message

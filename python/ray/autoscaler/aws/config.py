@@ -64,8 +64,8 @@ def _configure_iam_role(config):
 
     if profile is None:
         logger.info("_configure_iam_role: "
-            "Creating new instance profile {}".format(
-                DEFAULT_RAY_INSTANCE_PROFILE))
+                    "Creating new instance profile {}".format(
+                        DEFAULT_RAY_INSTANCE_PROFILE))
         client = _client("iam", config)
         client.create_instance_profile(
             InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
@@ -78,7 +78,7 @@ def _configure_iam_role(config):
         role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
         if role is None:
             logger.info("_configure_iam_role: "
-                "Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
+                        "Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -103,7 +103,8 @@ def _configure_iam_role(config):
         time.sleep(15)  # wait for propagation
 
     logger.info("_configure_iam_role: "
-        "Role not specified for head node, using {}".format(profile.arn))
+                "Role not specified for head node, using {}".format(
+                    profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
@@ -130,7 +131,7 @@ def _configure_key_pair(config):
         # We can safely create a new key.
         if not key and not os.path.exists(key_path):
             logger.info("_configure_key_pair: "
-                "Creating new key pair {}".format(key_name))
+                        "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
             with open(key_path, "w") as f:
                 f.write(key.key_material)
@@ -147,7 +148,7 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     logger.info("_configure_key_pair: "
-        "KeyName not specified for nodes, using {}".format(key_name))
+                "KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
@@ -179,20 +180,21 @@ def _configure_subnet(config):
                 "No usable subnets matching availability zone {} "
                 "found. Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again."
-                .format(config["provider"]["availability_zone"]))
+                "to populate the list of subnets and trying this again.".
+                format(config["provider"]["availability_zone"]))
 
     subnet_ids = [s.subnet_id for s in subnets]
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
         logger.info("_configure_subnet: "
-            "SubnetIds not specified for head node, using {}".format(
-            subnet_descr))
+                    "SubnetIds not specified for head node, using {}".format(
+                        subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        logger.info("_configure_subnet: " "SubnetId not specified for workers,"
+        logger.info("_configure_subnet: "
+                    "SubnetId not specified for workers,"
                     " using {}".format(subnet_descr))
 
     return config
@@ -209,7 +211,7 @@ def _configure_security_group(config):
 
     if security_group is None:
         logger.info("_configure_security_group: "
-            "Creating new security group {}".format(group_name))
+                    "Creating new security group {}".format(group_name))
         client = _client("ec2", config)
         client.create_security_group(
             Description="Auto-created security group for Ray workers",
@@ -219,31 +221,35 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
-            "FromPort": -1,
-            "ToPort": -1,
-            "IpProtocol": "-1",
-            "UserIdGroupPairs": [{
-                "GroupId": security_group.id
-            }]
-        }, {
-            "FromPort": 22,
-            "ToPort": 22,
-            "IpProtocol": "TCP",
-            "IpRanges": [{
-                "CidrIp": "0.0.0.0/0"
-            }]
-        }])
+        security_group.authorize_ingress(
+            IpPermissions=[{
+                "FromPort": -1,
+                "ToPort": -1,
+                "IpProtocol": "-1",
+                "UserIdGroupPairs": [{
+                    "GroupId": security_group.id
+                }]
+            },
+                           {
+                               "FromPort": 22,
+                               "ToPort": 22,
+                               "IpProtocol": "TCP",
+                               "IpRanges": [{
+                                   "CidrIp": "0.0.0.0/0"
+                               }]
+                           }])
 
     if "SecurityGroupIds" not in config["head_node"]:
-        logger.info("_configure_security_group: "
+        logger.info(
+            "_configure_security_group: "
             "SecurityGroupIds not specified for head node, using {}".format(
                 security_group.group_name))
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        logger.info("_configure_security_group: "
-                "SecurityGroupIds not specified for workers, using {}".format(
+        logger.info(
+            "_configure_security_group: "
+            "SecurityGroupIds not specified for workers, using {}".format(
                 security_group.group_name))
         config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
 

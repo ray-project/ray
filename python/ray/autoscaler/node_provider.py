@@ -181,7 +181,8 @@ class NodeProvider(object):
     def terminate_nodes(self, node_ids):
         """Terminates a set of nodes. May be overridden with a batch method."""
         for node_id in node_ids:
-            logger.info("NodeProvider: " "{}: Terminating node".format(node_id))
+            logger.info("NodeProvider: "
+                        "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
 
     def cleanup(self):

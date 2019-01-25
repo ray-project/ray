@@ -19,7 +19,8 @@ def dockerize_if_needed(config):
     cname = config["docker"].get("container_name")
     if not docker_image:
         if cname:
-            logger.warning("dockerize_if_needed "
+            logger.warning(
+                "dockerize_if_needed "
                 "Container name given but no Docker image - continuing...")
         return config
     else:
@@ -115,7 +116,6 @@ def docker_autoscaler_setup(cname):
         cmds.append("docker cp {path} {cname}:{dpath}".format(
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
-            with_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
-                container_name=cname))
+            with_docker_exec(["cp {} {}".format("/" + base_path, path)],
+                             container_name=cname))
     return cmds

@@ -87,13 +87,15 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
             A = []
         else:
             A = [
-                node_id
-                for node_id in provider.nodes({TAG_RAY_NODE_TYPE: "head"})
+                node_id for node_id in provider.nodes({
+                    TAG_RAY_NODE_TYPE: "head"
+                })
             ]
 
         A += [
-            node_id
-            for node_id in provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+            node_id for node_id in provider.nodes({
+                TAG_RAY_NODE_TYPE: "worker"
+            })
         ]
         return A
 
@@ -103,7 +105,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     with LogTimer("teardown_cluster: " "Termination done."):
         while A:
             logger.info("teardown_cluster: "
-                "Terminating {} nodes...".format(len(A)))
+                        "Terminating {} nodes...".format(len(A)))
             provider.terminate_nodes(A)
             time.sleep(1)
             A = remaining_nodes()
@@ -164,7 +166,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         if head_node is not None:
             confirm("Head node config out-of-date. It will be terminated", yes)
             logger.info("get_or_create_head_node: "
-                "Terminating outdated head node {}".format(head_node))
+                        "Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
         logger.info("get_or_create_head_node: " "Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
@@ -230,12 +232,13 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     provider.nodes(head_node_tags)
 
     if updater.exitcode != 0:
-        logger.error("get_or_create_head_node: " "Updating {} failed".format(
-            provider.external_ip(head_node)))
+        logger.error("get_or_create_head_node: "
+                     "Updating {} failed".format(
+                         provider.external_ip(head_node)))
         sys.exit(1)
     logger.info("get_or_create_head_node: "
-        "Head node up-to-date, IP address is: {}".format(
-            provider.external_ip(head_node)))
+                "Head node up-to-date, IP address is: {}".format(
+                    provider.external_ip(head_node)))
 
     monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
     for s in init_commands:
@@ -315,7 +318,8 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
         provider,
         config["auth"],
         config["cluster_name"],
-        config["file_mounts"], [],
+        config["file_mounts"],
+        [],
         "",
     )
     if stop:
@@ -380,7 +384,8 @@ def rsync(config_file, source, target, override_cluster_name, down):
         provider,
         config["auth"],
         config["cluster_name"],
-        config["file_mounts"], [],
+        config["file_mounts"],
+        [],
         "",
     )
     if down:

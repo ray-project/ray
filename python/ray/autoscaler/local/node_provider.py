@@ -27,7 +27,8 @@ class ClusterState(object):
                 workers = json.loads(open(self.save_path).read())
             else:
                 workers = {}
-            logger.info("ClusterState: " "Loaded cluster state: {}".format(workers))
+            logger.info("ClusterState: "
+                        "Loaded cluster state: {}".format(workers))
             for worker_ip in provider_config["worker_ips"]:
                 if worker_ip not in workers:
                     workers[worker_ip] = {
@@ -52,7 +53,7 @@ class ClusterState(object):
             assert len(workers) == len(provider_config["worker_ips"]) + 1
             with open(self.save_path, "w") as f:
                 logger.info("ClusterState: "
-                    "Writing cluster state: {}".format(workers))
+                            "Writing cluster state: {}".format(workers))
                 f.write(json.dumps(workers))
 
     def get(self):
@@ -68,7 +69,7 @@ class ClusterState(object):
             workers[worker_id] = info
             with open(self.save_path, "w") as f:
                 logger.info("ClusterState: "
-                    "Writing cluster state: {}".format(workers))
+                            "Writing cluster state: {}".format(workers))
                 f.write(json.dumps(workers))
 
 

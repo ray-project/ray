@@ -21,7 +21,8 @@ INSTANCE_NAME_UUID_LEN = 8
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for compute zone operation until finished."""
     logger.info("wait_for_compute_zone_operation: "
-        "Waiting for operation {} to finish...".format(operation["name"]))
+                "Waiting for operation {} to finish...".format(
+                    operation["name"]))
 
     for _ in range(MAX_POLLS):
         result = compute.zoneOperations().get(
@@ -32,7 +33,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
 
         if result["status"] == "DONE":
             logger.info("wait_for_compute_zone_operation: "
-                "Operation {} finished.".format(operation["name"]))
+                        "Operation {} finished.".format(operation["name"]))
             break
 
         time.sleep(POLL_INTERVAL)

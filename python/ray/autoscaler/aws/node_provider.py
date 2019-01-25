@@ -49,8 +49,7 @@ class AWSNodeProvider(NodeProvider):
         self.tag_cache_update_event = threading.Event()
         self.tag_cache_kill_event = threading.Event()
         self.tag_update_thread = threading.Thread(
-            target=self._node_tag_update_loop
-        )
+            target=self._node_tag_update_loop)
         self.tag_update_thread.start()  # TODO: monitor this?
 
         # Cache of node objects from the last nodes() call. This avoids
@@ -84,7 +83,10 @@ class AWSNodeProvider(NodeProvider):
                         k = "Name"
                     self.ec2.meta.client.create_tags(
                         Resources=node_ids,
-                        Tags=[{"Key": k, "Value": v}],
+                        Tags=[{
+                            "Key": k,
+                            "Value": v
+                        }],
                     )
 
             self.tag_cache_kill_event.wait(timeout=5)
@@ -118,11 +120,11 @@ class AWSNodeProvider(NodeProvider):
                 continue
 
             self.tag_cache[node.id] = from_aws_format(
-                { x["Key"]: x["Value"] for x in node.tags }
-            )
+                {x["Key"]: x["Value"]
+                 for x in node.tags})
 
-        self.cached_nodes = { node.id: node for node in nodes }
-        return [ node.id for node in nodes ]
+        self.cached_nodes = {node.id: node for node in nodes}
+        return [node.id for node in nodes]
 
     def is_running(self, node_id):
         node = self._node(node_id)
@@ -211,9 +213,7 @@ class AWSNodeProvider(NodeProvider):
         self.tag_cache_pending.pop(node_id, None)
 
     def terminate_nodes(self, node_ids):
-        self.ec2.meta.client.terminate_instances(
-            InstanceIds=node_ids
-        )
+        self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
         for node_id in node_ids:
             # self.cached_nodes.pop(node_id, None)  # TODO: Can we do this?
@@ -224,7 +224,8 @@ class AWSNodeProvider(NodeProvider):
         if node_id not in self.cached_nodes:
             self.nodes({})  # Side effect: should cache it.
 
-        assert node_id in self.cached_nodes, "Invalid instance id {}".format(node_id)
+        assert node_id in self.cached_nodes, "Invalid instance id {}".format(
+            node_id)
         return self.cached_nodes[node_id]
 
     def cleanup(self):

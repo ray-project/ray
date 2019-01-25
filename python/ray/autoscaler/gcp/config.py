@@ -36,7 +36,7 @@ POLL_INTERVAL = 5
 def wait_for_crm_operation(operation):
     """Poll for cloud resource manager operation until finished."""
     logger.info("wait_for_crm_operation: "
-        "Waiting for operation {} to finish...".format(operation))
+                "Waiting for operation {} to finish...".format(operation))
 
     for _ in range(MAX_POLLS):
         result = crm.operations().get(name=operation["name"]).execute()
@@ -55,7 +55,8 @@ def wait_for_crm_operation(operation):
 def wait_for_compute_global_operation(project_name, operation):
     """Poll for global compute operation until finished."""
     logger.info("wait_for_compute_global_operation: "
-        "Waiting for operation {} to finish...".format(operation["name"]))
+                "Waiting for operation {} to finish...".format(
+                    operation["name"]))
 
     for _ in range(MAX_POLLS):
         result = compute.globalOperations().get(
@@ -66,7 +67,8 @@ def wait_for_compute_global_operation(project_name, operation):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            logger.info("wait_for_compute_global_operation: " "Operation done.")
+            logger.info("wait_for_compute_global_operation: "
+                        "Operation done.")
             break
 
         time.sleep(POLL_INTERVAL)
@@ -160,8 +162,8 @@ def _configure_iam_role(config):
 
     if service_account is None:
         logger.info("_configure_iam_role: "
-            "Creating new service account {}".format(
-            DEFAULT_SERVICE_ACCOUNT_ID))
+                    "Creating new service account {}".format(
+                        DEFAULT_SERVICE_ACCOUNT_ID))
 
         service_account = _create_service_account(
             DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config)
@@ -234,7 +236,7 @@ def _configure_key_pair(config):
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):
             logger.info("_configure_key_pair: "
-                "Creating new key pair {}".format(key_name))
+                        "Creating new key pair {}".format(key_name))
             public_key, private_key = generate_rsa_key_pair()
 
             _create_project_ssh_key_pair(project, public_key, ssh_user)
@@ -260,8 +262,8 @@ def _configure_key_pair(config):
         "".format(private_key_path, ssh_user))
 
     logger.info("_configure_key_pair: "
-        "Private key not specified in config, using"
-        "{}".format(private_key_path))
+                "Private key not specified in config, using"
+                "{}".format(private_key_path))
 
     config["auth"]["ssh_private_key"] = private_key_path
 
