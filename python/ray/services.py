@@ -307,7 +307,7 @@ def start_ray_process(command,
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
         with open(gdbinit_path, "w") as gdbinit_file:
             gdbinit_file.write(
-                "define run_ray\n\trun {}\nend".format(run_args))
+                "run {}".format(run_args))
         command = ["gdb", ray_process_path, "-x", gdbinit_path]
     if use_tmux:
         raise NotImplementedError
