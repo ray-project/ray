@@ -335,8 +335,11 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
   // already explicitly forwarded to this node before.
   if (uncommitted_lineage.GetEntries().empty()) {
     auto entry = lineage_.GetEntry(task_id);
-    RAY_CHECK(entry);
-    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    if (entry) {
+      RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    } else {
+      RAY_LOG(ERROR) << "No lineage cache entry found for task " << task_id;
+    }
   }
   return uncommitted_lineage;
 }
