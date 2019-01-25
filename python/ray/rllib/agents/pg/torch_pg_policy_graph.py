@@ -2,7 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import torch
+import torch.nn.functional as F
+from torch import nn
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
