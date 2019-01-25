@@ -192,7 +192,9 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def export_model(self, export_dir):
-        """Export tensorflow graph to export_dir for serving."""
+        """Export tensorflow graph to export_dir for serving.
+           Existing dir will be overwritten.
+        """
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir)
         with self._sess.graph.as_default():
@@ -205,7 +207,9 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def export_checkpoint(self, export_dir, filename_prefix="model"):
-        """Export tensorflow checkpoint to export_dir."""
+        """Export tensorflow checkpoint to export_dir.
+           Existing dir will be overwritten.
+        """
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir)
         save_path = os.path.join(export_dir, filename_prefix)

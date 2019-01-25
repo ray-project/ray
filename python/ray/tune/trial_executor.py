@@ -205,3 +205,17 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
+
+    def export_trial_if_needed(self, trial):
+        """Exports policy graph of this trial based on trial.export_formats.
+
+        Args:
+            trial (Trial): The state of this trial to be saved.  
+        
+        Return:
+            A Python dict of directories containing the exported policy graphs
+            corresponding to trial.export_formats if exported otherwise empty
+            dict.
+        """
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "export_trial_if_needed() method")

@@ -22,7 +22,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources
+from ray.tune.trial import Resources, ExportFormat
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -337,7 +337,6 @@ class Agent(Trainable):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
-        self._export_default_policy(checkpoint_dir)
         return checkpoint_path
 
     @override(Trainable)
@@ -584,12 +583,18 @@ class Agent(Trainable):
             input_evaluation_method=config["input_evaluation"],
             output_creator=output_creator)
 
-    def _export_default_policy(self, export_dir):
-        model_path = os.path.join(export_dir, "policy_model")
-        self.export_policy_model(export_dir)
-
-        ckpt_path = os.path.join(export_dir, "policy_checkpoint")
-        self.export_policy_checkpoint(export_dir)
+    @override(Trainable)
+    def _export_default_policy(self, export_dir, export_formats):
+        exported = {}
+        if ExportFormat.CHECKPOINT in export_formats:
+            path = os.path.join(export_dir, ExportFormat.CHECKPOINT)
+            self.export_policy_checkpoint(export_dir)
+            exported[ExportFormat.CHECKPOINT] = path
+        if ExportFormat.MODEL in export_formats:
+            path = os.path.join(export_dir, ExportFormat.MODEL)
+            self.export_policy_model(export_dir)
+            exported[ExportFormat.MODEL] = path
+        return exported
 
     def __getstate__(self):
         state = {}
