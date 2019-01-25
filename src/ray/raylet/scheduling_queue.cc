@@ -6,13 +6,14 @@
 
 namespace {
 
-static const std::array<std::string,
-                        static_cast<int>(ray::raylet::TaskState::kNumTaskQueues)>
-    task_state_strings = {{
-        "waiting", "ready", "running", "infeasible", "waiting for actor creation",
-    }};
+static constexpr const char *task_state_strings[] = {
+    "placeable", "waiting",    "ready",
+    "running",   "infeasible", "waiting for actor creation"};
+static_assert(sizeof(task_state_strings) / sizeof(const char *) ==
+                  static_cast<int>(ray::raylet::TaskState::kNumTaskQueues),
+              "Must specify a TaskState name for every task queue");
 
-inline const std::string &GetTaskStateString(ray::raylet::TaskState task_state) {
+inline const char *GetTaskStateString(ray::raylet::TaskState task_state) {
   return task_state_strings[static_cast<int>(task_state)];
 }
 
