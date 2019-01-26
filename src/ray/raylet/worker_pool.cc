@@ -102,7 +102,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   if (static_cast<int>(starting_worker_processes_.size()) >=
       maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << starting_worker_processes_.size()
+    RAY_LOG(DEBUG) << "Worker not started, " << starting_worker_processes_.size()
                    << " worker processes pending registration";
     return;
   }
@@ -241,8 +241,6 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      RAY_LOG(DEBUG) << "worker: pid : " << worker->Pid()
-                     << " driver_id: " << worker->GetAssignedDriverId();
       if (worker->GetAssignedDriverId() == driver_id) {
         workers.push_back(worker);
       }
