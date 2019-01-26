@@ -23,6 +23,8 @@ class NevergradSearch(SuggestionAlgorithm):
     Parameters:
         optimizer (nevergrad.optimization.Optimizer): Optimizer provided
             from Nevergrad.
+        parameter_names (list): List of parameter names. Should match
+            the dimension of the optimizer output.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         reward_attr (str): The training result objective value attribute.
@@ -46,12 +48,14 @@ class NevergradSearch(SuggestionAlgorithm):
 
     def __init__(self,
                  optimizer,
+                 parameter_names,
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
         assert nevergrad is not None, "Nevergrad must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
+        self._parameters = parameter_names
         self._reward_attr = reward_attr
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
@@ -62,7 +66,7 @@ class NevergradSearch(SuggestionAlgorithm):
             return None
         suggested_config = self._nevergrad_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
-        return copy.deepcopy(suggested_config)
+        return dict(zip(self._parameters, suggested_config))
 
     def on_trial_result(self, trial_id, result):
         pass
@@ -75,7 +79,7 @@ class NevergradSearch(SuggestionAlgorithm):
         """Passes the result to Nevergrad unless early terminated or errored.
 
         The result is internally negated when interacting with Nevergrad
-        so that Nevergrad Optimizers can "maximize" this value, 
+        so that Nevergrad Optimizers can "maximize" this value,
         as it minimizes on default.
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
