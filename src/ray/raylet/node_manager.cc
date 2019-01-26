@@ -1839,8 +1839,7 @@ void NodeManager::UpdateActorFrontier(const Task &task) {
                             const ActorCheckpointDataT &checkpoint_data) {
           RAY_LOG(INFO) << "Restoring registration for actor " << actor_entry->first
                         << " from checkpoint " << checkpoint_id;
-          actor_entry->second.RestoreFrontier(
-              actor_entry->second.GetActorCreationDependency(), checkpoint_data);
+          actor_entry->second.RestoreFrontier(checkpoint_data);
           // Mark the unreleased dummy objects as local.
           for (const auto &entry : actor_entry->second.GetDummyObjects()) {
             HandleObjectLocal(entry.first);
