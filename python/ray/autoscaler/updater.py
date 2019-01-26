@@ -112,13 +112,15 @@ class NodeUpdater(object):
         #   the ControlPath directory exists, allowing SSH to maintain
         #   persistent sessions later on.
         with open("/dev/null", "w") as redirect:
-            self.get_caller(False)(["mkdir", "-p", SSH_CONTROL_PATH],
-                                   stdout=redirect,
-                                   stderr=redirect)
+            self.get_caller(False)(
+                ["mkdir", "-p", SSH_CONTROL_PATH],
+                stdout=redirect,
+                stderr=redirect)
 
-            self.get_caller(False)(["chmod", "0700", SSH_CONTROL_PATH],
-                                   stdout=redirect,
-                                   stderr=redirect)
+            self.get_caller(False)(
+                ["chmod", "0700", SSH_CONTROL_PATH],
+                stdout=redirect,
+                stderr=redirect)
 
     def run(self):
         logger.info("NodeUpdater: "
@@ -225,27 +227,29 @@ class NodeUpdater(object):
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
-        self.get_caller(check_error)([
-            "rsync", "-e",
-            " ".join(["ssh"] +
-                     get_default_ssh_options(self.ssh_private_key, 120)),
-            "--delete", "-avz", source, "{}@{}:{}".format(
-                self.ssh_user, self.ssh_ip, target)
-        ],
-                                     stdout=redirect or sys.stdout,
-                                     stderr=redirect or sys.stderr)
+        self.get_caller(check_error)(
+            [
+                "rsync", "-e",
+                " ".join(["ssh"] +
+                         get_default_ssh_options(self.ssh_private_key, 120)),
+                "--delete", "-avz", source, "{}@{}:{}".format(
+                    self.ssh_user, self.ssh_ip, target)
+            ],
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
     def rsync_down(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
-        self.get_caller(check_error)([
-            "rsync", "-e",
-            " ".join(["ssh"] +
-                     get_default_ssh_options(self.ssh_private_key, 120)),
-            "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                      source), target
-        ],
-                                     stdout=redirect or sys.stdout,
-                                     stderr=redirect or sys.stderr)
+        self.get_caller(check_error)(
+            [
+                "rsync", "-e",
+                " ".join(["ssh"] +
+                         get_default_ssh_options(self.ssh_private_key, 120)),
+                "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
+                                          source), target
+            ],
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
     def ssh_cmd(self,
                 cmd,
