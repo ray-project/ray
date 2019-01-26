@@ -105,7 +105,9 @@ def make_parser(parser_creator=None, **kwargs):
     parser.add_argument(
         "--export-formats",
         default=None,
-        help="List of formats that exported at the end of the experiment.")
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. 'checkpoint' and 'model' are supported for "
+        "TensorFlow policy graphs.")
     parser.add_argument(
         "--max-failures",
         default=3,

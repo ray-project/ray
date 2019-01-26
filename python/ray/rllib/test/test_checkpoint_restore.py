@@ -89,18 +89,16 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
             failures.append((alg_name, [a1, a2]))
 
 
-def valid_tf_model(model_dir):
-    return os.path.exists(os.path.join(model_dir, "saved_model.pb")) \
-        and os.listdir(os.path.join(model_dir, "variables"))
-
-
-def valid_tf_checkpoint(checkpoint_dir):
-    return os.path.exists(os.path.join(checkpoint_dir, "model.meta")) \
-        and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
-        and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
-
-
 def test_export(algo_name, failures):
+    def valid_tf_model(model_dir):
+        return os.path.exists(os.path.join(model_dir, "saved_model.pb")) \
+            and os.listdir(os.path.join(model_dir, "variables"))
+
+    def valid_tf_checkpoint(checkpoint_dir):
+        return os.path.exists(os.path.join(checkpoint_dir, "model.meta")) \
+            and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
+            and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
+    
     cls = get_agent_class(algo_name)
     if "DDPG" in algo_name:
         algo = cls(config=CONFIGS[name], env="Pendulum-v0")
