@@ -10,6 +10,7 @@ import numpy as np
 import ray
 
 from ray.rllib.agents.registry import get_agent_class
+from ray.tune.trial import ExportFormat
 
 
 def get_mean_action(alg, obs):
@@ -88,6 +89,17 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
             failures.append((alg_name, [a1, a2]))
 
 
+def valid_tf_model(model_dir):
+    return os.path.exists(os.path.join(model_dir, "saved_model.pb")) \
+        and os.listdir(os.path.join(model_dir, "variables"))
+
+
+def valid_tf_checkpoint(checkpoint_dir):
+    return os.path.exists(os.path.join(checkpoint_dir, "model.meta")) \
+        and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
+        and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
+
+
 def test_export(algo_name, failures):
     cls = get_agent_class(algo_name)
     if "DDPG" in algo_name:
@@ -102,16 +114,22 @@ def test_export(algo_name, failures):
     export_dir = "/tmp/export_dir_%s" % algo_name
     print("Exporting model ", algo_name, export_dir)
     algo.export_policy_model(export_dir)
-    if not os.path.exists(os.path.join(export_dir, "saved_model.pb")) \
-            or not os.listdir(os.path.join(export_dir, "variables")):
+    if not valid_tf_model(export_dir):
         failures.append(algo_name)
     shutil.rmtree(export_dir)
 
     print("Exporting checkpoint", algo_name, export_dir)
     algo.export_policy_checkpoint(export_dir)
-    if not os.path.exists(os.path.join(export_dir, "model.meta")) \
-            or not os.path.exists(os.path.join(export_dir, "model.index")) \
-            or not os.path.exists(os.path.join(export_dir, "checkpoint")):
+    if not valid_tf_checkpoint(export_dir):
+        failures.append(algo_name)
+    shutil.rmtree(export_dir)
+
+    print("Exporting default policy", algo_name, export_dir)
+    algo.export_default_policy([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
+                               export_dir)
+    if not valid_tf_model(os.path.join(export_dir, ExportFormat.MODEL)) \
+            or not valid_tf_checkpoint(os.path.join(export_dir,
+                                                    ExportFormat.CHECKPOINT)):
         failures.append(algo_name)
     shutil.rmtree(export_dir)
 

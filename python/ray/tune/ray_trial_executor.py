@@ -346,10 +346,12 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception("Error restoring runner for Trial %s.", trial)
             self.set_status(trial, Trial.ERROR)
             return False
-    
+
     def export_trial_if_needed(self, trial):
         """Exports policy graph of this trial based on trial.export_formats.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            return ray.get(trial.runner.export_default_policy.remote(trial.export_formats))
+            return ray.get(
+                trial.runner.export_default_policy.remote(
+                    trial.export_formats))
         return {}

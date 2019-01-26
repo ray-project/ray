@@ -212,6 +212,7 @@ class TFPolicyGraph(PolicyGraph):
         """
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir)
+        os.makedirs(export_dir)
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
             saver = tf.train.Saver()

@@ -584,7 +584,7 @@ class Agent(Trainable):
             output_creator=output_creator)
 
     @override(Trainable)
-    def _export_default_policy(self, export_dir, export_formats):
+    def _export_default_policy(self, export_formats, export_dir):
         exported = {}
         if ExportFormat.CHECKPOINT in export_formats:
             path = os.path.join(export_dir, ExportFormat.CHECKPOINT)

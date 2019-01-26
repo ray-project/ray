@@ -679,6 +679,28 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_default_policy(self, export_formats, export_dir):
+                path = export_dir + "/exported"
+                with open(path, "w") as f:
+                    f.write("OK")
+                return {export_formats[0]: path}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "export_formats": ["format"]
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(os.path.exists(os.path.join(trial.logdir,
+                                                        "exported")))
+
     def testDeprecatedResources(self):
         class train(Trainable):
             def _train(self):

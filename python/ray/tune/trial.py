@@ -142,6 +142,7 @@ class ExportFormat(object):
     CHECKPOINT = "checkpoint"
     MODEL = "model"
 
+
 class Trial(object):
     """A trial object holds the state for one model training run.
 
