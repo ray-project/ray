@@ -1,4 +1,5 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 git_repository(
     name = "com_github_nelhage_rules_boost",
@@ -21,15 +22,18 @@ git_repository(
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
 )
 
-git_repository(
+http_archive(
     name = "com_github_gflags_gflags",
-    remote = "https://github.com/gflags/gflags",
-    commit = "77592648e3f3be87d6c7123eb81cbad75f9aef5a",
+    strip_prefix = "gflags-2.2.2",
+    urls = [
+        "https://mirror.bazel.build/github.com/gflags/gflags/archive/v2.2.2.tar.gz",
+        "https://github.com/gflags/gflags/archive/v2.2.2.tar.gz",
+    ],
 )
 
 git_repository(
     name = "com_github_google_glog",
-    remote = "https://github.com/google/glog.git",
+    remote = "https://github.com/google/glog",
     commit = "8d7a107d68c127f3f494bb7807b796c8c5a97a82"
 )
 
