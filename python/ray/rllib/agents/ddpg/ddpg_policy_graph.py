@@ -30,12 +30,15 @@ class PNetwork(object):
     value from (0, 1) due to the sigmoid function."""
 
     def __init__(self, model, dim_actions, hiddens=[64, 64],
-                 activation="relu", bounded="squashing"):
+                 activation="relu", bounded="squashing",
+                 parameter_noise=False):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
             action_out = layers.fully_connected(
-                action_out, num_outputs=hidden, activation_fn=activation)
+                action_out, num_outputs=hidden, activation_fn=activation,
+                normalizer_fn=layers.layer_norm if parameter_noise else None,
+                normalizer_params={} if parameter_noise else None)
         # Use sigmoid layer to bound values within (0, 1)
         # shape of action_scores is [batch_size, dim_actions]
         if bounded == "squashing":
@@ -65,7 +68,8 @@ class ActionNetwork(object):
                  is_target=False,
                  target_noise=0.2,
                  noise_clip=0.5,
-                 bounded="squashing"):
+                 bounded="squashing",
+                 parameter_noise=False):
 
         # shape is [None, dim_action]
         if bounded == "squashing":
@@ -105,7 +109,7 @@ class ActionNetwork(object):
                 eps * (high_action - low_action) * exploration_value,
                 low_action, high_action)
 
-        self.actions = tf.cond(stochastic, lambda: stochastic_actions,
+        self.actions = tf.cond(tf.logical_and(stochastic, not parameter_noise), lambda: stochastic_actions,
                                lambda: deterministic_actions)
 
 
@@ -217,6 +221,40 @@ class DDPGPolicyGraph(TFPolicyGraph):
             p_values, self.p_model = self._build_p_network(
                 self.cur_observations, observation_space)
             self.p_func_vars = _scope_vars(scope.name)
+
+        # No need to sync the noise vars
+        if self.config["parameter_noise"]:
+            self.parameter_noise_sigma_val = self.config["exploration_sigma"]
+            self.parameter_noise_sigma = tf.get_variable(
+                initializer=tf.constant_initializer(self.parameter_noise_sigma_val),
+                name="parameter_noise_sigma",
+                shape=(),
+                trainable=False,
+                dtype=tf.float32)
+            self.parameter_noise = list()
+            # No need to add any noise on LayerNorm parameters
+            for var in self.p_func_vars:
+                if "LayerNorm" in var.name:
+                    continue
+                noise_var = tf.get_variable(
+                    name=var.name.split(':')[0]+"_noise",
+                    shape=var.shape,
+                    initializer=tf.constant_initializer(.0),
+                    trainable=False)
+                self.parameter_noise.append(noise_var)
+            remove_noise_ops = list()
+            for var, var_noise in zip([var for var in self.p_func_vars if "LayerNorm" not in var.name], self.parameter_noise):
+                remove_noise_ops.append(tf.assign_add(var, -var_noise))
+            self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+            generate_noise_ops = list()
+            for var_noise in self.parameter_noise:
+                generate_noise_ops.append(tf.assign(var_noise, tf.random_normal(shape=var_noise.shape, stddev=self.parameter_noise_sigma)))
+            with tf.control_dependencies(generate_noise_ops):
+                add_noise_ops = list()
+                for var, var_noise in zip([var for var in self.p_func_vars if "LayerNorm" not in var.name], self.parameter_noise):
+                    add_noise_ops.append(tf.assign_add(var, var_noise))
+                self.add_noise_op = tf.group(*tuple(add_noise_ops))
+            self.pi_distances = list()
 
         # Action outputs
         with tf.variable_scope(A_SCOPE):
@@ -437,6 +475,24 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
+
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states, noisy_actions = [
+                list(x) for x in sample_batch.columns(
+                    ["obs", "actions"])
+            ]
+            self.sess.run(self.remove_noise_op)
+            clean_actions = self.sess.run(
+                self.output_actions, feed_dict={self.cur_observations: states, self.stochastic: False, self.eps: .0})
+            distance_in_action_space = np.sqrt(np.mean(np.square(clean_actions-noisy_actions)))
+            self.pi_distances.append(distance_in_action_space)
+            if distance_in_action_space < self.config["exploration_sigma"]:
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(self.parameter_noise_sigma_val, session=self.sess)
+            
         return _postprocess_dqn(self, sample_batch)
 
     @override(TFPolicyGraph)
@@ -474,7 +530,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             }, obs_space, 1, self.config["model"]), self.dim_actions,
             self.config["actor_hiddens"],
             self.config["actor_hidden_activation"],
-            self.config["bounded"])
+            self.config["bounded"], self.config["parameter_noise"])
         return policy_net.action_scores, policy_net.model
 
     def _build_action_network(self, p_values, stochastic, eps,
@@ -484,7 +540,8 @@ class DDPGPolicyGraph(TFPolicyGraph):
             self.config["exploration_theta"], self.config["exploration_sigma"],
             self.config["smooth_target_policy"], self.config["act_noise"],
             is_target, self.config["target_noise"],
-            self.config["noise_clip"]).actions
+            self.config["noise_clip"], self.config["bounded"],
+            self.config["parameter_noise"]).actions
 
     def _build_actor_critic_loss(self,
                                  q_t,
@@ -516,6 +573,10 @@ class DDPGPolicyGraph(TFPolicyGraph):
 
     def reset_noise(self, sess):
         sess.run(self.reset_noise_op)
+
+    def add_parameter_noise(self):
+        if self.config["parameter_noise"]:
+            self.sess.run(self.add_noise_op)
 
     # support both hard and soft sync
     def update_target(self, tau=None):

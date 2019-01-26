@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+import copy
 
+import ray
+from ray import tune
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
@@ -55,6 +58,8 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
+    # If True parameter space noise will be used for exploration
+    "parameter_noise": False,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -142,6 +147,9 @@ class DQNAgent(Agent):
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
 
+        if self.config["parameter_noise"]:
+            self.config["callbacks"]["on_episode_start"] = tune.function(on_episode_start)
+
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
 
@@ -172,6 +180,7 @@ class DQNAgent(Agent):
         start_timestep = self.global_timestep
 
         # Update worker explorations
+        
         exp_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.foreach_trainable_policy(
             lambda p, _: p.set_epsilon(exp_vals[0]))
@@ -180,6 +189,18 @@ class DQNAgent(Agent):
             e.foreach_trainable_policy.remote(
                 lambda p, _: p.set_epsilon(exp_val))
             exp_vals.append(exp_val)
+        if self.config["parameter_noise"]:
+            parameter_noise_sigma_vals = list()
+            for ev in self.remote_evaluators:
+                parameter_noise_sigma_vals.extend(ray.get(ev.foreach_policy.remote(lambda pi, pid: pi.parameter_noise_sigma_val)))
+            exp_vals = parameter_noise_sigma_vals
+            distances = list()
+            def stat_dist(pi, piid):
+                temp_distances = copy.deepcopy(pi.pi_distances)
+                pi.pi_distances.clear()
+                return temp_distances
+            for ev in self.remote_evaluators:
+                distances.extend(ray.get(ev.foreach_policy.remote(stat_dist)))
 
         # Do optimization steps
         start = time.time()
@@ -206,6 +227,9 @@ class DQNAgent(Agent):
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+        if self.config["parameter_noise"]:
+            result["info"]["min_distance"] = min(distances)
+            result["info"]["max_distance"] = max(distances)
         return result
 
     def update_target_if_needed(self):
@@ -252,3 +276,11 @@ class DQNAgent(Agent):
         Agent.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
+
+
+def on_episode_start(info):
+    # as a callback function to sample and pose parameter space noise
+    # on the parameters of network
+    policies = info["policy"]
+    for pi in policies.values():
+        pi.add_parameter_noise()

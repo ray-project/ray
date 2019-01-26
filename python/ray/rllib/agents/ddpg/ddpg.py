@@ -66,6 +66,8 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 0,
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 0.002,
+    # If True parameter space noise will be used for exploration
+    "parameter_noise": False,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then

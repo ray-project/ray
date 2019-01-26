@@ -249,6 +249,7 @@ def _env_runner(async_vector_env,
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
                 "env": async_vector_env,
+                "policy": policies,
                 "episode": episode
             })
         return episode
