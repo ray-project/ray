@@ -67,11 +67,11 @@ class RayParams(object):
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-            RayConfig defaults. For testing purposes ONLY.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_classpath (str): The classpath for Java worker.
         _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
     """
 
     def __init__(self,

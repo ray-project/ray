@@ -44,6 +44,12 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
 
 def include_java_from_redis(redis_client):
     """This is used for query include_java bool from redis.
+
+    Args:
+        redis_client (StrictRedis): The redis client to GCS.
+
+    Returns:
+        True if this cluster backend enables Java worker.
     """
     include_java_value = redis_client.get("INCLUDE_JAVA")
     if include_java_value is not None:
@@ -218,11 +224,6 @@ def cli(logging_level, logging_format):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
-    "--internal-config",
-    default=None,
-    type=str,
-    help="Do NOT use this. This is for debugging/development purposes ONLY.")
-@click.option(
     "--include-java",
     is_flag=True,
     default=None,
@@ -233,6 +234,11 @@ def cli(logging_level, logging_format):
     default=None,
     type=str,
     help="Specify classpath for Java worker.")
+@click.option(
+    "--internal-config",
+    default=None,
+    type=str,
+    help="Do NOT use this. This is for debugging/development purposes ONLY.")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
@@ -240,7 +246,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          internal_config, include_java, java_classpath):
+          include_java, java_classpath, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)

@@ -244,7 +244,7 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
 
     Returns:
-        Inormation about the process that was started including a handle to the
+        Information about the process that was started including a handle to the
             process that was started.
     """
     # Detect which flags are set through environment variables.
@@ -998,11 +998,13 @@ def start_raylet(redis_address,
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
-    java_worker_command = build_java_worker_command(include_java,
-                                                    java_classpath,
-                                                    redis_address,
-                                                    plasma_store_name,
-                                                    raylet_name)
+    if include_java is True:
+        java_worker_command = build_java_worker_command(java_classpath,
+                                                        redis_address,
+                                                        plasma_store_name,
+                                                        raylet_name)
+    else:
+        java_worker_command = ""
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -1061,32 +1063,39 @@ def start_raylet(redis_address,
     return process_info
 
 
-def build_java_worker_command(include_java,
-                              java_classpath,
+def build_java_worker_command(java_classpath,
                               redis_address,
                               plasma_store_name,
                               raylet_name):
     """This method assembles java worker command.
+
+    Args:
+        java_classpath (str): The classpath for Java worker.
+        redis_address (str): Redis address of GCS.
+        plasma_store_name (str): The name of the plasma store socket to connect
+           to.
+        raylet_name (str): The name of the raylet socket to create.
+
+    Returns:
+        The command string for starting Java worker.
     """
-    if not include_java:
-        return ""
 
     if java_classpath is None:
         raise Exception("java_classpath must not be "
                         "None if include_java is True.")
 
-    command = ("java -classpath %s " % java_classpath)
+    command = "java -classpath {} ".format(java_classpath)
     if redis_address is not None:
-        command += ("-Dray.redis.address=%s " % redis_address)
+        command += "-Dray.redis.address={} ".format(redis_address)
 
     if plasma_store_name is not None:
-        command += ("-Dray.object-store.socket-name=%s " % plasma_store_name)
+        command += "-Dray.object-store.socket-name={} ".format(plasma_store_name)
 
     if raylet_name is not None:
-        command += ("-Dray.raylet.socket-name=%s " % raylet_name)
+        command += "-Dray.raylet.socket-name={} ".format(raylet_name)
 
-    command += ("-Dray.home=%s " % RAY_HOME)
-    command += ("-Dray.log-dir=%s " % get_logs_dir_path())
+    command += "-Dray.home={} ".format(RAY_HOME)
+    command += "-Dray.log-dir={} ".format(get_logs_dir_path())
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
