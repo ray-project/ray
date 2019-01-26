@@ -147,11 +147,19 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// XXX
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return ray::Status.
   ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
                                      ActorCheckpointID &checkpoint_id);
 
-  /// XXX
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return ray::Status.
   ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id);
 

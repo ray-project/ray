@@ -119,9 +119,10 @@ class ActorRegistration {
   /// \return int.
   int NumHandles() const;
 
-  /// XXX
-  void RestoreFrontier(const ObjectID &actor_creation_dependency,
-                       const ActorCheckpointDataT &checkpoint_data);
+  /// Restore actor's state from a checkpoint.
+  ///
+  /// \param checkpoint_data The checkpoint used to restore the actor.
+  void RestoreFrontier(const ActorCheckpointDataT &checkpoint_data);
 
  private:
   /// Information from the global actor table about this actor, including the

@@ -21,7 +21,6 @@ enum TablePrefix:int {
   PROFILE,
   TASK_LEASE,
   ACTOR_CHECKPOINT,
-  // The table that stores the actor-to-checkpoint-ids mapping.
   ACTOR_CHECKPOINT_ID,
 }
 
@@ -342,6 +341,7 @@ table ActorCheckpointData {
   num_dummy_object_dependencies: [int];
 }
 
+// This table stores the actor-to-available-checkpoint-ids mapping.
 table ActorCheckpointIdData {
   // ID of this actor.
   actor_id: string;

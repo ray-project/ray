@@ -385,15 +385,21 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
-  /// XXX
+  /// Process client message of PrepareActorCheckpointRequest.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
   void ProcessPrepareActorCheckpointRequest(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// XXX
+  /// Process client message of NotifyActorResumedFromCheckpoint.
+  ///
+  /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
 
+  /// Update actor frontier when a task finishes.
   /// If the task is an actor creation task and the actor was resumed from a checkpoint,
-  /// restore the frontier from the checkpoint. Otherwise, extend actor frontier.
+  /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
   ///
   /// \param task The task that just finished.
   void UpdateActorFrontier(const Task &task);
@@ -460,7 +466,7 @@ class NodeManager {
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 
-  /// This map stores actor ID to the ID of the checkpoint with which we should use to
+  /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 };

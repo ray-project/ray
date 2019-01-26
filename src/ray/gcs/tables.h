@@ -461,8 +461,12 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
   };
 
   /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
-  /// total number of checkpoints in GCS has exceeded
-  /// `RayConfig::instance().num_actor_checkpoints_to_keep()`
+  /// total number of checkpoints in GCS exceeds the max allowed value.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint.
+  /// \return Status.
   Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
                          const UniqueID &checkpoint_id);
 };

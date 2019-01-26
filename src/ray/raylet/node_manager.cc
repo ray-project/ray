@@ -1023,11 +1023,11 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   // Later we'll do `ExtendFrontier` again on the original actor registration in
   // `FinishAssignedTask` function. This is needed because we need to include the
   // latest finished task's dummy object in the checkpoint. We may want to consolidate
-  // the code, so there's only one call site of `ExtendFrontier`.
+  // these 2 call sites.
   ActorRegistration actor_registration = actor_entry->second;
   actor_registration.ExtendFrontier(actor_handle_id, dummy_object);
 
-  // Generate checkpoint data based on the actor registration.
+  // Use actor's current state to generate checkpoint data.
   ActorCheckpointID checkpoint_id = UniqueID::from_random();
   auto checkpoint_data = std::make_shared<ActorCheckpointDataT>();
   checkpoint_data->actor_id = actor_id.binary();

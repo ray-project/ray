@@ -23,8 +23,6 @@ def ray_start_regular():
     # Start the Ray processes.
     ray.init(
         num_cpus=1,
-        # redirect_output=True,
-        # redirect_worker_output=True,
         _internal_config=json.dumps({
             "initial_reconstruction_timeout_milliseconds": 200,
             "num_heartbeats_timeout": 10,
