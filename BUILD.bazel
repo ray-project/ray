@@ -351,7 +351,8 @@ flatbuffer_py_library(
     out_prefix = "python/ray/core/generated/ray/protocol/",
     include_paths = [
         "src/ray/gcs/format/"
-    ]
+    ],
+    includes = ["src/ray/gcs/format/gcs.fbs"]
 )
 
 filegroup(
@@ -369,13 +370,20 @@ filegroup(
 )
 
 genrule(
+    name = "redis",
+    cmd = "set -x && curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . && make && find . && mv ./src/redis-server $(location redis-server)",
+    outs = ["redis-server"]
+)
+
+genrule(
     name = "pkg",
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
         "//:python_gcs_fbs_outputs",
-        "//:python_node_manager_fbs_outputs"
+        "//:python_node_manager_fbs_outputs",
+        "//:redis-server"
     ],
     outs = ["ray_pkg"],
-    cmd = "set -x && mkdir -p python/ray && cp $(locations python/ray/_raylet.so) python/ray && mv python $(location ray_pkg)",
+    cmd = "set -x && mkdir -p python/ray && cp $(locations python/ray/_raylet.so) python/ray && mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ && cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ && mv python $(location ray_pkg)",
 )
