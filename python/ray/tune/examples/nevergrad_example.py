@@ -25,7 +25,7 @@ def easy_objective(config, reporter):
 
 if __name__ == '__main__':
     import argparse
-    from hyperopt import hp
+    from nevergrad.optimization import optimizerlib
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
