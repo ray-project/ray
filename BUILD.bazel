@@ -2,6 +2,7 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
 cc_binary(
@@ -315,4 +316,51 @@ pyx_library(
         "python/ray/includes/*.pxi"
     ]),
     deps = ["//:raylet_lib"]
+)
+
+flatbuffer_py_library(
+    name = "python_gcs_fbs",
+    srcs = [
+        "src/ray/gcs/format/gcs.fbs"
+    ],
+    outs = [
+        "ErrorTableData.py",
+        "SchedulingState.py",
+        "ClientTableData.py",
+        "DriverTableData.py",
+        "GcsTableEntry.py",
+        "HeartbeatBatchTableData.py",
+        "HeartbeatTableData.py",
+        "ObjectTableData.py",
+        "ProfileTableData.py",
+        "Language.py",
+        "TablePrefix.py",
+        "TablePubsub.py"
+    ],
+    out_prefix = "python/ray/core/generated/",
+    include_paths = [
+        "src/ray/gcs/format/"
+    ],
+)
+
+filegroup(
+    name = "python_sources",
+    srcs = glob([
+        "python/ray/*.py",
+        "python/ray/core/__init__.py",
+        "python/ray/core/generated/__init__.py",
+        "python/ray/core/generated/ray/__init__.py",
+        "python/ray/core/generated/ray/protocol/__init__.py"
+    ])
+)
+
+genrule(
+    name = "pkg",
+    srcs = [
+        "python/ray/_raylet.so",
+        "//:python_sources",
+        "//:python_gcs_fbs_outputs",
+    ],
+    outs = ["ray_pkg"],
+    cmd = "set -x && mkdir -p python/ray && cp $(locations python/ray/_raylet.so) python/ray && mv python $(location ray_pkg)",
 )
