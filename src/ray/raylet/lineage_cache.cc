@@ -341,6 +341,7 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
       // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
       // This is a bug but is not fatal to the application.
       RAY_LOG(ERROR) << "No lineage cache entry found for task " << task_id;
+      RAY_DCHECK(false);
     }
   }
   return uncommitted_lineage;
