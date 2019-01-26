@@ -1,4 +1,11 @@
-"""Example of a custom gym environment. Run this for a demo."""
+"""Example of a custom gym environment. Run this for a demo.
+
+This example shows:
+  - using a custom environment
+  - using Tune for grid search
+
+You can visualize experiment results in ~/ray_results using TensorBoard.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

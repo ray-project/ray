@@ -25,6 +25,16 @@ Custom Environments and Models
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
 
+Training Workflows
+------------------
+
+- `Custom training workflows <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__:
+   Example of how to use Tune's support for custom training functions to implement custom training workflows.
+- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
+   Example of how to adjust the configuration of an environment over time.
+- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
+   Example of how to output custom training metrics to TensorBoard.
+
 Multi-Agent and Hierarchical
 ----------------------------
 
@@ -36,14 +46,6 @@ Multi-Agent and Hierarchical
    Example of alternating training between two DQN and PPO trainers.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
-
-Training Workflows
-------------------
-
-- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
-   Example of how to adjust the configuration of an environment over time.
-- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
-   Example of how to output custom training metrics to TensorBoard.
 
 Serving and Offline
 -------------------
