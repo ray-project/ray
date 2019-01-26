@@ -5,6 +5,11 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
+load("@com_github_google_glog//:bazel/glog.bzl", "glog_library")
+glog_library()
+
+COPTS = ["-DRAY_USE_GLOG"]
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -12,6 +17,7 @@ cc_binary(
         ":ray_util",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -25,6 +31,7 @@ cc_binary(
         ":gcs",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -50,6 +57,7 @@ cc_library(
         "@plasma//:plasma_client",
         "@com_google_googletest//:gtest",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -60,6 +68,7 @@ cc_test(
         ":node_manager_fbs",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -71,6 +80,7 @@ cc_test(
         ":object_manager",
         ":raylet_lib"
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -80,6 +90,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -89,6 +100,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -98,6 +110,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib"
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -107,6 +120,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -128,6 +142,7 @@ cc_library(
         "@boost//:asio",
         "@plasma//:plasma_client"
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -138,6 +153,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":object_manager",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -148,6 +164,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":object_manager",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -168,8 +185,10 @@ cc_library(
     ],
     deps = [
       "@plasma//:plasma_client",
+      "@com_github_google_glog//:glog",
       ":sha256"
-    ]
+    ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -191,6 +210,7 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -248,6 +268,7 @@ cc_library(
         ":hiredis",
         "@boost//:asio",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -258,6 +279,7 @@ cc_binary(
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -269,6 +291,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 FLATC_ARGS = [
@@ -375,6 +398,21 @@ genrule(
     outs = ["redis-server"]
 )
 
+cc_library(
+    name = "ray_redis_module",
+    hdrs = [
+        "src/ray/gcs/redis_module/redismodule.h",
+        "src/ray/gcs/redis_module/redis_string.h"
+    ],
+    srcs = [
+        "src/ray/gcs/redis_module/ray_redis_module.cc",
+        "src/ray/util/logging.cc"
+    ],
+    deps = [
+      ":ray_common"
+    ]
+)
+
 genrule(
     name = "pkg",
     srcs = [
@@ -382,8 +420,18 @@ genrule(
         "//:python_sources",
         "//:python_gcs_fbs_outputs",
         "//:python_node_manager_fbs_outputs",
-        "//:redis-server"
+        "//:redis-server",
+        "//:ray_redis_module"
     ],
     outs = ["ray_pkg"],
-    cmd = "set -x && mkdir -p python/ray && cp $(locations python/ray/_raylet.so) python/ray && mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ && cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ && mv python $(location ray_pkg)",
+    cmd = """
+        set -x &&
+        mkdir -p python/ray &&
+        cp $(locations python/ray/_raylet.so) python/ray &&
+        mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
+        mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&
+        for f in $(locations //:ray_redis_module); do cp $$f python/ray/core/src/ray/gcs/redis_module/; done &&
+        mv python $(location ray_pkg)
+    """,
 )

@@ -21,6 +21,22 @@ git_repository(
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
 )
 
+http_archive(
+    name = "com_github_gflags_gflags",
+    sha256 = "6e16c8bc91b1310a44f3965e616383dbda48f83e8c1eaa2370a215057b00cabe",
+    strip_prefix = "gflags-77592648e3f3be87d6c7123eb81cbad75f9aef5a",
+    urls = [
+        "https://mirror.bazel.build/github.com/gflags/gflags/archive/77592648e3f3be87d6c7123eb81cbad75f9aef5a.tar.gz",
+        "https://github.com/gflags/gflags/archive/77592648e3f3be87d6c7123eb81cbad75f9aef5a.tar.gz",
+    ],
+)
+
+git_repository(
+    name = "com_github_google_glog",
+    remote = "https://github.com/google/glog.git",
+    commit = "8d7a107d68c127f3f494bb7807b796c8c5a97a82"
+)
+
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
