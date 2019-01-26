@@ -382,6 +382,7 @@ filegroup(
     name = "python_sources",
     srcs = glob([
         "python/ray/*.py",
+        "python/ray/autoscaler/*.py",
         "python/ray/cloudpickle/*.py",
         "python/ray/core/__init__.py",
         "python/ray/core/generated/__init__.py",
@@ -389,6 +390,8 @@ filegroup(
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
+        "python/ray/WebUI.ipynb",
+        "python/ray/workers/default_worker.py"
     ])
 )
 
@@ -421,7 +424,10 @@ genrule(
         "//:python_gcs_fbs_outputs",
         "//:python_node_manager_fbs_outputs",
         "//:redis-server",
-        "//:ray_redis_module"
+        "//:ray_redis_module",
+        "//:raylet",
+        "//:raylet_monitor",
+        "@plasma//:plasma_store_server"
     ],
     outs = ["ray_pkg"],
     cmd = """
@@ -432,6 +438,11 @@ genrule(
         cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
         mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&
         for f in $(locations //:ray_redis_module); do cp $$f python/ray/core/src/ray/gcs/redis_module/; done &&
+        mkdir -p python/ray/core/src/ray/raylet/ &&
+        cp $(location //:raylet_monitor) python/ray/core/src/ray/raylet/ &&
+        mkdir -p python/ray/core/src/plasma &&
+        cp $(location @plasma//:plasma_store_server) python/ray/core/src/plasma/ &&
+        cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
         mv python $(location ray_pkg)
     """,
 )

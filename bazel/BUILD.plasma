@@ -86,7 +86,7 @@ cc_library(
 
 
 cc_binary(
-    name = "plasma_server",
+    name = "plasma_store_server",
     visibility = ["//visibility:public"],
     srcs = glob([
       "cpp/src/plasma/store.cc",
