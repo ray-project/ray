@@ -84,7 +84,7 @@ class NevergradSearch(SuggestionAlgorithm):
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._nevergrad_opt.tell(ng_trial_info , -result[self.reward_attr])
+            self._nevergrad_opt.tell(ng_trial_info , -result[self._reward_attr])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
