@@ -98,7 +98,7 @@ def test_export(algo_name, failures):
         return os.path.exists(os.path.join(checkpoint_dir, "model.meta")) \
             and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
-    
+
     cls = get_agent_class(algo_name)
     if "DDPG" in algo_name:
         algo = cls(config=CONFIGS[name], env="Pendulum-v0")
