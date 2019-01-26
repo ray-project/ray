@@ -18,7 +18,8 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, \
+    InputReader, OffPolicyEstimator, WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
@@ -305,17 +306,6 @@ class PolicyEvaluator(EvaluatorInterface):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
-        if input_evaluation_method == "simulation":
-            logger.warning(
-                "Requested 'simulation' input evaluation method: "
-                "will discard all sampler outputs and keep only metrics.")
-            sample_async = True
-        elif input_evaluation_method is None:
-            pass
-        else:
-            raise ValueError("Unknown evaluation method: {}".format(
-                input_evaluation_method))
-
         if sample_async:
             self.sampler = AsyncSampler(
                 self.async_env,
@@ -348,6 +338,23 @@ class PolicyEvaluator(EvaluatorInterface):
                 clip_actions=clip_actions)
 
         self.io_context = IOContext(log_dir, policy_config, worker_index, self)
+        self.reward_estimators = []
+        if input_evaluation_method == "simulation":
+            logger.warning(
+                "Requested 'simulation' input evaluation method: "
+                "will discard all sampler outputs and keep only metrics.")
+            sample_async = True
+        elif input_evaluation_method == "importance_sampling":
+            wis = ImportanceSamplingEstimator(ioctx)
+            self.reward_estimators.append(wis)
+        elif input_evaluation_method == "weighted_importance_sampling":
+            wis = WeightedImportanceSamplingEstimator(ioctx)
+            self.reward_estimators.append(wis)
+        elif input_evaluation_method is None:
+            pass
+        else:
+            raise ValueError("Unknown evaluation method: {}".format(
+                input_evaluation_method))
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
         self.output_writer = output_creator(self.io_context)
@@ -390,6 +397,11 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
         self.output_writer.write(batch)
+
+        # Do off-policy estimation if needed
+        if self.off_policy_estimator:
+            for sub_batch in batch.split_by_episode():
+                self.off_policy_estimator.process(sub_batch)
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
@@ -492,6 +504,15 @@ class PolicyEvaluator(EvaluatorInterface):
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
+
+    @DeveloperAPI
+    def get_metrics(self):
+        """Returns a list of new RolloutMetric objects from evaluation."""
+
+        out = self.sampler.get_metrics()
+        for m in self.reward_estimators:
+            out.extend(m.get_metrics())
+        return out
 
     @DeveloperAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):

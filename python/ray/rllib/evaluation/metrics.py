@@ -31,15 +31,14 @@ def collect_episodes(local_evaluator,
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     pending = [
-        a.apply.remote(lambda ev: ev.sampler.get_metrics())
-        for a in remote_evaluators
+        a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_evaluators
     ]
     collected, _ = ray.wait(
         pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
     num_metric_batches_dropped = len(pending) - len(collected)
 
     metric_lists = ray.get(collected)
-    metric_lists.append(local_evaluator.sampler.get_metrics())
+    metric_lists.append(local_evaluator.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
