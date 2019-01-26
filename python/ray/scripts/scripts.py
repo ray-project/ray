@@ -278,9 +278,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        _internal_config=internal_config,
         include_java=include_java,
-        java_classpath=java_classpath)
+        java_classpath=java_classpath,
+        _internal_config=internal_config)
 
     ray_params.update_if_absent(java_classpath=get_default_java_classpath())
 
