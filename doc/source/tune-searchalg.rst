@@ -27,6 +27,29 @@ By default, Tune uses the `default search space and variant generation process <
 
 Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
 
+BayesOpt Search
+---------------
+
+The ``BayesOptSearch`` is a SearchAlgorithm that is backed by `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BayesOptSearch.
+
+In order to use this search algorithm, you will need to install Bayesian Optimization via the following command:
+
+.. code-block:: bash
+
+    $ pip install bayesian-optimization
+
+This algorithm requires `setting a search space and defining a utility function <https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb>`__. You can use BayesOptSearch like follows:
+
+.. code-block:: python
+
+    run_experiments(experiment_config, search_alg=BayesOptSearch(bayesopt_space, utility_kwargs=utility_params, ... ))
+
+An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.BayesOptSearch
+    :show-inheritance:
+    :noindex:
+
 HyperOpt Search (Tree-structured Parzen Estimators)
 ---------------------------------------------------
 
