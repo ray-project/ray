@@ -514,9 +514,10 @@ def start_redis(node_ip_address,
     port, p = _start_redis(
         node_ip_address,
         use_credis=use_credis,
+        is_primary=True,
         port=port,
-        redis_max_clients=redis_max_clients,
         password=password,
+        redis_max_clients=redis_max_clients,
         # Below we use None to indicate no limit on the memory of the
         # primary Redis shard.
         redis_max_memory=None,
@@ -559,9 +560,10 @@ def start_redis(node_ip_address,
         redis_shard_port, p = _start_redis(
             node_ip_address,
             use_credis=use_credis,
+            is_primary=False,
             port=redis_shard_ports[i],
-            redis_max_clients=redis_max_clients,
             password=password,
+            redis_max_clients=redis_max_clients,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file)
@@ -586,9 +588,10 @@ def start_redis(node_ip_address,
 
 def _start_redis(node_ip_address,
                  use_credis,
+                 is_primary,
                  port=None,
-                 redis_max_clients=None,
                  password=None,
+                 redis_max_clients=None,
                  redis_max_memory=None,
                  stdout_file=None,
                  stderr_file=None):
@@ -597,21 +600,21 @@ def _start_redis(node_ip_address,
     Args:
         node_ip_address: The IP address of the current node. This is only used
             for recording the log filenames in Redis.
+        use_credis: If True, additionally load the chain-replicated libraries
+            into the redis servers.
+        is_primary (bool): Is this redis shard the primary shard?
         port (int): If provided, start a Redis server with this port.
+        password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
+        redis_max_memory: The max amount of memory (in bytes) to allow redis
+            to use, or None for no limit. Once the limit is exceeded, redis
+            will start LRU eviction of entries.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        use_credis: If True, additionally load the chain-replicated libraries
-            into the redis servers.  Defaults to None, which means its value is
-            set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -626,7 +629,10 @@ def _start_redis(node_ip_address,
         # It is important to load the credis module BEFORE the ray module,
         # as the latter contains an extern declaration that the former
         # supplies.
-        redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+        if is_primary:
+            redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+        else:
+            redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
     else:
         redis_executable = REDIS_EXECUTABLE
         redis_modules = [REDIS_MODULE]
