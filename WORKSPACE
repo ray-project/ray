@@ -31,7 +31,7 @@ git_repository(
 git_repository(
     name = "com_github_google_glog",
     remote = "https://github.com/google/glog",
-    commit = "1431a17f373f3870321674b67e20fcb4e3e1ad50",
+    commit = "bc9a491033ae63c8defd5d10c159ab123488dc20",
 )
 
 new_git_repository(
