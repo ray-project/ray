@@ -57,11 +57,11 @@ class BayesOptSearch(SuggestionAlgorithm):
                  verbose=0,
                  **kwargs):
         assert byo is not None, (
-                "BayesOpt must be installed!. You can install BayesOpt with"
-                " the command: `pip install bayesian-optimization`.")
+            "BayesOpt must be installed!. You can install BayesOpt with"
+            " the command: `pip install bayesian-optimization`.")
         assert type(max_concurrent) is int and max_concurrent > 0
         assert utility_kwargs is not None, (
-                "Must define arguments for the utiliy function!")
+            "Must define arguments for the utiliy function!")
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self._live_trial_mapping = {}
