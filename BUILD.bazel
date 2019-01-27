@@ -425,7 +425,12 @@ filegroup(
 
 genrule(
     name = "redis",
-    cmd = "set -x && curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . && make && find . && mv ./src/redis-server $(location redis-server)",
+    cmd = """
+        set -x &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        make &&
+        mv ./src/redis-server $(location redis-server)
+    """,
     outs = ["redis-server"]
 )
 
@@ -445,7 +450,7 @@ cc_library(
 )
 
 genrule(
-    name = "pkg",
+    name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
@@ -461,7 +466,7 @@ genrule(
     cmd = """
         set -x &&
         mkdir -p python/ray &&
-        cp $(locations python/ray/_raylet.so) python/ray &&
+        cp $(location python/ray/_raylet.so) python/ray &&
         mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
         mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&

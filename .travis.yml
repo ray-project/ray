@@ -35,9 +35,6 @@ matrix:
       - rm -rf build
       - ./.travis/install-bazel.sh
       - bazel build ...
-      # Try to run Ray built by Bazel
-      - cd bazel-genfiles/ray_pkg/
-      - python -c "import ray; ray.init()"
 
     - os: linux
       dist: trusty
