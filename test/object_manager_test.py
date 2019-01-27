@@ -248,7 +248,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     end_time = time.time()
     # Make sure that the first time the objects get transferred, it happens
     # quickly.
-    assert end_time - start_time
+    assert end_time - start_time < repeated_push_delay
 
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)
