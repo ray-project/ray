@@ -5,9 +5,6 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
-load("@com_github_google_glog//:bazel/glog.bzl", "glog_library")
-glog_library()
-
 COPTS = ["-DRAY_USE_GLOG"]
 
 cc_binary(

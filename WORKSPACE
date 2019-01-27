@@ -23,15 +23,16 @@ git_repository(
 )
 
 git_repository(
-    name = "com_github_gflags_gflags",
-    remote = "https://github.com/gflags/gflags",
-    commit = "28f50e0fed19872e0fd50dd23ce2ee8cd759338e",
+    name   = "com_github_gflags_gflags",
+    remote = "https://github.com/gflags/gflags.git",
+    tag = "v2.2.2",
 )
 
-git_repository(
-    name = "com_github_google_glog",
-    remote = "https://github.com/google/glog",
-    commit = "bc9a491033ae63c8defd5d10c159ab123488dc20",
+new_git_repository(
+    name   = "com_github_google_glog",
+    build_file = "//bazel:BUILD.glog",
+    remote = "https://github.com/google/glog.git",
+    tag = "v0.3.5",
 )
 
 new_git_repository(
