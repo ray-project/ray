@@ -212,8 +212,11 @@ def test_object_transfer_retry(ray_start_empty_cluster):
 
     repeated_push_delay = 4
 
+    # Force the sending object manager to allow duplicate pushes again sooner.
+    # Also, force the receiving object manager to retry the Pull sooner.
     config = json.dumps({
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000
+        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
+        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
     })
     cluster.add_node(_internal_config=config)
     cluster.add_node(num_gpus=1, _internal_config=config)
@@ -243,17 +246,15 @@ def test_object_transfer_retry(ray_start_empty_cluster):
             ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     end_time = time.time()
+    # Make sure that the first time the objects get transferred, it happens
+    # quickly.
+    assert end_time - start_time < repeated_push_delay
 
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)
 
     end_transfer_time = time.time()
 
-    # Make sure that the object was retransferred before the object manager
-    # repeated push delay expired.
-    if end_time - start_time <= repeated_push_delay:
-        warnings.warn("This test didn't really fail, but the timing is such "
-                      "that it is not testing the thing it should be testing.")
     # We should have had to wait for the repeated push delay.
     assert end_transfer_time - start_time >= repeated_push_delay
 
