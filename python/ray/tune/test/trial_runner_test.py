@@ -699,7 +699,7 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(
-                os.path.exists(os.path.join(trial.logdir,"exported")))
+                os.path.exists(os.path.join(trial.logdir, "exported")))
 
     def testDeprecatedResources(self):
         class train(Trainable):
