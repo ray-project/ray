@@ -12,7 +12,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.agents.ppo import PPOAgent
-from ray.tune import run_experiments, grid_search
+from ray.tune import run_experiments
 
 
 def my_train_fn(config, reporter):
@@ -25,7 +25,7 @@ def my_train_fn(config, reporter):
         phase1_time = result["timesteps_total"]
     state = agent1.save()
     agent1.stop()
-        
+
     # Train for 100 iterations with low LR
     config["lr"] = 0.0001
     agent2 = PPOAgent(env="CartPole-v0", config=config)
