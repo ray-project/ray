@@ -11,8 +11,3 @@ def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_p
         include_paths = include_paths,
         includes = includes,
     )
-
-    native.filegroup(
-        name = "%s_outputs" % (name),
-        srcs = [out_prefix + out for out in outs]
-    )

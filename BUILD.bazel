@@ -449,8 +449,8 @@ genrule(
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
-        "//:python_gcs_fbs_outputs",
-        "//:python_node_manager_fbs_outputs",
+        "//:python_gcs_fbs",
+        "//:python_node_manager_fbs",
         "//:redis-server",
         "//:ray_redis_module",
         "//:raylet",
