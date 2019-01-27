@@ -210,8 +210,8 @@ class TrialExecutor(object):
         """Exports policy graph of this trial based on trial.export_formats.
 
         Args:
-            trial (Trial): The state of this trial to be saved.  
-        
+            trial (Trial): The state of this trial to be saved.
+
         Return:
             A Python dict of directories containing the exported policy graphs
             corresponding to trial.export_formats if exported otherwise empty
