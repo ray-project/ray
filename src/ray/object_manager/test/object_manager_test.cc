@@ -296,7 +296,7 @@ class TestObjectManager : public TestObjectManagerBase {
             const std::unordered_set<ray::ClientID> &clients, bool inline_object_flag,
             const std::vector<uint8_t> inline_object_data,
             const std::string inline_object_metadata, bool created) {
-          if (!clients.empty()) {
+          if (!clients.empty() || inline_object_flag) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
         }));
