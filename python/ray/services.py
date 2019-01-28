@@ -336,7 +336,10 @@ def start_ray_process(command,
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
     if use_tmux:
-        run_args = " ".join(["\"{}\"".format(arg) if i != 0 else arg for i, arg in enumerate(command)])
+        if use_gdb:
+            run_args = " ".join(command)
+        else:
+            run_args = " ".join(["\"{}\"".format(arg) if i != 0 else arg for i, arg in enumerate(command)])
         command = ["tmux", "new", "'{};bash'".format(run_args)]
 
     process = subprocess.Popen(
