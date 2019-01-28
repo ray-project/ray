@@ -112,6 +112,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
 
+    def testRegisterTrainableCallable(self):
+        def dummy_fn(config, reporter, steps):
+            reporter(timesteps_total=steps, done=True)
+
+        from functools import partial
+        steps = 500
+        register_trainable("test", partial(dummy_fn, steps=steps))
+        [trial] = run_experiments({
+            "foo": {
+                "run": "test",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+
     def testBuiltInTrainableResources(self):
         class B(Trainable):
             @classmethod
@@ -243,8 +261,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "f1",
                 "local_dir": "/tmp/logdir",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40),
                 },
             }
         })
@@ -830,7 +848,7 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = self.generate_trials({
             "run": "PPO",
             "config": {
-                "qux": lambda spec: 2 + 2,
+                "qux": tune.sample_from(lambda spec: 2 + 2),
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
             },
@@ -845,8 +863,8 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": 1,
-                "y": lambda spec: spec.config.x + 1,
-                "z": lambda spec: spec.config.y + 1,
+                "y": tune.sample_from(lambda spec: spec.config.x + 1),
+                "z": tune.sample_from(lambda spec: spec.config.y + 1),
             },
         }, "condition_resolution")
         trials = list(trials)
@@ -858,7 +876,7 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
-                "y": lambda spec: spec.config.x * 100,
+                "y": tune.sample_from(lambda spec: spec.config.x * 100),
             },
         }, "dependent_lambda")
         trials = list(trials)
@@ -871,10 +889,10 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([
-                    lambda spec: spec.config.y * 100,
-                    lambda spec: spec.config.y * 200
+                    tune.sample_from(lambda spec: spec.config.y * 100),
+                    tune.sample_from(lambda spec: spec.config.y * 200)
                 ]),
-                "y": lambda spec: 1,
+                "y": tune.sample_from(lambda spec: 1),
             },
         }, "dependent_grid_search")
         trials = list(trials)
@@ -902,7 +920,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 self.generate_trials({
                     "run": "PPO",
                     "config": {
-                        "foo": lambda spec: spec.config.foo,
+                        "foo": tune.sample_from(lambda spec: spec.config.foo),
                     },
                 }, "recursive_dep"))
         except RecursiveDependencyError as e:
@@ -989,8 +1007,8 @@ class TrialRunnerTest(unittest.TestCase):
             "foo": {
                 "run": "f1",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40)
                 },
             }
         }
@@ -1752,6 +1770,57 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(runner2.get_trial("pending").last_result is None)
         runner2.step()
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointWithFunction(self):
+        ray.init()
+        trial = Trial(
+            "__fake",
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda i: i),
+                }
+            },
+            checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trial = runner2.get_trials()[0]
+        self.assertTrue("callbacks" in new_trial.config)
+        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointOverwrite(self):
+        def count_checkpoints(cdir):
+            return sum((fname.startswith("experiment_state")
+                        and fname.endswith(".json"))
+                       for fname in os.listdir(cdir))
+
+        ray.init()
+        trial = Trial("__fake", checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 1)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for i in range(5):
+            runner2.step()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+
+        runner2.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
 

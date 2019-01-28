@@ -70,10 +70,10 @@ def test_raylet_tempfiles():
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files == {
-        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
-        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err"
+        "log_monitor.out", "log_monitor.err", "plasma_store.out",
+        "plasma_store.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err"
     }  # without raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
@@ -84,10 +84,11 @@ def test_raylet_tempfiles():
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files == {
-        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
-        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err", "raylet_0.out", "raylet_0.err"
+        "log_monitor.out", "log_monitor.err", "plasma_store.out",
+        "plasma_store.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
     }  # with raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
@@ -99,10 +100,11 @@ def test_raylet_tempfiles():
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
     assert log_files.issuperset({
-        "log_monitor.out", "log_monitor.err", "plasma_store_0.out",
-        "plasma_store_0.err", "webui.out", "webui.err", "monitor.out",
-        "monitor.err", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err", "raylet_0.out", "raylet_0.err"
+        "log_monitor.out", "log_monitor.err", "plasma_store.out",
+        "plasma_store.err", "webui.out", "webui.err", "monitor.out",
+        "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
     })  # with raylet logs
 
     # Check numbers of worker log file.

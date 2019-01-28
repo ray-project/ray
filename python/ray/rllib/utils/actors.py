@@ -28,7 +28,8 @@ class TaskPool(object):
     def completed(self):
         pending = list(self._tasks)
         if pending:
-            ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
+            ready, _ = ray.wait(
+                pending, num_returns=len(pending), timeout=0.01)
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), self._objects.pop(obj_id))
 
@@ -38,14 +39,14 @@ class TaskPool(object):
         Assumes obj_id only is one id."""
 
         for worker, obj_id in self.completed():
-            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             (ray.worker.global_worker.raylet_client.fetch_or_reconstruct(
                 [obj_id], True))
             self._fetching.append((worker, obj_id))
 
         remaining = []
         for worker, obj_id in self._fetching:
-            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             if ray.worker.global_worker.plasma_client.contains(plasma_id):
                 yield (worker, obj_id)
             else:

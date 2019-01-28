@@ -160,9 +160,9 @@ class Monitor(object):
         object_table_objects = self.state.object_table()
         driver_object_id_bins = set()
         for object_id, _ in object_table_objects.items():
-            task_id_bin = ray.raylet.compute_task_id(object_id).id()
+            task_id_bin = ray._raylet.compute_task_id(object_id).binary()
             if task_id_bin in driver_task_id_bins:
-                driver_object_id_bins.add(object_id.id())
+                driver_object_id_bins.add(object_id.binary())
 
         def to_shard_index(id_bin):
             return binary_to_object_id(id_bin).redis_shard_hash() % len(
@@ -380,7 +380,9 @@ if __name__ == "__main__":
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address,
+            port=redis_port,
+            password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)

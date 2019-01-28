@@ -71,7 +71,9 @@ class RayTrialExecutor(TrialExecutor):
         trial.runner = self._setup_runner(trial)
         if not self.restore(trial, checkpoint):
             if trial.status == Trial.ERROR:
-                raise RuntimeError("Restore from checkpoint failed.")
+                raise RuntimeError(
+                    "Restore from checkpoint failed for Trial {}.".format(
+                        str(trial)))
 
         previous_run = self._find_item(self._paused, trial)
         if (prior_status == Trial.PAUSED and previous_run):
@@ -111,9 +113,9 @@ class RayTrialExecutor(TrialExecutor):
                 stop_tasks.append(trial.runner.__ray_terminate__.remote())
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
-                    stop_tasks, num_returns=2, timeout=250)
+                    stop_tasks, num_returns=2, timeout=0.25)
         except Exception:
-            logger.exception("Error stopping runner.")
+            logger.exception("Error stopping runner for Trial %s", str(trial))
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
@@ -133,17 +135,21 @@ class RayTrialExecutor(TrialExecutor):
         try:
             self._start_trial(trial, checkpoint)
         except Exception:
-            logger.exception("Error starting runner. "
-                             "Trying again without checkpoint.")
+            logger.exception("Error starting runner for Trial %s", str(trial))
             error_msg = traceback.format_exc()
             time.sleep(2)
             self._stop_trial(trial, error=True, error_msg=error_msg)
             try:
                 # This forces the trial to not start from checkpoint.
                 trial.clear_checkpoint()
+                logger.info(
+                    "Trying to start runner for Trial %s without checkpoint.",
+                    str(trial))
                 self._start_trial(trial)
             except Exception:
-                logger.exception("Error starting runner, aborting!")
+                logger.exception(
+                    "Error starting runner for Trial %s, aborting!",
+                    str(trial))
                 error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
@@ -159,7 +165,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
-            logger.debug("Returning resources for this trial.")
+            logger.debug("Returning resources for Trial %s.", str(trial))
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
@@ -234,16 +240,22 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
 
-    def _update_avail_resources(self):
-        resources = ray.global_state.cluster_resources()
+    def _update_avail_resources(self, num_retries=5):
+        for i in range(num_retries):
+            resources = ray.global_state.cluster_resources()
+            if not resources:
+                logger.warning("Cluster resources not detected. Retrying...")
+                time.sleep(0.5)
+
         num_cpus = resources["CPU"]
         num_gpus = resources["GPU"]
+
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
-
+        self._update_avail_resources()
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
 
@@ -306,7 +318,11 @@ class RayTrialExecutor(TrialExecutor):
         return trial._checkpoint.value
 
     def restore(self, trial, checkpoint=None):
-        """Restores training state from a given model checkpoint."""
+        """Restores training state from a given model checkpoint.
+
+        This will also sync the trial results to a new location
+        if restoring on a different node.
+        """
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial._checkpoint
         if checkpoint is None or checkpoint.value is None:
@@ -321,11 +337,12 @@ class RayTrialExecutor(TrialExecutor):
                 assert type(value) != Checkpoint, type(value)
                 ray.get(trial.runner.restore_from_object.remote(value))
             else:
+                worker_ip = ray.get(trial.runner.current_ip.remote())
+                trial.sync_logger_to_new_location(worker_ip)
                 ray.get(trial.runner.restore.remote(value))
             trial.last_result = checkpoint.last_result
-
             return True
         except Exception:
-            logger.exception("Error restoring runner.")
+            logger.exception("Error restoring runner for Trial %s.", trial)
             self.set_status(trial, Trial.ERROR)
             return False

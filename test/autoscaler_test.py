@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from flaky import flaky
 import shutil
 import tempfile
 import threading
@@ -98,6 +99,7 @@ SMALL_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
     "max_workers": 2,
+    "initial_workers": 0,
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
     "provider": {
@@ -181,8 +183,8 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitFor(self, condition):
-        for _ in range(50):
+    def waitFor(self, condition, num_retries=50):
+        for _ in range(num_retries):
             if condition():
                 return
             time.sleep(.1)
@@ -313,6 +315,27 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(6)
         autoscaler.update()
         self.waitForNodes(10)
+
+    def testInitialWorkers(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            update_interval_s=0)
+        self.waitForNodes(0)
+        autoscaler.update()
+        self.waitForNodes(5)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(10)
+        autoscaler.update()
 
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -652,6 +675,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert len(self.provider.nodes({})) == 0
 
+    @flaky(max_runs=4)
     def testRecoverUnhealthyWorkers(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -676,7 +700,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         num_calls = len(runner.calls)
         autoscaler.update()
-        self.waitFor(lambda: len(runner.calls) > num_calls)
+        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()

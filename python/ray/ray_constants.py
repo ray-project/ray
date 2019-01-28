@@ -5,8 +5,6 @@ from __future__ import print_function
 
 import os
 
-from ray.raylet import ObjectID
-
 
 def env_integer(key, default):
     if key in os.environ:
@@ -15,8 +13,6 @@ def env_integer(key, default):
 
 
 ID_SIZE = 20
-NIL_JOB_ID = ObjectID(ID_SIZE * b"\xff")
-NIL_FUNCTION_ID = NIL_JOB_ID
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
@@ -52,6 +48,7 @@ CHECKPOINT_PUSH_ERROR = "checkpoint"
 REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
+WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
@@ -93,3 +90,13 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
 INFINITE_RECONSTRUCTION = 2**30
+
+# Constants used to define the different process types.
+PROCESS_TYPE_MONITOR = "monitor"
+PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
+PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+PROCESS_TYPE_WORKER = "worker"
+PROCESS_TYPE_RAYLET = "raylet"
+PROCESS_TYPE_PLASMA_STORE = "plasma_store"
+PROCESS_TYPE_REDIS_SERVER = "redis_server"
+PROCESS_TYPE_WEB_UI = "web_ui"

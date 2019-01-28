@@ -48,7 +48,7 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
-                                      "worker", error_message_type_);
+                                      "worker", {}, error_message_type_);
     return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
@@ -66,9 +66,9 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::nil(),
     const Language &language = Language::PYTHON) {
   std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(UniqueID::nil(), UniqueID::nil(), 0, ActorID::nil(),
-                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, 0,
-                           {{}}, {{}}, language, function_descriptor);
+  return TaskSpecification(UniqueID::nil(), TaskID::nil(), 0, ActorID::nil(),
+                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, {},
+                           0, {{}}, {{}}, language, function_descriptor);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {

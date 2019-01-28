@@ -133,6 +133,7 @@ class TaskSpecification {
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
       int64_t max_actor_reconstructions, const ActorID &actor_id,
       const ActorHandleID &actor_handle_id, int64_t actor_counter,
+      const std::vector<ActorHandleID> &new_actor_handles,
       const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
@@ -153,6 +154,13 @@ class TaskSpecification {
   /// \return An offset to the serialized task specification.
   flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const;
+
+  std::string SerializeAsString() const {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto string = ToFlatbuffer(fbb);
+    fbb.Finish(string);
+    return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+  }
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
@@ -200,6 +208,7 @@ class TaskSpecification {
   ActorHandleID ActorHandleId() const;
   int64_t ActorCounter() const;
   ObjectID ActorDummyObject() const;
+  std::vector<ActorHandleID> NewActorHandles() const;
 
  private:
   /// Assign the specification data from a pointer.

@@ -11,7 +11,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
 =============  =======================  ==================  ===========  ==================
 A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
 DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
@@ -21,6 +21,7 @@ APEX-DDPG       No                      **Yes**             **Yes**      No
 ES              **Yes**                 **Yes**             No           No
 ARS             **Yes**                 **Yes**             No           No
 QMIX            **Yes**                 No                  **Yes**      **Yes**
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 =============  =======================  ==================  ===========  ==================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
@@ -108,8 +109,8 @@ Vectorized
 
 RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_worker`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
 
-Multi-Agent
------------
+Multi-Agent and Hierarchical
+----------------------------
 
 .. note::
 
@@ -162,7 +163,6 @@ If all the agents will be using the same algorithm class to train, then you can 
                     "traffic_light"  # Traffic lights are always controlled by this policy
                     if agent_id.startswith("traffic_light_")
                     else random.choice(["car1", "car2"])  # Randomly choose from car policies
-            },
         },
     })
 
@@ -202,6 +202,38 @@ Here is a simple `example training script <https://github.com/ray-project/ray/bl
         policy_1: 21.798387096774192
 
 To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across multiple agents internally. It can also be auto-vectorized by setting ``num_envs_per_worker > 1``.
+
+Hierarchical Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
+
+.. code-block:: text
+
+   top_level ---------------------------------------------------------------> top_level --->
+   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
+   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
+
+This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example). These lower-level agents pop in existence at the start of higher-level steps, and terminate when their higher-level action ends. Their experiences are aggregated by policy, so from RLlib's perspective it's just optimizing three different types of policies. The configuration might look something like this:
+
+.. code-block:: python
+
+    "multiagent": {
+        "policy_graphs": {
+            "top_level": (some_policy_graph, ...),
+            "mid_level": (some_policy_graph, ...),
+            "low_level": (some_policy_graph, ...),
+        },
+        "policy_mapping_fn":
+            lambda agent_id:
+                "low_level" if agent_id.startswith("low_level_") else
+                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
+        "policies_to_train": ["top_level"],
+    },
+
+
+In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
+
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
@@ -278,6 +310,6 @@ Note that envs can read from different partitions of the logs based on the ``wor
 Batch Asynchronous
 ------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `AsyncVectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/async_vector_env.py>`__. AsyncVectorEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
+The lowest-level "catch-all" environment supported by RLlib is `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__. BaseEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
 
-Under the hood, all other envs are converted to AsyncVectorEnv by RLlib so that there is a common internal path for policy evaluation.
+Under the hood, all other envs are converted to BaseEnv by RLlib so that there is a common internal path for policy evaluation.

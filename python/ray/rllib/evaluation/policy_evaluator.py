@@ -8,7 +8,7 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -22,7 +22,7 @@ from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -30,6 +30,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class PolicyEvaluator(EvaluatorInterface):
     """Common ``PolicyEvaluator`` implementation that wraps a ``PolicyGraph``.
 
@@ -83,11 +84,13 @@ class PolicyEvaluator(EvaluatorInterface):
             "traffic_light_policy": SampleBatch(...)})
     """
 
+    @DeveloperAPI
     @classmethod
     def as_remote(cls, num_cpus=None, num_gpus=None, resources=None):
         return ray.remote(
             num_cpus=num_cpus, num_gpus=num_gpus, resources=resources)(cls)
 
+    @DeveloperAPI
     def __init__(self,
                  env_creator,
                  policy_graph,
@@ -214,7 +217,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
-                isinstance(self.env, AsyncVectorEnv):
+                isinstance(self.env, BaseEnv):
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
@@ -275,7 +278,7 @@ class PolicyEvaluator(EvaluatorInterface):
         self.multiagent = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent:
             if not (isinstance(self.env, MultiAgentEnv)
-                    or isinstance(self.env, AsyncVectorEnv)):
+                    or isinstance(self.env, BaseEnv)):
                 raise ValueError(
                     "Have multiple policy graphs {}, but the env ".format(
                         self.policy_map) +
@@ -288,7 +291,7 @@ class PolicyEvaluator(EvaluatorInterface):
         }
 
         # Always use vector env for consistency even if num_envs = 1
-        self.async_env = AsyncVectorEnv.wrap_async(
+        self.async_env = BaseEnv.to_base_env(
             self.env, make_env=make_env, num_envs=num_envs)
         self.num_envs = num_envs
 
@@ -399,6 +402,7 @@ class PolicyEvaluator(EvaluatorInterface):
 
         return batch
 
+    @DeveloperAPI
     @ray.method(num_return_vals=2)
     def sample_with_count(self):
         """Same as sample() but returns the count as a separate future."""
@@ -489,16 +493,29 @@ class PolicyEvaluator(EvaluatorInterface):
                 self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
             return grad_fetch
 
+    @DeveloperAPI
+    def get_policy(self, policy_id=DEFAULT_POLICY_ID):
+        """Return policy graph for the specified id, or None.
+
+        Arguments:
+            policy_id (str): id of policy graph to return.
+        """
+
+        return self.policy_map.get(policy_id)
+
+    @DeveloperAPI
     def for_policy(self, func, policy_id=DEFAULT_POLICY_ID):
         """Apply the given function to the specified policy graph."""
 
         return func(self.policy_map[policy_id])
 
+    @DeveloperAPI
     def foreach_policy(self, func):
         """Apply the given function to each (policy, policy_id) tuple."""
 
         return [func(policy, pid) for pid, policy in self.policy_map.items()]
 
+    @DeveloperAPI
     def foreach_trainable_policy(self, func):
         """Apply the given function to each (policy, policy_id) tuple.
 
@@ -509,6 +526,7 @@ class PolicyEvaluator(EvaluatorInterface):
             if pid in self.policies_to_train
         ]
 
+    @DeveloperAPI
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
 
@@ -519,6 +537,7 @@ class PolicyEvaluator(EvaluatorInterface):
         for k in self.filters:
             self.filters[k].sync(new_filters[k])
 
+    @DeveloperAPI
     def get_filters(self, flush_after=False):
         """Returns a snapshot of filters.
 
@@ -535,6 +554,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 f.clear_buffer()
         return return_filters
 
+    @DeveloperAPI
     def save(self):
         filters = self.get_filters(flush_after=True)
         state = {
@@ -543,18 +563,22 @@ class PolicyEvaluator(EvaluatorInterface):
         }
         return pickle.dumps({"filters": filters, "state": state})
 
+    @DeveloperAPI
     def restore(self, objs):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
             self.policy_map[pid].set_state(state)
 
+    @DeveloperAPI
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
 
+    @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         self.policy_map[policy_id].export_model(export_dir)
 
+    @DeveloperAPI
     def export_policy_checkpoint(self,
                                  export_dir,
                                  filename_prefix="model",

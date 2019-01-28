@@ -16,6 +16,75 @@ from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
 
+def parse_client_table(redis_client):
+    """Read the client table.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+
+    Returns:
+        A list of information about the nodes in the cluster.
+    """
+    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
+    message = redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                           ray.gcs_utils.TablePrefix.CLIENT,
+                                           "", NIL_CLIENT_ID)
+
+    # Handle the case where no clients are returned. This should only
+    # occur potentially immediately after the cluster is started.
+    if message is None:
+        return []
+
+    node_info = {}
+    gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+
+    ordered_client_ids = []
+
+    # Since GCS entries are append-only, we override so that
+    # only the latest entries are kept.
+    for i in range(gcs_entry.EntriesLength()):
+        client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
+            gcs_entry.Entries(i), 0))
+
+        resources = {
+            decode(client.ResourcesTotalLabel(i)):
+            client.ResourcesTotalCapacity(i)
+            for i in range(client.ResourcesTotalLabelLength())
+        }
+        client_id = ray.utils.binary_to_hex(client.ClientId())
+
+        # If this client is being removed, then it must
+        # have previously been inserted, and
+        # it cannot have previously been removed.
+        if not client.IsInsertion():
+            assert client_id in node_info, "Client removed not found!"
+            assert node_info[client_id]["IsInsertion"], (
+                "Unexpected duplicate removal of client.")
+        else:
+            ordered_client_ids.append(client_id)
+
+        node_info[client_id] = {
+            "ClientID": client_id,
+            "IsInsertion": client.IsInsertion(),
+            "NodeManagerAddress": decode(
+                client.NodeManagerAddress(), allow_none=True),
+            "NodeManagerPort": client.NodeManagerPort(),
+            "ObjectManagerPort": client.ObjectManagerPort(),
+            "ObjectStoreSocketName": decode(
+                client.ObjectStoreSocketName(), allow_none=True),
+            "RayletSocketName": decode(
+                client.RayletSocketName(), allow_none=True),
+            "Resources": resources
+        }
+    # NOTE: We return the list comprehension below instead of simply doing
+    # 'list(node_info.values())' in order to have the nodes appear in the order
+    # that they joined the cluster. Python dictionaries do not preserve
+    # insertion order. We could use an OrderedDict, but then we'd have to be
+    # sure to only insert a given node a single time (clients that die appear
+    # twice in the GCS log).
+    return [node_info[client_id] for client_id in ordered_client_ids]
+
+
 class GlobalState(object):
     """A class used to interface with the Ray control state.
 
@@ -147,8 +216,7 @@ class GlobalState(object):
         """Fetch and parse the object table information for a single object ID.
 
         Args:
-            object_id_binary: A string of bytes with the object ID to get
-                information about.
+            object_id: An object ID to get information about.
 
         Returns:
             A dictionary with information about the object ID in question.
@@ -160,7 +228,9 @@ class GlobalState(object):
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
-                                        object_id.id())
+                                        object_id.binary())
+        if message is None:
+            return {}
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -215,15 +285,17 @@ class GlobalState(object):
         """Fetch and parse the task table information for a single task ID.
 
         Args:
-            task_id_binary: A string of bytes with the task ID to get
-                information about.
+            task_id: A task ID to get information about.
 
         Returns:
             A dictionary with information about the task ID in question.
         """
+        assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                        "", task_id.id())
+                                        "", task_id.binary())
+        if message is None:
+            return {}
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -234,25 +306,24 @@ class GlobalState(object):
 
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
-        task_spec = ray.raylet.task_from_string(task_spec)
-        function_descriptor_list = task_spec.function_descriptor_list()
+        task = ray._raylet.Task.from_string(task_spec)
+        function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
         task_spec_info = {
-            "DriverID": binary_to_hex(task_spec.driver_id().id()),
-            "TaskID": binary_to_hex(task_spec.task_id().id()),
-            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": binary_to_hex(task_spec.actor_id().id()),
-            "ActorCreationID": binary_to_hex(
-                task_spec.actor_creation_id().id()),
-            "ActorCreationDummyObjectID": binary_to_hex(
-                task_spec.actor_creation_dummy_object_id().id()),
-            "ActorCounter": task_spec.actor_counter(),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources(),
-            "FunctionID": binary_to_hex(function_descriptor.function_id.id()),
+            "DriverID": task.driver_id().hex(),
+            "TaskID": task.task_id().hex(),
+            "ParentTaskID": task.parent_task_id().hex(),
+            "ParentCounter": task.parent_counter(),
+            "ActorID": (task.actor_id().hex()),
+            "ActorCreationID": task.actor_creation_id().hex(),
+            "ActorCreationDummyObjectID": (
+                task.actor_creation_dummy_object_id().hex()),
+            "ActorCounter": task.actor_counter(),
+            "Args": task.arguments(),
+            "ReturnObjectIDs": task.returns(),
+            "RequiredResources": task.required_resources(),
+            "FunctionID": function_descriptor.function_id.hex(),
             "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,
             "ClassName": function_descriptor.class_name,
@@ -283,7 +354,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.ObjectID(hex_to_binary(task_id))
+            task_id = ray.TaskID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(
@@ -296,7 +367,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.ObjectID(task_id_binary))
+                    ray.TaskID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
@@ -328,55 +399,7 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        NIL_CLIENT_ID = ray_constants.ID_SIZE * b"\xff"
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.CLIENT, "",
-            NIL_CLIENT_ID)
-
-        # Handle the case where no clients are returned. This should only
-        # occur potentially immediately after the cluster is started.
-        if message is None:
-            return []
-
-        node_info = {}
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            message, 0)
-
-        # Since GCS entries are append-only, we override so that
-        # only the latest entries are kept.
-        for i in range(gcs_entry.EntriesLength()):
-            client = (ray.gcs_utils.ClientTableData.GetRootAsClientTableData(
-                gcs_entry.Entries(i), 0))
-
-            resources = {
-                decode(client.ResourcesTotalLabel(i)):
-                client.ResourcesTotalCapacity(i)
-                for i in range(client.ResourcesTotalLabelLength())
-            }
-            client_id = ray.utils.binary_to_hex(client.ClientId())
-
-            # If this client is being removed, then it must
-            # have previously been inserted, and
-            # it cannot have previously been removed.
-            if not client.IsInsertion():
-                assert client_id in node_info, "Client removed not found!"
-                assert node_info[client_id]["IsInsertion"], (
-                    "Unexpected duplicate removal of client.")
-
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "IsInsertion": client.IsInsertion(),
-                "NodeManagerAddress": decode(
-                    client.NodeManagerAddress(), allow_none=True),
-                "NodeManagerPort": client.NodeManagerPort(),
-                "ObjectManagerPort": client.ObjectManagerPort(),
-                "ObjectStoreSocketName": decode(
-                    client.ObjectStoreSocketName(), allow_none=True),
-                "RayletSocketName": decode(
-                    client.RayletSocketName(), allow_none=True),
-                "Resources": resources
-            }
-        return list(node_info.values())
+        return parse_client_table(self.redis_client)
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.
@@ -419,7 +442,7 @@ class GlobalState(object):
         # events and should also support returning a window of events.
         message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        batch_id.id())
+                                        batch_id.binary())
 
         if message is None:
             return []
@@ -857,9 +880,10 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
+        assert isinstance(job_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.id())
+            job_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -871,7 +895,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.id() == error_data.JobId()
+            assert job_id.binary() == error_data.JobId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -892,6 +916,7 @@ class GlobalState(object):
                 that job.
         """
         if job_id is not None:
+            assert isinstance(job_id, ray.DriverID)
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
@@ -902,6 +927,6 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
         }

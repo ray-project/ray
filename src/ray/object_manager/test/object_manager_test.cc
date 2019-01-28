@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "ray/status.h"
+
 #include "ray/object_manager/object_manager.h"
 
 namespace ray {
@@ -67,7 +69,7 @@ class MockServer {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager",
+        "object manager", {},
         static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
@@ -140,8 +142,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1));
-    ARROW_CHECK_OK(client2.Connect(store_id_2));
+    RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
+    RAY_ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -166,9 +168,9 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                 metadata_size, &data));
-    ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
+                                     metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
     return object_id;
   }
 

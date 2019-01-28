@@ -23,14 +23,25 @@ add_custom_command(
   VERBATIM)
 
 add_custom_target(gen_gcs_fbs DEPENDS ${GCS_FBS_OUTPUT_FILES})
+set(RAY_HOME ${CMAKE_CURRENT_LIST_DIR}/../../..)
 
 # Generate Python bindings for the flatbuffers objects.
-set(PYTHON_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../python/ray/core/generated/)
+set(PYTHON_OUTPUT_DIR ${RAY_HOME}/python/ray/core/generated/)
 add_custom_command(
   TARGET gen_gcs_fbs
   COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${GCS_FBS_SRC}
   DEPENDS ${FBS_DEPENDS}
-  COMMENT "Running flatc compiler on ${GCS_FBS_SRC}"
+  COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for python"
+  VERBATIM)
+
+# Generate Java bindings for the flatbuffers objects.
+set(JAVA_OUTPUT_DIR ${RAY_HOME}/java/runtime/src/main/java/org/ray/runtime/generated/)
+add_custom_command(
+  TARGET gen_gcs_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -j -o ${JAVA_OUTPUT_DIR} ${GCS_FBS_SRC}
+  COMMAND ${PYTHON_EXECUTABLE} ${RAY_HOME}/java/modify_generated_java_flatbuffers_files.py ${RAY_HOME}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${GCS_FBS_SRC} for Java"
   VERBATIM)
 
 ADD_RAY_TEST(client_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})

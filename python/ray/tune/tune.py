@@ -116,8 +116,7 @@ def run_experiments(experiments,
     runner = None
     restore = False
 
-    if os.path.exists(
-            os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if TrialRunner.checkpoint_exists(checkpoint_dir):
         if resume == "prompt":
             msg = ("Found incomplete experiment at {}. "
                    "Would you like to resume it?".format(checkpoint_dir))
@@ -163,15 +162,16 @@ def run_experiments(experiments,
             queue_trials=queue_trials,
             trial_executor=trial_executor)
 
-    logger.info(runner.debug_string(max_debug=99999))
+    print(runner.debug_string(max_debug=99999))
+
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            logger.info(runner.debug_string())
+            print(runner.debug_string())
             last_debug = time.time()
 
-    logger.info(runner.debug_string(max_debug=99999))
+    print(runner.debug_string(max_debug=99999))
 
     wait_for_log_sync()
 

@@ -9,6 +9,7 @@ import hashlib
 import logging
 import math
 import os
+from six import string_types
 from six.moves import queue
 import subprocess
 import threading
@@ -49,6 +50,9 @@ CLUSTER_CONFIG_SCHEMA = {
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers.
     "max_workers": (int, REQUIRED),
+
+    # The number of workers to launch initially, in addition to the head node.
+    "initial_workers": (int, OPTIONAL),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
@@ -324,6 +328,7 @@ class StandardAutoscaler(object):
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
+        self.bringup = True
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -418,6 +423,8 @@ class StandardAutoscaler(object):
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches)
             logger.info(self.info_string())
+        else:
+            self.bringup = False
 
         # Process any completed updates
         completed = []
@@ -467,10 +474,15 @@ class StandardAutoscaler(object):
                 logger.exception("StandardAutoscaler: Error parsing config.")
 
     def target_num_workers(self):
-        target_frac = self.config["target_utilization_fraction"]
-        cur_used = self.load_metrics.approx_workers_used()
-        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
-        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
+        initial_workers = self.config["initial_workers"]
+
+        if self.bringup:
+            ideal_num_workers = initial_workers
+        else:
+            target_frac = self.config["target_utilization_fraction"]
+            cur_used = self.load_metrics.approx_workers_used()
+            ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
+            ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
 
@@ -577,6 +589,8 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
+        if self.bringup:
+            suffix += " (bringup=True)"
         return "StandardAutoscaler [{}]: {}/{} target nodes{}\n{}".format(
             datetime.now(), len(nodes), self.target_num_workers(), suffix,
             self.load_metrics.info_string())
@@ -620,6 +634,8 @@ def check_extraneous(config, schema):
             continue
         elif isinstance(v, type):
             if not isinstance(config[k], v):
+                if v is str and isinstance(config[k], string_types):
+                    continue
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k,
@@ -659,6 +675,12 @@ def hash_launch_conf(node_conf, auth):
     return hasher.hexdigest()
 
 
+# Cache the file hashes to avoid rescanning it each time. Also, this avoids
+# inadvertently restarting workers if the file mount content is mutated on the
+# head node.
+_hash_cache = {}
+
+
 def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
@@ -683,9 +705,15 @@ def hash_runtime_conf(file_mounts, extra_objs):
             with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
 
-    hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
-    hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
-    for local_path in sorted(file_mounts.values()):
-        add_content_hashes(local_path)
+    conf_str = (json.dumps(sorted(file_mounts.items())).encode("utf-8") +
+                json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    return hasher.hexdigest()
+    # Important: only hash the files once. Otherwise, we can end up restarting
+    # workers if the files were changed and we re-hashed them.
+    if conf_str not in _hash_cache:
+        hasher.update(conf_str)
+        for local_path in sorted(file_mounts.values()):
+            add_content_hashes(local_path)
+        _hash_cache[conf_str] = hasher.hexdigest()
+
+    return _hash_cache[conf_str]

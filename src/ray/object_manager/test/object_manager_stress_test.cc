@@ -5,6 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#include "ray/status.h"
+
 #include "ray/object_manager/object_manager.h"
 
 namespace ray {
@@ -76,7 +78,7 @@ class MockServer {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager",
+        "object manager", {},
         static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
@@ -155,8 +157,8 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1));
-    ARROW_CHECK_OK(client2.Connect(store_id_2));
+    RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
+    RAY_ARROW_CHECK_OK(client2.Connect(store_id_2));
   }
 
   void TearDown() {
@@ -177,9 +179,9 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                 metadata_size, &data));
-    ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
+                                     metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
     return object_id;
   }
 
@@ -289,14 +291,14 @@ class StressTestObjectManager : public TestObjectManagerBase {
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
-    ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
+    RAY_ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 
   static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID &object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
-    ARROW_CHECK_OK(client.Hash(object_id.to_plasma_id(), &digest_1[0]));
+    RAY_ARROW_CHECK_OK(client.Hash(object_id.to_plasma_id(), &digest_1[0]));
     return digest_1;
   }
 

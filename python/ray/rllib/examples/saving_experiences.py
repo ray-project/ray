@@ -7,7 +7,7 @@ from __future__ import print_function
 import gym
 import numpy as np
 
-from ray.rllib.evaluation.sample_batch import SampleBatchBuilder
+from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 from ray.rllib.offline.json_writer import JsonWriter
 
 if __name__ == "__main__":

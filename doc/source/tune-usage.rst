@@ -486,9 +486,11 @@ Further Questions or Issues?
 
 You can post questions or issues or feedback through the following channels:
 
-1. `Our Mailing List`_: For discussions about development, questions about
-   usage, or any general questions and feedback.
-2. `GitHub Issues`_: For bug reports and feature requests.
+1. `ray-dev@googlegroups.com`_: For discussions about development or any general
+   questions and feedback.
+2. `StackOverflow`_: For questions about how to use Ray.
+3. `GitHub Issues`_: For bug reports and feature requests.
 
-.. _`Our Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues

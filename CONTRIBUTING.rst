@@ -4,9 +4,12 @@ Contributing to Ray
 Reporting bugs and asking questions
 -----------------------------------
 
-We use `GitHub issues`_ for bug reports and feature requests. For discussions
-about development, questions about usage, or any general questions, we use our
-mailing list `ray-dev@googlegroups.com`_.
+You can post questions or issues or feedback through the following channels:
+
+1. `ray-dev@googlegroups.com`_: For discussions about development or any general
+   questions and feedback.
+2. `StackOverflow`_: For questions about how to use Ray.
+3. `GitHub Issues`_: For bug reports and feature requests.
 
 To contribute a patch:
 ----------------------
@@ -17,5 +20,6 @@ To contribute a patch:
 3. Make sure that your code passes the unit tests.
 4. Add new unit tests for your code.
 
-.. _`GitHub issues`: https://github.com/ray-project/ray/issues
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray

@@ -41,6 +41,9 @@ public class TaskSpec {
   public final int actorCounter;
 
   // Task arguments.
+  public final UniqueId[] newActorHandles;
+
+  // Task arguments.
   public final FunctionArg[] args;
 
   // return ids
@@ -65,8 +68,8 @@ public class TaskSpec {
 
   public TaskSpec(UniqueId driverId, UniqueId taskId, UniqueId parentTaskId, int parentCounter,
       UniqueId actorCreationId, int maxActorReconstructions, UniqueId actorId,
-      UniqueId actorHandleId, int actorCounter, FunctionArg[] args, UniqueId[] returnIds,
-      Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
+      UniqueId actorHandleId, int actorCounter, UniqueId[] newActorHandles, FunctionArg[] args,
+      UniqueId[] returnIds, Map<String, Double> resources, FunctionDescriptor functionDescriptor) {
     this.driverId = driverId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
@@ -76,6 +79,7 @@ public class TaskSpec {
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
+    this.newActorHandles = newActorHandles;
     this.args = args;
     this.returnIds = returnIds;
     this.resources = resources;

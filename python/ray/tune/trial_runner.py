@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from datetime import datetime
 import json
 import logging
 import os
@@ -28,6 +29,15 @@ def _naturalize(string):
     return [int(text) if text.isdigit() else text.lower() for text in splits]
 
 
+def _find_newest_ckpt(ckpt_dir):
+    """Returns path to most recently modified checkpoint."""
+    full_paths = [
+        os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
+        if fname.startswith("experiment_state") and fname.endswith(".json")
+    ]
+    return max(full_paths)
+
+
 class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -50,7 +60,7 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    CKPT_FILE_NAME = "experiment_state.json"
+    CKPT_FILE_TMPL = "experiment_state-{}.json"
 
     def __init__(self,
                  search_alg,
@@ -102,8 +112,22 @@ class TrialRunner(object):
         self._stop_queue = []
         self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
+        self._session = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+    @classmethod
+    def checkpoint_exists(cls, directory):
+        if not os.path.exists(directory):
+            return False
+        return any(
+            (fname.startswith("experiment_state") and fname.endswith(".json"))
+            for fname in os.listdir(directory))
+
     def checkpoint(self):
-        """Saves execution state to `self._metadata_checkpoint_dir`."""
+        """Saves execution state to `self._metadata_checkpoint_dir`.
+
+        Overwrites the current session checkpoint, which starts when self
+        is instantiated.
+        """
         if not self._metadata_checkpoint_dir:
             return
         metadata_checkpoint_dir = self._metadata_checkpoint_dir
@@ -121,7 +145,8 @@ class TrialRunner(object):
 
         os.rename(
             tmp_file_name,
-            os.path.join(metadata_checkpoint_dir, TrialRunner.CKPT_FILE_NAME))
+            os.path.join(metadata_checkpoint_dir,
+                         TrialRunner.CKPT_FILE_TMPL.format(self._session)))
         return metadata_checkpoint_dir
 
     @classmethod
@@ -146,9 +171,9 @@ class TrialRunner(object):
         Returns:
             runner (TrialRunner): A TrialRunner to resume experiments from.
         """
-        with open(
-                os.path.join(metadata_checkpoint_dir,
-                             TrialRunner.CKPT_FILE_NAME), "r") as f:
+
+        newest_ckpt_path = _find_newest_ckpt(metadata_checkpoint_dir)
+        with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f)
 
         logger.warning("".join([
@@ -522,7 +547,7 @@ class TrialRunner(object):
         state = self.__dict__.copy()
         for k in [
                 "_trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor"
+                "_scheduler_alg", "trial_executor", "_session"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)

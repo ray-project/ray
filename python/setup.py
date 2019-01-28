@@ -22,8 +22,7 @@ import setuptools.command.build_ext as _build_ext
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server",
-    "ray/core/src/ray/raylet/libraylet_library_python.so",
+    "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
@@ -146,10 +145,8 @@ requires = [
     # The six module is required by pyarrow.
     "six >= 1.0.0",
     "flatbuffers",
+    "faulthandler;python_version<'3.3'",
 ]
-
-if sys.version_info < (3, 0):
-    requires.append("faulthandler")
 
 setup(
     name="ray",
