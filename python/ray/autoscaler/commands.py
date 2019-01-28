@@ -141,6 +141,11 @@ def kill_node(config_file, yes, override_cluster_name):
     _exec(updater, "ray stop", False, False)
 
     time.sleep(5)
+
+    iip = provider.internal_ip(node)
+    if iip:
+        return iip
+
     return provider.external_ip(node)
 
 
