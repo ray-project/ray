@@ -55,6 +55,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
 
+        self._last_sampled_time = time.time()
+        self._last_sampled_mean = None
+        self._last_trained_time = time.time()
+        self._last_trained_mean = None
+
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
@@ -114,13 +119,19 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
         time_delta = time.time() - start
-        self.timers["sample"].push(time_delta)
-        self.timers["sample"].push_units_processed(sample_timesteps)
+
+        if sample_timesteps > 0:
+            new_sampled_time = time.time()
+            self._last_sampled_mean = sample_timesteps / \
+                (new_sampled_time - self._last_sampled_time)
+            self._last_sampled_time = new_sampled_time
+
         if train_timesteps > 0:
-            self.learning_started = True
-        if self.learning_started:
-            self.timers["train"].push(time_delta)
-            self.timers["train"].push_units_processed(train_timesteps)
+            new_trained_time = time.time()
+            self._last_trained_mean = train_timesteps / \
+                (new_trained_time - self._last_trained_time)
+            self._last_trained_time = new_trained_time
+
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
 
@@ -143,14 +154,19 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(self.timers["sample"].mean_throughput,
-                                       3),
-            "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
         }
+        if self._last_sampled_mean is not None:
+            stats["sample_throughput"] = round(
+                self._last_sampled_mean, 3)
+            self._last_sampled_mean = None
+        if self._last_trained_mean is not None:
+            stats["train_throughput"] = round(
+                self._last_trained_mean, 3)
+            self._last_trained_mean = None
         if self.learner.stats:
             stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)
