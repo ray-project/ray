@@ -1909,7 +1909,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   } else {
       uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
   }
-  auto entry = uncommitted_lineage.GetEntryMutable(task_id)
+  auto entry = uncommitted_lineage.GetEntryMutable(task_id);
   Task &lineage_cache_entry_task = entry->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
