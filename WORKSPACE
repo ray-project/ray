@@ -21,11 +21,24 @@ git_repository(
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
 )
 
+git_repository(
+    name   = "com_github_gflags_gflags",
+    remote = "https://github.com/gflags/gflags.git",
+    tag = "v2.2.2",
+)
+
+new_git_repository(
+    name   = "com_github_google_glog",
+    build_file = "//bazel:BUILD.glog",
+    remote = "https://github.com/google/glog.git",
+    tag = "v0.3.5",
+)
+
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
     remote = "https://github.com/ray-project/arrow",
-    commit = "f5d1be2fed69899aea636bd074aaeaa4149acc79",
+    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
 )
 
 new_git_repository(
