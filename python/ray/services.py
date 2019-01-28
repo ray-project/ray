@@ -300,6 +300,9 @@ def start_ray_process(command,
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
 
+    if use_tmux:
+        raise NotImplementedError
+
     if sum([use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
         raise ValueError(
             "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
@@ -317,9 +320,16 @@ def start_ray_process(command,
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
-        with open(gdb_init_path, "w") as gdb_init_file:
-            gdb_init_file.write("run {}".format(run_args))
-        command = ["gdb", ray_process_path, "-x", gdb_init_path]
+        if use_gdb == 1:
+            with open(gdb_init_path, "w") as gdb_init_file:
+                gdb_init_file.write("run {}".format(run_args))
+            command = ["gdb", ray_process_path, "-x", gdb_init_path]
+        else:
+            with open(gdb_init_path, "w") as gdb_init_file:
+                gdb_init_file.write("define\n\trun {}\nend".format(run_args))
+            logger.info("Use the following command to launch gdb and run "
+                        "`run_ray` to start %s in gdb `gdb %s -x %s`", process_type, ray_process_path, gdb_init_path)
+            command = ["gdb", ray_process_path, "-x", gdb_init_path]
 
     if use_valgrind:
         command = [
@@ -334,13 +344,6 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
-
-    if use_tmux:
-        if use_gdb:
-            run_args = " ".join(command)
-        else:
-            run_args = " ".join(["\"{}\"".format(arg) if i != 0 else arg for i, arg in enumerate(command)])
-        command = ["tmux", "new", "'{};bash'".format(run_args)]
 
     process = subprocess.Popen(
         command,
