@@ -115,9 +115,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation_method=None,
                  output_creator=lambda ioctx: NoopOutput(),
-                 remote_worker_envs=False,
-                 build_base_env=False,
-                 build_worker_envs=False):
+                 remote_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -192,6 +190,8 @@ class PolicyEvaluator(EvaluatorInterface):
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
+            remote_worker_envs (bool): Whether environments should be remote,
+                in another process, and executed in parallel
         """
 
         if log_level:
@@ -214,8 +214,7 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
 
-        env_context = EnvContext(
-            env_config or {}, worker_index, placeholder_env=not build_base_env)
+        env_context = EnvContext(env_config or {}, worker_index)
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, AsyncVectorEnv):
@@ -286,17 +285,16 @@ class PolicyEvaluator(EvaluatorInterface):
             for (policy_id, policy) in self.policy_map.items()
         }
 
-
         def make_env(vector_index):
             return wrap(
-                env_creator(env_context.align(vector_index=vector_index,
-                                              remote=remote_worker_envs and build_worker_envs,
-                                              placeholder_env=not build_worker_envs)))
+                env_creator(
+                    env_context.align(vector_index=vector_index,
+                                      remote=remote_worker_envs)))
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = AsyncVectorEnv.wrap_async(
-                self.env, make_env=make_env, num_envs=num_envs,
-                remote_envs=remote_worker_envs and build_worker_envs)
+            self.env, make_env=make_env, num_envs=num_envs,
+            remote_envs=remote_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
