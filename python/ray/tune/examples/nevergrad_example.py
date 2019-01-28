@@ -39,7 +39,7 @@ if __name__ == '__main__':
     config = {
         "nevergrad": {
             "run": "exp",
-            "num_samples": 10 if args.smoke_test else 1000,
+            "num_samples": 10 if args.smoke_test else 50,
             "config": {
                 "iterations": 100,
             },
