@@ -1903,9 +1903,14 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto task_id = spec.TaskId();
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
-  Task &lineage_cache_entry_task =
-      uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+  Lineage uncommitted_lineage;
+  if (lineage_cache_.ContainsTask(task_id)) {
+      uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
+  } else {
+      uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
+  }
+  auto entry = uncommitted_lineage.GetEntryMutable(task_id)
+  Task &lineage_cache_entry_task = entry->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.IncrementNumForwards();
