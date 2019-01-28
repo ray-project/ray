@@ -2497,8 +2497,10 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
-def test_inline_objects(ray_start):
+def test_inline_objects(shutdown_only):
     import pyarrow
+
+    ray.init(num_cpus=1, object_store_memory=10**7)
 
     @ray.remote
     class Actor(object):
