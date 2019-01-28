@@ -16,7 +16,7 @@ from ray.rllib.agents.a3c import A2CAgent
 from ray.rllib.agents.pg import PGAgent
 from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
@@ -303,8 +303,7 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedDict(lambda _: SimpleServing(NestedDictEnv()))
 
     def testNestedDictAsync(self):
-        self.doTestNestedDict(
-            lambda _: AsyncVectorEnv.wrap_async(NestedDictEnv()))
+        self.doTestNestedDict(lambda _: BaseEnv.to_base_env(NestedDictEnv()))
 
     def testNestedTupleGym(self):
         self.doTestNestedTuple(lambda _: NestedTupleEnv())
@@ -317,8 +316,7 @@ class NestedSpacesTest(unittest.TestCase):
         self.doTestNestedTuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def testNestedTupleAsync(self):
-        self.doTestNestedTuple(
-            lambda _: AsyncVectorEnv.wrap_async(NestedTupleEnv()))
+        self.doTestNestedTuple(lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
 
     def testMultiAgentComplexSpaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)

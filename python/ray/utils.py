@@ -16,7 +16,6 @@ import time
 import uuid
 
 import ray.gcs_utils
-import ray.raylet
 import ray.ray_constants as ray_constants
 
 
@@ -68,7 +67,7 @@ def push_error_to_driver(worker,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.ObjectID.nil_id()
+        driver_id = ray.DriverID.nil()
     data = {} if data is None else data
     worker.raylet_client.push_error(driver_id, error_type, message,
                                     time.time())
@@ -97,7 +96,7 @@ def push_error_to_driver_through_redis(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.ObjectID.nil_id()
+        driver_id = ray.DriverID.nil()
     data = {} if data is None else data
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
@@ -106,7 +105,7 @@ def push_error_to_driver_through_redis(redis_client,
     redis_client.execute_command("RAY.TABLE_APPEND",
                                  ray.gcs_utils.TablePrefix.ERROR_INFO,
                                  ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.id(), error_data)
+                                 driver_id.binary(), error_data)
 
 
 def is_cython(obj):

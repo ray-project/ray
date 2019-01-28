@@ -18,7 +18,7 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -182,14 +182,22 @@ COMMON_CONFIG = {
 # yapf: enable
 
 
+@DeveloperAPI
 def with_common_config(extra_config):
     """Returns the given config dict merged with common agent confs."""
 
-    config = copy.deepcopy(COMMON_CONFIG)
+    return with_base_config(COMMON_CONFIG, extra_config)
+
+
+def with_base_config(base_config, extra_config):
+    """Returns the given config dict merged with a base agent conf."""
+
+    config = copy.deepcopy(base_config)
     config.update(extra_config)
     return config
 
 
+@PublicAPI
 class Agent(Trainable):
     """All RLlib agents extend this base class.
 
@@ -208,6 +216,7 @@ class Agent(Trainable):
         "custom_resources_per_worker"
     ]
 
+    @PublicAPI
     def __init__(self, config=None, env=None, logger_creator=None):
         """Initialize an RLLib agent.
 
@@ -260,6 +269,7 @@ class Agent(Trainable):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     @override(Trainable)
+    @PublicAPI
     def train(self):
         """Overrides super.train to synchronize global vars."""
 
@@ -338,11 +348,13 @@ class Agent(Trainable):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
+    @DeveloperAPI
     def _init(self):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
 
+    @PublicAPI
     def compute_action(self,
                        observation,
                        state=None,
@@ -398,6 +410,7 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
+    @PublicAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
         """Return policy graph for the specified id, or None.
 
@@ -407,6 +420,7 @@ class Agent(Trainable):
 
         return self.local_evaluator.get_policy(policy_id)
 
+    @PublicAPI
     def get_weights(self, policies=None):
         """Return a dictionary of policy ids to weights.
 
@@ -416,6 +430,7 @@ class Agent(Trainable):
         """
         return self.local_evaluator.get_weights(policies)
 
+    @PublicAPI
     def set_weights(self, weights):
         """Set policy weights by policy id.
 
@@ -424,6 +439,7 @@ class Agent(Trainable):
         """
         self.local_evaluator.set_weights(weights)
 
+    @DeveloperAPI
     def make_local_evaluator(self, env_creator, policy_graph):
         """Convenience method to return configured local evaluator."""
 
@@ -438,6 +454,7 @@ class Agent(Trainable):
                 config["local_evaluator_tf_session_args"]
             }))
 
+    @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
 
@@ -453,6 +470,7 @@ class Agent(Trainable):
                                  self.config) for i in range(count)
         ]
 
+    @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
@@ -468,6 +486,7 @@ class Agent(Trainable):
         """
         self.local_evaluator.export_policy_model(export_dir, policy_id)
 
+    @DeveloperAPI
     def export_policy_checkpoint(self,
                                  export_dir,
                                  filename_prefix="model",
@@ -491,8 +510,8 @@ class Agent(Trainable):
     @classmethod
     def resource_help(cls, config):
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers` and other configs. See the "
-                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "setting `num_workers`, `num_gpus`, and other configs. See "
+                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
     @staticmethod

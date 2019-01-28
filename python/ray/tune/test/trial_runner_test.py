@@ -261,8 +261,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "f1",
                 "local_dir": "/tmp/logdir",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40),
                 },
             }
         })
@@ -848,7 +848,7 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = self.generate_trials({
             "run": "PPO",
             "config": {
-                "qux": lambda spec: 2 + 2,
+                "qux": tune.sample_from(lambda spec: 2 + 2),
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
             },
@@ -863,8 +863,8 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": 1,
-                "y": lambda spec: spec.config.x + 1,
-                "z": lambda spec: spec.config.y + 1,
+                "y": tune.sample_from(lambda spec: spec.config.x + 1),
+                "z": tune.sample_from(lambda spec: spec.config.y + 1),
             },
         }, "condition_resolution")
         trials = list(trials)
@@ -876,7 +876,7 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
-                "y": lambda spec: spec.config.x * 100,
+                "y": tune.sample_from(lambda spec: spec.config.x * 100),
             },
         }, "dependent_lambda")
         trials = list(trials)
@@ -889,10 +889,10 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([
-                    lambda spec: spec.config.y * 100,
-                    lambda spec: spec.config.y * 200
+                    tune.sample_from(lambda spec: spec.config.y * 100),
+                    tune.sample_from(lambda spec: spec.config.y * 200)
                 ]),
-                "y": lambda spec: 1,
+                "y": tune.sample_from(lambda spec: 1),
             },
         }, "dependent_grid_search")
         trials = list(trials)
@@ -920,7 +920,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 self.generate_trials({
                     "run": "PPO",
                     "config": {
-                        "foo": lambda spec: spec.config.foo,
+                        "foo": tune.sample_from(lambda spec: spec.config.foo),
                     },
                 }, "recursive_dep"))
         except RecursiveDependencyError as e:
@@ -1007,8 +1007,8 @@ class TrialRunnerTest(unittest.TestCase):
             "foo": {
                 "run": "f1",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40)
                 },
             }
         }
