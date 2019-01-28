@@ -88,6 +88,27 @@ def new_port():
     return random.randint(10000, 65535)
 
 
+def include_java_from_redis(redis_client):
+    """This is used for query include_java bool from redis.
+
+    Args:
+        redis_client (StrictRedis): The redis client to GCS.
+
+    Returns:
+        True if this cluster backend enables Java worker.
+    """
+    include_java_value = redis_client.get("INCLUDE_JAVA")
+    if include_java_value is not None:
+        return int(include_java_value) == 1
+    else:
+        return False
+
+
+def get_default_java_classpath():
+    this_dir = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(this_dir, "../../../build/java/*")
+
+
 def remaining_processes_alive(exclude=None):
     """See if the remaining processes are alive or not.
 
@@ -999,6 +1020,7 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
+        java_classpath = java_classpath or get_default_java_classpath()
         java_worker_command = build_java_worker_command(java_classpath,
                                                         redis_address,
                                                         plasma_store_name,
@@ -1067,7 +1089,7 @@ def build_java_worker_command(java_classpath,
                               redis_address,
                               plasma_store_name,
                               raylet_name):
-    """This method assembles java worker command.
+    """This method assembles the command used to start a Java worker.
 
     Args:
         java_classpath (str): The classpath for Java worker.

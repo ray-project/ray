@@ -42,27 +42,6 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
                             "clients with this IP address.")
 
 
-def include_java_from_redis(redis_client):
-    """This is used for query include_java bool from redis.
-
-    Args:
-        redis_client (StrictRedis): The redis client to GCS.
-
-    Returns:
-        True if this cluster backend enables Java worker.
-    """
-    include_java_value = redis_client.get("INCLUDE_JAVA")
-    if include_java_value is not None:
-        return int(include_java_value) == 1
-    else:
-        return False
-
-
-def get_default_java_classpath():
-    this_dir = os.path.abspath(os.path.dirname(__file__))
-    return os.path.join(this_dir, "../../../build/java/*")
-
-
 @click.group()
 @click.option(
     "--logging-level",
@@ -282,8 +261,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         java_classpath=java_classpath,
         _internal_config=internal_config)
 
-    ray_params.update_if_absent(java_classpath=get_default_java_classpath())
-
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -391,10 +368,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
-
-        # For non-head node, query redis whether this cluster includes java.
-        ray_params.update(include_java=include_java_from_redis(redis_client))
-
         node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
