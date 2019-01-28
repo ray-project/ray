@@ -58,11 +58,10 @@ class MemoryMonitor(object):
         # handlers because this object is instantiated before
         # logging is configured which leads to non-descript messages printed.
         if not psutil:
-            print(
-                "WARNING: Not monitoring node memory since `psutil` is not "
-                "installed. Install this with `pip install psutil` "
-                "(or ray[debug]) to enable debugging of memory-related "
-                "crashes.")
+            print("WARNING: Not monitoring node memory since `psutil` is not "
+                  "installed. Install this with `pip install psutil` "
+                  "(or ray[debug]) to enable debugging of memory-related "
+                  "crashes.")
 
     def raise_if_low_memory(self):
         if not psutil:

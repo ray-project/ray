@@ -38,14 +38,8 @@ from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
-from ray.utils import (
-    check_oversized_pickle,
-    is_cython,
-    random_string,
-    thread_safe_client,
-    setup_logger,
-    try_update_handler
-)
+from ray.utils import (check_oversized_pickle, is_cython, random_string,
+                       thread_safe_client, setup_logger, try_update_handler)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
