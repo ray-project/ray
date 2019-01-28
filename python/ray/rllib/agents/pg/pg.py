@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.agent import Agent, with_common_config
-from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+# from ray.rllib.agents.pg.pg_policy_graph import PGPolicyGraph
+from ray.rllib.agents.pg_policy_graph import PGPolicyGraph
+
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import override
 
