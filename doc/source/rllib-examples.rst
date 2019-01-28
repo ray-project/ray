@@ -13,8 +13,18 @@ Tuned Examples
 - `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
    Collection of reasonably optimized Atari results.
 
-Custom Environments and Models
-------------------------------
+Training Workflows
+------------------
+
+- `Custom training workflows <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__:
+   Example of how to use Tune's support for custom training functions to implement custom training workflows.
+- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
+   Example of how to adjust the configuration of an environment over time.
+- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
+   Example of how to output custom training metrics to TensorBoard.
+
+Custom Envs and Models
+----------------------
 
 - `Registering a custom env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env for use with RLlib.
@@ -25,15 +35,12 @@ Custom Environments and Models
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
 
-Training Workflows
-------------------
-
-- `Custom training workflows <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__:
-   Example of how to use Tune's support for custom training functions to implement custom training workflows.
-- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
-   Example of how to adjust the configuration of an environment over time.
-- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
-   Example of how to output custom training metrics to TensorBoard.
+Serving and Offline
+-------------------
+- `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
+   Example of online serving of predictions for a simple CartPole policy.
+- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
+   Example of how to externally generate experience batches in RLlib-compatible format.
 
 Multi-Agent and Hierarchical
 ----------------------------
@@ -47,13 +54,6 @@ Multi-Agent and Hierarchical
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 
-Serving and Offline
--------------------
-- `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
-   Example of online serving of predictions for a simple CartPole policy.
-- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
-   Example of how to externally generate experience batches in RLlib-compatible format.
-
 Community Examples
 ------------------
 
@@ -61,7 +61,7 @@ Community Examples
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
-- `StarCraft2 <https://github.com/oxwhirl/smac/tree/master/smac>`__:
+- `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
