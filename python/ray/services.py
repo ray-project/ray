@@ -301,13 +301,13 @@ def start_ray_process(command,
         use_gdb = True
 
     if use_gdb:
-        gdbinit_path = get_gdbinit_path()
-        ray_process_path = command[-16]
-        ray_process_args = command[-15:]
+        gdb_init_path = get_gdb_init_path()
+        ray_process_path = command[0]
+        ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
-        with open(gdbinit_path, "w") as gdbinit_file:
-            gdbinit_file.write("run {}".format(run_args))
-        command = ["gdb", ray_process_path, "-x", gdbinit_path]
+        with open(gdb_init_path, "w") as gdb_init_file:
+            gdb_init_file.write("run {}".format(run_args))
+        command = ["gdb", ray_process_path, "-x", gdb_init_path]
     if use_tmux:
         raise NotImplementedError
     if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
