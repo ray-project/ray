@@ -7,12 +7,13 @@ import distutils.version
 import tensorflow as tf
 import numpy as np
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 
 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.5.0"))
 
 
+@DeveloperAPI
 class ActionDistribution(object):
     """The policy action distribution of an agent.
 
@@ -20,21 +21,26 @@ class ActionDistribution(object):
       inputs (Tensor): The input vector to compute samples from.
     """
 
+    @DeveloperAPI
     def __init__(self, inputs):
         self.inputs = inputs
 
+    @DeveloperAPI
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def kl(self, other):
         """The KL-divergence between two action distributions."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def entropy(self):
         """The entroy of the action distribution."""
         raise NotImplementedError
 
+    @DeveloperAPI
     def sample(self):
         """Draw a sample from the action distribution."""
         raise NotImplementedError

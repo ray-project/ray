@@ -49,7 +49,12 @@ except ImportError as e:
 modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
 sys.path.append(modin_path)
 
-from ray.raylet import ObjectID, _config  # noqa: E402
+from ray._raylet import (UniqueID, ObjectID, DriverID, ClientID, ActorID,
+                         ActorHandleID, FunctionID, ActorClassID, TaskID,
+                         Config as _Config)  # noqa: E402
+
+_config = _Config()
+
 from ray.profiling import profile  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
                         remote, get_gpu_ids, get_resource_ids, get_webui_url,
@@ -72,8 +77,12 @@ __all__ = [
     "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
     "get_webui_url", "register_custom_serializer", "shutdown",
     "is_initialized", "SCRIPT_MODE", "WORKER_MODE", "LOCAL_MODE",
-    "PYTHON_MODE", "global_state", "ObjectID", "_config", "__version__",
-    "internal"
+    "PYTHON_MODE", "global_state", "_config", "__version__", "internal"
+]
+
+__all__ += [
+    "UniqueID", "ObjectID", "DriverID", "ClientID", "ActorID", "ActorHandleID",
+    "FunctionID", "ActorClassID", "TaskID"
 ]
 
 import ctypes  # noqa: E402

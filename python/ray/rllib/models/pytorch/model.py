@@ -6,8 +6,10 @@ import torch
 import torch.nn as nn
 
 from ray.rllib.models.model import _restore_original_dimensions
+from ray.rllib.utils.annotations import PublicAPI
 
 
+@PublicAPI
 class TorchModel(nn.Module):
     """Defines an abstract network model for use with RLlib / PyTorch."""
 
@@ -25,6 +27,7 @@ class TorchModel(nn.Module):
         self.num_outputs = num_outputs
         self.options = options
 
+    @PublicAPI
     def forward(self, input_dict, hidden_state):
         """Wraps _forward() to unpack flattened Dict and Tuple observations."""
         input_dict["obs"] = input_dict["obs"].float()  # TODO(ekl): avoid cast
@@ -33,10 +36,12 @@ class TorchModel(nn.Module):
         outputs, features, vf, h = self._forward(input_dict, hidden_state)
         return outputs, features, vf, h
 
+    @PublicAPI
     def state_init(self):
         """Returns a list of initial hidden state tensors, if any."""
         return []
 
+    @PublicAPI
     def _forward(self, input_dict, hidden_state):
         """Forward pass for the model.
 

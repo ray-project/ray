@@ -5,23 +5,24 @@ from __future__ import print_function
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 
 
-class AsyncVectorEnv(object):
+@PublicAPI
+class BaseEnv(object):
     """The lowest-level env interface used by RLlib for sampling.
 
-    AsyncVectorEnv models multiple agents executing asynchronously in multiple
+    BaseEnv models multiple agents executing asynchronously in multiple
     environments. A call to poll() returns observations from ready agents
     keyed by their environment and agent ids, and actions for those agents
     can be sent back via send_actions().
 
-    All other env types can be adapted to AsyncVectorEnv. RLlib handles these
+    All other env types can be adapted to BaseEnv. RLlib handles these
     conversions internally in PolicyEvaluator, for example:
 
-        gym.Env => rllib.VectorEnv => rllib.AsyncVectorEnv
-        rllib.MultiAgentEnv => rllib.AsyncVectorEnv
-        rllib.ExternalEnv => rllib.AsyncVectorEnv
+        gym.Env => rllib.VectorEnv => rllib.BaseEnv
+        rllib.MultiAgentEnv => rllib.BaseEnv
+        rllib.ExternalEnv => rllib.BaseEnv
 
     Attributes:
         action_space (gym.Space): Action space. This must be defined for
@@ -30,7 +31,7 @@ class AsyncVectorEnv(object):
             for single-agent envs. Multi-agent envs can set this to None.
 
     Examples:
-        >>> env = MyAsyncVectorEnv()
+        >>> env = MyBaseEnv()
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
         >>> print(obs)
         {
@@ -67,27 +68,31 @@ class AsyncVectorEnv(object):
     @staticmethod
     def wrap_async(env, make_env=None, num_envs=1, remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
-        if not isinstance(env, AsyncVectorEnv):
+        if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
                 # NOTE: Probably should handle remote_envs in
                 #       _MultiAgentEnvToAsync as well
-                env = _MultiAgentEnvToAsync(
+                env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[], num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
                         "ExternalEnv does not currently support num_envs > 1.")
-                env = _ExternalEnvToAsync(env)
+                env = _ExternalEnvToBaseEnv(env)
             elif isinstance(env, VectorEnv):
-                env = _VectorEnvToAsync(env)
+                env = _VectorEnvToBaseEnv(env)
             else:
                 env = VectorEnv.wrap(
-                    make_env=make_env, num_envs=num_envs, remote_envs=remote_envs,
-                    action_space=env.action_space, observation_space=env.observation_space)
-                env = _VectorEnvToAsync(env)
-        assert isinstance(env, AsyncVectorEnv)
+                    make_env=make_env,
+                    num_envs=num_envs,
+                    remote_envs=remote_envs,
+                    action_space=env.action_space,
+                    observation_space=env.observation_space)
+                env = _VectorEnvToBaseEnv(env)
+        assert isinstance(env, BaseEnv)
         return env
 
+    @PublicAPI
     def poll(self):
         """Returns observations from ready agents.
 
@@ -110,6 +115,7 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def send_actions(self, action_dict):
         """Called to send actions back to running agents in this env.
 
@@ -121,6 +127,7 @@ class AsyncVectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def try_reset(self, env_id):
         """Attempt to reset the env with the given id.
 
@@ -132,6 +139,7 @@ class AsyncVectorEnv(object):
         """
         return None
 
+    @PublicAPI
     def get_unwrapped(self):
         """Return a reference to the underlying gym envs, if any.
 
@@ -149,8 +157,8 @@ def _with_dummy_agent_id(env_id_to_values, dummy_id=_DUMMY_AGENT_ID):
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
-class _ExternalEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of ExternalEnv to AsyncVectorEnv."""
+class _ExternalEnvToBaseEnv(BaseEnv):
+    """Internal adapter of ExternalEnv to BaseEnv."""
 
     def __init__(self, external_env, preprocessor=None):
         self.external_env = external_env
@@ -162,7 +170,7 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
             self.observation_space = external_env.observation_space
         external_env.start()
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def poll(self):
         with self.external_env._results_avail_condition:
             results = self._poll()
@@ -177,7 +185,7 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
              "ExternalEnv was created with max_concurrent={}".format(limit))
         return results
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def send_actions(self, action_dict):
         for eid, action in action_dict.items():
             self.external_env._episodes[eid].action_queue.put(
@@ -207,8 +215,8 @@ class _ExternalEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(off_policy_actions)
 
 
-class _VectorEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of VectorEnv to AsyncVectorEnv.
+class _VectorEnvToBaseEnv(BaseEnv):
+    """Internal adapter of VectorEnv to BaseEnv.
 
     We assume the caller will always send the full vector of actions in each
     call to send_actions(), and that they call reset_at() on all completed
@@ -225,7 +233,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def poll(self):
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
@@ -242,7 +250,7 @@ class _VectorEnvToAsync(AsyncVectorEnv):
             _with_dummy_agent_id(dones, "__all__"), \
             _with_dummy_agent_id(infos), {}
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def send_actions(self, action_dict):
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
@@ -250,17 +258,17 @@ class _VectorEnvToAsync(AsyncVectorEnv):
         self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
             self.vector_env.vector_step(action_vector)
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def try_reset(self, env_id):
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def get_unwrapped(self):
         return self.vector_env.get_unwrapped()
 
 
-class _MultiAgentEnvToAsync(AsyncVectorEnv):
-    """Internal adapter of MultiAgentEnv to AsyncVectorEnv.
+class _MultiAgentEnvToBaseEnv(BaseEnv):
+    """Internal adapter of MultiAgentEnv to BaseEnv.
 
     This also supports vectorization if num_envs > 1.
     """
@@ -285,14 +293,14 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def poll(self):
         obs, rewards, dones, infos = {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
             obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
         return obs, rewards, dones, infos, {}
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def send_actions(self, action_dict):
         for env_id, agent_dict in action_dict.items():
             if env_id in self.dones:
@@ -314,7 +322,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def try_reset(self, env_id):
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
@@ -322,7 +330,7 @@ class _MultiAgentEnvToAsync(AsyncVectorEnv):
             self.dones.remove(env_id)
         return obs
 
-    @override(AsyncVectorEnv)
+    @override(BaseEnv)
     def get_unwrapped(self):
         return [state.env for state in self.env_states]
 
