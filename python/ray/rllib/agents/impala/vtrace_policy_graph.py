@@ -190,8 +190,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 config["output_hidden_shape"] or [action_space.n]
             logit_dim = sum(self.output_hidden_shape)
             if isinstance(action_space, gym.spaces.Discrete):
+                self._is_discrete = True
                 actions = tf.placeholder(tf.int64, [None], name="ac")
             elif isinstance(action_space, gym.spaces.Box):
+                self._is_discrete = False
                 actions = tf.placeholder(
                     tf.int64, [None, *action_space.shape], name="ac")
             else:

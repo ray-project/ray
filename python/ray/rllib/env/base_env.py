@@ -66,7 +66,7 @@ class BaseEnv(object):
     """
 
     @staticmethod
-    def wrap_async(env, make_env=None, num_envs=1, remote_envs=False):
+    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
