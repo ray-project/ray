@@ -271,6 +271,8 @@ class Agent(Trainable):
                 ev.set_global_vars.remote(self.global_vars)
             logger.debug("updated global vars: {}".format(self.global_vars))
 
+        result = Trainable.train(self)
+
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
                 and hasattr(self, "local_evaluator")):
             FilterManager.synchronize(
@@ -280,12 +282,12 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
-        result = Trainable.train(self)
         if self.config["callbacks"].get("on_train_result"):
             self.config["callbacks"]["on_train_result"]({
                 "agent": self,
                 "result": result,
             })
+
         return result
 
     @override(Trainable)

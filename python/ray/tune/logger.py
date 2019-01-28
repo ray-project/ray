@@ -88,6 +88,7 @@ class UnifiedLogger(Logger):
                  sync_function=None):
         self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
         self._sync_function = sync_function
+        self._log_syncer = None
         if custom_loggers:
             assert isinstance(custom_loggers, list), "Improper custom loggers."
             self._logger_list += custom_loggers
@@ -121,6 +122,16 @@ class UnifiedLogger(Logger):
             _logger.flush()
         self._log_syncer.sync_now(force=True)
         self._log_syncer.wait()
+
+    def sync_results_to_new_location(self, worker_ip):
+        """Sends the current log directory to the remote node.
+
+        Syncing will not occur if the cluster is not started
+        with the Ray autoscaler.
+        """
+        if worker_ip != self._log_syncer.worker_ip:
+            self._log_syncer.set_worker_ip(worker_ip)
+            self._log_syncer.sync_to_worker_if_possible()
 
 
 class NoopLogger(Logger):
