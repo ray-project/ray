@@ -338,7 +338,6 @@ def start_ray_process(command,
     if use_tmux:
         run_args = " ".join(["\"{}\"".format(arg) if i != 0 else arg for i, arg in enumerate(command)])
         command = ["tmux", "new", "'{};bash'".format(run_args)]
-        logger.info("%s", command)
 
     process = subprocess.Popen(
         command,
