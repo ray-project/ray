@@ -57,8 +57,8 @@ class MemoryMonitor(object):
         # TODO: This is a hotfix and should be removed later. We check for
         # handlers because this object is instantiated before
         # logging is configured which leads to non-descript messages printed.
-        if not psutil and logger.handlers:
-            logger.warning(
+        if not psutil:
+            print(
                 "WARNING: Not monitoring node memory since `psutil` is not "
                 "installed. Install this with `pip install psutil` "
                 "(or ray[debug]) to enable debugging of memory-related "
