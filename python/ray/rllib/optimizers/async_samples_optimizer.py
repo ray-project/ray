@@ -84,8 +84,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                          minibatch_buffer_size, num_sgd_iter)
         self.learner.start()
 
-        assert len(self.remote_evaluators) > 0
-
         # Stats
         self.timers = {k: TimerStat() for k in ["train", "sample"]}
         self.num_weight_syncs = 0
