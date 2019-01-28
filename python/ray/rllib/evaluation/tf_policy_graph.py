@@ -3,8 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import errno
 import logging
-import shutil
 import tensorflow as tf
 import numpy as np
 
@@ -192,11 +192,7 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def export_model(self, export_dir):
-        """Export tensorflow graph to export_dir for serving.
-           Existing dir will be overwritten.
-        """
-        if os.path.exists(export_dir):
-            shutil.rmtree(export_dir)
+        """Export tensorflow graph to export_dir for serving."""
         with self._sess.graph.as_default():
             builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
             signature_def_map = self._build_signature_def()
@@ -207,12 +203,14 @@ class TFPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def export_checkpoint(self, export_dir, filename_prefix="model"):
-        """Export tensorflow checkpoint to export_dir.
-           Existing dir will be overwritten.
-        """
-        if os.path.exists(export_dir):
-            shutil.rmtree(export_dir)
-        os.makedirs(export_dir)
+        """Export tensorflow checkpoint to export_dir."""
+        try:
+            os.makedirs(export_dir)
+        except OSError as e:
+            # Ignore error if export_dir already exists
+            if e.errno != errno.EEXIST:
+                raise
+
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
             saver = tf.train.Saver()
