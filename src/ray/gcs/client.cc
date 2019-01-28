@@ -158,12 +158,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
     : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
 
-Status Attach(plasma::EventLoop &event_loop) {
-  // TODO(pcm): Implement this via
-  // context()->AttachToEventLoop(event loop)
-  return Status::OK();
-}
-
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";

@@ -100,6 +100,9 @@ class Task {
   std::vector<ObjectID> dependencies_;
 };
 
+std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+                                  const TaskSpecification *task_spec);
+
 }  // namespace raylet
 
 }  // namespace ray

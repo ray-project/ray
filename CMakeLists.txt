@@ -4,6 +4,7 @@ project(ray)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
+
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
 
@@ -101,7 +102,6 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   set(ray_file_list
         "src/ray/thirdparty/redis/src/redis-server"
         "src/ray/gcs/redis_module/libray_redis_module.so"
-        "src/ray/raylet/libraylet_library_python.so"
         "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
 
@@ -127,9 +127,8 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_target(copy_ray_files DEPENDS ${build_ray_file_list} copy_redis ray_redis_module)
   add_dependencies(copy_ray copy_ray_files)
 
-  # Make sure that the Python extensions are built before copying the files.
-  get_raylet_library("python" RAYLET_LIBRARY_PYTHON)
-  add_dependencies(copy_ray ${RAYLET_LIBRARY_PYTHON})
+  # Build Cython extensions
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/python)
 
   foreach(file ${ray_file_list})
   add_custom_command(TARGET copy_ray POST_BUILD
@@ -142,6 +141,10 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   add_custom_command(TARGET copy_ray POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E
       copy ${ARROW_HOME}/bin/plasma_store_server ${CMAKE_SOURCE_DIR}/python/ray/core/src/plasma/)
+
+  # copy Cython files
+  add_custom_command(TARGET copy_ray POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/python/_raylet.so ${CMAKE_SOURCE_DIR}/python/ray/)
 
 endif()
 

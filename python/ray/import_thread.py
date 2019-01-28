@@ -112,7 +112,7 @@ class ImportThread(object):
 
         if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.id()):
+                and driver_id != self.worker.task_driver_id.binary()):
             return
 
         try:
@@ -131,5 +131,5 @@ class ImportThread(object):
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.ObjectID(driver_id),
+                driver_id=ray.DriverID(driver_id),
                 data={"name": name})

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.test.cluster_utils import Cluster
 from ray.test.test_utils import run_string_as_driver_nonblocking
 
@@ -366,10 +367,11 @@ def check_components_alive(cluster, component_type, check_component_alive):
 def test_raylet_failed(ray_initialize_cluster):
     cluster = ray_initialize_cluster
     # Kill all local schedulers on worker nodes.
-    _test_component_failed(cluster, ray.node.PROCESS_TYPE_RAYLET)
+    _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
     # The plasma stores should still be alive on the worker nodes.
-    check_components_alive(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE, True)
+    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
+                           True)
 
 
 @pytest.mark.skipif(
@@ -378,11 +380,12 @@ def test_raylet_failed(ray_initialize_cluster):
 def test_plasma_store_failed(ray_initialize_cluster):
     cluster = ray_initialize_cluster
     # Kill all plasma stores on worker nodes.
-    _test_component_failed(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE)
+    _test_component_failed(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE)
 
     # No processes should be left alive on the worker nodes.
-    check_components_alive(cluster, ray.node.PROCESS_TYPE_PLASMA_STORE, False)
-    check_components_alive(cluster, ray.node.PROCESS_TYPE_RAYLET, False)
+    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
+                           False)
+    check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
 
 
 def test_actor_creation_node_failure(ray_start_cluster):
@@ -448,11 +451,11 @@ def test_driver_lives_sequential(shutdown_only):
 def test_driver_lives_parallel(shutdown_only):
     ray.init(num_cpus=1)
     all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray.node.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray.node.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray.node.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray.node.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray.node.PROCESS_TYPE_RAYLET_MONITOR])
+    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
     assert len(process_infos) == 5
 
     # Kill all the components in parallel.

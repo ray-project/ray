@@ -11,7 +11,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
 =============  =======================  ==================  ===========  ==================
 A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO             **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
 IMPALA          **Yes** `+parametric`_  No                  **Yes**      **Yes**
 DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
@@ -310,6 +310,6 @@ Note that envs can read from different partitions of the logs based on the ``wor
 Batch Asynchronous
 ------------------
 
-The lowest-level "catch-all" environment supported by RLlib is `AsyncVectorEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/async_vector_env.py>`__. AsyncVectorEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
+The lowest-level "catch-all" environment supported by RLlib is `BaseEnv <https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/base_env.py>`__. BaseEnv models multiple agents executing asynchronously in multiple environments. A call to ``poll()`` returns observations from ready agents keyed by their environment and agent ids, and actions for those agents can be sent back via ``send_actions()``. This interface can be subclassed directly to support batched simulators such as `ELF <https://github.com/facebookresearch/ELF>`__.
 
-Under the hood, all other envs are converted to AsyncVectorEnv by RLlib so that there is a common internal path for policy evaluation.
+Under the hood, all other envs are converted to BaseEnv by RLlib so that there is a common internal path for policy evaluation.

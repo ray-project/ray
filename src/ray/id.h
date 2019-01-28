@@ -42,7 +42,7 @@ typedef UniqueID TaskID;
 typedef UniqueID JobID;
 typedef UniqueID ObjectID;
 typedef UniqueID FunctionID;
-typedef UniqueID ClassID;
+typedef UniqueID ActorClassID;
 typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;

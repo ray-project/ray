@@ -3,14 +3,17 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class FilterManager(object):
     """Manages filters and coordination across remote evaluators that expose
         `get_filters` and `sync_filters`.
     """
 
     @staticmethod
+    @DeveloperAPI
     def synchronize(local_filters, remotes, update_remote=True):
         """Aggregates all filters from remote evaluators.
 
