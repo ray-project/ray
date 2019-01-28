@@ -1057,8 +1057,14 @@ def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
     num_nodes = 3
+    # Set the inline object size to 0 to force all objects to be written to
+    # plasma.
+    config = json.dumps({"inline_object_max_size_bytes": 0})
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+        cluster.add_node(
+            resources={str(i): 1},
+            object_store_memory=10**9,
+            _internal_config=config)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -2490,6 +2496,7 @@ def test_wait_reconstruction(shutdown_only):
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
+
 def test_inline_objects(shutdown_only):
     import pyarrow
 
@@ -2497,7 +2504,6 @@ def test_inline_objects(shutdown_only):
 
     @ray.remote
     class Actor(object):
-
         def create_inline_object(self):
             return "inline"
 
@@ -2507,13 +2513,15 @@ def test_inline_objects(shutdown_only):
     a = Actor.remote()
     inline_object = a.create_inline_object.remote()
     ray.get(inline_object)
-    ray.worker.global_worker.plasma_client.delete([pyarrow.plasma.ObjectID(inline_object.id())])
+    ray.worker.global_worker.plasma_client.delete(
+        [pyarrow.plasma.ObjectID(inline_object.id())])
 
     assert ray.get(inline_object) == "inline"
 
     non_inline_object = a.create_non_inline_object.remote()
     ray.get(non_inline_object)
-    ray.worker.global_worker.plasma_client.delete([pyarrow.plasma.ObjectID(non_inline_object.id())])
+    ray.worker.global_worker.plasma_client.delete(
+        [pyarrow.plasma.ObjectID(non_inline_object.id())])
 
     with pytest.raises(ray.worker.RayTaskError):
         ray.get(non_inline_object) == 10000 * [1]
