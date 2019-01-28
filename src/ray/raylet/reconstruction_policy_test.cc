@@ -29,9 +29,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id,
-                        std::unordered_set<ray::ClientID>(),
-                        false, {}, "", /*created=*/false);
+        callback.second(object_id, std::unordered_set<ray::ClientID>(), false, {}, "",
+                        /*created=*/false);
       } else {
         callback.second(object_id, it->second, false, {}, "", /*created=*/true);
       }
@@ -63,8 +62,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD6(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &,
-                           const object_manager::protocol::ObjectInfoT &,
-                           bool, const std::vector<uint8_t> &, const std::string &));
+                           const object_manager::protocol::ObjectInfoT &, bool,
+                           const std::vector<uint8_t> &, const std::string &));
 
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
 

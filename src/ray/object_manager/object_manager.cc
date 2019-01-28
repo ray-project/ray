@@ -78,19 +78,20 @@ void ObjectManager::HandleObjectAdded(
     // NOTE: This is a blocking call.
     ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
-    inline_object_data.assign(object_buffers[0].data->data(),
-                              object_buffers[0].data->data() + object_buffers[0].data->size());
-    inline_object_metadata.assign(object_buffers[0].metadata->data(),
-                                  object_buffers[0].metadata->data() + object_buffers[0].metadata->size());
+    inline_object_data.assign(
+        object_buffers[0].data->data(),
+        object_buffers[0].data->data() + object_buffers[0].data->size());
+    inline_object_metadata.assign(
+        object_buffers[0].metadata->data(),
+        object_buffers[0].metadata->data() + object_buffers[0].metadata->size());
   }
 
   // If this object was created from inlined data, this means it is already in GCS,
   // so no need to write it again.
   if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
-    RAY_CHECK_OK(
-      object_directory_->ReportObjectAdded(object_id, client_id_, object_info,
-                                           inline_object_flag, inline_object_data,
-                                           inline_object_metadata));
+    RAY_CHECK_OK(object_directory_->ReportObjectAdded(
+        object_id, client_id_, object_info, inline_object_flag, inline_object_data,
+        inline_object_metadata));
   }
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
@@ -115,7 +116,8 @@ void ObjectManager::HandleObjectAdded(
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  if (it->second.object_info.data_size > RayConfig::instance().inline_object_max_size_bytes()) {
+  if (it->second.object_info.data_size >
+      RayConfig::instance().inline_object_max_size_bytes()) {
     // Inline object data can be retrieved by any node by contacting the GCS,
     // so only report that the object was evicted if it wasn't inlined.
     RAY_CHECK_OK(object_directory_->ReportObjectRemoved(object_id, client_id_));
@@ -148,14 +150,13 @@ void ObjectManager::PutInlineObject(const ObjectID &object_id,
     // Remember this by adding the object to local_inlined_objects_. This way
     // we avoid writing another copy of this object to GCS in HandleObjectAdded().
     local_inlined_objects_.insert(object_id);
-    auto status = store_client_.CreateAndSeal(object_id.to_plasma_id(),
-                                              std::string(inline_object_data.begin(),
-                                              inline_object_data.end()),
-                                              inline_object_metadata);
+    auto status = store_client_.CreateAndSeal(
+        object_id.to_plasma_id(),
+        std::string(inline_object_data.begin(), inline_object_data.end()),
+        inline_object_metadata);
     RAY_CHECK(status.IsPlasmaObjectExists() || status.ok()) << status.message();
   }
 }
-
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // Check if object is already local.
@@ -174,12 +175,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
-      [this](const ObjectID &object_id,
-             const std::unordered_set<ClientID> &client_ids,
-             bool inline_object_flag,
-             const std::vector<uint8_t> &inline_object_data,
-             const std::string &inline_object_metadata,
-             bool created) {
+      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
+             bool inline_object_flag, const std::vector<uint8_t> &inline_object_data,
+             const std::string &inline_object_metadata, bool created) {
         if (inline_object_flag) {
           // This is an inlined object. Store it in the Plasma store and return.
           PutInlineObject(object_id, inline_object_data, inline_object_metadata);
@@ -625,15 +623,15 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
                           const std::unordered_set<ClientID> &client_ids,
                           bool inline_object_flag,
                           const std::vector<uint8_t> &inline_object_data,
-                          const std::string &inline_object_metadata,
-                          bool created) {
+                          const std::string &inline_object_metadata, bool created) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty() || inline_object_flag) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
               if (inline_object_flag) {
                 // This is an inlined object. Store it in the Plasma store and return.
-                PutInlineObject(lookup_object_id, inline_object_data, inline_object_metadata);
+                PutInlineObject(lookup_object_id, inline_object_data,
+                                inline_object_metadata);
               }
             }
             wait_state.requested_objects.erase(lookup_object_id);
@@ -667,8 +665,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                           const std::unordered_set<ClientID> &client_ids,
                           bool inline_object_flag,
                           const std::vector<uint8_t> inline_object_data,
-                          const std::string &inline_object_metadata,
-                          bool created) {
+                          const std::string &inline_object_metadata, bool created) {
             if (!client_ids.empty() || inline_object_flag) {
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
               if (object_id_wait_state == active_wait_requests_.end()) {
@@ -680,7 +677,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
               }
               if (inline_object_flag) {
                 // This is an inlined object. Store it in the Plasma store.
-                PutInlineObject(subscribe_object_id, inline_object_data, inline_object_metadata);
+                PutInlineObject(subscribe_object_id, inline_object_data,
+                                inline_object_metadata);
               }
               auto &wait_state = object_id_wait_state->second;
               RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));

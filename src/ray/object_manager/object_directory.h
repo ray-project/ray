@@ -48,12 +48,9 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                              const std::unordered_set<ray::ClientID> &,
-                                              bool,
-                                              const std::vector<uint8_t> &,
-                                              const std::string &,
-                                              bool has_been_created)>;
+  using OnLocationsFound = std::function<void(
+      const ray::ObjectID &object_id, const std::unordered_set<ray::ClientID> &, bool,
+      const std::vector<uint8_t> &, const std::string &, bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -108,8 +105,7 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info,
-      bool inline_object_flag,
+      const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
       const std::vector<uint8_t> &inline_object_data,
       const std::string &inline_object_metadata) = 0;
 
@@ -163,12 +159,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info,
-      bool inline_object_flag,
-      const std::vector<uint8_t> &inline_object_data,
-      const std::string &inline_object_metadata) override;
+  ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
+                                const object_manager::protocol::ObjectInfoT &object_info,
+                                bool inline_object_flag,
+                                const std::vector<uint8_t> &inline_object_data,
+                                const std::string &inline_object_metadata) override;
 
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
@@ -190,7 +185,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// Specify whether the object is inlined. The data and the metadata of
     /// an inlined object are stored in the object's GCS entry. In this flag
     /// (i.e., the object is inlined) the content of current_object_locations
-    /// can be ignored. 
+    /// can be ignored.
     bool inline_object_flag;
     /// Inlined object data, if inline_object_flag == true.
     std::vector<uint8_t> inline_object_data;
