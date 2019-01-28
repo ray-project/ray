@@ -308,9 +308,7 @@ def start_ray_process(command,
         with open(gdb_init_path, "w") as gdb_init_file:
             gdb_init_file.write("run {}".format(run_args))
         command = ["gdb", ray_process_path, "-x", gdb_init_path]
-    if use_tmux:
-        raise NotImplementedError
-    if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
+    if sum([use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
         raise ValueError(
             "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
             "'use_perftools_profiler' flags can be used at a time.")
@@ -335,6 +333,10 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_tmux:
+        original_command = "'{}' \;".format(" ".join(command))
+        command = ["tmux", "new", "-d", "-s", "ray {}".process_type.upper(), original_command, "attach \;"]
 
     process = subprocess.Popen(
         command,
