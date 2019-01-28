@@ -231,12 +231,31 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
-        self._committed_resources = Resources.add(self._committed_resources,
-                                                  resources)
+        committed = self._committed_resources
+        custom_resources = {res: (
+            committed.get(res) + resources.get_res_total(
+                res)) for res in resources.custom_resources}
+        for resource, val in committed.custom_resources.items():
+            custom_resources.setdefault(resource, val)
+
+        self._committed_resources = Resources(
+            committed.cpu + resources.cpu_total(),
+            committed.gpu + resources.gpu_total(),
+            custom_resources=custom_resources)
 
     def _return_resources(self, resources):
-        self._committed_resources = Resources.subtract(
-            self._committed_resources, resources)
+        committed = self._committed_resources
+        custom_resources = {res: (
+            committed.get(res) - resources.get_res_total(
+                res)) for res in resources.custom_resources}
+        for resource, val in committed.custom_resources.items():
+            custom_resources.setdefault(resource, val)
+
+        self._committed_resources = Resources(
+            committed.cpu - resources.cpu_total(),
+            committed.gpu - resources.gpu_total(),
+            custom_resources=custom_resources)
+
         assert self._committed_resources.is_nonnegative(), (
             "Resource invalid: {}".format(resources))
 
