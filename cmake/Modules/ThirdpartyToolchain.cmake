@@ -118,6 +118,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
 
     # PYARROW_PARALLEL= , so it will add -j to pyarrow build
     set(pyarrow_ENV
+      "SETUPTOOLS_SCM_PRETEND_VERSION=0.12.0-RAY"
       "PKG_CONFIG_PATH=${ARROW_LIBRARY_DIR}/pkgconfig"
       "PYARROW_WITH_PLASMA=1"
       "PYARROW_WITH_TENSORFLOW=1"

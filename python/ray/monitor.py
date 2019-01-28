@@ -380,7 +380,9 @@ if __name__ == "__main__":
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port)
+            host=redis_ip_address,
+            port=redis_port,
+            password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)

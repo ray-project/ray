@@ -95,7 +95,7 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   private String logPrefix() {
-    return runtime.getWorkerContext().getCurrentTask().taskId + "-" + getUserTrace() + " -> ";
+    return runtime.getWorkerContext().getCurrentTaskId() + "-" + getUserTrace() + " -> ";
   }
 
   private String getUserTrace() {

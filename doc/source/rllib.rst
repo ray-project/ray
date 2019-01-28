@@ -37,7 +37,7 @@ Environments
 * `RLlib Environments Overview <rllib-env.html>`__
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
-* `Multi-Agent <rllib-env.html#multi-agent>`__
+* `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Batch Asynchronous <rllib-env.html#batch-asynchronous>`__
 
@@ -72,6 +72,10 @@ Algorithms
 
    -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
 
+*  Offline
+
+   -  `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
+
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
@@ -83,22 +87,22 @@ Models and Preprocessors
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Model-Based Rollouts <rllib-models.html#model-based-rollouts>`__
 
-Offline Data Input / Output
----------------------------
+Offline Datasets
+----------------
 * `Working with Offline Datasets <rllib-offline.html>`__
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
-RLlib Development
------------------
+Development
+-----------
 
 * `Development Install <rllib-dev.html#development-install>`__
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
-RLlib Concepts
---------------
+Concepts
+--------
 * `Policy Graphs <rllib-concepts.html>`__
 * `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
 * `Policy Optimization <rllib-concepts.html#policy-optimization>`__

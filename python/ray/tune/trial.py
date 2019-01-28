@@ -196,8 +196,8 @@ class Trial(object):
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
         self.status = Trial.PENDING
-        self.location = None
         self.logdir = None
+        self.runner = None
         self.result_logger = None
         self.last_debug = 0
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -240,6 +240,14 @@ class Trial(object):
                 upload_uri=self.upload_dir,
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
+
+    def sync_logger_to_new_location(self, worker_ip):
+        """Updates the logger location.
+
+        Also pushes logdir to worker_ip, allowing for cross-node recovery.
+        """
+        if self.result_logger:
+            self.result_logger.sync_results_to_new_location(worker_ip)
 
     def close_logger(self):
         """Close logger."""
@@ -337,6 +345,9 @@ class Trial(object):
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
+    def clear_checkpoint(self):
+        self._checkpoint.value = None
+
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
 
@@ -352,9 +363,8 @@ class Trial(object):
             result.update(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            logger.info("Result for {}:".format(self))
-            logger.info("  {}".format(
-                pretty_print(result).replace("\n", "\n  ")))
+            print("Result for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
         self.last_update_time = time.time()
@@ -407,7 +417,8 @@ class Trial(object):
             "_checkpoint": self._checkpoint,
             "config": self.config,
             "custom_loggers": self.custom_loggers,
-            "sync_function": self.sync_function
+            "sync_function": self.sync_function,
+            "last_result": self.last_result
         }
 
         for key, value in pickle_data.items():
@@ -428,7 +439,8 @@ class Trial(object):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
         for key in [
-                "_checkpoint", "config", "custom_loggers", "sync_function"
+                "_checkpoint", "config", "custom_loggers", "sync_function",
+                "last_result"
         ]:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 

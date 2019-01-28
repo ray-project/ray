@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: ray-worker-controller
+spec:
+  replicas: 3
+  selector:
+    component: ray-worker
+  template:
+    metadata:
+      labels:
+        component: ray-worker
+    spec:
+      containers:
+        - name: ray-worker
+          image: rayproject/examples
+          command: ["/bin/bash", "-c", "--"]
+          args: ["ray start --node-ip-address=$MY_POD_IP --redis-address=$(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head\"));sys.stdout.flush()'):6379 --object-manager-port=12345 --node-manager-port=12346 && while true; do sleep 30; done;"]
+          ports:
+            - containerPort: 12345
+            - containerPort: 12346
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              cpu: 10

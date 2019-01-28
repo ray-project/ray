@@ -292,6 +292,9 @@ class TFMultiGPULearner(LearnerThread):
         logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
+
+        if set(self.local_evaluator.policy_map.keys()) != {"default"}:
+            raise NotImplementedError("Multi-gpu mode for multi-agent")
         self.policy = self.local_evaluator.policy_map["default"]
 
         # per-GPU graph copies created below must share vars with the policy

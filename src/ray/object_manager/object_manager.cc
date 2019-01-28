@@ -609,7 +609,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                 return;
               }
               auto &wait_state = object_id_wait_state->second;
-              RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
+              wait_state.remaining.erase(subscribe_object_id);
               wait_state.found.insert(subscribe_object_id);
               wait_state.requested_objects.erase(subscribe_object_id);
               RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(

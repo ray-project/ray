@@ -7,15 +7,14 @@ import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionManager.DriverFunctionTable;
+import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 /**
  * Tests for {@link FunctionManager}

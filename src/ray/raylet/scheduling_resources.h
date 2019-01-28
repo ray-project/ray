@@ -145,17 +145,17 @@ class ResourceIds {
   ///
   /// \param resource_quantity: The total amount of resource. This must either be
   /// a whole number or a fraction less than 1.
-  ResourceIds(double resource_quantity);
+  explicit ResourceIds(double resource_quantity);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
-  ResourceIds(const std::vector<int64_t> &whole_ids);
+  explicit ResourceIds(const std::vector<int64_t> &whole_ids);
 
   /// \brief Constructs ResourceIds with a given set of fractional IDs.
   ///
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
-  ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
+  explicit ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs and fractional IDs.
   ///

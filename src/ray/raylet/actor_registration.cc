@@ -40,13 +40,39 @@ const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf>
   return frontier_;
 }
 
-void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
-                                       const ObjectID &execution_dependency) {
+ObjectID ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
+                                           const ObjectID &execution_dependency) {
   auto &frontier_entry = frontier_[handle_id];
+  // Release the reference to the previous cursor for this
+  // actor handle, if there was one.
+  ObjectID object_to_release;
+  if (!frontier_entry.execution_dependency.is_nil()) {
+    auto it = dummy_objects_.find(frontier_entry.execution_dependency);
+    RAY_CHECK(it != dummy_objects_.end());
+    it->second--;
+    RAY_CHECK(it->second >= 0);
+    if (it->second == 0) {
+      object_to_release = frontier_entry.execution_dependency;
+      dummy_objects_.erase(it);
+    }
+  }
+
   frontier_entry.task_counter++;
   frontier_entry.execution_dependency = execution_dependency;
   execution_dependency_ = execution_dependency;
-  dummy_objects_.push_back(execution_dependency);
+  // Add the reference to the new cursor for this actor handle.
+  dummy_objects_[execution_dependency]++;
+  return object_to_release;
+}
+
+void ActorRegistration::AddHandle(const ActorHandleID &handle_id,
+                                  const ObjectID &execution_dependency) {
+  if (frontier_.find(handle_id) == frontier_.end()) {
+    auto &new_handle = frontier_[handle_id];
+    new_handle.task_counter = 0;
+    new_handle.execution_dependency = execution_dependency;
+    dummy_objects_[execution_dependency]++;
+  }
 }
 
 int ActorRegistration::NumHandles() const { return frontier_.size(); }

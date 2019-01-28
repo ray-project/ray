@@ -112,6 +112,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
 
+    def testRegisterTrainableCallable(self):
+        def dummy_fn(config, reporter, steps):
+            reporter(timesteps_total=steps, done=True)
+
+        from functools import partial
+        steps = 500
+        register_trainable("test", partial(dummy_fn, steps=steps))
+        [trial] = run_experiments({
+            "foo": {
+                "run": "test",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+
     def testBuiltInTrainableResources(self):
         class B(Trainable):
             @classmethod
@@ -1752,6 +1770,57 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(runner2.get_trial("pending").last_result is None)
         runner2.step()
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointWithFunction(self):
+        ray.init()
+        trial = Trial(
+            "__fake",
+            config={
+                "callbacks": {
+                    "on_episode_start": tune.function(lambda i: i),
+                }
+            },
+            checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        runner2 = TrialRunner.restore(tmpdir)
+        new_trial = runner2.get_trials()[0]
+        self.assertTrue("callbacks" in new_trial.config)
+        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
+        shutil.rmtree(tmpdir)
+
+    def testCheckpointOverwrite(self):
+        def count_checkpoints(cdir):
+            return sum((fname.startswith("experiment_state")
+                        and fname.endswith(".json"))
+                       for fname in os.listdir(cdir))
+
+        ray.init()
+        trial = Trial("__fake", checkpoint_freq=1)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(
+            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner.add_trial(trial)
+        for i in range(5):
+            runner.step()
+        # force checkpoint
+        runner.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 1)
+
+        runner2 = TrialRunner.restore(tmpdir)
+        for i in range(5):
+            runner2.step()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
+
+        runner2.checkpoint()
+        self.assertEquals(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
 

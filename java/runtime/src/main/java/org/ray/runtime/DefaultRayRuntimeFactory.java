@@ -1,13 +1,9 @@
 package org.ray.runtime;
 
-import com.google.common.base.Strings;
-import java.lang.reflect.Field;
-import java.util.stream.Collectors;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.util.logger.RayLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +16,6 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
   @Override
   public RayRuntime createRayRuntime() {
-    RayLog.init();
     RayConfig rayConfig = RayConfig.create();
     try {
       AbstractRayRuntime runtime;

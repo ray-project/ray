@@ -30,8 +30,6 @@ using ray::UniqueID;
 using ray::FunctionID;
 using ray::TaskID;
 
-PyObject *CommonError;
-
 /* Initialize pickle module. */
 
 PyObject *pickle_module = NULL;
@@ -117,11 +115,16 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
     return -1;
   }
   if (size != sizeof(ObjectID)) {
-    PyErr_SetString(CommonError, "ObjectID: object id string needs to have length 20");
+    PyErr_SetString(PyExc_ValueError,
+                    "ObjectID: object id string needs to have length 20");
     return -1;
   }
   std::memcpy(self->object_id.mutable_data(), data, sizeof(self->object_id));
   return 0;
+}
+
+static PyObject *PyObjectID_nil_id(PyObject *cls) {
+  return PyObjectID_make(ray::UniqueID());
 }
 
 /* Create a PyObjectID from C. */
@@ -269,9 +272,14 @@ static PyObject *PyObjectID_repr(PyObjectID *self) {
   return result;
 }
 
-static PyObject *PyObjectID___reduce__(PyObjectID *self) {
-  PyErr_SetString(CommonError, "ObjectID objects cannot be serialized.");
-  return NULL;
+static PyObject *PyObjectID_getstate(PyObjectID *self) {
+  PyObject *field;
+  field = PyBytes_FromStringAndSize((char *)self->object_id.data(), sizeof(ObjectID));
+  return Py_BuildValue("(N)", field);
+}
+
+static PyObject *PyObjectID___reduce__(PyObjectID *self, PyObject *arg) {
+  return Py_BuildValue("(ON)", Py_TYPE(self), PyObjectID_getstate(self));
 }
 
 static PyMethodDef PyObjectID_methods[] = {
@@ -283,9 +291,10 @@ static PyMethodDef PyObjectID_methods[] = {
      "Return the object ID as a string in hex."},
     {"is_nil", (PyCFunction)PyObjectID_is_nil, METH_NOARGS,
      "Return whether the ObjectID is nil"},
-    {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_NOARGS,
-     "Say how to pickle this ObjectID. This raises an exception to prevent"
-     "object IDs from being serialized."},
+    {"__reduce__", (PyCFunction)PyObjectID___reduce__, METH_VARARGS,
+     "Provide a way to pickle this ObjectID."},
+    {"nil_id", (PyCFunction)PyObjectID_nil_id, METH_NOARGS | METH_CLASS,
+     "Create an instance of ray.ObjectID from random string"},
     {NULL} /* Sentinel */
 };
 
@@ -293,9 +302,11 @@ static PyMemberDef PyObjectID_members[] = {
     {NULL} /* Sentinel */
 };
 
+// This python class is introduced by python/ray/raylet/__init__.py.
+// Therefore, tp_name should match the path. ray.ObjectID is also OK.
 PyTypeObject PyObjectIDType = {
     PyVarObject_HEAD_INIT(NULL, 0)       /* ob_size */
-    "common.ObjectID",                   /* tp_name */
+    "ray.raylet.ObjectID",               /* tp_name */
     sizeof(PyObjectID),                  /* tp_basicsize */
     0,                                   /* tp_itemsize */
     0,                                   /* tp_dealloc */
@@ -406,6 +417,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   // Max number of times to reconstruct this actor (only used for actor creation
   // task).
   int32_t max_actor_reconstructions;
+  PyObject *new_actor_handles;
   // Arguments of the task that are execution-dependent. These must be
   // PyObjectIDs).
   PyObject *execution_arguments = nullptr;
@@ -413,17 +425,16 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *resource_map = nullptr;
   // Dictionary of required placement resources for this task.
   PyObject *placement_resource_map = nullptr;
-
   // Function descriptor.
   std::vector<std::string> function_descriptor;
   if (!PyArg_ParseTuple(
-          args, "O&O&OiO&i|O&O&iO&O&iOOOi", &PyObjectToUniqueID, &driver_id,
+          args, "O&O&OiO&i|O&O&iO&O&iOOOOi", &PyObjectToUniqueID, &driver_id,
           &PyListStringToStringVector, &function_descriptor, &arguments, &num_returns,
           &PyObjectToUniqueID, &parent_task_id, &parent_counter, &PyObjectToUniqueID,
           &actor_creation_id, &PyObjectToUniqueID, &actor_creation_dummy_object_id,
           &max_actor_reconstructions, &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID,
-          &actor_handle_id, &actor_counter, &execution_arguments, &resource_map,
-          &placement_resource_map, &language)) {
+          &actor_handle_id, &actor_counter, &new_actor_handles, &execution_arguments,
+          &resource_map, &placement_resource_map, &language)) {
     return -1;
   }
 
@@ -450,8 +461,6 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   Py_ssize_t num_args = PyList_Size(arguments);
 
-  self->task_spec = nullptr;
-
   // Create the task spec.
 
   // Parse the arguments from the list.
@@ -471,11 +480,23 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     }
   }
 
+  std::vector<ActorHandleID> task_new_actor_handles;
+  Py_ssize_t num_new_actor_handles = PyList_Size(new_actor_handles);
+  for (Py_ssize_t i = 0; i < num_new_actor_handles; ++i) {
+    PyObject *new_actor_handle = PyList_GetItem(new_actor_handles, i);
+    if (!PyObject_IsInstance(new_actor_handle, (PyObject *)&PyObjectIDType)) {
+      PyErr_SetString(PyExc_TypeError, "New actor handles must be a ray.ObjectID.");
+      return -1;
+    }
+    task_new_actor_handles.push_back(((PyObjectID *)new_actor_handle)->object_id);
+  }
+
   self->task_spec = new ray::raylet::TaskSpecification(
       driver_id, parent_task_id, parent_counter, actor_creation_id,
       actor_creation_dummy_object_id, max_actor_reconstructions, actor_id,
-      actor_handle_id, actor_counter, task_args, num_returns, required_resources,
-      required_placement_resources, Language::PYTHON, function_descriptor);
+      actor_handle_id, actor_counter, task_new_actor_handles, task_args, num_returns,
+      required_resources, required_placement_resources, Language::PYTHON,
+      function_descriptor);
 
   /* Set the task's execution dependencies. */
   self->execution_dependencies = new std::vector<ObjectID>();

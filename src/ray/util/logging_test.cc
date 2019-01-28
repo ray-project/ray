@@ -41,7 +41,7 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG);
+  RayLog::StartRayLog("", RayLogLevel::DEBUG, "/tmp/");
   PrintLog();
   RayLog::ShutDownRayLog();
 }
