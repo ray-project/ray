@@ -175,8 +175,3 @@ class RayParams(object):
             assert "GPU" not in self.resources, (
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
-
-        if self.num_workers is not None:
-            raise Exception(
-                "The 'num_workers' argument is deprecated. Please use "
-                "'num_cpus' instead.")

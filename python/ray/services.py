@@ -926,6 +926,7 @@ def start_raylet(redis_address,
                  object_manager_port=None,
                  node_manager_port=None,
                  redis_password=None,
+                 num_initial_workers=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -949,6 +950,7 @@ def start_raylet(redis_address,
         node_manager_port: The port to use for the node manager. If this is
             None, then the node manager will choose its own port.
         redis_password: The password to use when connecting to Redis.
+        num_initial_workers: the number of initial starting workers for raylet
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -969,8 +971,9 @@ def start_raylet(redis_address,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    num_initial_workers = (num_cpus if num_cpus is not None else
-                           multiprocessing.cpu_count())
+    if num_initial_workers is None:
+        num_initial_workers = (num_cpus if num_cpus is not None else
+                               multiprocessing.cpu_count())
 
     static_resources = check_and_update_resources(num_cpus, num_gpus,
                                                   resources)

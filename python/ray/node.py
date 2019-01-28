@@ -200,6 +200,7 @@ class Node(object):
             self._ray_params.object_manager_port,
             self._ray_params.node_manager_port,
             self._ray_params.redis_password,
+            num_initial_workers=self._ray_params.num_workers,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
