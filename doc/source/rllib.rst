@@ -122,7 +122,7 @@ Package Reference
 Examples
 --------
 
-You can find an index of RLlib code examples on `this page <rllib-examples.html>`__.
+You can find an index of RLlib code examples on `this page <rllib-examples.html>`__. This includes tuned hyperparameters, demo scripts on how to use specific features of RLlib, and several community examples of applications built on RLlib.
 
 Troubleshooting
 ---------------
