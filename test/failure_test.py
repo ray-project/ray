@@ -2,20 +2,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import json
 import os
-import ray
-import redis
+import pytest
 import sys
 import tempfile
 import threading
 import time
 
+import numpy as np
+import redis
+
+import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
-import pytest
-
 from ray.test.cluster_utils import Cluster
 
 
@@ -620,9 +620,9 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 
 
 def test_redis_module_failure(shutdown_only):
-    address_info = ray.init()
-    redis_address = address_info['redis_address']
-    redis_address = redis_address.split(':')
+    address_info = ray.init(num_cpus=1)
+    redis_address = address_info["redis_address"]
+    redis_address = redis_address.split(":")
     assert len(redis_address) == 2
 
     def run_failure_test(expecting_message, *command):
@@ -638,20 +638,20 @@ def test_redis_module_failure(shutdown_only):
         client.execute_command(*command)
 
     run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
-    run_failure_test("Prefix must in the TablePrefix range", "RAY.TABLE_ADD",
-                     100000, 1, 1, 1)
-    run_failure_test("Prefix must in the TablePrefix range",
+    run_failure_test("Prefix must be in the TablePrefix range",
+                     "RAY.TABLE_ADD", 100000, 1, 1, 1)
+    run_failure_test("Prefix must be in the TablePrefix range",
                      "RAY.TABLE_REQUEST_NOTIFICATIONS", 100000, 1, 1, 1)
     run_failure_test("Prefix must be a valid TablePrefix integer",
-                     "RAY.TABLE_ADD", b'a', 1, 1, 1)
-    run_failure_test("Pubsub channel must in the TablePubsub range",
+                     "RAY.TABLE_ADD", b"a", 1, 1, 1)
+    run_failure_test("Pubsub channel must be in the TablePubsub range",
                      "RAY.TABLE_ADD", 1, 10000, 1, 1)
     run_failure_test("Pubsub channel must be a valid integer", "RAY.TABLE_ADD",
-                     1, b'a', 1, 1)
+                     1, b"a", 1, 1)
     run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
                      -1)
     run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
-                     b'a')
+                     b"a")
     run_one_command("RAY.TABLE_APPEND", 1, 1, 1, 1)
     run_failure_test("Appended a duplicate entry", "RAY.TABLE_APPEND", 1, 1, 1,
                      1, 1)
