@@ -167,7 +167,7 @@ const std::unordered_map<const TaskID, LineageEntry> &Lineage::GetEntries() cons
 
 flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
-  RAY_DCHECK(GetEntry(task_id));
+  RAY_CHECK(GetEntry(task_id));
   // Serialize the task and object entries.
   std::vector<flatbuffers::Offset<protocol::Task>> uncommitted_tasks;
   for (const auto &entry : entries_) {
@@ -335,14 +335,8 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
   // already explicitly forwarded to this node before.
   if (uncommitted_lineage.GetEntries().empty()) {
     auto entry = lineage_.GetEntry(task_id);
-    if (entry) {
-      RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
-    } else {
-      // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
-      // This is a bug but is not fatal to the application.
-      RAY_LOG(ERROR) << "No lineage cache entry found for task " << task_id;
-      RAY_DCHECK(false);
-    }
+    RAY_CHECK(entry);
+    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
   }
   return uncommitted_lineage;
 }

@@ -1905,9 +1905,13 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   // Get and serialize the task's unforwarded, uncommitted lineage.
   Lineage uncommitted_lineage;
   if (lineage_cache_.ContainsTask(task_id)) {
-      uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
+    uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
   } else {
-      uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
+    // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
+    // This is a bug but is not fatal to the application.
+    RAY_LOG(ERROR) << "No lineage cache entry found for task " << task_id;
+    RAY_DCHECK(false);
+    uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
   Task &lineage_cache_entry_task = entry->TaskDataMutable();
