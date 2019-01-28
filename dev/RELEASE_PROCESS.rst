@@ -7,7 +7,8 @@ This document describes the process for creating new releases.
    be done by following the `documentation for building wheels`_.
 
 2. **Testing:** Before a release is created, significant testing should be done.
-   Run the script `test/stress_tests/run_stress_tests.sh`_ and make sure it
+   Run the script `test/stress_tests/run_stress_tests.sh`_ and
+   `test/stress_tests/run_application_stress_tests.sh`_ and make sure it
    passes. *And make sure it is testing the right version of Ray!* This will use
    the autoscaler to start a bunch of machines and run some tests. Any new
    stress tests should be added to this script so that they will be run
@@ -18,21 +19,7 @@ This document describes the process for creating new releases.
    by the script above, but they aren't yet.
 
 4. **Increment the Python version:** Create a PR that increments the Python
-   package version. See `this example`_. You can use the following to get started,
-   assuming you're on a clean master:
-
-   .. code-block:: bash
-
-     NEW_VERSION=0.x.x  # Change this
-     OLD_VERSION=${$(git describe --tags --abbrev=0)#"ray-"}
-     sed -i'.bak' -e "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py
-     # sed -i "s/$OLD_VERSION/$NEW_VERSION/" python/ray/__init__.py if on Linux
-     git checkout -b release_$NEW_VERSION
-     git add python/ray/__init__.py && git commit -m "Bump version"
-     git push -u [your fork]
-
-     # If you have ``hub`` installed, you can then run:
-     # hub pull-request -m "Bump version from $OLD_VERSION to $NEW_VERSION"
+   package version. See `this example`_.
 
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
