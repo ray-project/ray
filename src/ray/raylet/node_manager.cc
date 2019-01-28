@@ -1752,7 +1752,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
                "allocation via "
             << "ray.init(redis_max_memory=<max_memory_bytes>).";
         // Use a copy of the cached task spec to re-execute the task.
-        const Task task = lineage_cache_.GetTask(task_id);
+        const Task task = lineage_cache_.GetTaskOrDie(task_id);
         ResubmitTask(task);
 
       }));
@@ -1905,12 +1905,11 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   // Get and serialize the task's unforwarded, uncommitted lineage.
   Lineage uncommitted_lineage;
   if (lineage_cache_.ContainsTask(task_id)) {
-    uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
+    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
   } else {
     // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
     // This is a bug but is not fatal to the application.
-    RAY_LOG(ERROR) << "No lineage cache entry found for task " << task_id;
-    RAY_DCHECK(false);
+    RAY_DCHECK(false) << "No lineage cache entry found for task " << task_id;
     uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
