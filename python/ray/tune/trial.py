@@ -92,7 +92,7 @@ class Resources(
         ])
         if custom_summary:
             summary += " ({})".format(custom_summary)
-        return custom_summary
+        return summary
 
     def cpu_total(self):
         return self.cpu + self.extra_cpu

@@ -267,7 +267,11 @@ class RayTrialExecutor(TrialExecutor):
             val == 0 for val in currently_available.extra_custom_resources)
 
         leftover = Resources.subtract(currently_available, resources)
-        have_space = leftover.is_nonnegative()
+        have_space = (
+            resources.cpu_total() <= currently_available.cpu
+            and resources.gpu_total() <= currently_available.gpu and all(
+                resources.get_res_total(res) <= val
+                for res, val in currently_available.custom_resources.items()))
 
         if have_space:
             return True
