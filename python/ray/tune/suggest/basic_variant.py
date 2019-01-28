@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import random
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -50,7 +51,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         trials = list(self._trial_generator)
         if self._shuffle:
-            trials.shuffle()
+            random.shuffle(trials)
         self._finished = True
         return trials
 
