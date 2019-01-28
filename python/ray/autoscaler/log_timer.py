@@ -13,7 +13,5 @@ class LogTimer:
 
     def __exit__(self, *_):
         td = datetime.datetime.utcnow() - self._start_time
-        logger.info(
-            self._message + \
-                " [LogTimer={:.0f}ms]".format(td.total_seconds()*1000)
-        )
+        logger.info(self._message +
+                    " [LogTimer={:.0f}ms]".format(td.total_seconds() * 1000))

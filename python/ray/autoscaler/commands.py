@@ -127,14 +127,16 @@ def kill_node(config_file, yes, override_cluster_name):
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     node = random.choice(nodes)
     logger.info("kill_node: " "Terminating worker {}".format(node))
-    updater = NodeUpdaterProcess(
+
+    updater = NodeUpdaterThread(
         node,
         config["provider"],
+        provider,
         config["auth"],
         config["cluster_name"],
-        config["file_mounts"], [],
-        "",
-        redirect_output=False)
+        config["file_mounts"],
+        [],
+        "")
 
     _exec(updater, "ray stop", False, False)
 

@@ -10,12 +10,10 @@ import logging
 import os
 import subprocess
 import sys
-import tempfile
 import time
 
 from threading import Thread
 
-from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 from ray.autoscaler.log_timer import LogTimer
 
@@ -222,7 +220,7 @@ class NodeUpdater(object):
             for cmd in self.setup_cmds:
                 self.ssh_cmd(
                     cmd,
-                    #verbose=True,
+                    # verbose=True,
                     redirect=open("/dev/null", "w"))
 
     def rsync_up(self, source, target, redirect=None, check_error=True):

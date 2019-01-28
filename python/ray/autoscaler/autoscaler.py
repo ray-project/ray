@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import copy
 import json
 import hashlib
@@ -16,7 +15,6 @@ import logging
 import time
 
 from collections import defaultdict
-from datetime import datetime
 
 import numpy as np
 import yaml
