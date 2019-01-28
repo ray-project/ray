@@ -114,27 +114,6 @@ class Resources(
         return all(v >= 0 for v in all_values)
 
     @classmethod
-    def add(cls, original, additional):
-        cpu = original.cpu + additional.cpu
-        gpu = original.gpu + additional.gpu
-        extra_cpu = original.extra_cpu + additional.extra_cpu
-        extra_gpu = original.extra_gpu + additional.extra_gpu
-        all_resources = set(original.custom_resources).union(
-            set(additional.custom_resources))
-        new_custom_res = {
-            k: original.custom_resources.get(k, 0) +
-            additional.custom_resources.get(k, 0)
-            for k in all_resources
-        }
-        extra_custom_res = {
-            k: original.extra_custom_resources.get(k, 0) +
-            additional.extra_custom_resources.get(k, 0)
-            for k in all_resources
-        }
-        return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
-                         extra_custom_res)
-
-    @classmethod
     def subtract(cls, original, to_remove):
         cpu = original.cpu - to_remove.cpu
         gpu = original.gpu - to_remove.gpu

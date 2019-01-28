@@ -232,9 +232,10 @@ class RayTrialExecutor(TrialExecutor):
 
     def _commit_resources(self, resources):
         committed = self._committed_resources
-        custom_resources = {res: (
-            committed.get(res) + resources.get_res_total(
-                res)) for res in resources.custom_resources}
+        custom_resources = {
+            res: (committed.get(res) + resources.get_res_total(res))
+            for res in resources.custom_resources
+        }
         for resource, val in committed.custom_resources.items():
             custom_resources.setdefault(resource, val)
 
@@ -245,9 +246,10 @@ class RayTrialExecutor(TrialExecutor):
 
     def _return_resources(self, resources):
         committed = self._committed_resources
-        custom_resources = {res: (
-            committed.get(res) - resources.get_res_total(
-                res)) for res in resources.custom_resources}
+        custom_resources = {
+            res: (committed.get(res) - resources.get_res_total(res))
+            for res in resources.custom_resources
+        }
         for resource, val in committed.custom_resources.items():
             custom_resources.setdefault(resource, val)
 
@@ -300,7 +302,7 @@ class RayTrialExecutor(TrialExecutor):
         if (resources.cpu_total() > 0 and leftover.cpu <= 0) or \
            (resources.gpu_total() > 0 and leftover.gpu <= 0) or \
            any((resources.get_res_total(res_name) > 0
-                and leftover.custom_resources[res_name] <= 0)
+                and leftover.get(res_name) <= 0)
                for res_name in resources.custom_resources):
             can_overcommit = False  # requested resource is already saturated
 
