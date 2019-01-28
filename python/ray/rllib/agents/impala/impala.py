@@ -70,8 +70,8 @@ DEFAULT_CONFIG = with_common_config({
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
 
-    # Actions and arguments are chosen based on categorical distribution
-    "dist_type": "categorical",
+    # Actions and arguments are chosen based on this distribution, if provided
+    "dist_type": None,
     # If output of IMPALA network has special shape that is flattened
     "output_hidden_shape": None,
 
