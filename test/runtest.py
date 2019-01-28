@@ -2497,10 +2497,8 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
-def test_inline_objects(shutdown_only):
+def test_inline_objects(ray_start):
     import pyarrow
-
-    ray.init(num_cpus=1, object_store_memory=10**8)
 
     @ray.remote
     class Actor(object):
@@ -2515,14 +2513,16 @@ def test_inline_objects(shutdown_only):
     ray.get(inline_object)
     ray.worker.global_worker.plasma_client.delete(
         [pyarrow.plasma.ObjectID(inline_object.id())])
-
+    # Make sure we can still get an inlined object created by an actor even
+    # after it has been evicted.
     assert ray.get(inline_object) == "inline"
 
     non_inline_object = a.create_non_inline_object.remote()
     ray.get(non_inline_object)
     ray.worker.global_worker.plasma_client.delete(
         [pyarrow.plasma.ObjectID(non_inline_object.id())])
-
+    # Objects created by an actor that were evicted and larger than the maximum
+    # inline object size cannot be retrieved or reconstructed.
     with pytest.raises(ray.worker.RayTaskError):
         ray.get(non_inline_object) == 10000 * [1]
 
