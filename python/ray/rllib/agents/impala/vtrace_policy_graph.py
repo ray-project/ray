@@ -137,7 +137,7 @@ class MultiVTraceLoss(object):
         """
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
-            self.vtrace_returns = multi_vtrace.get_vtrace(
+            self.vtrace_returns = multi_vtrace.from_logits(
                 behaviour_policy=behaviour_logits,
                 target_policy=target_logits,
                 actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
