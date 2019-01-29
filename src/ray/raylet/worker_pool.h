@@ -132,6 +132,7 @@ class WorkerPool {
 
  protected:
   /// The implementation of how to start a new worker process with command arguments.
+  ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return The process ID of started worker process.
   virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
