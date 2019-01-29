@@ -20,7 +20,7 @@ def f():
 def test_raylet_gdb(env_var, process_name):
     # Save original environment variables and set new ones
     _environ = os.environ.copy()
-    os.environ["RAY_RAYLET_GDB"] = "1"
+    os.environ[env_var] = "1"
 
     # Test ray works as expected
     ray.init(num_cpus=1, ignore_reinit_error=True)
