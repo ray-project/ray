@@ -1013,36 +1013,13 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  // Find the running task to get its actor handle id and dummy object id.
+  // Find the task that is running on this actor.
   const auto task_id = worker->GetAssignedTaskId();
   const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-  const auto actor_handle_id = task.GetTaskSpecification().ActorHandleId();
-  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-  // Make a copy of the actor registration, and extend its frontier.
-  // NOTE(hchen): Here we do `ExtendFrontier` on the copy of actor registration.
-  // Later we'll do `ExtendFrontier` again on the original actor registration in
-  // `FinishAssignedTask` function. This is needed because we need to include the
-  // latest finished task's dummy object in the checkpoint. We may want to consolidate
-  // these 2 call sites.
-  ActorRegistration actor_registration = actor_entry->second;
-  actor_registration.ExtendFrontier(actor_handle_id, dummy_object);
-
-  // Use actor's current state to generate checkpoint data.
+  // Generate checkpoint id and data.
   ActorCheckpointID checkpoint_id = UniqueID::from_random();
-  auto checkpoint_data = std::make_shared<ActorCheckpointDataT>();
-  checkpoint_data->actor_id = actor_id.binary();
-  checkpoint_data->execution_dependency =
-      actor_registration.GetExecutionDependency().binary();
-  for (const auto &frontier : actor_registration.GetFrontier()) {
-    checkpoint_data->handle_ids.push_back(frontier.first.binary());
-    checkpoint_data->task_counters.push_back(frontier.second.task_counter);
-    checkpoint_data->frontier_dependencies.push_back(
-        frontier.second.execution_dependency.binary());
-  }
-  for (const auto &entry : actor_registration.GetDummyObjects()) {
-    checkpoint_data->unreleased_dummy_objects.push_back(entry.first.binary());
-    checkpoint_data->num_dummy_object_dependencies.push_back(entry.second);
-  }
+  auto checkpoint_data =
+      actor_entry->second.GenerateCheckpointData(actor_entry->first, task);
 
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
@@ -1846,11 +1823,8 @@ void NodeManager::UpdateActorFrontier(const Task &task) {
           }
         },
         [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
-          RAY_LOG(WARNING) << "Couldn't find checkpoint " << checkpoint_id
-                           << " for actor " << actor_id << " in GCS. This is likely"
-                           << " because the worker sent us a wrong or expired"
-                           << " checkpoint id.";
-          // TODO(hchen): what should we do here? Notify or kill the actor?
+          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
+                         << " for actor " << actor_id << " in GCS.";
         }));
   }
 }

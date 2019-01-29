@@ -960,8 +960,8 @@ class Worker(object):
             return
         actor_id = self.actor_id
         actor = self.actors[actor_id]
-        # An actor that needs checkpointing must inherent the `Checkpointable`
-        # interface.
+        # An actor that needs checkpointing must inherit from the
+        # `Checkpointable` interface.
         if not isinstance(actor, ray.actor.Checkpointable):
             return
 

@@ -5,6 +5,7 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
+#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -123,6 +124,14 @@ class ActorRegistration {
   ///
   /// \param checkpoint_data The checkpoint used to restore the actor.
   void RestoreFrontier(const ActorCheckpointDataT &checkpoint_data);
+
+  /// Generate checkpoint data based on actor's current state.
+  ///
+  /// \param actor_id ID of this actor.
+  /// \param task The task that just finished on the actor.
+  /// \return A shared pointer to the generated checkpoint data.
+  std::shared_ptr<ActorCheckpointDataT> GenerateCheckpointData(const ActorID &actor_id,
+                                                               const Task &task);
 
  private:
   /// Information from the global actor table about this actor, including the
