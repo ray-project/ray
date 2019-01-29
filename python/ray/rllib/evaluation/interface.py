@@ -4,13 +4,17 @@ from __future__ import print_function
 
 import os
 
+from ray.rllib.utils.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
 
     See also: PolicyEvaluator
     """
 
+    @DeveloperAPI
     def sample(self):
         """Returns a batch of experience sampled from this evaluator.
 
@@ -27,6 +31,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
 
@@ -45,6 +50,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def apply_gradients(self, grads):
         """Applies the given gradients to this evaluator's weights.
 
@@ -58,6 +64,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def get_weights(self):
         """Returns the model weights of this Evaluator.
 
@@ -73,6 +80,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def set_weights(self, weights):
         """Sets the model weights of this Evaluator.
 
@@ -85,6 +93,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def compute_apply(self, samples):
         """Fused compute gradients and apply gradients call.
 
@@ -100,11 +109,13 @@ class EvaluatorInterface(object):
         self.apply_gradients(grads)
         return info
 
+    @DeveloperAPI
     def get_host(self):
         """Returns the hostname of the process running this evaluator."""
 
         return os.uname()[1]
 
+    @DeveloperAPI
     def apply(self, func, *args):
         """Apply the given function to this evaluator instance."""
 

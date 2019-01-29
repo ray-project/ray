@@ -181,7 +181,6 @@ print("success")
         out = run_string_as_driver(driver_script2)
         # Make sure the first driver ran to completion.
         assert "success" in out
-        assert ray.services.all_processes_alive()
 
 
 @pytest.fixture
@@ -417,3 +416,41 @@ print("success")
     for i in range(2):
         out = run_string_as_driver(driver_script)
         assert "success" in out
+
+
+def test_driver_exiting_when_worker_blocked(ray_start_head):
+    # This test will create some drivers that submit some tasks and then
+    # exit without waiting for the tasks to complete.
+    redis_address = ray_start_head
+
+    ray.init(redis_address=redis_address)
+
+    # Define a driver that creates an actor and exits.
+    driver_script = """
+import time
+import ray
+ray.init(redis_address="{}")
+@ray.remote
+def f():
+    time.sleep(10**6)
+@ray.remote
+def g():
+    ray.get(f.remote())
+g.remote()
+time.sleep(1)
+print("success")
+""".format(redis_address)
+
+    # Create some drivers and let them exit and make sure everything is
+    # still alive.
+    for _ in range(3):
+        out = run_string_as_driver(driver_script)
+        # Make sure the first driver ran to completion.
+        assert "success" in out
+
+    @ray.remote
+    def f():
+        return 1
+
+    # Make sure we can still talk with the raylet.
+    ray.get(f.remote())

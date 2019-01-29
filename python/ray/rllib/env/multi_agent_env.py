@@ -2,7 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.annotations import PublicAPI
 
+
+@PublicAPI
 class MultiAgentEnv(object):
     """An environment that hosts multiple independent agents.
 
@@ -41,6 +44,7 @@ class MultiAgentEnv(object):
         }
     """
 
+    @PublicAPI
     def reset(self):
         """Resets the env and returns observations from ready agents.
 
@@ -49,6 +53,7 @@ class MultiAgentEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def step(self, action_dict):
         """Returns observations from ready agents.
 
@@ -68,6 +73,7 @@ class MultiAgentEnv(object):
 
 # yapf: disable
 # __grouping_doc_begin__
+    @PublicAPI
     def with_agent_groups(self, groups, obs_space=None, act_space=None):
         """Convenience method for grouping together agents in this env.
 

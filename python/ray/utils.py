@@ -6,7 +6,6 @@ import binascii
 import functools
 import hashlib
 import inspect
-import logging
 import numpy as np
 import os
 import subprocess
@@ -16,10 +15,7 @@ import time
 import uuid
 
 import ray.gcs_utils
-import ray.raylet
 import ray.ray_constants as ray_constants
-
-logger = logging.getLogger(__name__)
 
 
 def _random_string():
@@ -70,12 +66,10 @@ def push_error_to_driver(worker,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
+        driver_id = ray.DriverID.nil()
     data = {} if data is None else data
-    logging.error("Pushing error to dirver, type: %s, message: %s.",
-                  error_type, message)
-    worker.raylet_client.push_error(
-        ray.ObjectID(driver_id), error_type, message, time.time())
+    worker.raylet_client.push_error(driver_id, error_type, message,
+                                    time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -101,15 +95,16 @@ def push_error_to_driver_through_redis(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray_constants.NIL_JOB_ID.id()
+        driver_id = ray.DriverID.nil()
     data = {} if data is None else data
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-        ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id, error_data)
+    redis_client.execute_command("RAY.TABLE_APPEND",
+                                 ray.gcs_utils.TablePrefix.ERROR_INFO,
+                                 ray.gcs_utils.TablePubsub.ERROR_INFO,
+                                 driver_id.binary(), error_data)
 
 
 def is_cython(obj):
@@ -405,7 +400,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id.id())
+        driver_id=worker.task_driver_id)
 
 
 class _ThreadSafeProxy(object):

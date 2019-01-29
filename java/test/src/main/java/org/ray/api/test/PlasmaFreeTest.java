@@ -3,14 +3,13 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.UniqueId;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 
 public class PlasmaFreeTest extends BaseTest {

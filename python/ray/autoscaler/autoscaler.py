@@ -9,6 +9,7 @@ import hashlib
 import logging
 import math
 import os
+from six import string_types
 from six.moves import queue
 import subprocess
 import threading
@@ -633,6 +634,8 @@ def check_extraneous(config, schema):
             continue
         elif isinstance(v, type):
             if not isinstance(config[k], v):
+                if v is str and isinstance(config[k], string_types):
+                    continue
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k,
@@ -672,6 +675,12 @@ def hash_launch_conf(node_conf, auth):
     return hasher.hexdigest()
 
 
+# Cache the file hashes to avoid rescanning it each time. Also, this avoids
+# inadvertently restarting workers if the file mount content is mutated on the
+# head node.
+_hash_cache = {}
+
+
 def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
@@ -696,9 +705,15 @@ def hash_runtime_conf(file_mounts, extra_objs):
             with open(path, "rb") as f:
                 hasher.update(binascii.hexlify(f.read()))
 
-    hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
-    hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
-    for local_path in sorted(file_mounts.values()):
-        add_content_hashes(local_path)
+    conf_str = (json.dumps(sorted(file_mounts.items())).encode("utf-8") +
+                json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    return hasher.hexdigest()
+    # Important: only hash the files once. Otherwise, we can end up restarting
+    # workers if the files were changed and we re-hashed them.
+    if conf_str not in _hash_cache:
+        hasher.update(conf_str)
+        for local_path in sorted(file_mounts.values()):
+            add_content_hashes(local_path)
+        _hash_cache[conf_str] = hasher.hexdigest()
+
+    return _hash_cache[conf_str]

@@ -42,7 +42,8 @@ table Arg {
   // object ID in this list which represents the object that is being passed.
   // However to support reducers in a MapReduce workload, we also support
   // passing multiple object IDs for each argument.
-  object_ids: [string];
+  // Note that this is a long string that concatenate all of the object IDs.
+  object_ids: string;
   // Data for pass-by-value arguments.
   data: string;
 }
@@ -76,11 +77,13 @@ table TaskInfo {
   // If this is an actor task, then this will be populated with all of the new
   // actor handles that were forked from this handle since the last task on
   // this handle was submitted.
-  new_actor_handles: [string];
+  // Note that this is a long string that concatenate all of the new_actor_handle IDs.
+  new_actor_handles: string;
   // Task arguments.
   args: [Arg];
-  // Object IDs of return values.
-  returns: [string];
+  // Object IDs of return values. This is a long string that concatenate
+  // all of the return object IDs of this task.
+  returns: string;
   // The required_resources vector indicates the quantities of the different
   // resources required by this task.
   required_resources: [ResourcePair];

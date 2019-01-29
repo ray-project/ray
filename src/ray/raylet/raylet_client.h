@@ -14,6 +14,7 @@ using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
+using ray::ClientID;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -147,7 +148,7 @@ class RayletClient {
 
   Language GetLanguage() const { return language_; }
 
-  JobID GetClientID() const { return client_id_; }
+  ClientID GetClientID() const { return client_id_; }
 
   JobID GetDriverID() const { return driver_id_; }
 
@@ -156,7 +157,7 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const UniqueID client_id_;
+  const ClientID client_id_;
   const bool is_worker_;
   const JobID driver_id_;
   const Language language_;
