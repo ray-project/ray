@@ -275,6 +275,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.ones_like(rewards, dtype=tf.bool)
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
+        # TODO: Single action is a list of one
         if self._is_discrete:
             self.loss = VTraceLoss(
                 actions=make_time_major(actions, True),
