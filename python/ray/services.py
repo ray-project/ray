@@ -320,16 +320,10 @@ def start_ray_process(command,
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
-        if use_gdb == 1:
-            with open(gdb_init_path, "w") as gdb_init_file:
-                gdb_init_file.write("run {}".format(run_args))
-            command = ["gdb", ray_process_path, "-x", gdb_init_path]
-        else:
-            with open(gdb_init_path, "w") as gdb_init_file:
-                gdb_init_file.write("define\n\trun {}\nend".format(run_args))
-            logger.info("Use the following command to launch gdb and run "
-                        "`run_ray` to start %s in gdb `gdb %s -x %s`", process_type, ray_process_path, gdb_init_path)
-            command = ["gdb", ray_process_path, "-x", gdb_init_path]
+        with open(gdb_init_path, "w") as gdb_init_file:
+            gdb_init_file.write("run {}".format(run_args))
+        gdb_command = " ".join(["gdb", ray_process_path, "-x", gdb_init_path])
+        command = ["tmux", "new-window", "-d", gdb_command]
 
     if use_valgrind:
         command = [
