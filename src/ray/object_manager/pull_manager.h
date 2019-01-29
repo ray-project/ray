@@ -19,12 +19,9 @@ class PullManager;
 /// \struct PullInfo
 ///
 /// This object manages all of the information associated with an attempt to
-/// receive a given object, including a timer that fires if no action has
-/// happened related to that object in a while.
+/// receive a given object.
 struct PullInfo {
-  PullInfo(bool required, const ObjectID &object_id,
-           boost::asio::io_service &main_service,
-           const std::function<void()> &timer_callback);
+  PullInfo(bool required, const ObjectID &object_id);
 
   /// Fill out the total_num_chunks field. We won't know this until we know the
   /// object size and so can't always fill out this field in the constructor.
@@ -39,12 +36,6 @@ struct PullInfo {
   ///
   /// \return True if this object can be cleaned up and false otherwise.
   bool LifetimeEnded();
-
-  /// Restart the timer. This happens when we successfully read a chunk of the
-  /// object or when we become aware of new object locations (because we want to
-  /// give more time for the transfer to finish before retrying). It also can
-  /// happen when the timer expires.
-  void RestartTimer(boost::asio::io_service &main_service);
 
   /// True if we must pull this object. False if we are simply receiving the
   /// object but do not need to pull the object (meaning we do not have to
@@ -70,19 +61,7 @@ struct PullInfo {
   std::unordered_set<int> remaining_chunk_ids;
   /// The number of object chunks that we are in the process of reading.
   int64_t num_in_progress_chunk_ids;
-  /// This timer is used for two purposes: 1) If we are receiving the
-  /// object from some remote object manager but one of the reads fails,
-  /// then this timer will be used to issue new requests. If we have requested
-  /// the object but haven't received any chunks in a while, then we consider
-  /// the sending to have failed.
-  boost::asio::deadline_timer retry_timer;
-  /// The callback to call when the timer expires.
-  std::function<void()> timer_callback;
 };
-
-using ObjectRequestManagementCallback = std::function<void(
-    const std::vector<ray::ClientID> &clients_to_request,
-    const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object)>;
 
 /// This class is responsible for ensuring that objects that this object
 /// manager is attempting to pull eventually show up. It is responsible for
@@ -153,8 +132,7 @@ class PullManager {
   /// \param client_id The ID of this object manager.
   /// \param callback The callback that the pull manager can use to request
   /// objects, cancel requests, and abort object creations.
-  PullManager(boost::asio::io_service &main_service, const ClientID &client_id,
-              const ObjectRequestManagementCallback &callback);
+  PullManager(const ClientID &client_id);
 
   PullManager(const PullManager &other) = delete;
 
@@ -165,15 +143,26 @@ class PullManager {
   /// called. CancelPullObject is also called when the object appears locally.
   ///
   /// \param object_id The ID of the object to pull.
+  /// \param[out] subscribe_to_locations This will be set to true if the caller
+  /// should subscribe to the object locations and false otherwise.
+  /// \param[out] start_timer This will be set to true if a timer should be
+  /// started for this object ID and false otherwise.
   /// \return Void.
-  void PullObject(const ObjectID &object_id);
+  void PullObject(const ObjectID &object_id, bool *subscribe_to_locations,
+                  bool *start_timer);
 
   /// Notify the PullManager that a certain object is no longer required. This
   /// is also called when an object appears locally.
   ///
   /// \param object_id The ID of the object whose to pull.
+  /// \param[out] clients_to_cancel This will be set to a vector of clients to
+  /// issue cancellation requests to.
+  /// \param[out] unsubscribe_from_locations This will be set to true if the
+  /// caller should unsubscribe from the object locations and false otherwise.
   /// \return Void.
-  void CancelPullObject(const ObjectID &object_id);
+  void CancelPullObject(const ObjectID &object_id,
+                        std::vector<ClientID> *clients_to_cancel,
+                        bool *unsubscribe_from_locations);
 
   /// Notify the PullManager that a remote object manager wishes to push an
   /// object chunk to this object manager. Note that this will happen once per
@@ -185,9 +174,14 @@ class PullManager {
   /// \param chunk_index The index of the chunk that is being pushed.
   /// \param num_chunks The total number of chunks that the object is divided
   /// into.
+  /// \param[out] clients_to_cancel A vector of clients to issue cancellation
+  /// requests to.
+  /// \param[out] start_timer This will be set to true if the caller should
+  /// start a timer for this object ID and false otherwise.
   /// \return Void.
   void ReceivePushRequest(const ObjectID &object_id, const ClientID &client_id,
-                          int64_t chunk_index, int64_t num_chunks);
+                          int64_t chunk_index, int64_t num_chunks,
+                          std::vector<ClientID> *clients_to_cancel, bool *start_timer);
 
   /// Notify the PullManager that the locations of the object in the object
   /// table have changed.
@@ -195,9 +189,14 @@ class PullManager {
   /// \param object_id The ID of the object whose locations have changed.
   /// \param clients_with_object The IDs of the object managers that have the
   /// object.
+  /// \param[out] clients_to_request This will be set to a list of clients to
+  /// issue requests to.
+  /// \param[out] restart_timer This will be set to true if the timer for this
+  /// object ID should be restarted and false otherwise.
   /// \return Void.
-  void NewObjectLocations(const ObjectID &object_id,
-                          const std::unordered_set<ClientID> &clients_with_object);
+  void NewObjectLocations(
+      const ObjectID &object_id, const std::unordered_set<ClientID> &clients_with_object,
+      std::vector<ClientID> *clients_to_request, bool *restart_timer);
 
   /// Notify the PullManager that a chunk was read successfully.
   ///
@@ -205,9 +204,13 @@ class PullManager {
   /// \param client_id The ID of the remote object manager that the object was
   /// read from.
   /// \param chunk_index The index of the chunk.
+  /// \param[out] abort_creation This is set to true if the object creation
+  /// should be aborted and false otherwise.
+  /// \param[out] restart_timer This is set to true if the timer for this object
+  /// should be restarted and false otherwise.
   /// \return Void.
   void ChunkReadSucceeded(const ObjectID &object_id, const ClientID &client_id,
-                          int64_t chunk_index);
+                          int64_t chunk_index, bool *abort_creation, bool *restart_timer);
 
   /// Notify the PullManager that a chunk was not successfully read. This could
   /// happen because the chunk was intentionally ignored, because the object
@@ -219,9 +222,27 @@ class PullManager {
   /// \param client_id The ID of the remote object manager that the object was
   /// read from.
   /// \param chunk_index The index of the chunk.
+  /// \param[out] This is set to a vector of clients to issue cancellation
+  /// requests to.
+  /// \param[out] This is set to true if the object creation should be aborted
+  /// and false otherwise.
   /// \return Void.
   void ChunkReadFailed(const ObjectID &object_id, const ClientID &client_id,
-                       int64_t chunk_index);
+                       int64_t chunk_index, std::vector<ClientID> *clients_to_cancel,
+                       bool *abort_creation);
+
+  /// Handle the fact that the timer for a pull has expired.
+  ///
+  /// \param object_id The ID of the object that the pull is for.
+  /// \param[out] clients_to_request This will be set to a vector of clients to
+  /// issue requests.
+  /// \param[out] abort_creation This wil be set to true if the object creation
+  /// should be aborted and false otherwise.
+  /// \param[out] restart_timer This will be set to true if the timer for this
+  /// object should be restarted and false otherwise.
+  /// \return Void.
+  void TimerExpired(const ObjectID &object_id, std::vector<ClientID> *clients_to_request,
+                    bool *abort_creation, bool *restart_timer);
 
   /// Print out a human-readable string describing the PullManager's state.
   ///
@@ -229,12 +250,6 @@ class PullManager {
   std::string DebugString() const;
 
  private:
-  /// Handle the fact that the timer for a pull has expired.
-  ///
-  /// \param object_id The ID of the object that the pull is for.
-  /// \return Void.
-  void TimerExpires(const ObjectID &object_id);
-
   /// The total number of times PullObject has been called.
   int64_t total_pull_calls_;
   /// The total number of times CancelObject has been called.
@@ -243,18 +258,13 @@ class PullManager {
   int64_t total_successful_chunk_reads_;
   /// The total number of times ChunkReadFailed has been called.
   int64_t total_failed_chunk_reads_;
-  /// The service to use for setting timers.
-  boost::asio::io_service &main_service_;
   /// The client ID of the object manager that this pull manager is part of.
   ClientID client_id_;
-  /// The callback to use for instructing the object manager to issue new
-  /// object requests or object cancellation requests.
-  const ObjectRequestManagementCallback callback_;
   /// This is a map from object ID that we are pulling to the information
   /// associated with that pull. NOTE: We use unique_ptr<PullInfo> instead of
   /// PullInfo because the PullInfo object uses the "this" pointer and so cannot
   /// be moved around.
-  std::unordered_map<ObjectID, std::unique_ptr<PullInfo>> pulls_;
+  std::unordered_map<ObjectID, PullInfo> pulls_;
   /// A random number generator.
   std::mt19937_64 gen_;
 };
