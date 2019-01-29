@@ -273,7 +273,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
-  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
+  void SendPullRequest(const ObjectID &object_id, const ClientID &client_id);
 
   /// Asynchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
@@ -281,8 +281,28 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param object_id The ID of the object request.
   /// \param conn The connection to the remote object manager.
   /// \return Void.
-  void PullSendRequest(const ObjectID &object_id,
-                       std::shared_ptr<SenderConnection> &conn);
+  void SendPullRequestHelper(const ObjectID &object_id,
+                             std::shared_ptr<SenderConnection> &conn);
+
+  /// Restart the timer associated with a pull request.
+  ///
+  /// \param object_id The object ID associated with the timer.
+  /// \return Void.
+  void RestartPullTimer(const ObjectID &object_id);
+
+  /// Abort the creation of an object.
+  ///
+  /// \param object_id The object ID whose creation should be aborted.
+  /// \return Void.
+  void AbortObjectCreation(const ObjectID &object_id);
+
+  /// Send an object cancellation message to a remote object manager.
+  ///
+  /// \param object_id the ID of the object that is no longer needed.
+  /// \param client_id The ID of the remote object manager to send the message
+  /// to.
+  /// \return Void.
+  void SendCancelPullRequest(const ObjectID &object_id, const ClientID &client_id);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
@@ -415,11 +435,12 @@ class ObjectManager : public ObjectManagerInterface {
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
-  /// The objects that this object manager is currently trying to fetch from
-  /// remote object managers.
-  std::unordered_map<ObjectID, PullRequest> pull_requests_;
-
+  /// The pull manager decides when to issue requests for objects and when to
+  /// cancel those requests.
   PullManager pull_manager_;
+  /// Timers that notify the pull manager that a long time has passed without
+  /// makine progress on pulling a particular object.
+  std::unordered_map<ObjectID, boost::asio::deadline_timer> pull_timers_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.

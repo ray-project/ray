@@ -78,7 +78,7 @@ class ObjectDirectoryInterface {
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
-  /// \param success_cb Invoked with non-empty list of client ids and object_id.
+  /// \param callback Invoked with non-empty list of client ids and object_id.
   /// \return Status of whether subscription succeeded.
   virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                                const ObjectID &object_id,

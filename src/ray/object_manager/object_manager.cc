@@ -21,13 +21,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       send_work_(send_service_),
       receive_work_(receive_service_),
       connection_pool_(),
-      pull_manager_(
-          *main_service_, client_id_,
-          [this](const std::vector<ray::ClientID> &clients_to_request,
-                 const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
-            HandleObjectRequestCancelAbort(clients_to_request, clients_to_cancel,
-                                           abort_object);
-          }),
+      pull_manager_(client_id_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
@@ -124,13 +118,18 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     return ray::Status::OK();
   }
 
-  pull_manager_.PullObject(object_id);
+  bool subscribe_to_locations;
+  bool start_timer;
+  pull_manager_.PullObject(object_id, &subscribe_to_locations, &start_timer);
+  if (start_timer) {
+    RAY_CHECK(pull_timers_.find(object_id) == pull_timers_.end());
+    RestartPullTimer(object_id);
+  }
 
-  if (pull_requests_.find(object_id) != pull_requests_.end()) {
+  if (!subscribe_to_locations) {
     return ray::Status::OK();
   }
 
-  pull_requests_.emplace(object_id, PullRequest());
   // Subscribe to object notifications. A notification will be received every
   // time the set of client IDs for the object changes. Notifications will also
   // be received if the list of locations is empty. The set of client IDs has
@@ -139,118 +138,21 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
              bool created) {
-        pull_manager_.NewObjectLocations(object_id, client_ids);
-
-        // Exit if the Pull request has already been fulfilled or canceled.
-        auto it = pull_requests_.find(object_id);
-        if (it == pull_requests_.end()) {
-          return;
+        std::vector<ClientID> clients_to_request;
+        bool restart_timer;
+        pull_manager_.NewObjectLocations(object_id, client_ids, &clients_to_request,
+                                         &restart_timer);
+        for (const ClientID &client_id : clients_to_request) {
+          RAY_LOG(INFO) << client_id;
+          SendPullRequest(object_id, client_id);
         }
-        // Reset the list of clients that are now expected to have the object.
-        // NOTE(swang): Since we are overwriting the previous list of clients,
-        // we may end up sending a duplicate request to the same client as
-        // before.
-        it->second.client_locations =
-            std::vector<ClientID>(client_ids.begin(), client_ids.end());
-        if (it->second.client_locations.empty()) {
-          // The object locations are now empty, so we should wait for the next
-          // notification about a new object location.  Cancel the timer until
-          // the next Pull attempt since there are no more clients to try.
-          if (it->second.retry_timer != nullptr) {
-            it->second.retry_timer->cancel();
-            it->second.timer_set = false;
-          }
-        } else {
-          // New object locations were found, so begin trying to pull from a
-          // client. This will be called every time a new client location
-          // appears.
-          TryPull(object_id);
+        if (restart_timer) {
+          RestartPullTimer(object_id);
         }
       });
 }
 
-void ObjectManager::TryPull(const ObjectID &object_id) {
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
-    return;
-  }
-
-  auto &client_vector = it->second.client_locations;
-
-  // The timer should never fire if there are no expected client locations.
-  RAY_CHECK(!client_vector.empty());
-  RAY_CHECK(local_objects_.count(object_id) == 0);
-  // Make sure that there is at least one client which is not the local client.
-  // TODO(rkn): It may actually be possible for this check to fail.
-  RAY_CHECK(client_vector.size() != 1 || client_vector[0] != client_id_);
-
-  // Choose a random client to pull the object from.
-  // Generate a random index.
-  std::uniform_int_distribution<int> distribution(0, client_vector.size() - 1);
-  int client_index = distribution(gen_);
-  ClientID client_id = client_vector[client_index];
-  // If the object manager somehow ended up choosing itself, choose a different
-  // object manager.
-  if (client_id == client_id_) {
-    std::swap(client_vector[client_index], client_vector[client_vector.size() - 1]);
-    client_vector.pop_back();
-    RAY_LOG(ERROR) << "The object manager with client ID " << client_id_
-                   << " is trying to pull object " << object_id
-                   << " but the object table suggests that this object manager "
-                   << "already has the object.";
-    client_id = client_vector[client_index % client_vector.size()];
-    RAY_CHECK(client_id != client_id_);
-  }
-
-  RAY_LOG(DEBUG) << "Sending pull request from " << client_id_ << " to " << client_id
-                 << " of object " << object_id;
-  // Try pulling from the client.
-  PullEstablishConnection(object_id, client_id);
-
-  // If there are more clients to try, try them in succession, with a timeout
-  // in between each try.
-  if (!it->second.client_locations.empty()) {
-    if (it->second.retry_timer == nullptr) {
-      // Set the timer if we haven't already.
-      it->second.retry_timer = std::unique_ptr<boost::asio::deadline_timer>(
-          new boost::asio::deadline_timer(*main_service_));
-    }
-
-    // Wait for a timeout. If we receive the object or a caller Cancels the
-    // Pull within the timeout, then nothing will happen. Otherwise, the timer
-    // will fire and the next client in the list will be tried.
-    boost::posix_time::milliseconds retry_timeout(config_.pull_timeout_ms);
-    it->second.retry_timer->expires_from_now(retry_timeout);
-    it->second.retry_timer->async_wait(
-        [this, object_id](const boost::system::error_code &error) {
-          if (!error) {
-            // Try the Pull from the next client.
-            TryPull(object_id);
-          } else {
-            // Check that the error was due to the timer being canceled.
-            RAY_CHECK(error == boost::asio::error::operation_aborted);
-          }
-        });
-    // Record that we set the timer until the next attempt.
-    it->second.timer_set = true;
-  } else {
-    // The timer is not reset since there are no more clients to try. Go back
-    // to waiting for more notifications. Once we receive a new object location
-    // from the object directory, then the Pull will be retried.
-    it->second.timer_set = false;
-  }
-};
-
-void ObjectManager::HandleObjectRequestCancelAbort(
-    const std::vector<ray::ClientID> &clients_to_request,
-    const std::vector<ray::ClientID> &clients_to_cancel, bool abort_object) {
-  // TODO(rkn): Implement this method. This method is responsible for issuing
-  // the object requests and object cancellation requests decided on by the pull
-  // manager.
-}
-
-void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
-                                            const ClientID &client_id) {
+void ObjectManager::SendPullRequest(const ObjectID &object_id, const ClientID &client_id) {
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
@@ -271,13 +173,13 @@ void ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   }
 
   if (conn != nullptr) {
-    PullSendRequest(object_id, conn);
+    SendPullRequestHelper(object_id, conn);
     connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn);
   }
 }
 
-void ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                    std::shared_ptr<SenderConnection> &conn) {
+void ObjectManager::SendPullRequestHelper(const ObjectID &object_id,
+                                          std::shared_ptr<SenderConnection> &conn) {
   // TODO(rkn): This would be a natural place to record a profile event
   // indicating that a pull request was sent.
 
@@ -294,6 +196,45 @@ void ObjectManager::PullSendRequest(const ObjectID &object_id,
           connection_pool_.RemoveSender(conn);
         }
       });
+}
+
+void ObjectManager::RestartPullTimer(const ObjectID &object_id) {
+  auto timer = boost::asio::deadline_timer(*main_service_);
+  boost::posix_time::milliseconds retry_timeout(
+      RayConfig::instance().object_manager_pull_timeout_ms());
+  timer.expires_from_now(retry_timeout);
+  timer.async_wait([this, object_id](const boost::system::error_code &error) {
+    if (!error) {
+      std::vector<ClientID> clients_to_request;
+      bool abort_creation;
+      bool restart_timer;
+      pull_manager_.TimerExpired(object_id, &clients_to_request, &abort_creation,
+                                 &restart_timer);
+      if (abort_creation) {
+        AbortObjectCreation(object_id);
+      }
+      if (restart_timer) {
+        RestartPullTimer(object_id);
+      }
+    } else {
+      // Check that the error was due to the timer being canceled.
+      RAY_CHECK(error == boost::asio::error::operation_aborted);
+    }
+  });
+
+  // This will cancel the old timer if there was an old one.
+  pull_timers_.insert(std::make_pair(object_id, std::move(timer)));
+}
+
+void ObjectManager::AbortObjectCreation(const ObjectID &object_id) {
+  // TODO(rkn): Implement this!
+  RAY_LOG(WARNING) << "We do not handle the abort_creation case yet.";
+}
+
+
+void ObjectManager::SendCancelPullRequest(const ObjectID &object_id,
+                                          const ClientID &client_id) {
+  // TODO(rkn): Cancellations haven't been implemented yet.
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
@@ -336,10 +277,24 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
                                           const ClientID &client_id, uint64_t chunk_index,
                                           double start_time, double end_time,
                                           ray::Status status) {
+  bool abort_creation;
   if (status.ok()) {
-    pull_manager_.ChunkReadSucceeded(object_id, client_id, chunk_index);
+    bool restart_timer;
+    pull_manager_.ChunkReadSucceeded(object_id, client_id, chunk_index, &abort_creation,
+                                     &restart_timer);
+    if (restart_timer) {
+      RestartPullTimer(object_id);
+    }
   } else {
-    pull_manager_.ChunkReadFailed(object_id, client_id, chunk_index);
+    std::vector<ClientID> clients_to_cancel;
+    pull_manager_.ChunkReadFailed(object_id, client_id, chunk_index, &clients_to_cancel,
+                                  &abort_creation);
+    for (const ClientID &client_id : clients_to_cancel) {
+      SendCancelPullRequest(object_id, client_id);
+    }
+  }
+  if (abort_creation) {
+    AbortObjectCreation(object_id);
   }
 
   ProfileEventT profile_event;
@@ -522,16 +477,18 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
-  pull_manager_.CancelPullObject(object_id);
-
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
-    return;
+  std::vector<ClientID> clients_to_cancel;
+  bool unsubscribe_from_locations;
+  pull_manager_.CancelPullObject(object_id, &clients_to_cancel,
+                                 &unsubscribe_from_locations);
+  for (const ClientID &client_id : clients_to_cancel) {
+    SendCancelPullRequest(object_id, client_id);
   }
 
-  RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-      object_directory_pull_callback_id_, object_id));
-  pull_requests_.erase(it);
+  if (unsubscribe_from_locations) {
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id));
+  }
 }
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
@@ -836,7 +793,16 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
   uint64_t metadata_size = object_header->metadata_size();
 
   int64_t num_chunks = buffer_pool_.GetNumChunks(data_size + metadata_size);
-  pull_manager_.ReceivePushRequest(object_id, client_id, chunk_index, num_chunks);
+  std::vector<ClientID> clients_to_cancel;
+  bool start_timer;
+  pull_manager_.ReceivePushRequest(object_id, client_id, chunk_index, num_chunks,
+                                   &clients_to_cancel, &start_timer);
+  for (const ClientID &client_id : clients_to_cancel) {
+    SendCancelPullRequest(object_id, client_id);
+  }
+  if (start_timer) {
+    RestartPullTimer(object_id);
+  }
 
   receive_service_.post([this, object_id, client_id, data_size, metadata_size,
                          chunk_index, conn]() {
@@ -975,7 +941,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num local objects: " << local_objects_.size();
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
-  result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << pull_manager_.DebugString();
