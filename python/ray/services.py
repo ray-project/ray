@@ -511,10 +511,10 @@ def start_redis(node_ip_address,
             "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
             "supports 1-node chain for that shard only.")
 
-    port, p = _start_redis(
-        node_ip_address,
-        use_credis=use_credis,
-        is_primary=True,
+    # Start the primary Redis shard.
+    port, p = _start_redis_instance(
+        REDIS_EXECUTABLE,
+        modules=[REDIS_MODULE],
         port=port,
         password=password,
         redis_max_clients=redis_max_clients,
@@ -524,8 +524,13 @@ def start_redis(node_ip_address,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file)
     processes.append(p)
-
     redis_address = address(node_ip_address, port)
+
+    # Record the log files in Redis.
+    record_log_files_in_redis(
+        redis_address,
+        node_ip_address, [redis_stdout_file, redis_stderr_file],
+        password=password)
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
@@ -557,10 +562,19 @@ def start_redis(node_ip_address,
         redis_stdout_file, redis_stderr_file = new_redis_log_file(
             redirect_output, shard_number=i)
 
-        redis_shard_port, p = _start_redis(
-            node_ip_address,
-            use_credis=use_credis,
-            is_primary=False,
+        if use_credis:
+            redis_executable = CREDIS_EXECUTABLE
+            # It is important to load the credis module BEFORE the ray module,
+            # as the latter contains an extern declaration that the former
+            # supplies.
+            redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+        else:
+            redis_executable = REDIS_EXECUTABLE
+            redis_modules = [REDIS_MODULE]
+
+        redis_shard_port, p = _start_redis_instance(
+            redis_executable,
+            modules=redis_modules,
             port=redis_shard_ports[i],
             password=password,
             redis_max_clients=redis_max_clients,
@@ -574,86 +588,37 @@ def start_redis(node_ip_address,
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
 
+        record_log_files_in_redis(
+            redis_address,
+            node_ip_address, [redis_stdout_file, redis_stderr_file],
+            password=password)
+
     if use_credis:
+        # Configure the chain state. The way it is intended to work is
+        # the following:
+        #
+        # PRIMARY_SHARD
+        #
+        # SHARD_1 (master replica) -> SHARD_1 (member replica)
+        #                                        -> SHARD_1 (member replica)
+        #
+        # SHARD_2 (master replica) -> SHARD_2 (member replica)
+        #                                        -> SHARD_2 (member replica)
+        # ...
+        #
+        #
+        # If we have credis members in future, their modules should be:
+        # [CREDIS_MEMBER_MODULE, REDIS_MODULE], and they will be initialized by
+        # execute_command("MEMBER.CONNECT_TO_MASTER", node_ip_address, port)
+        #
+        # Currently we have num_redis_shards == 1, so only one chain will be
+        # created, and the chain only contains master.
         shard_client = redis.StrictRedis(
             host=node_ip_address, port=redis_shard_port, password=password)
-        # Configure the chain state.
-        primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
-                                             redis_shard_port)
-        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
-                                     node_ip_address, port)
+        shard_client.execute_command("MASTER.ADD", node_ip_address,
+                                     redis_shard_port)
 
     return redis_address, redis_shards, processes
-
-
-def _start_redis(node_ip_address,
-                 use_credis,
-                 is_primary,
-                 port=None,
-                 password=None,
-                 redis_max_clients=None,
-                 redis_max_memory=None,
-                 stdout_file=None,
-                 stderr_file=None):
-    """Start a single Redis server.
-
-    Args:
-        node_ip_address: The IP address of the current node. This is only used
-            for recording the log filenames in Redis.
-        use_credis: If True, additionally load the chain-replicated libraries
-            into the redis servers.
-        is_primary (bool): Is this redis shard the primary shard?
-        port (int): If provided, start a Redis server with this port.
-        password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        redis_max_clients: If this is provided, Ray will attempt to configure
-            Redis with this maxclients number.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-
-    Returns:
-        A tuple of the port used by Redis and ProcessInfo for the process that
-            was started. If a port is passed in, then the returned port value
-            is the same.
-
-    Raises:
-        Exception: An exception is raised if Redis could not be started.
-    """
-    if use_credis:
-        redis_executable = CREDIS_EXECUTABLE
-        # It is important to load the credis module BEFORE the ray module,
-        # as the latter contains an extern declaration that the former
-        # supplies.
-        if is_primary:
-            redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
-        else:
-            redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
-    else:
-        redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
-
-    assigned_port, p = _start_redis_instance(
-        redis_executable,
-        modules=redis_modules,
-        port=port,
-        redis_max_clients=redis_max_clients,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        password=password,
-        redis_max_memory=redis_max_memory)
-    if port is not None:
-        assert assigned_port == port
-    # Record the log files in Redis.
-    record_log_files_in_redis(
-        address(node_ip_address, assigned_port),
-        node_ip_address, [stdout_file, stderr_file],
-        password=password)
-    return assigned_port, p
 
 
 def _start_redis_instance(executable,
@@ -666,6 +631,11 @@ def _start_redis_instance(executable,
                           password=None,
                           redis_max_memory=None):
     """Start a single Redis server.
+
+    Notes:
+        If "port" is not None, then we will only use this port and try
+        only once. Otherwise, random ports will be used and the maximum
+        retries count is "num_retries".
 
     Args:
         executable (str): Full path of the redis-server executable.
@@ -700,6 +670,7 @@ def _start_redis_instance(executable,
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
+        # This ensures that we will use the given port.
         num_retries = 1
     else:
         port = new_port()
