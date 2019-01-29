@@ -115,7 +115,8 @@ TEST_F(WorkerPoolTest, StartupWorkerCount) {
   }
   // Check that number of starting worker processes equals to
   // maximum_startup_concurrency_ * 2. (because we started both python and java workers)
-  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 5 * 2);
+  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(),
+  /* Provided in constructor of WorkerPoolMock */ 5 * 2);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
