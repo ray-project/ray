@@ -27,9 +27,7 @@ class WorkerPoolMock : public WorkerPool {
     return ++last_worker_pid_;
   }
 
-  pid_t LastStartedWorkerProcess() const {
-    return last_worker_pid_;
-  }
+  pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
 
   int NumWorkerProcessesStarting() const {
     int total = 0;
