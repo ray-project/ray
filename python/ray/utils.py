@@ -282,17 +282,6 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def try_update_handler(new_stream):
-    global _default_handler
-    logger = logging.getLogger("ray")
-    if _default_handler:
-        new_handler = logging.StreamHandler(stream=new_stream)
-        new_handler.setFormatter(_default_handler.formatter)
-        _default_handler.close()
-        _default_handler = new_handler
-        logger.addHandler(_default_handler)
-
-
 # This function is copied and modified from
 # https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
 def vmstat(stat):

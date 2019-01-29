@@ -39,7 +39,7 @@ from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
 from ray.utils import (check_oversized_pickle, is_cython, random_string,
-                       thread_safe_client, setup_logger, try_update_handler)
+                       thread_safe_client, setup_logger)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1219,12 +1219,13 @@ def init(redis_address=None,
          resources=None,
          object_store_memory=None,
          redis_max_memory=None,
+         log_to_driver=True,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
          local_mode=False,
          driver_mode=None,
-         redirect_worker_output=False,
+         redirect_worker_output=True,
          redirect_output=True,
          ignore_reinit_error=False,
          num_redis_shards=None,
@@ -1281,6 +1282,8 @@ def init(redis_address=None,
             LRU eviction of entries. This only applies to the sharded redis
             tables (task, object, and profile tables). By default, this is
             capped at 10GB but can be set higher.
+        log_to_driver (bool): If true, then output from all of the worker
+            processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -1490,6 +1493,7 @@ def init(redis_address=None,
         redis_password=redis_password,
         object_id_seed=object_id_seed,
         mode=driver_mode,
+        log_to_driver=log_to_driver,
         worker=global_worker,
         driver_id=driver_id)
 
@@ -1562,6 +1566,21 @@ last_task_error_raise_time = 0
 
 # The max amount of seconds to wait before printing out an uncaught error.
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
+
+
+def print_logs(redis_client):
+    """Prints log messages from workers on all of the nodes.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+    """
+    # TODO(rkn): The redis client is thread safe, but how does this pubsub
+    # client relate to the pubsub client in the error printing thread? They are
+    # derived from the same redis client. Can they interact?
+    pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
+    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    for msg in pubsub_client.listen():
+        print(ray.utils.decode(msg["data"]), file=sys.stderr)
 
 
 def print_error_messages_raylet(task_error_queue):
@@ -1650,6 +1669,7 @@ def connect(info,
             redis_password=None,
             object_id_seed=None,
             mode=WORKER_MODE,
+            log_to_driver=False,
             worker=global_worker,
             driver_id=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
@@ -1665,6 +1685,8 @@ def connect(info,
             manner. However, the same ID should not be used for different jobs.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
             LOCAL_MODE.
+        log_to_driver (bool): If true, then output from all of the worker
+            processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
         driver_id: The ID of driver. If it's None, then we will generate one.
     """
@@ -1777,13 +1799,17 @@ def connect(info,
             log_stdout_file, log_stderr_file = (
                 tempfile_services.new_worker_redirected_log_file(
                     worker.worker_id))
-            sys.stdout = log_stdout_file
-            sys.stderr = log_stderr_file
-            try_update_handler(sys.stderr)
-            services.record_log_files_in_redis(
-                info["redis_address"],
-                info["node_ip_address"], [log_stdout_file, log_stderr_file],
-                password=redis_password)
+            # Redirect stdout/stderr at the file descriptor level. If we simply
+            # set sys.stdout and sys.stderr, then logging from C++ can fail to
+            # be redirected.
+            os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
+            os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            # This should always be the first message to appear in the worker's
+            # stdout and stderr log files. The string "Ray worker pid:" is
+            # parsed in the log monitor process.
+            print("Ray worker pid: {}".format(os.getpid()))
+            print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
+
         # Register the worker with Redis.
         worker_dict = {
             "node_ip_address": worker.node_ip_address,
@@ -1888,6 +1914,13 @@ def connect(info,
         listener.start()
         printer.daemon = True
         printer.start()
+        if log_to_driver:
+            log_thread = threading.Thread(
+                target=print_logs,
+                name="ray_print_logs",
+                args=(worker.redis_client, ))
+            log_thread.daemon = True
+            log_thread.start()
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
