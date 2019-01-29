@@ -9,11 +9,12 @@ namespace ray {
 namespace raylet {
 
 int NUM_WORKERS_PER_PROCESS = 3;
+int MAXIMUM_STARTUP_CONCURRENCY = 5;
 
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 5,
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
                     {Language::JAVA, {"dummy_java_worker_command"}}}),
         last_worker_pid_(0) {}
@@ -116,7 +117,7 @@ TEST_F(WorkerPoolTest, StartupWorkerCount) {
   // Check that number of starting worker processes equals to
   // maximum_startup_concurrency_ * 2. (because we started both python and java workers)
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(),
-  /* Provided in constructor of WorkerPoolMock */ 5 * 2);
+  /* Provided in constructor of WorkerPoolMock */ MAXIMUM_STARTUP_CONCURRENCY * 2);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
