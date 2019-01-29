@@ -696,11 +696,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   client->SetClientID(from_flatbuf(*message->client_id()));
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), message->language(), client);
-  if (message->is_worker()) {
+
+  const auto client_type = message->client_type();
+  if (client_type == ClientType::WORKER) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
-  } else {
+  } else if (client_type == ClientType::DRIVER) {
     // Register the new driver. Note that here the driver_id in RegisterClientRequest
     // message is actually the ID of the driver task, while client_id represents the
     // real driver ID, which can associate all the tasks/actors for a given driver,
@@ -710,6 +712,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker->AssignDriverId(from_flatbuf(*message->client_id()));
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
+  } else if (client_type == ClientType::NONE) {
+    // Do nothing for a client that is neither a worker nor a driver.
+    RAY_LOG(INFO) << "A none type client registered.";
+  } else {
+    RAY_LOG(FATAL) << "Failed to process register client request message: "
+                   << "client_type is " << static_cast<int>(client_type);
   }
 }
 
@@ -789,7 +797,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       is_driver = true;
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                    << "been disconnected.";
+                    << "been disconnected, or this client is a none-type client.";
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
@@ -1368,9 +1376,11 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
     worker = worker_pool_.GetRegisteredDriver(client);
   }
 
-  RAY_CHECK(worker);
-  // Mark the task as blocked.
-  worker->AddBlockedTaskId(current_task_id);
+  if (worker) {
+    // Mark the task as blocked.
+    worker->AddBlockedTaskId(current_task_id);
+  }
+
   if (local_queues_.GetBlockedTaskIds().count(current_task_id) == 0) {
     local_queues_.AddBlockedTaskId(current_task_id);
   }
@@ -1433,10 +1443,12 @@ void NodeManager::HandleTaskUnblocked(
     worker = worker_pool_.GetRegisteredDriver(client);
   }
 
-  RAY_CHECK(worker);
-  // If the task was previously blocked, then stop waiting for its dependencies
-  // and mark the task as unblocked.
-  worker->RemoveBlockedTaskId(current_task_id);
+  if (worker) {
+    // If the task was previously blocked, then stop waiting for its dependencies
+    // and mark the task as unblocked.
+    worker->RemoveBlockedTaskId(current_task_id);
+  }
+
   // Unsubscribe to the objects. Any fetch or reconstruction operations to
   // make the objects local are canceled.
   RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(current_task_id));
