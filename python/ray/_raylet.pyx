@@ -221,7 +221,7 @@ cdef class RayletClient:
                   ClientID client_id,
                   c_bool is_worker,
                   DriverID driver_id):
-        client_type = CLIENT_TYPE_WORKER if is_worer else CLIENT_TYPE_DRIVER
+        client_type = CLIENT_TYPE_WORKER if is_worker else CLIENT_TYPE_DRIVER
         # We know that we are using Python, so just skip the language parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(raylet_socket.encode("ascii"), client_id.data,
