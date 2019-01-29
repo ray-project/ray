@@ -57,7 +57,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                boost::asio::ip::tcp::v4(),
                                                node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
-  RAY_ARROW_CHECK_OK(store_client_.Connect(node_manager_config.store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(
+      store_client_.Connect(node_manager_config.store_socket_name.c_str()));
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
