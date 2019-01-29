@@ -121,7 +121,7 @@ table GetTaskReply {
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
   // Type of this client.
-  clientType: ClientType;
+  client_type: ClientType;
   // The ID of this client.
   client_id: string;
   // The process ID of this client.
