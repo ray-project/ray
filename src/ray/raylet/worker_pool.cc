@@ -42,8 +42,8 @@ WorkerPool::WorkerPool(
     int maximum_startup_concurrency,
     const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
       last_warning_multiple_(0) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -114,8 +114,14 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
-  // Launch the process to create the worker.
-  pid_t pid = fork();
+  // Extract pointers from the worker command to pass into execvp.
+  std::vector<const char *> worker_command_args;
+  for (auto const &token : state.worker_command) {
+    worker_command_args.push_back(token.c_str());
+  }
+  worker_command_args.push_back(nullptr);
+
+  pid_t pid = StartProcess(worker_command_args);
   if (pid < 0) {
     // Failure case.
     RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
@@ -127,17 +133,19 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
         std::make_pair(pid, num_workers_per_process_));
     return;
   }
+}
+
+pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_args) {
+  // Launch the process to create the worker.
+  pid_t pid = fork();
+
+  if (pid != 0) {
+    return pid;
+  }
 
   // Child process case.
   // Reset the SIGCHLD handler for the worker.
   signal(SIGCHLD, SIG_DFL);
-
-  // Extract pointers from the worker command to pass into execvp.
-  std::vector<const char *> worker_command_args;
-  for (auto const &token : state.worker_command) {
-    worker_command_args.push_back(token.c_str());
-  }
-  worker_command_args.push_back(nullptr);
 
   // Try to execute the worker command.
   int rv = execvp(worker_command_args[0],
@@ -145,6 +153,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   // The worker failed to start. This is a fatal error.
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
                  << strerror(errno);
+  return 0;
 }
 
 void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
@@ -232,7 +241,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
 }
 
-WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
+inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
   auto state = states_by_lang_.find(language);
   RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;

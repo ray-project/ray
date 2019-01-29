@@ -15,26 +15,19 @@ class WorkerPoolMock : public WorkerPool {
   WorkerPoolMock()
       : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 5,
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
-                    {Language::JAVA, {"dummy_java_worker_command"}}}) {}
+                    {Language::JAVA, {"dummy_java_worker_command"}}}),
+        last_worker_pid_(0) {}
   ~WorkerPoolMock() {
     // Avoid killing real processes
     states_by_lang_.clear();
   }
 
-  void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON) {
-    auto &state = GetStateForLanguage(language);
-    if (static_cast<int>(state.starting_worker_processes.size()) >=
-        maximum_startup_concurrency_) {
-      // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << state.starting_worker_processes.size() << " worker processes"
-                     << " of language type " << static_cast<int>(language)
-                     << " pending registration";
-      return;
-    }
-    // Either no workers are pending registration or the worker start is being forced.
-    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size(language);
-    state.starting_worker_processes.emplace(
-        std::make_pair(pid, num_workers_per_process_));
+  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+    return ++last_worker_pid_;
+  }
+
+  pid_t LastStartedWorkerProcess() const {
+    return last_worker_pid_;
   }
 
   int NumWorkerProcessesStarting() const {
@@ -44,6 +37,9 @@ class WorkerPoolMock : public WorkerPool {
     }
     return total;
   }
+
+ private:
+  int last_worker_pid_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -86,8 +82,8 @@ static inline TaskSpecification ExampleTaskSpec(
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  pid_t pid = 1234;
-  worker_pool_.StartWorkerProcess(pid);
+  worker_pool_.StartWorkerProcess(Language::PYTHON);
+  pid_t pid = worker_pool_.LastStartedWorkerProcess();
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS; i++) {
     workers.push_back(CreateWorker(pid));
@@ -114,8 +110,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 TEST_F(WorkerPoolTest, StartupWorkerCount) {
   int desired_initial_worker_count_per_language = 20;
   for (int i = 0; i < desired_initial_worker_count_per_language; i++) {
-    worker_pool_.StartWorkerProcess(1000 + i, Language::PYTHON);
-    worker_pool_.StartWorkerProcess(2000 + i, Language::JAVA);
+    worker_pool_.StartWorkerProcess(Language::PYTHON);
+    worker_pool_.StartWorkerProcess(Language::JAVA);
   }
   // Check that number of starting worker processes equals to
   // maximum_startup_concurrency_ * 2. (because we started both python and java workers)

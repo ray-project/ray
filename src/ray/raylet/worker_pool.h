@@ -131,6 +131,11 @@ class WorkerPool {
   std::string WarningAboutSize();
 
  protected:
+  /// The implementation of how to start a new worker process with command arguments.
+  /// \param worker_command_args The command arguments of new worker process.
+  /// \return The process ID of started worker process.
+  virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -149,23 +154,21 @@ class WorkerPool {
     std::unordered_map<pid_t, int> starting_worker_processes;
   };
 
-  /// A helper function that returns the reference of the pool state
-  /// for a given language.
-  State &GetStateForLanguage(const Language &language);
-
+  /// The number of workers per process.
+  int num_workers_per_process_;
   /// Pool states per language.
   std::unordered_map<Language, State> states_by_lang_;
 
-  /// The number of workers per process.
-  int num_workers_per_process_;
-
-  /// The maximum number of workers that can be started concurrently.
-  int maximum_startup_concurrency_;
-
  private:
+  /// A helper function that returns the reference of the pool state
+  /// for a given language.
+  inline State &GetStateForLanguage(const Language &language);
+
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
   int multiple_for_warning_;
+  /// The maximum number of workers that can be started concurrently.
+  int maximum_startup_concurrency_;
   /// The last size at which a warning about the number of registered workers
   /// was generated.
   int64_t last_warning_multiple_;
