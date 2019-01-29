@@ -2498,9 +2498,8 @@ def test_wait_reconstruction(shutdown_only):
 
 
 def test_inline_objects(shutdown_only):
-    import pyarrow
-
-    ray.init(num_cpus=1, object_store_memory=10**7)
+    config = json.dumps({"initial_reconstruction_timeout_milliseconds": 200})
+    ray.init(num_cpus=1, object_store_memory=10**7, _internal_config=config)
 
     @ray.remote
     class Actor(object):
@@ -2510,19 +2509,29 @@ def test_inline_objects(shutdown_only):
         def create_non_inline_object(self):
             return 10000 * [1]
 
+        def get(self):
+            return
+
+    def flush(actor):
+        # Flush the Release History.
+        # Current Plasma Client Cache will maintain 64-item list.
+        # If the number changed, this will fail.
+        for i in range(64):
+            ray.get(actor.get.remote())
+
     a = Actor.remote()
     inline_object = a.create_inline_object.remote()
     ray.get(inline_object)
-    ray.worker.global_worker.plasma_client.delete(
-        [pyarrow.plasma.ObjectID(inline_object.id())])
+    ray.internal.free([inline_object])
+    flush(a)
     # Make sure we can still get an inlined object created by an actor even
     # after it has been evicted.
     assert ray.get(inline_object) == "inline"
 
     non_inline_object = a.create_non_inline_object.remote()
     ray.get(non_inline_object)
-    ray.worker.global_worker.plasma_client.delete(
-        [pyarrow.plasma.ObjectID(non_inline_object.id())])
+    ray.internal.free([non_inline_object])
+    flush(a)
     # Objects created by an actor that were evicted and larger than the maximum
     # inline object size cannot be retrieved or reconstructed.
     with pytest.raises(ray.worker.RayTaskError):
