@@ -300,9 +300,6 @@ def start_ray_process(command,
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
 
-    if use_tmux:
-        raise NotImplementedError
-
     if sum(
         [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
          ]) > 1:
@@ -318,14 +315,15 @@ def start_ray_process(command,
     modified_env.update(env_updates)
 
     if use_gdb:
+        if not use_tmux:
+            raise ValueError("If 'use_gdb' is true, the 'use_tmux' must be true as well.")
         gdb_init_path = get_gdb_init_path()
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
         with open(gdb_init_path, "w") as gdb_init_file:
             gdb_init_file.write("run {}".format(run_args))
-        gdb_command = " ".join(["gdb", ray_process_path, "-x", gdb_init_path])
-        command = ["tmux", "new-window", "-d", gdb_command]
+        command = ["gdb", ray_process_path, "-x", gdb_init_path]
 
     if use_valgrind:
         command = [
@@ -340,6 +338,9 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_tmux:
+        command = ["tmux", "new-window", "-d", " ".join(command)]
 
     process = subprocess.Popen(
         command,
@@ -592,8 +593,8 @@ def start_redis(node_ip_address,
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput",
-                             1 if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput", 1
+                             if redirect_worker_output else 0)
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
