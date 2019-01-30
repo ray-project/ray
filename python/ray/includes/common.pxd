@@ -76,6 +76,7 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
     const CTaskID FinishTaskId(const CTaskID &task_id)
     const CObjectID ComputeReturnId(const CTaskID &task_id,
                                    int64_t return_index)
+    const CObjectID ComputeSignalId(const CTaskID &task_id, int64_t signal_index)
     const CObjectID ComputePutId(const CTaskID &task_id, int64_t put_index)
     const CTaskID ComputeTaskId(const CObjectID &object_id)
     const CTaskID GenerateTaskId(const CDriverID &driver_id,

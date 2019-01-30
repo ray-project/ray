@@ -7,36 +7,35 @@ import time
 
 import ray
 
-SYSTEM_ID_STRING = ray.ray_constants.ID_SIZE * b"\xaa"
-SYSTEM_ID = ray.ObjectID(SYSTEM_ID_STRING)
-
-SIG_ERROR = 1
-SIG_DONE = 2
-SIG_USER = 100
-
 START_SIGNAL_COUNTER = 10000
 
 class Signal(object):
     """Signal object"""
-    def __init__(self, type, value):
-        self.sig_type = type
-        self.sig_value = value
-    def value(self):
-        return self.sig_value
-    def type(self):
-        return self.sig_type
+    pass
+
+class DoneSignal(Signal):
+    pass
+
+class ErrorSignal(Signal):
+    def __init__(self, error):
+        self.error = error
 
 
 def _get_signal_id(source_id, counter):
     if  type(source_id) is ray.actor.ActorHandle:
-        return ray.raylet.compute_signal_id(
-            ray.raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id),
+        return ray._raylet.compute_signal_id(
+            ray._raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id),
             counter)
     else:
-        return ray.raylet.compute_signal_id(ray.raylet.compute_task_id(source_id), counter)
+        # TODO(pcm): Figure out why compute_signal_id is called with both
+        # object and task ids.
+        if type(source_id) is ray.TaskID:
+            return ray._raylet.compute_signal_id(source_id, counter)
+        else:
+            return ray._raylet.compute_signal_id(ray._raylet.compute_task_id(source_id), counter)
 
 def task_id(object_id):
-    return ray.raylet.compute_task_id(object_id)
+    return ray._raylet.compute_task_id(object_id)
 
 def send(signal, source_id = None):
     """Send signal on behalf of source_id.
@@ -50,12 +49,12 @@ def send(signal, source_id = None):
     """
     if source_id == None:
         if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-            source_key = ray.worker.global_worker.actor_creation_task_id.id()
+            source_key = ray.worker.global_worker.actor_creation_task_id.binary()
         else:
             # no actors; this function must have been called from a task
-            source_key = ray.worker.global_worker.current_task_id.id()
+            source_key = ray.worker.global_worker.current_task_id.binary()
     else:
-        source_key = source_id.id()
+        source_key = source_id.binary()
 
     index = ray.worker.global_worker.redis_client.incr(source_key)
     if index < START_SIGNAL_COUNTER:
@@ -113,7 +112,7 @@ def receive(source_ids, timeout=float('inf')):
                 source_id = source_id_from_signal_id[signal_id]
                 if isinstance(signal, Signal):
                     results.append((source_id, signal))
-                    if signal.type() == SIG_DONE:
+                    if type(signal) == DoneSignal:
                         del signal_counters[source_id]
 
                 # We read this signal so forget it.
@@ -149,7 +148,7 @@ def receive(source_ids, timeout=float('inf')):
         signal = ray.get(signal_id)
         if isinstance(signal, Signal):
             results.append((source_id, signal))
-            if signal.type() == SIG_DONE:
+            if type(signal) == DoneSignal:
                 del signal_counters[source_id]
 
     return results
@@ -168,7 +167,7 @@ def forget(source_ids):
     signal_counters = ray.worker.global_worker.signal_counters
 
     for source_id in source_ids:
-        source_key = ray.raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id).id()
+        source_key = ray._raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id).binary()
         value = ray.worker.global_worker.redis_client.get(source_key)
         if value != None:
             signal_counters[source_id] = int(value) + 1

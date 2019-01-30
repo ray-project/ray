@@ -79,6 +79,8 @@ def compute_put_id(TaskID task_id, int64_t put_index):
 def compute_task_id(ObjectID object_id):
     return TaskID.from_native(ComputeTaskId(object_id.data))
 
+def compute_signal_id(TaskID task_id, int64_t signal_index):
+    return ObjectID.from_native(ComputeSignalId(task_id.data, signal_index))
 
 cdef c_bool is_simple_value(value, int *num_elements_contained):
     num_elements_contained[0] += 1
