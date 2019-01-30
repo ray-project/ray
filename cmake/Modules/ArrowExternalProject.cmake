@@ -20,12 +20,12 @@ set(arrow_URL https://github.com/ray-project/arrow.git)
 # Arrow often rewrites git history and invalidates certain commits.
 # It has been patched to fix an upstream symbol clash with TensorFlow,
 # the patch is available at
-# https://github.com/ray-project/arrow/commit/97c22ae9b24ed45942e40f350b5a9b61010a0af6
+# https://github.com/ray-project/arrow/commit/bbf91d7f8c9ac971929ea67250b5d4c9d8c42a53
 # See the discussion in https://github.com/apache/arrow/pull/3177
 # WARNING: If the arrow version is updated, you need to also update the
 # SETUPTOOLS_SCM_PRETEND_VERSION version string in the ThirdpartyToolchain.cmake
 # file
-set(arrow_TAG 97c22ae9b24ed45942e40f350b5a9b61010a0af6)
+set(arrow_TAG bbf91d7f8c9ac971929ea67250b5d4c9d8c42a53)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
