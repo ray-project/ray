@@ -1021,7 +1021,8 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        java_worker_options = java_worker_options or get_default_java_worker_options()
+        java_worker_options = (
+            java_worker_options or get_default_java_worker_options())
         java_worker_command = build_java_worker_command(java_worker_options,
                                                         redis_address,
                                                         plasma_store_name,
