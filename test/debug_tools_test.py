@@ -3,42 +3,28 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-try:
-    import psutil
-except ImportError:
-    psutil = None
 import pytest
 import ray
+import subprocess
 
 
-@ray.remote
-def f():
-    return 42
-
-
-@pytest.mark.parametrize("env_var, process_name", [("RAY_RAYLET_GDB", "raylet"), ("RAY_PLASMA_STORE_GDB", "plasma")])
+@pytest.mark.parametrize("env_var, process_name", [("RAY_PLASMA_STORE_GDB", "plasma/plasma_store_server"), ("RAY_RAYLET_GDB", "raylet/raylet")])
 def test_raylet_gdb(env_var, process_name):
     # Save original environment variables and set new ones
     _environ = os.environ.copy()
     os.environ[env_var] = "1"
 
     # Test ray works as expected
-    ray.init(ignore_reinit_error=True)
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def f():
+        return 42
+
     assert ray.get(f.remote()) == 42
 
-    # Test that gdb is running only if psutil is installed
-    gdb_process = False
-    if psutil is not None:
-        for pid in psutil.pids():
-            try:
-                proc = psutil.Process(pid)
-            except:
-                continue
-            if "gdb" in proc.name():
-                gdb_process = True
-                proc.terminate()
-                break
-        assert gdb_process
+    # Check process name in `ps aux | grep gdb`
+    assert subprocess.check_output("ps aux | grep gdb | grep {}".format(process_name), shell=True)
 
     ray.shutdown()
 
