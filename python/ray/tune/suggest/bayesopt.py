@@ -44,7 +44,7 @@ class BayesOptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     }
         >>> }
-        >>> algo = HyperOptSearch(
+        >>> algo = BayesOptSearch(
         >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
     """
 
@@ -68,7 +68,7 @@ class BayesOptSearch(SuggestionAlgorithm):
 
         self.optimizer = byo.BayesianOptimization(
             f=None,
-            pbounds=space,  # TODO: document
+            pbounds=space,
             verbose=verbose,
             random_state=random_state)
 
