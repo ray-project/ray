@@ -104,9 +104,10 @@ def include_java_from_redis(redis_client):
         return False
 
 
-def get_default_java_classpath():
+def get_default_java_worker_options():
     this_dir = os.path.abspath(os.path.dirname(__file__))
-    return os.path.join(this_dir, "../../../build/java/*")
+    default_classpath = os.path.join(this_dir, "../../../build/java/*")
+    return "-cp {}".format(default_classpath)
 
 
 def remaining_processes_alive(exclude=None):
@@ -961,7 +962,7 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  include_java=False,
-                 java_classpath=None):
+                 java_worker_options=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -992,7 +993,7 @@ def start_raylet(redis_address,
             override defaults in RayConfig.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_classpath (str): The classpath for Java worker.
+        java_worker_options (str): The command options for Java worker.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1020,8 +1021,8 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        java_classpath = java_classpath or get_default_java_classpath()
-        java_worker_command = build_java_worker_command(java_classpath,
+        java_worker_options = java_worker_options or get_default_java_worker_options()
+        java_worker_command = build_java_worker_command(java_worker_options,
                                                         redis_address,
                                                         plasma_store_name,
                                                         raylet_name)
@@ -1085,14 +1086,14 @@ def start_raylet(redis_address,
     return process_info
 
 
-def build_java_worker_command(java_classpath,
+def build_java_worker_command(java_worker_options,
                               redis_address,
                               plasma_store_name,
                               raylet_name):
     """This method assembles the command used to start a Java worker.
 
     Args:
-        java_classpath (str): The classpath for Java worker.
+        java_worker_options (str): The command options for Java worker.
         redis_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
@@ -1102,11 +1103,11 @@ def build_java_worker_command(java_classpath,
         The command string for starting Java worker.
     """
 
-    if java_classpath is None:
-        raise Exception("java_classpath must not be "
+    if java_worker_options is None:
+        raise Exception("java_worker_options must not be "
                         "None if include_java is True.")
 
-    command = "java -classpath {} ".format(java_classpath)
+    command = "java {} ".format(java_worker_options)
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 

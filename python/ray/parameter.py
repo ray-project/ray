@@ -69,7 +69,7 @@ class RayParams(object):
         autoscaling_config: path to autoscaling config file.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_classpath (str): The classpath for Java worker.
+        java_worker_options (str): The command options for Java worker.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -107,7 +107,7 @@ class RayParams(object):
                  include_log_monitor=None,
                  autoscaling_config=None,
                  include_java=False,
-                 java_classpath=None,
+                 java_worker_options=None,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -139,7 +139,7 @@ class RayParams(object):
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.include_java = include_java
-        self.java_classpath = java_classpath
+        self.java_worker_options = java_worker_options
         self._internal_config = _internal_config
         self._check_usage()
 

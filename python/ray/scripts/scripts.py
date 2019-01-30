@@ -208,11 +208,11 @@ def cli(logging_level, logging_format):
     default=None,
     help="Enable support Java worker in backend.")
 @click.option(
-    "--java-classpath",
+    "--java-worker-options",
     required=False,
     default=None,
     type=str,
-    help="Specify classpath for Java worker.")
+    help="Specify command options for Java worker.")
 @click.option(
     "--internal-config",
     default=None,
@@ -225,7 +225,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          include_java, java_classpath, internal_config):
+          include_java, java_worker_options, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -240,8 +240,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    if include_java is None and java_classpath is not None:
-        raise Exception("Should not specify `java-classpath`"
+    if include_java is None and java_worker_options is not None:
+        raise Exception("Should not specify `java-worker-options`"
                         " without providing `include-java`.")
 
     ray_params = ray.parameter.RayParams(
@@ -262,7 +262,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
         include_java=include_java,
-        java_classpath=java_classpath,
+        java_worker_options=java_worker_options,
         _internal_config=internal_config)
 
     if head:
