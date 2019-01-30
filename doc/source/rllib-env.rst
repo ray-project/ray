@@ -62,6 +62,8 @@ You can also register a custom env creator function with a string name. This fun
     register_env("my_env", env_creator)
     trainer = ppo.PPOAgent(env="my_env")
 
+For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
+
 Configuring Environments
 ------------------------
 
@@ -103,6 +105,10 @@ There are two ways to scale experience collection with Gym environments:
 
 You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
+Expensive Environments
+~~~~~~~~~~~~~~~~~~~~~~
+
+Some environments may be very resource-intensive to create. RLlib will create ``num_workers + 1`` copies of the environment since one copy is needed for the driver process. To avoid paying the extra overhead of the driver copy, which is needed to access the env's action and observation spaces, you can defer environment initialization until ``reset()`` is called.
 
 Vectorized
 ----------
@@ -233,6 +239,8 @@ This can be implemented as a multi-agent environment with three types of agents.
 
 
 In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
+
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__.
 
 
 Grouping Agents
