@@ -44,7 +44,7 @@ This algorithm requires `setting a search space and defining a utility function 
 
     run_experiments(experiment_config, search_alg=BayesOptSearch(bayesopt_space, utility_kwargs=utility_params, ... ))
 
-An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__.
+An example of this can be found in `bayesopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.BayesOptSearch
     :show-inheritance:
