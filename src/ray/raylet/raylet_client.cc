@@ -213,8 +213,8 @@ RayletClient::RayletClient(const std::string &raylet_socket, const UniqueID &cli
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, client_type, to_flatbuf(fbb, client_id), getpid(),
-      to_flatbuf(fbb, driver_id), language);
+      fbb, client_type, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
+      language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
