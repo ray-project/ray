@@ -303,7 +303,9 @@ def start_ray_process(command,
     if use_tmux:
         raise NotImplementedError
 
-    if sum([use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
+    if sum(
+        [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
+         ]) > 1:
         raise ValueError(
             "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
             "'use_perftools_profiler' flags can be used at a time.")
@@ -590,8 +592,8 @@ def start_redis(node_ip_address,
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput", 1
-                             if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput",
+                             1 if redirect_worker_output else 0)
 
     # put the include_java bool to primary redis-server, so that other nodes
     # can access it and know whether or not to enable cross-languages.
@@ -813,8 +815,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")
+                  ["client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -1219,8 +1221,8 @@ def determine_plasma_store_config(object_store_memory=None,
                     "up space by deleting files in /dev/shm or terminating "
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
-                    "argument with the flag '--shm-size' to 'docker run'."
-                    .format(shm_avail))
+                    "argument with the flag '--shm-size' to 'docker run'.".
+                    format(shm_avail))
         else:
             plasma_directory = "/tmp"
 
@@ -1235,8 +1237,8 @@ def determine_plasma_store_config(object_store_memory=None,
                        "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise Exception("The file {} does not exist or is not a directory."
-                        .format(plasma_directory))
+        raise Exception("The file {} does not exist or is not a directory.".
+                        format(plasma_directory))
 
     return object_store_memory, plasma_directory
 

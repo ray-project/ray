@@ -8,7 +8,10 @@ import ray
 import subprocess
 
 
-@pytest.mark.parametrize("env_var, process_name", [("RAY_PLASMA_STORE_GDB", "plasma/plasma_store_server"), ("RAY_RAYLET_GDB", "raylet/raylet")])
+@pytest.mark.parametrize(
+    "env_var, process_name",
+    [("RAY_PLASMA_STORE_GDB", "plasma/plasma_store_server"),
+     ("RAY_RAYLET_GDB", "raylet/raylet")])
 def test_raylet_gdb(env_var, process_name):
     # Save original environment variables and set new ones
     _environ = os.environ.copy()
@@ -24,7 +27,8 @@ def test_raylet_gdb(env_var, process_name):
     assert ray.get(f.remote()) == 42
 
     # Check process name in `ps aux | grep gdb`
-    assert subprocess.check_output("ps aux | grep gdb | grep {}".format(process_name), shell=True)
+    assert subprocess.check_output(
+        "ps aux | grep gdb | grep {}".format(process_name), shell=True)
 
     ray.shutdown()
 
