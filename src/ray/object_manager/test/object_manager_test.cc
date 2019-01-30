@@ -30,7 +30,7 @@ class MockServer {
         object_manager_(main_service, object_manager_config,
                         std::make_shared<ObjectDirectory>(main_service, gcs_client_),
                         store_client_) {
-    ARROW_CHECK_OK(store_client_.Connect(store_name.c_str()));
+    RAY_ARROW_CHECK_OK(store_client_.Connect(store_name.c_str()));
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
