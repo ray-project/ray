@@ -128,15 +128,19 @@ def train_mnist(args, config, reporter):
     def test():
         model.eval()
         test_loss = 0
-        correct = 0        
+        correct = 0
         with torch.no_grad():
             for data, target in test_loader:
                 if args.cuda:
-                    data, target = data.cuda(), target.cuda()            
+                    data, target = data.cuda(), target.cuda()
                 output = model(data)
-                test_loss += F.nll_loss(output, target, reduction='sum').item() # sum up batch loss
-                pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-                correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
+                # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction='sum').item()
+                # get the index of the max log-probability
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(
+                    target.data.view_as(pred)
+                ).long().cpu().sum()
 
         test_loss = test_loss / len(test_loader.dataset)
         accuracy = correct.item() / len(test_loader.dataset)

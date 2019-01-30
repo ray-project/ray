@@ -141,9 +141,13 @@ class TrainMNIST(Trainable):
                 if self.args.cuda:
                     data, target = data.cuda(), target.cuda()
                 output = self.model(data)
-                test_loss += F.nll_loss(output, target, reduction='sum').item() # sum up batch loss                
-                pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-                correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
+                # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction='sum').item()
+                # get the index of the max log-probability
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(
+                    target.data.view_as(pred)
+                ).long().cpu().sum()
 
         test_loss = test_loss / len(self.test_loader.dataset)
         accuracy = correct.item() / len(self.test_loader.dataset)
