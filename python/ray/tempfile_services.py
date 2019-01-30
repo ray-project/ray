@@ -143,7 +143,9 @@ def get_ipython_notebook_path():
 
 
 def get_gdb_init_path(process_type):
-    return make_inc_temp(prefix="gdb_init_{}".format(process_type), directory_name=get_temp_root())
+    return make_inc_temp(
+        prefix="gdb_init_{}".format(process_type),
+        directory_name=get_temp_root())
 
 
 def new_log_files(name, redirect_output):
