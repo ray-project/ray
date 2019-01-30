@@ -2420,7 +2420,7 @@ def test_log_file_api(shutdown_only):
             break
         time.sleep(0.1)
 
-    assert found_message is True
+    assert found_message_1 and found_message_2
 
 
 @pytest.mark.skipif(
