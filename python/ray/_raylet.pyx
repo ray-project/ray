@@ -201,9 +201,6 @@ cdef class ClientType:
             raise Exception("Unexpected error")
 
 
-# TODO(qwang): Client type enum values
-
-
 cdef unordered_map[c_string, double] resource_map_from_python_dict(resource_map):
     cdef:
         unordered_map[c_string, double] out

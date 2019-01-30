@@ -152,7 +152,6 @@ class RayletClient {
 
   JobID GetDriverID() const { return driver_id_; }
 
-  // TODO(qwang): IsWorker() -> ClientType()
   bool IsWorker() const { return client_type_ == ClientType::WORKER; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
