@@ -775,7 +775,7 @@ class GlobalState(object):
 
             num_tasks += self.redis_client.zcount(
                 event_log_set, min=0, max=time.time())
-        if num_tasks is 0:
+        if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 
