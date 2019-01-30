@@ -54,9 +54,6 @@ class MemoryMonitor(object):
         self.check_interval = check_interval
         self.last_checked = time.time()
         self.error_threshold = error_threshold
-        # TODO: This is a hotfix and should be removed later. We check for
-        # handlers because this object is instantiated before
-        # logging is configured which leads to non-descript messages printed.
         if not psutil:
             print("WARNING: Not monitoring node memory since `psutil` is not "
                   "installed. Install this with `pip install psutil` "
