@@ -83,6 +83,7 @@ This document describes the process for creating new releases.
 
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
 .. _`test/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_stress_tests.sh
+.. _`test/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_application_stress_tests.sh
 .. _`this example`: https://github.com/ray-project/ray/pull/3420
 .. _`these wheels here`: https://ray.readthedocs.io/en/latest/installation.html
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
