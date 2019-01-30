@@ -240,6 +240,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
+    if include_java is None and java_classpath is not None:
+        raise Exception("Should not specify `java-classpath`"
+                        " without providing `include-java`.")
+
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,

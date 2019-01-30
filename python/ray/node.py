@@ -193,8 +193,8 @@ class Node(object):
         if self.redis_address is not None:
             redis_client = ray.services.create_redis_client(
                 self.redis_address, self._ray_params.redis_password)
-            self._ray_params.include_java = \
-                ray.services.include_java_from_redis(redis_client)
+            self._ray_params.include_java = (
+                ray.services.include_java_from_redis(redis_client))
 
         process_info = ray.services.start_raylet(
             self._redis_address,
