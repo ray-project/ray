@@ -2386,30 +2386,37 @@ def test_global_state_api(shutdown_only):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_log_file_api(shutdown_only):
+    """Tests that stderr and stdout are redirected appropriately."""
     ray.init(num_cpus=1, redirect_worker_output=True)
 
-    message = "unique message"
+    message_1 = "unique message"
+    message_2 = "message unique"
 
     @ray.remote
     def f():
-        logger.info(message)
+        print(message_1, file=sys.stdout)
+        print(message_2, file=sys.stderr)
         # The call to sys.stdout.flush() seems to be necessary when using
         # the system Python 2.7 on Ubuntu.
         sys.stdout.flush()
+        sys.stderr.flush()
 
     ray.get(f.remote())
 
     # Make sure that the message appears in the log files.
     start_time = time.time()
-    found_message = False
+    found_message_1 = False
+    found_message_2 = False
     while time.time() - start_time < 10:
         log_files = ray.global_state.log_files()
         for ip, innerdict in log_files.items():
             for filename, contents in innerdict.items():
                 contents_str = "".join(contents)
-                if message in contents_str:
-                    found_message = True
-        if found_message:
+                if message_1 in contents_str:
+                    found_message_1 = True
+                if message_2 in contents_str:
+                    found_message_2 = True
+        if found_message_1 and found_message_2:
             break
         time.sleep(0.1)
 
