@@ -356,7 +356,8 @@ class Trial(object):
         be a checkpoint.
         """
         return (self.checkpoint_freq > 0
-                and (self.num_failures < self.max_failures or self.max_failures < 0))
+                and (self.num_failures < self.max_failures
+                     or self.max_failures < 0))
 
     def update_last_result(self, result, terminate=False):
         if terminate:
