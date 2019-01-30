@@ -348,10 +348,9 @@ class RayTrialExecutor(TrialExecutor):
             return False
 
     def export_trial_if_needed(self, trial):
-        """Exports policy graph of this trial based on trial.export_formats.
+        """Exports model of this trial based on trial.export_formats.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
             return ray.get(
-                trial.runner.export_default_policy.remote(
-                    trial.export_formats))
+                trial.runner.export_model.remote(trial.export_formats))
         return {}

@@ -684,7 +684,7 @@ class RunExperimentTest(unittest.TestCase):
             def _train(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _export_default_policy(self, export_formats, export_dir):
+            def _export_model(self, export_formats, export_dir):
                 path = export_dir + "/exported"
                 with open(path, "w") as f:
                     f.write("OK")
@@ -706,7 +706,7 @@ class RunExperimentTest(unittest.TestCase):
             def _train(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _export_default_policy(self, export_formats, export_dir):
+            def _export_model(self, export_formats, export_dir):
                 ExportFormat.validate(export_formats)
                 return {}
 

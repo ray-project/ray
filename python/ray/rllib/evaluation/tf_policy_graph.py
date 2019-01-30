@@ -207,10 +207,9 @@ class TFPolicyGraph(PolicyGraph):
         try:
             os.makedirs(export_dir)
         except OSError as e:
-            # Ignore error if export_dir already exists
+            # ignore error if export dir already exists
             if e.errno != errno.EEXIST:
                 raise
-
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
             saver = tf.train.Saver()

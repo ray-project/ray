@@ -123,8 +123,8 @@ def test_export(algo_name, failures):
     shutil.rmtree(export_dir)
 
     print("Exporting default policy", algo_name, export_dir)
-    algo.export_default_policy([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
-                               export_dir)
+    algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
+                      export_dir)
     if not valid_tf_model(os.path.join(export_dir, ExportFormat.MODEL)) \
             or not valid_tf_checkpoint(os.path.join(export_dir,
                                                     ExportFormat.CHECKPOINT)):

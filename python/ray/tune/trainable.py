@@ -331,21 +331,21 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
-    def export_default_policy(self, export_formats, export_dir=None):
-        """Exports default policy graph based on export_formats.
-        Subclasses should override _export_default_policy() to actually
-        export policy graph to local directory.
+    def export_model(self, export_formats, export_dir=None):
+        """Exports model based on export_formats.
+        Subclasses should override _export_model() to actually
+        export model to local directory.
 
         Args:
             export_formats (list): List of formats that should be exported.
             export_dir (str): Optional dir to place the exported model.
 
         Returns:
-            A Python dict of directories containing the exported policy graphs
-            corresponding to export_formats if exported otherwise empty dict.
+            A Python dict mapping export formats to exported models
+            if exported successfully otherwise empty dict.
         """
         export_dir = export_dir or self.logdir
-        return self._export_default_policy(export_formats, export_dir)
+        return self._export_model(export_formats, export_dir)
 
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
@@ -418,16 +418,16 @@ class Trainable(object):
         """Subclasses should override this for any cleanup on stop."""
         pass
 
-    def _export_default_policy(self, export_formats, export_dir):
-        """Subclasses should override this to actually export policy graphs.
+    def _export_model(self, export_formats, export_dir):
+        """Subclasses should override this to actually export model.
 
         Args:
             export_formats (list): List of formats that should be exported.
-            export_dir (str): Local directory to place exported policy graphs.
+            export_dir (str): Local directory to place exported models.
 
         Returns:
-            A Python dict of directories containing the exported policy graphs
-            corresponding to export_formats if exported otherwise empty dict.
+            A Python dict mapping export formats to exported models
+            if exported successfully otherwise empty dict.
         """
         return {}
 
