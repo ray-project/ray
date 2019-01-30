@@ -10,7 +10,8 @@ import pytest
 import ray
 
 
-@pytest.fixture(params=[("PLASMA_STORE", "plasma/plasma_store_server"), ("RAYLET", "raylet/raylet")])
+@pytest.fixture(params=[("PLASMA_STORE", "plasma/plasma_store_server"),
+                        ("RAYLET", "raylet/raylet")])
 def ray_gdb_start(request):
     # Setup environment and start ray
     _environ = os.environ.copy()
@@ -34,9 +35,13 @@ def test_raylet_gdb(ray_gdb_start):
     @ray.remote
     def f():
         return 42
+
     assert ray.get(f.remote()) == 42
 
     # Check process name in `ps aux | grep gdb`
-    pgrep_command = subprocess.Popen(["pgrep", "-f", "gdb.*{}".format(process_name)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    pgrep_command = subprocess.Popen(
+        ["pgrep", "-f", "gdb.*{}".format(process_name)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
     assert pgrep_command.communicate()[0]
     subprocess.call(["pkill", "-f", "gdb.*{}".format(process_name)])

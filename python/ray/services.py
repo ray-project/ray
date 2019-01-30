@@ -316,7 +316,8 @@ def start_ray_process(command,
 
     if use_gdb:
         if not use_tmux:
-            raise ValueError("If 'use_gdb' is true, the 'use_tmux' must be true as well.")
+            raise ValueError(
+                "If 'use_gdb' is true, the 'use_tmux' must be true as well.")
         gdb_init_path = get_gdb_init_path()
         ray_process_path = command[0]
         ray_process_args = command[1:]
