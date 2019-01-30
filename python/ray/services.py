@@ -817,8 +817,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")
-                  ["client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")[
+        "client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -1239,8 +1239,9 @@ def determine_plasma_store_config(object_store_memory=None,
                        "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise Exception("The file {} does not exist or is not a directory.".
-                        format(plasma_directory))
+        raise Exception(
+            "The file {} does not exist or is not a directory.".format(
+                plasma_directory))
 
     return object_store_memory, plasma_directory
 
