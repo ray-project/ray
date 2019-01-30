@@ -266,8 +266,8 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
 
     Returns:
-        Information about the process that was started including a handle to the
-            process that was started.
+        Information about the process that was started including a handle to
+            the process that was started.
     """
     # Detect which flags are set through environment variables.
     valgrind_env_var = "RAY_{}_VALGRIND".format(process_type.upper())
@@ -1112,7 +1112,8 @@ def build_java_worker_command(java_worker_options,
         command += "-Dray.redis.address={} ".format(redis_address)
 
     if plasma_store_name is not None:
-        command += "-Dray.object-store.socket-name={} ".format(plasma_store_name)
+        command += (
+            "-Dray.object-store.socket-name={} ".format(plasma_store_name))
 
     if raylet_name is not None:
         command += "-Dray.raylet.socket-name={} ".format(raylet_name)
