@@ -30,7 +30,7 @@ Note that other search algorithms will not necessarily extend this class and may
 BayesOpt Search
 ---------------
 
-The ``BayesOptSearch`` is a SearchAlgorithm that is backed by `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BayesOptSearch.
+The ``BayesOptSearch`` is a SearchAlgorithm that is backed by the `bayesian-optimization <https://github.com/fmfn/BayesianOptimization>`__ package to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BayesOptSearch.
 
 In order to use this search algorithm, you will need to install Bayesian Optimization via the following command:
 
