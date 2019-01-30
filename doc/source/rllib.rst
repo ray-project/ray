@@ -100,6 +100,7 @@ Development
 -----------
 
 * `Development Install <rllib-dev.html#development-install>`__
+* `API Stability <rllib-dev.html#api-stability>`__
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
