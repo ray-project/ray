@@ -585,6 +585,7 @@ class Agent(Trainable):
 
     @override(Trainable)
     def _export_default_policy(self, export_formats, export_dir):
+        ExportFormat.validate(export_formats)
         exported = {}
         if ExportFormat.CHECKPOINT in export_formats:
             path = os.path.join(export_dir, ExportFormat.CHECKPOINT)

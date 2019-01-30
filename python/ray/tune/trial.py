@@ -142,6 +142,16 @@ class ExportFormat(object):
     CHECKPOINT = "checkpoint"
     MODEL = "model"
 
+    @staticmethod
+    def validate(export_formats):
+        """Validates export_formats and raises ValueError
+        if the format is unknown.
+        """
+        for export_format in export_formats:
+            if export_format not in \
+                    [ExportFormat.CHECKPOINT, ExportFormat.MODEL]:
+                raise TuneError("Unsupported export format: " + export_format)
+
 
 class Trial(object):
     """A trial object holds the state for one model training run.
