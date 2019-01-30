@@ -76,7 +76,7 @@ void ObjectManager::HandleObjectAdded(
     // Inline object. Store the object's data in the object's GCS entry.
     std::vector<plasma::ObjectBuffer> object_buffers;
     // NOTE: This is a blocking call.
-    ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
+    RAY_ARROW_CHECK_OK(store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
     inline_object_flag = true;
     inline_object_data.assign(
         object_buffers[0].data->data(),
