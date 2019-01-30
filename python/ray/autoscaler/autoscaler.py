@@ -692,6 +692,12 @@ def hash_launch_conf(node_conf, auth):
     return hasher.hexdigest()
 
 
+# Cache the file hashes to avoid rescanning it each time. Also, this avoids
+# inadvertently restarting workers if the file mount content is mutated on the
+# head node.
+_hash_cache = {}
+
+
 def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
@@ -715,9 +721,15 @@ def hash_runtime_conf(file_mounts, extra_objs):
         else:
             add_hash_of_file(path)
 
-    hasher.update(json.dumps(file_mounts, sort_keys=True).encode("utf-8"))
-    hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
-    for local_path in sorted(file_mounts.values()):
-        add_content_hashes(local_path)
+    conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
+                json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    return hasher.hexdigest()
+    # Important: only hash the files once. Otherwise, we can end up restarting
+    # workers if the files were changed and we re-hashed them.
+    if conf_str not in _hash_cache:
+        hasher.update(conf_str)
+        for local_path in sorted(file_mounts.values()):
+            add_content_hashes(local_path)
+        _hash_cache[conf_str] = hasher.hexdigest()
+
+    return _hash_cache[conf_str]
