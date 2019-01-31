@@ -67,10 +67,7 @@ class BayesOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping = {}
 
         self.optimizer = byo.BayesianOptimization(
-            f=None,
-            pbounds=space,
-            verbose=verbose,
-            random_state=random_state)
+            f=None, pbounds=space, verbose=verbose, random_state=random_state)
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
