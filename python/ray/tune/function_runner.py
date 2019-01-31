@@ -32,11 +32,14 @@ class StatusReporter(object):
     def __call__(self, **kwargs):
         """Report updated training status.
 
+        Pass in `done=True` when the training job is completed.
+
         Args:
             kwargs: Latest training result status.
 
         Example:
             >>> reporter(mean_accuracy=1, training_iteration=4)
+            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
         """
 
         with self._lock:
