@@ -44,7 +44,7 @@ def wait_for_crm_operation(operation):
             raise Exception(result["error"])
 
         if "done" in result and result["done"]:
-            logger.info("wait_for_crm_operation: " "Operation done.")
+            logger.info("wait_for_crm_operation: Operation done.")
             break
 
         time.sleep(POLL_INTERVAL)

@@ -288,7 +288,7 @@ class Monitor(object):
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
         num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
-        logger.info("Monitor: " "num_flushed {}".format(num_flushed))
+        logger.info("Monitor: num_flushed {}".format(num_flushed))
 
         # This flushes event log and log files.
         ray.experimental.flush_redis_unsafe(self.redis)

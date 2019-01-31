@@ -100,7 +100,7 @@ class NodeUpdater(object):
         # We assume that this never changes.
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
-        with LogTimer("NodeUpdater: " "{}: Got IP".format(self.node_id)):
+        with LogTimer("NodeUpdater: {}: Got IP".format(self.node_id)):
             ip = self.wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
 

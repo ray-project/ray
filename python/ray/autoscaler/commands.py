@@ -102,7 +102,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     # Loop here to check that both the head and worker nodes are actually
     #   really gone
     A = remaining_nodes()
-    with LogTimer("teardown_cluster: " "Termination done."):
+    with LogTimer("teardown_cluster: Termination done."):
         while A:
             logger.info("teardown_cluster: "
                         "Terminating {} nodes...".format(len(A)))
@@ -126,7 +126,7 @@ def kill_node(config_file, yes, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
     node = random.choice(nodes)
-    logger.info("kill_node: " "Terminating worker {}".format(node))
+    logger.info("kill_node: Terminating worker {}".format(node))
 
     updater = NodeUpdaterThread(node, config["provider"], provider,
                                 config["auth"], config["cluster_name"],
@@ -169,7 +169,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             logger.info("get_or_create_head_node: "
                         "Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
-        logger.info("get_or_create_head_node: " "Launching new head node...")
+        logger.info("get_or_create_head_node: Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
         head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
             config["cluster_name"])
@@ -182,7 +182,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     # TODO(ekl) right now we always update the head node even if the hash
     # matches. We could prompt the user for what they want to do in this case.
     runtime_hash = hash_runtime_conf(config["file_mounts"], config)
-    logger.info("get_or_create_head_node: " "Updating files on head node...")
+    logger.info("get_or_create_head_node: Updating files on head node...")
 
     # Rewrite the auth config so that the head node can update the workers
     remote_key_path = "~/ray_bootstrap_key.pem"

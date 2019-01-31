@@ -20,7 +20,7 @@ def dockerize_if_needed(config):
     if not docker_image:
         if cname:
             logger.warning(
-                "dockerize_if_needed "
+                "dockerize_if_needed: "
                 "Container name given but no Docker image - continuing...")
         return config
     else:
