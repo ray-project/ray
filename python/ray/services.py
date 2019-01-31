@@ -20,8 +20,11 @@ import pyarrow
 import ray
 import ray.ray_constants as ray_constants
 
-from ray.tempfile_services import (get_ipython_notebook_path, get_temp_root,
-                                   new_redis_log_file, get_logs_dir_path)
+from ray.tempfile_services import (get_ipython_notebook_path,
+                                   get_temp_root,
+                                   new_redis_log_file,
+                                   get_logs_dir_path,
+                                   )
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -54,6 +57,10 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
     "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+
+DEFAULT_JAVA_WORKER_OPTIONS = "-cp {}".format(
+    os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                 "../../../build/java/*"))
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -97,17 +104,7 @@ def include_java_from_redis(redis_client):
     Returns:
         True if this cluster backend enables Java worker.
     """
-    include_java_value = redis_client.get("INCLUDE_JAVA")
-    if include_java_value is not None:
-        return int(include_java_value) == 1
-    else:
-        return False
-
-
-def get_default_java_worker_options():
-    this_dir = os.path.abspath(os.path.dirname(__file__))
-    default_classpath = os.path.join(this_dir, "../../../build/java/*")
-    return "-cp {}".format(default_classpath)
+    return redis_client.get("INCLUDE_JAVA") == b"1"
 
 
 def remaining_processes_alive(exclude=None):
@@ -1022,7 +1019,7 @@ def start_raylet(redis_address,
 
     if include_java is True:
         java_worker_options = (java_worker_options
-                               or get_default_java_worker_options())
+                               or DEFAULT_JAVA_WORKER_OPTIONS)
         java_worker_command = build_java_worker_command(
             java_worker_options, redis_address, plasma_store_name, raylet_name)
     else:
@@ -1099,10 +1096,7 @@ def build_java_worker_command(java_worker_options, redis_address,
     Returns:
         The command string for starting Java worker.
     """
-
-    if java_worker_options is None:
-        raise Exception("java_worker_options must not be "
-                        "None if include_java is True.")
+    assert java_worker_options is not None
 
     command = "java {} ".format(java_worker_options)
     if redis_address is not None:

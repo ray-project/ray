@@ -206,13 +206,13 @@ def cli(logging_level, logging_format):
     "--include-java",
     is_flag=True,
     default=None,
-    help="Enable support Java worker in backend.")
+    help="Enable Java worker support.")
 @click.option(
     "--java-worker-options",
     required=False,
     default=None,
     type=str,
-    help="Specify command options for Java worker.")
+    help="Overwrite the options to start Java workers.")
 @click.option(
     "--internal-config",
     default=None,
@@ -239,10 +239,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
-
-    if include_java is None and java_worker_options is not None:
-        raise Exception("Should not specify `java-worker-options`"
-                        " without providing `include-java`.")
 
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
@@ -343,8 +339,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")
         if include_java is not None:
-            raise Exception("If --head is not passed in, --include-java must"
-                            " not be provided.")
+            raise ValueError("--include-java should only be set for the head "
+                             "node.")
 
         redis_ip_address, redis_port = redis_address.split(":")
 

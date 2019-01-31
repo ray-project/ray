@@ -184,6 +184,10 @@ class RayParams(object):
                 "num_gpus instead.")
 
         if self.num_workers is not None:
-            raise Exception(
+            raise ValueError(
                 "The 'num_workers' argument is deprecated. Please use "
                 "'num_cpus' instead.")
+
+        if self.include_java is None and self.java_worker_options is not None:
+            raise ValueError("Should not specify `java-worker-options` "
+                             "without providing `include-java`.")
