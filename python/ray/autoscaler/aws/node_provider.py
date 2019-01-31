@@ -50,7 +50,7 @@ class AWSNodeProvider(NodeProvider):
         self.tag_cache_kill_event = threading.Event()
         self.tag_update_thread = threading.Thread(
             target=self._node_tag_update_loop)
-        self.tag_update_thread.start()  # TODO: monitor this?
+        self.tag_update_thread.start()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -208,7 +208,6 @@ class AWSNodeProvider(NodeProvider):
         node = self._node(node_id)
         node.terminate()
 
-        # self.cached_nodes.pop(node_id, None)  # TODO: Can we do this?
         self.tag_cache.pop(node_id, None)
         self.tag_cache_pending.pop(node_id, None)
 
@@ -216,7 +215,6 @@ class AWSNodeProvider(NodeProvider):
         self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
         for node_id in node_ids:
-            # self.cached_nodes.pop(node_id, None)  # TODO: Can we do this?
             self.tag_cache.pop(node_id, None)
             self.tag_cache_pending.pop(node_id, None)
 
