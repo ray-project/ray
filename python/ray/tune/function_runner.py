@@ -48,6 +48,9 @@ class StatusReporter(object):
         if self._done and not self._latest_result:
             if not self._last_result:
                 raise TuneError("Trial finished without reporting result!")
+            logger.warning("Trial detected as completed; re-reporting "
+                           "last result. To avoid this, include done=True "
+                           "upon the last reporter call.")
             self._last_result.update(done=True)
             return self._last_result
         with self._lock:
