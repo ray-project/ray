@@ -17,6 +17,9 @@ def dockerize_if_needed(config):
         return config
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
+    run_options = config["docker"].get("run_options", [])
+    install_docker = config["docker"].get("install_docker", False)
+    ssh_user = config["auth"]["ssh_user"]
     if not docker_image:
         if cname:
             logger.warning(
@@ -26,9 +29,13 @@ def dockerize_if_needed(config):
     else:
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
+
+    install_commands = (docker_install_cmds(ssh_user, docker_image, cname)
+                        if install_docker else [])
+
     config["setup_commands"] = (
-        docker_install_cmds() + docker_start_cmds(
-            config["auth"]["ssh_user"], docker_image, docker_mounts, cname) +
+        install_commands + docker_start_cmds(
+            ssh_user, docker_image, docker_mounts, cname, run_options) +
         with_docker_exec(config["setup_commands"], container_name=cname))
 
     config["head_setup_commands"] = with_docker_exec(
@@ -58,11 +65,18 @@ def with_docker_exec(cmds, container_name, env_vars=None):
     ]
 
 
-def docker_install_cmds():
-    return [
+def docker_install_cmds(user, image, cname):
+    cmds = [
         aptwait_cmd() + " && sudo apt-get update",
-        aptwait_cmd() + " && sudo apt-get install -y docker.io"
+        aptwait_cmd() + " && sudo apt-get install -y docker.io",
+        "sudo kill -SIGUSR1 $(pidof dockerd) || true",
+        "sudo service docker start",
+        "sudo usermod -a -G docker {}".format(user),
+        "docker rm -f {} || true".format(cname),
+        "docker pull {}".format(image),
     ]
+
+    return cmds
 
 
 def aptwait_cmd():
@@ -72,13 +86,8 @@ def aptwait_cmd():
             "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
-def docker_start_cmds(user, image, mount, cname):
+def docker_start_cmds(user, image, mount, cname, user_options):
     cmds = []
-    cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
-    cmds.append("sudo service docker start")
-    cmds.append("sudo usermod -a -G docker {}".format(user))
-    cmds.append("docker rm -f {} || true".format(cname))
-    cmds.append("docker pull {}".format(image))
 
     # create flags
     # ports for the redis, object manager, and tune client
@@ -94,10 +103,12 @@ def docker_start_cmds(user, image, mount, cname):
     env_flags = " ".join(
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
+    user_options_str = " ".join(user_options)
     # docker run command
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        port_flags, mount_flags, env_flags, "--net=host", image, "bash"
+        port_flags, mount_flags, env_flags, user_options_str, "--net=host",
+        image, "bash"
     ]
     cmds.append(" ".join(docker_run))
     docker_update = []
@@ -116,7 +127,6 @@ def docker_autoscaler_setup(cname):
         cmds.append("docker cp {path} {cname}:{dpath}".format(
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
-            with_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
-                container_name=cname))
+            with_docker_exec(["cp {} {}".format("/" + base_path, path)],
+                             container_name=cname))
     return cmds

@@ -90,6 +90,8 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "install_docker": (bool, OPTIONAL),
+            "run_options": (list, OPTIONAL),
         },
         OPTIONAL),
 
