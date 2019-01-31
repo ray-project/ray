@@ -1021,12 +1021,10 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        java_worker_options = (
-            java_worker_options or get_default_java_worker_options())
-        java_worker_command = build_java_worker_command(java_worker_options,
-                                                        redis_address,
-                                                        plasma_store_name,
-                                                        raylet_name)
+        java_worker_options = (java_worker_options
+                               or get_default_java_worker_options())
+        java_worker_command = build_java_worker_command(
+            java_worker_options, redis_address, plasma_store_name, raylet_name)
     else:
         java_worker_command = ""
 
@@ -1087,10 +1085,8 @@ def start_raylet(redis_address,
     return process_info
 
 
-def build_java_worker_command(java_worker_options,
-                              redis_address,
-                              plasma_store_name,
-                              raylet_name):
+def build_java_worker_command(java_worker_options, redis_address,
+                              plasma_store_name, raylet_name):
     """This method assembles the command used to start a Java worker.
 
     Args:
