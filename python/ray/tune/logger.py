@@ -232,8 +232,8 @@ class _CSVLogger(Logger):
             if not self._continuing:
                 self._csv_out.writeheader()
         self._csv_out.writerow(
-            {k: v for k, v in result.items()
-             if k in self._csv_out.fieldnames})
+            {k: v
+             for k, v in result.items() if k in self._csv_out.fieldnames})
 
     def flush(self):
         self._file.flush()
