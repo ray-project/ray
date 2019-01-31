@@ -104,9 +104,16 @@ class PPOAgent(Agent):
             self.local_evaluator.for_policy(
                 lambda pi: pi.update_kl(fetches["kl"]))
         else:
+
+            def update(pi, pi_id):
+                if pi_id in fetches:
+                    pi.update_kl(fetches[pi_id]["kl"])
+                else:
+                    logger.debug(
+                        "No data for {}, not updating kl".format(pi_id))
+
             # multi-agent
-            self.local_evaluator.foreach_trainable_policy(
-                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
+            self.local_evaluator.foreach_trainable_policy(update)
         res = self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"])
         res.update(
