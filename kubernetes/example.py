@@ -9,7 +9,9 @@ import time
 import ray
 
 if __name__ == "__main__":
-    ray.init(redis_address="{}:6379".format(socket.gethostbyname("ray-head")))
+    # Note that if you run this script on a non-head node, then you must
+    # replace "localhost" with socket.gethostbyname("ray-head").
+    ray.init(redis_address="localhost:6379")
 
     # Wait for all 4 nodes to join the cluster.
     while True:
