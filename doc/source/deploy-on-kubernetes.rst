@@ -52,7 +52,6 @@ Start an IPython interpreter, e.g., ``ipython``
 .. code-block:: python
 
   from collections import Counter
-  import socket
   import time
   import ray
 
