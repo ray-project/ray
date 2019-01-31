@@ -106,8 +106,8 @@ def make_parser(parser_creator=None, **kwargs):
         "--export-formats",
         default=None,
         help="List of formats that exported at the end of the experiment. "
-        "Default is None. 'checkpoint' and 'model' are supported for "
-        "TensorFlow policy graphs.")
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
     parser.add_argument(
         "--max-failures",
         default=3,
