@@ -677,7 +677,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<ClientID> &client_ids,
                           bool inline_object_flag,
-                          const std::vector<uint8_t> inline_object_data,
+                          const std::vector<uint8_t> &inline_object_data,
                           const std::string &inline_object_metadata, bool created) {
             if (!client_ids.empty() || inline_object_flag) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
