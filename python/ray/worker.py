@@ -38,12 +38,8 @@ from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
-from ray.utils import (
-    check_oversized_pickle,
-    is_cython,
-    random_string,
-    thread_safe_client,
-)
+from ray.utils import (check_oversized_pickle, is_cython, random_string,
+                       thread_safe_client, setup_logger, try_update_handler)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -62,8 +58,8 @@ DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
 # Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
 logger = logging.getLogger(__name__)
 
 try:
@@ -1347,8 +1343,8 @@ def init(redis_address=None,
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be logging.INFO.
-        logging_format: Logging format, default will be "%(message)s"
-            which means only contains the message.
+        logging_format: Logging format, default contains a timestamp,
+            filename, line number, and message. See ray_constants.py.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
@@ -1367,7 +1363,7 @@ def init(redis_address=None,
     """
 
     if configure_logging:
-        logging.basicConfig(level=logging_level, format=logging_format)
+        setup_logger(logging_level, logging_format)
 
     # Add the use_raylet option for backwards compatibility.
     if use_raylet is not None:
@@ -1837,6 +1833,7 @@ def connect(info,
                     worker.worker_id))
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
+            try_update_handler(sys.stderr)
             services.record_log_files_in_redis(
                 info["redis_address"],
                 info["node_ip_address"], [log_stdout_file, log_stderr_file],

@@ -7,7 +7,8 @@ This document describes the process for creating new releases.
    be done by following the `documentation for building wheels`_.
 
 2. **Testing:** Before a release is created, significant testing should be done.
-   Run the script `test/stress_tests/run_stress_tests.sh`_ and make sure it
+   Run the script `test/stress_tests/run_stress_tests.sh`_ and
+   `test/stress_tests/run_application_stress_tests.sh`_ and make sure it
    passes. *And make sure it is testing the right version of Ray!* This will use
    the autoscaler to start a bunch of machines and run some tests. Any new
    stress tests should be added to this script so that they will be run
@@ -23,12 +24,17 @@ This document describes the process for creating new releases.
 5. **Create a GitHub release:** Create a GitHub release through the `GitHub
    website`_. The release should be created at the commit from the previous
    step. This should include **release notes**. Copy the style and formatting
-   used by previous releases.
+   used by previous releases. Use the following to get started:
+
+   .. code-block:: bash
+
+     git pull origin master --tags
+     git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
 6. **Python wheels:** The Python wheels will automatically be built on Travis
    and uploaded to the ``ray-wheels`` S3 bucket. Download these wheels (e.g.,
    using ``wget``) and install them with ``pip`` and run some simple Ray scripts
-   to verify that they work.
+   to verify that they work. Find `these wheels here`_.
 
 7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
@@ -77,5 +83,7 @@ This document describes the process for creating new releases.
 
 .. _`documentation for building wheels`: https://github.com/ray-project/ray/blob/master/python/README-building-wheels.md
 .. _`test/stress_tests/run_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_stress_tests.sh
+.. _`test/stress_tests/run_application_stress_tests.sh`: https://github.com/ray-project/ray/blob/master/test/stress_tests/run_application_stress_tests.sh
 .. _`this example`: https://github.com/ray-project/ray/pull/3420
+.. _`these wheels here`: https://ray.readthedocs.io/en/latest/installation.html
 .. _`GitHub website`: https://github.com/ray-project/ray/releases

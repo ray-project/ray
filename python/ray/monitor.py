@@ -17,7 +17,8 @@ import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
-from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
+from ray.utils import (binary_to_hex, binary_to_object_id, hex_to_binary,
+                       setup_logger)
 
 logger = logging.getLogger(__name__)
 
@@ -365,8 +366,7 @@ if __name__ == "__main__":
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
     args = parser.parse_args()
-    level = logging.getLevelName(args.logging_level.upper())
-    logging.basicConfig(level=level, format=args.logging_format)
+    setup_logger(args.logging_level, args.logging_format)
 
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)

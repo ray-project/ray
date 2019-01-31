@@ -57,8 +57,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     help=ray_constants.LOGGER_FORMAT_HELP)
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    logging.basicConfig(level=level, format=logging_format)
-    logger.setLevel(level)
+    ray.utils.setup_logger(level, logging_format)
 
 
 @cli.command()
