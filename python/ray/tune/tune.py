@@ -116,8 +116,7 @@ def run_experiments(experiments,
     runner = None
     restore = False
 
-    if os.path.exists(
-            os.path.join(checkpoint_dir, TrialRunner.CKPT_FILE_NAME)):
+    if TrialRunner.checkpoint_exists(checkpoint_dir):
         if resume == "prompt":
             msg = ("Found incomplete experiment at {}. "
                    "Would you like to resume it?".format(checkpoint_dir))

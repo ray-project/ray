@@ -39,14 +39,14 @@ class TaskPool(object):
         Assumes obj_id only is one id."""
 
         for worker, obj_id in self.completed():
-            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             (ray.worker.global_worker.raylet_client.fetch_or_reconstruct(
                 [obj_id], True))
             self._fetching.append((worker, obj_id))
 
         remaining = []
         for worker, obj_id in self._fetching:
-            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.id())
+            plasma_id = ray.pyarrow.plasma.ObjectID(obj_id.binary())
             if ray.worker.global_worker.plasma_client.contains(plasma_id):
                 yield (worker, obj_id)
             else:

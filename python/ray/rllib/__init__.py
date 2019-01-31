@@ -10,7 +10,7 @@ from ray.tune.registry import register_trainable
 
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.external_env import ExternalEnv
@@ -47,7 +47,7 @@ __all__ = [
     "TFPolicyGraph",
     "PolicyEvaluator",
     "SampleBatch",
-    "AsyncVectorEnv",
+    "BaseEnv",
     "MultiAgentEnv",
     "VectorEnv",
     "ExternalEnv",

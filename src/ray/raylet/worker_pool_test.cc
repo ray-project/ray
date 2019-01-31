@@ -9,27 +9,36 @@ namespace ray {
 namespace raylet {
 
 int NUM_WORKERS_PER_PROCESS = 3;
+int MAXIMUM_STARTUP_CONCURRENCY = 5;
 
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 1,
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
                    {{Language::PYTHON, {"dummy_py_worker_command"}},
-                    {Language::JAVA, {"dummy_java_worker_command"}}}) {}
-
-  void StartWorkerProcess(pid_t pid, const Language &language = Language::PYTHON) {
-    if (starting_worker_processes_.size() > 0) {
-      // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << starting_worker_processes_.size()
-                     << " worker processes pending registration";
-      return;
-    }
-    // Either no workers are pending registration or the worker start is being forced.
-    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size(language);
-    starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
+                    {Language::JAVA, {"dummy_java_worker_command"}}}),
+        last_worker_pid_(0) {}
+  ~WorkerPoolMock() {
+    // Avoid killing real processes
+    states_by_lang_.clear();
   }
 
-  int NumWorkerProcessesStarting() const { return starting_worker_processes_.size(); }
+  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+    return ++last_worker_pid_;
+  }
+
+  pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
+
+  int NumWorkerProcessesStarting() const {
+    int total = 0;
+    for (auto &entry : states_by_lang_) {
+      total += entry.second.starting_worker_processes.size();
+    }
+    return total;
+  }
+
+ private:
+  int last_worker_pid_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -48,7 +57,7 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
-                                      "worker", error_message_type_);
+                                      "worker", {}, error_message_type_);
     return std::shared_ptr<Worker>(new Worker(pid, language, client));
   }
 
@@ -72,8 +81,8 @@ static inline TaskSpecification ExampleTaskSpec(
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  pid_t pid = 1234;
-  worker_pool_.StartWorkerProcess(pid);
+  worker_pool_.StartWorkerProcess(Language::PYTHON);
+  pid_t pid = worker_pool_.LastStartedWorkerProcess();
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS; i++) {
     workers.push_back(CreateWorker(pid));
@@ -95,6 +104,19 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
   }
+}
+
+TEST_F(WorkerPoolTest, StartupWorkerCount) {
+  int desired_initial_worker_count_per_language = 20;
+  for (int i = 0; i < desired_initial_worker_count_per_language; i++) {
+    worker_pool_.StartWorkerProcess(Language::PYTHON);
+    worker_pool_.StartWorkerProcess(Language::JAVA);
+  }
+  // Check that number of starting worker processes equals to
+  // maximum_startup_concurrency_ * 2. (because we started both python and java workers)
+  ASSERT_EQ(
+      worker_pool_.NumWorkerProcessesStarting(),
+      /* Provided in constructor of WorkerPoolMock */ MAXIMUM_STARTUP_CONCURRENCY * 2);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {

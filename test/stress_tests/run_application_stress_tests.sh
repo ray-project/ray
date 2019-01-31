@@ -75,7 +75,8 @@ test_impala(){
     popd
 }
 
-
+# Total runtime is about 20 minutes (if the AWS spot instance order is fulfilled).
+# Actual test runtime is roughly 10 minutes.
 test_sgd(){
     local PYTHON_VERSION=$1
     local WHEEL_STR=$(_find_wheel_str $PYTHON_VERSION)
