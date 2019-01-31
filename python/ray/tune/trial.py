@@ -134,22 +134,25 @@ class Checkpoint(object):
 
 
 class ExportFormat(object):
-    """Describes the format to export trial policy graph.
+    """Describes the format to export the trial Trainable.
 
-    Format may correspond to different file formats based on the
-    policy graph implementation.
+    This may correspond to different file formats based on the
+    Trainable implementation.
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
 
     @staticmethod
     def validate(export_formats):
-        """Validates export_formats and raises ValueError
-        if the format is unknown.
+        """Validates export_formats.
+
+        Raises:
+            ValueError if the format is unknown.
         """
         for export_format in export_formats:
-            if export_format not in \
-                    [ExportFormat.CHECKPOINT, ExportFormat.MODEL]:
+            if export_format not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL
+            ]:
                 raise TuneError("Unsupported export format: " + export_format)
 
 

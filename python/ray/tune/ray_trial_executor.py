@@ -349,6 +349,9 @@ class RayTrialExecutor(TrialExecutor):
 
     def export_trial_if_needed(self, trial):
         """Exports model of this trial based on trial.export_formats.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
             return ray.get(

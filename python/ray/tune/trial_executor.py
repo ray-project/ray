@@ -213,7 +213,7 @@ class TrialExecutor(object):
             trial (Trial): The state of this trial to be saved.
 
         Return:
-            A dict that maps export formats to successfully exported models.
+            A dict that maps ExportFormats to successfully exported models.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "export_trial_if_needed() method")
