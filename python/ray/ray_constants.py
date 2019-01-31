@@ -78,9 +78,9 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 
-# Default logger format: only contains the message.
-LOGGER_FORMAT = "%(message)s"
-LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
+LOGGER_FORMAT = (
+    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
+LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
