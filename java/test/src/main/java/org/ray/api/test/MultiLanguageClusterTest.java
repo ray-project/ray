@@ -17,7 +17,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class EnableJavaAndPythonWorkerTest {
+public class MultiLanguageClusterTest {
 
   public static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/test/plasma_store_socket";
   public static final String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
@@ -28,7 +28,11 @@ public class EnableJavaAndPythonWorkerTest {
   }
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp() throws InterruptedException, IOException {
+    if (!rayCommandExist()) {
+      throw new SkipException("Since there is no ray command, we skip this test.");
+    }
+
     // TODO(qwang): This is a workaround approach.
     // Since `ray start --raylet-socket-name=tmp/xxx/yyy/raylet_socket` could
     // not create the folders if they don't exist, we should make sure that
@@ -36,22 +40,6 @@ public class EnableJavaAndPythonWorkerTest {
     // removed.
     File baseDir = new File("/tmp/ray/test");
     FileUtil.mkDir(baseDir);
-  }
-
-  @AfterMethod
-  public void tearDown() {
-    //clean some files.
-    File plasmaSocket = new File(PLASMA_STORE_SOCKET_NAME);
-    if (plasmaSocket.exists()) {
-      plasmaSocket.delete();
-    }
-  }
-
-  @Test
-  public void testEnableJavaAndPythonWorker() throws IOException, InterruptedException {
-    if (!rayCommandExist()) {
-      throw new SkipException("Since there is no ray command, we skip this test.");
-    }
 
     startCluster();
 
@@ -60,10 +48,10 @@ public class EnableJavaAndPythonWorkerTest {
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     Ray.init();
+  }
 
-    RayObject<String> obj = Ray.call(EnableJavaAndPythonWorkerTest::echo, "hello");
-    Assert.assertEquals("hello", obj.get());
-
+  @AfterMethod
+  public void tearDown() throws IOException, InterruptedException {
     Ray.shutdown();
     System.clearProperty("ray.home");
     System.clearProperty("ray.redis.address");
@@ -71,6 +59,17 @@ public class EnableJavaAndPythonWorkerTest {
     System.clearProperty("ray.raylet.socket-name");
 
     stopCluster();
+    //clean some files.
+    File plasmaSocket = new File(PLASMA_STORE_SOCKET_NAME);
+    if (plasmaSocket.exists()) {
+      plasmaSocket.delete();
+    }
+  }
+
+  @Test
+  public void testEnableJavaAndPythonWorker() {
+    RayObject<String> obj = Ray.call(MultiLanguageClusterTest::echo, "hello");
+    Assert.assertEquals("hello", obj.get());
   }
 
   private void startCluster() throws IOException, InterruptedException {
@@ -119,7 +118,6 @@ public class EnableJavaAndPythonWorkerTest {
     } catch (IOException e) {
       // IOException means that no such file or directory.
     }
-
     return false;
   }
 

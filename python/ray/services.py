@@ -20,11 +20,12 @@ import pyarrow
 import ray
 import ray.ray_constants as ray_constants
 
-from ray.tempfile_services import (get_ipython_notebook_path,
-                                   get_temp_root,
-                                   new_redis_log_file,
-                                   get_logs_dir_path,
-                                   )
+from ray.tempfile_services import (
+    get_ipython_notebook_path,
+    get_logs_dir_path,
+    get_temp_root,
+    new_redis_log_file,
+)
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
