@@ -40,6 +40,8 @@ namespace gcs {
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " Append to table "
+                 << EnumNameTablePrefix(prefix_) << " key " << id;
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
@@ -59,6 +61,8 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
+  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " AppendAt to table "
+                 << EnumNameTablePrefix(prefix_) << " key " << id << " at " << log_length;
   num_appends_++;
   auto callback = [this, id, dataT, done, failure](const std::string &data) {
     if (data.empty()) {
@@ -179,6 +183,8 @@ std::string Log<ID, Data>::DebugString() const {
 template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " Add to table "
+                 << EnumNameTablePrefix(prefix_) << " key " << id;
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
@@ -441,11 +447,11 @@ std::string ClientTable::DebugString() const {
 }
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
-                                                  const ActorID &actor_id,
-                                                  const UniqueID &checkpoint_id) {
+                                               const ActorID &actor_id,
+                                               const UniqueID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
-                             const ActorCheckpointIdDataT &data) {
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ActorCheckpointIdDataT &data) {
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
@@ -464,7 +470,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdDataT> data =
         std::make_shared<ActorCheckpointIdDataT>();
     data->actor_id = id.binary();
@@ -474,7 +480,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
   };
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
-
 
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
