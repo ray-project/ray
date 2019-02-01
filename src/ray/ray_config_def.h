@@ -142,4 +142,7 @@ RAY_CONFIG(int, num_workers_per_process, 1);
 RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000);
 
 /// Maximum number of checkpoints to keep in GCS for an actor.
-RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 200);
+/// Note: this number should be set to at least 2. Because saving a application
+/// checkpoint isn't atomic with saving the backend checkpoint, and it will break
+/// if this number is set to 1 and users save application checkpoints in place.
+RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20);
