@@ -74,7 +74,7 @@ def receive(source_ids, timeout=float('inf')):
     Args:
         source_ids: list of source ids whose signals are returned.
         timeout: time it receives for new signals to be generated. If none,
-                 return when timeout experies. Measured in seconds.
+                 return when timeout expires. Measured in seconds.
     Returns:
         The list of signals generated for each source in source_ids. They
         are returned as a list of pairs (source_id, signal). There can be
@@ -139,8 +139,8 @@ def receive(source_ids, timeout=float('inf')):
     if (remaining_time < 0) or (len(results) > 0):
         return results
 
-    # No past signals and timeout din't expire. Wait for fure signals
-    # or until timeout expires.
+    # Thee are no past signals, and the timeout has not expired yet.
+    # Wait for future signals or until timeout expires.
     ready_ids, _ = ray.wait(signal_ids, 1, timeout=remaining_time)
 
     for ready_id in ready_ids:
