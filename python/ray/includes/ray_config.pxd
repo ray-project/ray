@@ -80,4 +80,6 @@ cdef extern from "ray/ray_config.h" nogil:
 
         int64_t max_task_lease_timeout_ms() const
 
+        uint32_t num_actor_checkpoints_to_keep() const
+
         void initialize(const unordered_map[c_string, int] &config_map)
