@@ -139,8 +139,7 @@ def train_mnist(args, config, reporter):
                 # get the index of the max log-probability
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(
-                    target.data.view_as(pred)
-                ).long().cpu().sum()
+                    target.data.view_as(pred)).long().cpu().sum()
 
         test_loss = test_loss / len(test_loader.dataset)
         accuracy = correct.item() / len(test_loader.dataset)
@@ -168,26 +167,25 @@ if __name__ == '__main__':
         grace_period=20)
     tune.register_trainable("train_mnist",
                             lambda cfg, rprtr: train_mnist(args, cfg, rprtr))
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.98,
-                    "training_iteration": 1 if args.smoke_test else 20
-                },
-                "resources_per_trial": {
-                    "cpu": 3,
-                    "gpu": int(not args.no_cuda)
-                },
-                "run": "train_mnist",
-                "num_samples": 1 if args.smoke_test else 10,
-                "config": {
-                    "lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.001, 0.1)),
-                    "momentum": tune.sample_from(
-                        lambda spec: np.random.uniform(0.1, 0.9)),
-                }
+    tune.run_experiments({
+        "exp": {
+            "stop": {
+                "mean_accuracy": 0.98,
+                "training_iteration": 1 if args.smoke_test else 20
+            },
+            "resources_per_trial": {
+                "cpu": 3,
+                "gpu": int(not args.no_cuda)
+            },
+            "run": "train_mnist",
+            "num_samples": 1 if args.smoke_test else 10,
+            "config": {
+                "lr": tune.sample_from(
+                    lambda spec: np.random.uniform(0.001, 0.1)),
+                "momentum": tune.sample_from(
+                    lambda spec: np.random.uniform(0.1, 0.9)),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        }
+    },
+                         verbose=0,
+                         scheduler=sched)
