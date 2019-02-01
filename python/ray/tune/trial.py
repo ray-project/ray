@@ -133,6 +133,29 @@ class Checkpoint(object):
         return Checkpoint(Checkpoint.MEMORY, value)
 
 
+class ExportFormat(object):
+    """Describes the format to export the trial Trainable.
+
+    This may correspond to different file formats based on the
+    Trainable implementation.
+    """
+    CHECKPOINT = "checkpoint"
+    MODEL = "model"
+
+    @staticmethod
+    def validate(export_formats):
+        """Validates export_formats.
+
+        Raises:
+            ValueError if the format is unknown.
+        """
+        for export_format in export_formats:
+            if export_format not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL
+            ]:
+                raise TuneError("Unsupported export format: " + export_format)
+
+
 class Trial(object):
     """A trial object holds the state for one model training run.
 
@@ -159,6 +182,7 @@ class Trial(object):
                  stopping_criterion=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 export_formats=None,
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
@@ -195,6 +219,7 @@ class Trial(object):
         self.checkpoint_at_end = checkpoint_at_end
         self._checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
+        self.export_formats = export_formats
         self.status = Trial.PENDING
         self.logdir = None
         self.runner = None

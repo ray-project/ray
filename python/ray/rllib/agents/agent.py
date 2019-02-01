@@ -22,7 +22,7 @@ from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources
+from ray.tune.trial import Resources, ExportFormat
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -601,6 +601,20 @@ class Agent(Trainable):
             input_creator=input_creator,
             input_evaluation_method=config["input_evaluation"],
             output_creator=output_creator)
+
+    @override(Trainable)
+    def _export_model(self, export_formats, export_dir):
+        ExportFormat.validate(export_formats)
+        exported = {}
+        if ExportFormat.CHECKPOINT in export_formats:
+            path = os.path.join(export_dir, ExportFormat.CHECKPOINT)
+            self.export_policy_checkpoint(path)
+            exported[ExportFormat.CHECKPOINT] = path
+        if ExportFormat.MODEL in export_formats:
+            path = os.path.join(export_dir, ExportFormat.MODEL)
+            self.export_policy_model(path)
+            exported[ExportFormat.MODEL] = path
+        return exported
 
     def __getstate__(self):
         state = {}
