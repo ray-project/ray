@@ -341,14 +341,10 @@ pyx_library(
 cc_library(
     name = "raylet_library_java",
     srcs = [
-        "@local_jdk//:jni_header",
+        "@bazel_tools//tools/jdk:current_java_runtime",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc"
-        ] + select({
-            "@bazel_tools//src/conditions:windows": ["@local_jdk//:jni_md_header-windows"],
-            "@bazel_tools//src/conditions:darwin": ["@local_jdk//:jni_md_header-darwin"],
-            "//conditions:default": ["@local_jdk//:jni_md_header-linux"]
-        }),
+        ],
     hdrs = [
         "src/ray/id.h",
         "src/ray/raylet/raylet_client.h",
