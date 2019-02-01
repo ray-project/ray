@@ -16,16 +16,14 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 class SigOptSearch(SuggestionAlgorithm):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. 
-    The number of concurrent trials supported depends on the user's 
-    SigOpt plan. Defaults to 1.
+    Requires SigOpt to be installed.
 
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 1.
+        max_concurrent (int): Number of maximum concurrent trials supported 
+            based on the user's SigOpt plan. Defaults to 1.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
 
@@ -105,6 +103,9 @@ class SigOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to SigOpt unless early terminated or errored.
+        If a trial fails, it will be reported as a failed Observation, telling
+        the optimizer that the Suggestion led to a metric failure, which 
+        updates the feasible region and improves parameter recommendation.
 
         Creates SigOpt Observation object for trial.
         """
@@ -115,7 +116,13 @@ class SigOptSearch(SuggestionAlgorithm):
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
-            del self._live_trial_mapping[trial_id]
+        elif error or early_terminated:
+            # Reports a failed Observation
+            self.conn.experiments(self.experiment.id).observations().create(
+                failed=True,
+                suggestion=self._live_trial_mapping[trial_id].id
+            )
+        del self._live_trial_mapping[trial_id]
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
