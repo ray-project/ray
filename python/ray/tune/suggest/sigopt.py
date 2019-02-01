@@ -6,7 +6,6 @@ import numpy as np
 import copy
 import logging
 import os
-print(os.environ['SIGOPT_KEY'])
 
 try:
     from sigopt import Connection
@@ -56,7 +55,8 @@ class SigOptSearch(SuggestionAlgorithm):
     """
 
     def __init__(self,
-                 space, # TODO
+                 space,
+                 name='test', # TODO
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
@@ -69,9 +69,9 @@ class SigOptSearch(SuggestionAlgorithm):
         self.conn = Connection(client_token=os.environ['SIGOPT_KEY'])
         
         self.experiment = self.conn.experiments().create(
-            name='Tune Experiment ({})'.format(name),
+            name=name,
             parameters=space,
-            parallel_bandwidth=self.max_concurrent,
+            parallel_bandwidth=self._max_concurrent,
         )
 
         super(SigOptSearch, self).__init__(**kwargs)
