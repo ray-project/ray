@@ -280,6 +280,7 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
         override_cluster_name: set the name of the cluster
         port_forward: port to forward
     """
+    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
     config = yaml.load(open(config_file).read())
     if override_cluster_name is not None:
@@ -305,6 +306,21 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
         tmux,
         expect_error=stop,
         port_forward=port_forward)
+
+    if tmux or screen:
+        attach_command_parts = ["ray attach", config_file]
+        if override_cluster_name is not None:
+            attach_command_parts.append(
+                "--cluster-name={}".format(override_cluster_name))
+        if tmux:
+            attach_command_parts.append("--tmux")
+        elif screen:
+            attach_command_parts.append("--screen")
+
+        attach_command = " ".join(attach_command_parts)
+        attach_info = "Use `{}` to check on command status.".format(
+            attach_command)
+        logger.info(attach_info)
 
 
 def _exec(updater, cmd, screen, tmux, expect_error=False, port_forward=None):

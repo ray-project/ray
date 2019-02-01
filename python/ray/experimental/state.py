@@ -229,6 +229,8 @@ class GlobalState(object):
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
                                         object_id.binary())
+        if message is None:
+            return {}
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -292,6 +294,8 @@ class GlobalState(object):
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
                                         "", task_id.binary())
+        if message is None:
+            return {}
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -771,7 +775,7 @@ class GlobalState(object):
 
             num_tasks += self.redis_client.zcount(
                 event_log_set, min=0, max=time.time())
-        if num_tasks is 0:
+        if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 

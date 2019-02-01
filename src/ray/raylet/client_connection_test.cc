@@ -40,10 +40,10 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
       };
 
   auto conn1 = LocalClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "conn1", error_message_type_);
+      client_handler, message_handler, std::move(in_), "conn1", {}, error_message_type_);
 
   auto conn2 = LocalClientConnection::Create(
-      client_handler, message_handler, std::move(out_), "conn2", error_message_type_);
+      client_handler, message_handler, std::move(out_), "conn2", {}, error_message_type_);
 
   RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
   RAY_CHECK_OK(conn2->WriteMessage(0, 5, arr));
@@ -86,10 +86,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
       };
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   reader = LocalClientConnection::Create(client_handler, message_handler, std::move(out_),
-                                         "reader", error_message_type_);
+                                         "reader", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     RAY_CHECK_OK(status);
@@ -114,7 +114,7 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
       const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     ASSERT_TRUE(!status.ok());
@@ -136,7 +136,7 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
       const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback =
       [writer](const ray::Status &status) {

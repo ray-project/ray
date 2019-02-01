@@ -35,28 +35,29 @@ minutes for the pods to enter the "Running" state).
 .. code-block:: shell
 
   $ kubectl get pods
-  NAME                          READY     STATUS    RESTARTS   AGE
-  ray-head-controller-2kkfq     1/1       Running   0          47s
-  ray-worker-controller-d6jml   1/1       Running   0          45s
-  ray-worker-controller-m7jxs   1/1       Running   0          45s
-  ray-worker-controller-rg2sl   1/1       Running   0          45s
+  NAME                          READY   STATUS    RESTARTS   AGE
+  ray-head-5455bb66c9-6bxvz     1/1     Running   0          10s
+  ray-worker-5c49b7cc57-c6xs8   1/1     Running   0          5s
+  ray-worker-5c49b7cc57-d9m86   1/1     Running   0          5s
+  ray-worker-5c49b7cc57-kzk4s   1/1     Running   0          5s
 
 To run tasks interactively on the cluster, connect to one of the pods, e.g.,
 
 .. code-block:: shell
 
-  kubectl exec -it ray-head-controller-2kkfq -- bash
+  kubectl exec -it ray-head-5455bb66c9-6bxvz -- bash
 
 Start an IPython interpreter, e.g., ``ipython``
 
 .. code-block:: python
 
   from collections import Counter
-  import socket
   import time
   import ray
 
-  ray.init(redis_address="{}:6379".format(socket.gethostbyname("ray-head")))
+  # Note that if you run this script on a non-head node, then you must replace
+  # "localhost" with socket.gethostbyname("ray-head").
+  ray.init(redis_address="localhost:6379")
 
   @ray.remote
   def f(x):
@@ -86,24 +87,28 @@ running ``kubectl get all``. You'll see output like the following.
 .. code-block:: shell
 
   $ kubectl get all
-  NAME                              READY     STATUS    RESTARTS   AGE
-  pod/ray-head-controller-q6lck     1/1       Running   0          1m
-  pod/ray-worker-controller-kchfh   1/1       Running   0          1m
-  pod/ray-worker-controller-nmq5c   1/1       Running   0          1m
-  pod/ray-worker-controller-tfl2q   1/1       Running   0          1m
+  NAME                              READY   STATUS    RESTARTS   AGE
+  pod/ray-head-5486648dc9-c6hz2     1/1     Running   0          11s
+  pod/ray-worker-5c49b7cc57-2jz4l   1/1     Running   0          11s
+  pod/ray-worker-5c49b7cc57-8nwjk   1/1     Running   0          11s
+  pod/ray-worker-5c49b7cc57-xlksn   1/1     Running   0          11s
 
-  NAME                                          DESIRED   CURRENT   READY     AGE
-  replicationcontroller/ray-head-controller     1         1         1         1m
-  replicationcontroller/ray-worker-controller   3         3         3         1m
+  NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                          AGE
+  service/ray-head     ClusterIP   10.110.54.241   <none>        6379/TCP,6380/TCP,6381/TCP,12345/TCP,12346/TCP   11s
 
-  NAME               TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)                                          AGE
-  service/ray-head   ClusterIP   10.64.5.153   <none>        6379/TCP,6380/TCP,6381/TCP,12345/TCP,12346/TCP   1m
+  NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
+  deployment.apps/ray-head     1/1     1            1           11s
+  deployment.apps/ray-worker   3/3     3            3           11s
 
-Find the name of the ``ray-head-controller`` pod and run the equivalent of
+  NAME                                    DESIRED   CURRENT   READY   AGE
+  replicaset.apps/ray-head-5486648dc9     1         1         1       11s
+  replicaset.apps/ray-worker-5c49b7cc57   3         3         3       11s
+
+Find the name of the ``ray-head`` pod and run the equivalent of
 
 .. code-block:: shell
 
-  kubectl logs ray-head-controller-q6lck
+  kubectl logs ray-head-5486648dc9-c6hz2
 
 Cleaning Up
 -----------
@@ -113,8 +118,8 @@ To remove the services you have created, run the following.
 .. code-block:: shell
 
   kubectl delete service/ray-head \
-                 replicationcontroller/ray-head-controller \
-                 replicationcontroller/ray-worker-controller
+                 deployment.apps/ray-head \
+                 deployment.apps/ray-worker
 
 
 Customization
