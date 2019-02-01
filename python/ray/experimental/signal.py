@@ -94,18 +94,15 @@ def receive(source_ids, timeout=float('inf')):
         if not source_id in signal_counters:
             signal_counters[source_id] = START_SIGNAL_COUNTER
 
-    # For each source_id compute the id of the next unread signal and store these
-    # signals in signal_ids. Also, store the reverse mapping from signals to
+    # Store the reverse mapping from signals to
     # source ids in the source_id_from_signal_id dictionary.
     source_id_from_signal_id = dict()
-    signal_ids = []
     for source_id in source_ids:
         signal_id = _get_signal_id(source_id, signal_counters[source_id])
-        signal_ids.append(signal_id)
         source_id_from_signal_id[signal_id] = source_id
 
     while True:
-        ready_ids, _ = ray.wait(signal_ids, num_returns=len(signal_ids), timeout=0)
+        ready_ids, _ = ray.wait(source_id_from_signal_id.keys(), num_returns=len(source_id_from_signal_id.keys()), timeout=0)
         if len(ready_ids) > 0:
             for signal_id in ready_ids:
                 signal = ray.get(signal_id)
@@ -116,14 +113,12 @@ def receive(source_ids, timeout=float('inf')):
                         del signal_counters[source_id]
 
                 # We read this signal so forget it.
-                signal_ids.remove(signal_id)
                 del source_id_from_signal_id[signal_id]
 
                 if source_id in signal_counters:
                     # Compute id of the next expected signal for this source id.
                     signal_counters[source_id] += 1
                     signal_id = _get_signal_id(source_id, signal_counters[source_id])
-                    signal_ids.append(signal_id)
                     source_id_from_signal_id[signal_id] = source_id
                 else:
                     break
@@ -141,7 +136,7 @@ def receive(source_ids, timeout=float('inf')):
 
     # Thee are no past signals, and the timeout has not expired yet.
     # Wait for future signals or until timeout expires.
-    ready_ids, _ = ray.wait(signal_ids, 1, timeout=remaining_time)
+    ready_ids, _ = ray.wait(source_id_from_signal_id.keys(), 1, timeout=remaining_time)
 
     for ready_id in ready_ids:
         signal_counters[source_id_from_signal_id[ready_id]] += 1
