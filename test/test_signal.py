@@ -30,7 +30,7 @@ def test_task_to_driver(ray_start):
     signal_value = "simple signal"
     object_id = task_send_signal.remote(signal_value)
     ray.get(object_id)
-    result_list = signal.receive([signal.task_id(object_id)], timeout=10)
+    result_list = signal.receive([object_id], timeout=10)
     assert len(result_list) == 2
     assert type(result_list[1][1]) == signal.DoneSignal
 
@@ -90,7 +90,7 @@ def test_task_done(ray_start):
 
     object_id = test_function.remote()
     ray.get(object_id)
-    result_list = signal.receive([signal.task_id(object_id)], timeout=5)
+    result_list = signal.receive([object_id], timeout=5)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.DoneSignal
 
@@ -108,7 +108,7 @@ def test_task_crash(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([(object_id)], timeout=5)
+        result_list = signal.receive([object_id], timeout=5)
         assert len(result_list) == 1
         assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -121,7 +121,7 @@ def test_task_crash_without_get(ray_start):
         raise Exception("exception message")
 
     object_id = crashing_function.remote()
-    result_list = signal.receive([(object_id)], timeout=5)
+    result_list = signal.receive([object_id], timeout=5)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 

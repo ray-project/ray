@@ -20,19 +20,19 @@ class ErrorSignal(Signal):
     def __init__(self, error):
         self.error = error
 
-
-def _get_signal_id(source_id, counter):
+def _get_task_id(source_id):
     if  type(source_id) is ray.actor.ActorHandle:
-        return ray._raylet.compute_signal_id(
-            ray._raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id),
-            counter)
+        return ray._raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id)
     else:
         # TODO(pcm): Figure out why compute_signal_id is called with both
         # object and task ids.
         if type(source_id) is ray.TaskID:
-            return ray._raylet.compute_signal_id(source_id, counter)
+            return source_id
         else:
-            return ray._raylet.compute_signal_id(ray._raylet.compute_task_id(source_id), counter)
+            return ray._raylet.compute_task_id(source_id)
+
+def _get_signal_id(source_id, counter):
+    return ray._raylet.compute_signal_id(_get_task_id(source_id), counter)
 
 def task_id(object_id):
     return ray._raylet.compute_task_id(object_id)
@@ -102,7 +102,8 @@ def receive(source_ids, timeout=float('inf')):
         source_id_from_signal_id[signal_id] = source_id
 
     while True:
-        ready_ids, _ = ray.wait(source_id_from_signal_id.keys(), num_returns=len(source_id_from_signal_id.keys()), timeout=0)
+        ready_ids, _ = ray.wait(source_id_from_signal_id.keys(),
+            num_returns=len(source_id_from_signal_id.keys()), timeout=0)
         if len(ready_ids) > 0:
             for signal_id in ready_ids:
                 signal = ray.get(signal_id)
@@ -147,6 +148,7 @@ def receive(source_ids, timeout=float('inf')):
                 del signal_counters[source_id]
 
     return results
+
 
 def forget(source_ids):
     """Ignore all previous signals of each source_id in source_ids.
