@@ -107,18 +107,18 @@ class Node(object):
         """Prepare the socket file for raylet and plasma.
 
         This method helps to prepare a socket file.
-        1. Make the directory if the directory does not eixt.
-        2. Remove the socket file if the file exists.
+        1. Make the directory if the directory does not exist.
+        2. If the socket file exists, raise exception.
 
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if not os.path.isfile(socket_path):
+        if not os.path.exists(socket_path):
             path = os.path.dirname(socket_path)
             if not os.path.isdir(path):
                 try_to_create_directory(path)
         else:
-            os.remove(socket_path)
+            raise Exception("Socket file {} exists!".format(socket_path))
 
     def start_redis(self):
         """Start the Redis servers."""

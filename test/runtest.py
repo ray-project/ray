@@ -23,6 +23,7 @@ import pickle
 import pytest
 
 import ray
+from ray.tempfile_services import try_to_create_directory
 import ray.test.cluster_utils
 import ray.test.test_utils
 from ray.utils import _random_string
@@ -2609,18 +2610,9 @@ def test_pandas_parquet_serialization():
     shutil.rmtree(tempdir)
 
 
-def test_socket_directory_none_existant(shutdown_only):
-    level1_name = ray.ObjectID(_random_string()).hex()
-    level2_name = ray.ObjectID(_random_string()).hex()
-    temp_raylet_socket_dir = "/tmp/{}/{}".format(level1_name, level2_name)
+def test_socket_dir_not_existing(shutdown_only):
+    random_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
-    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
-
-
-def test_socket_file_already_exists(shutdown_only):
-    file_name = ray.ObjectID(_random_string()).hex()
-    temp_raylet_socket_name = "/tmp/{}".format(file_name)
-    with open(temp_raylet_socket_name, 'a'):
-        os.utime(temp_raylet_socket_name, None)
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
