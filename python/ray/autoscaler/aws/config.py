@@ -111,6 +111,14 @@ def _configure_key_pair(config):
         assert "KeyName" in config["head_node"]
         assert "KeyName" in config["worker_nodes"]
         return config
+    elif "RAY_AWS_SSH_KEY" in os.environ:
+        key_path = os.environ["RAY_AWS_SSH_KEY"]
+        filename = os.path.basename(key_path)
+        key_name = os.path.splitext(filename)[0]
+        config["auth"]["ssh_private_key"] = key_path
+        config["head_node"]["KeyName"] = key_name
+        config["worker_nodes"]["KeyName"] = key_name
+        return config
 
     ec2 = _resource("ec2", config)
 
