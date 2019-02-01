@@ -605,21 +605,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
-    if tmux or screen:
-        attach_command_parts = ["ray attach", cluster_config_file]
-        if cluster_name is not None:
-            attach_command_parts.append(
-                "--cluster-name={}".format(cluster_name))
-        if tmux:
-            attach_command_parts.append("--tmux")
-        elif screen:
-            attach_command_parts.append("--screen")
-
-        attach_command = " ".join(attach_command_parts)
-        attach_info = "Use `{}` to check on command status.".format(
-            attach_command)
-        logger.info(attach_info)
-
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
@@ -651,25 +636,8 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     "--port-forward", required=False, type=int, help="Port to forward.")
 def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
-    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
-
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
                  cluster_name, port_forward)
-
-    if tmux or screen:
-        attach_command_parts = ["ray attach", cluster_config_file]
-        if cluster_name is not None:
-            attach_command_parts.append(
-                "--cluster-name={}".format(cluster_name))
-        if tmux:
-            attach_command_parts.append("--tmux")
-        elif screen:
-            attach_command_parts.append("--screen")
-
-        attach_command = " ".join(attach_command_parts)
-        attach_info = "Use `{}` to check on command status.".format(
-            attach_command)
-        logger.info(attach_info)
 
 
 @cli.command()
