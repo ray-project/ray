@@ -23,7 +23,6 @@ import pickle
 import pytest
 
 import ray
-from ray.tempfile_services import try_to_create_directory
 import ray.test.cluster_utils
 import ray.test.test_utils
 from ray.utils import _random_string
