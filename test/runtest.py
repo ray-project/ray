@@ -2607,3 +2607,20 @@ def test_pandas_parquet_serialization():
     pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
     # Clean up
     shutil.rmtree(tempdir)
+
+
+def test_socket_directory_none_existant(shutdown_only):
+    level1_name = ray.ObjectID(_random_string()).hex()
+    level2_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/{}/{}".format(level1_name, level2_name)
+    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                           "raylet_socket")
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+
+
+def test_socket_file_already_exists(shutdown_only):
+    file_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_name = "/tmp/{}".format(file_name)
+    with open(temp_raylet_socket_name, 'a'):
+        os.utime(temp_raylet_socket_name, None)
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
