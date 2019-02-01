@@ -61,6 +61,11 @@ class Node(object):
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+        else:
+            redis_client = ray.services.create_redis_client(
+                ray_params.redis_address, ray_params.redis_password)
+            ray_params.include_java = (
+                ray.services.include_java_from_redis(redis_client))
 
         self._ray_params = ray_params
         self._config = (json.loads(ray_params._internal_config)
@@ -188,14 +193,6 @@ class Node(object):
                                     or get_raylet_socket_name())
         stdout_file, stderr_file = new_raylet_log_file(
             redirect_output=self._ray_params.redirect_worker_output)
-
-        # For non-head node, the value of `include-java` must follow the head.
-        if self.redis_address is not None:
-            redis_client = ray.services.create_redis_client(
-                self.redis_address, self._ray_params.redis_password)
-            self._ray_params.include_java = (
-                ray.services.include_java_from_redis(redis_client))
-
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,

@@ -58,7 +58,7 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 
-DEFAULT_JAVA_WORKER_OPTIONS = "-cp {}".format(
+DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
     os.path.join(os.path.abspath(os.path.dirname(__file__)),
                  "../../../build/java/*"))
 
