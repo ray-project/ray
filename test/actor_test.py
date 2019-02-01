@@ -19,14 +19,17 @@ import ray.test.cluster_utils
 
 
 @pytest.fixture
-def ray_start_regular():
+def ray_start_regular(request):
+    internal_config = {
+        "initial_reconstruction_timeout_milliseconds": 200,
+        "num_heartbeats_timeout": 10,
+    }
+    internal_config.update(getattr(request, "param", {}))
     # Start the Ray processes.
     ray.init(
         num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200,
-            "num_heartbeats_timeout": 10,
-        }))
+        _internal_config=json.dumps(internal_config),
+    )
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -2434,6 +2437,9 @@ def test_actor_checkpointing(ray_start_regular):
                                for checkpoint in available_checkpoints)
                     return checkpoint_id
 
+        def checkpoint_expired(self, checkpoint_id):
+            pass
+
     def kill_actor(actor):
         """Kill actor process."""
         pid = ray.get(actor.get_pid.remote())
@@ -2461,3 +2467,44 @@ def test_actor_checkpointing(ray_start_regular):
     # actor resuming from a checkpoint.
     kill_actor(actor)
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    # This overwrite currently isn't effective,
+    # see https://github.com/ray-project/ray/issues/3926.
+    [{"num_actor_checkpoints_to_keep": 20}],
+    indirect=True,
+)
+def test_deleting_actor_checkpoint(ray_start_regular):
+    """Test deleting old actor checkpoints."""
+
+    @ray.remote
+    class CheckpointableActor(ray.actor.Checkpointable):
+
+        def __init__(self):
+            self.checkpoint_ids = []
+
+        def get_checkpoint_ids(self):
+            return self.checkpoint_ids
+
+        def should_checkpoint(self, checkpoint_context):
+            # Save checkpoints after every task
+            return True
+
+        def save_checkpoint(self, actor_id, checkpoint_id):
+            self.checkpoint_ids.append(checkpoint_id)
+            pass
+
+        def load_checkpoint(self, actor_id, available_checkpoints):
+            pass
+
+        def checkpoint_expired(self, checkpoint_id):
+            assert checkpoint_id == self.checkpoint_ids[0]
+            del self.checkpoint_ids[0]
+
+    actor = CheckpointableActor.remote()
+    for i in range(20):
+        assert len(ray.get(actor.get_checkpoint_ids.remote())) == i
+    for _ in range(20):
+        assert len(ray.get(actor.get_checkpoint_ids.remote())) == 20

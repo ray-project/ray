@@ -1,4 +1,4 @@
-from ray.includes.ray_config cimport RayConfig
+from libc.stdint cimport uint32_t, int64_t
 
 cdef class Config:
     @staticmethod

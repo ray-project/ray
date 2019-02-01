@@ -968,6 +968,7 @@ class Worker(object):
         if is_actor_creation_task:
             self._num_tasks_since_last_checkpoint = 0
             self._last_checkpoint_timestamp = int(1000 * time.time())
+            self._actor_checkpoint_ids = []
             checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
             if len(checkpoints) > 0:
                 # If we found previously saved checkpoints for this actor,
@@ -996,6 +997,11 @@ class Worker(object):
                 # a checkpoint and then call `save_checkpoint`.
                 checkpoint_id = self.raylet_client.prepare_actor_checkpoint(
                     actor_id)
+                self._actor_checkpoint_ids.append(checkpoint_id)
+                if (len(self._actor_checkpoint_ids) >
+                        ray._config.num_actor_checkpoints_to_keep()):
+                    actor.checkpoint_expired(self._actor_checkpoint_ids[0])
+                    del self._actor_checkpoint_ids[0]
                 actor.save_checkpoint(actor_id, checkpoint_id)
                 self._num_tasks_since_last_checkpoint = 0
                 self._last_checkpoint_timestamp = now
