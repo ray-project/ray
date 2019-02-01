@@ -49,13 +49,11 @@ public class EnableJavaAndPythonWorkerTest {
 
   @Test
   public void testEnableJavaAndPythonWorker() throws IOException, InterruptedException {
-
-    final String rayCommand = getRayCommand();
-    if (rayCommand == null) {
+    if (!rayCommandExist()) {
       throw new SkipException("Since there is no ray command, we skip this test.");
     }
 
-    startCluster(rayCommand);
+    startCluster();
 
     System.setProperty("ray.home", "../..");
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
@@ -72,12 +70,12 @@ public class EnableJavaAndPythonWorkerTest {
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
 
-    stopCluster(rayCommand);
+    stopCluster();
   }
 
-  private void startCluster(String rayCommand) throws IOException, InterruptedException {
+  private void startCluster() throws IOException, InterruptedException {
     final List<String> startCommand = ImmutableList.of(
-        rayCommand,
+        "ray",
         "start",
         "--head",
         "--redis-port=6379",
@@ -92,9 +90,9 @@ public class EnableJavaAndPythonWorkerTest {
     process.waitFor(500, TimeUnit.MILLISECONDS);
   }
 
-  private void stopCluster(String rayCommand) throws IOException, InterruptedException {
+  private void stopCluster() throws IOException, InterruptedException {
     final List<String> stopCommand = ImmutableList.of(
-        rayCommand,
+        "ray",
         "stop"
     );
 
@@ -104,36 +102,25 @@ public class EnableJavaAndPythonWorkerTest {
 
     // make sure `ray stop` command get finished. Otherwise some kill command
     // will terminate the processes which is created by next test case.
-    TimeUnit.SECONDS.sleep(1);
+    TimeUnit.MILLISECONDS.sleep(1500);
   }
 
-  private String getRayCommand() throws IOException, InterruptedException {
-    Process process = Runtime.getRuntime().exec("which python");
-    process.waitFor(500, TimeUnit.MILLISECONDS);
-
-    BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-    String pythonPath = reader.readLine();
-    if (!pythonPath.endsWith("/python")) {
-      return null;
-    }
-
-    String binPath = pythonPath.substring(0, pythonPath.length() - "/python".length());
-    String rayPath = String.format("%s/ray", binPath);
+  private boolean rayCommandExist() throws InterruptedException {
     try {
-      process = Runtime.getRuntime().exec(rayPath);
+      Process process = Runtime.getRuntime().exec("ray");
+      process.waitFor(1000, TimeUnit.MILLISECONDS);
+      BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+      String result = reader.readLine();
+      if (result == null) {
+        return false;
+      }
+
+      return result.startsWith("Usage:");
     } catch (IOException e) {
       // IOException means that no such file or directory.
-      return null;
-    }
-    process.waitFor(1000, TimeUnit.MILLISECONDS);
-
-    reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-    String result = reader.readLine();
-    if (result.startsWith("Usage:")) {
-      return rayPath;
     }
 
-    return null;
+    return false;
   }
 
 }
