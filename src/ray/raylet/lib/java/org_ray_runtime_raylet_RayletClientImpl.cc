@@ -258,6 +258,40 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Failed to free objects.");
 }
 
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativePrepareCheckpoint
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *env, jclass,
+                                                                     jlong client,
+                                                                     jbyteArray actorId) {
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  UniqueIdFromJByteArray actor_id(env, actorId);
+  ActorCheckpointID checkpoint_id;
+  RAY_CHECK_OK(raylet_client->PrepareActorCheckpoint(*actor_id.PID, checkpoint_id));
+  jbyteArray result = env->NewByteArray(sizeof(ActorCheckpointID));
+  env->SetByteArrayRegion(result, 0, sizeof(ActorCheckpointID),
+                          reinterpret_cast<jbyte *>(&checkpoint_id));
+  return result;
+}
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeNotifyActorResumedFromCheckpoint
+ * Signature: (J[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpoint(
+    JNIEnv *env, jclass, jlong client, jbyteArray actorId, jbyteArray checkpointId) {
+  auto raylet_client = reinterpret_cast<RayletClient *>(client);
+  UniqueIdFromJByteArray actor_id(env, actorId);
+  UniqueIdFromJByteArray checkpoint_id(env, checkpointId);
+  RAY_CHECK_OK(
+      raylet_client->NotifyActorResumedFromCheckpoint(*actor_id.PID, *checkpoint_id.PID));
+}
+
 #ifdef __cplusplus
 }
 #endif
