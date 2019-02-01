@@ -186,6 +186,10 @@ class NodeManager {
   /// \param worker The worker that finished the task.
   /// \return Void.
   void FinishAssignedTask(Worker &worker);
+  /// Helper function to produce actor table data for a newly created actor.
+  ///
+  /// \param task The actor creation task that created the actor.
+  ActorTableDataT CreateActorTableDataFromCreationTask(const Task &task);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creationt ask.
@@ -284,7 +288,8 @@ class NodeManager {
   /// \param actor_id The actor ID of the actor whose state was updated.
   /// \param data Data associated with this notification.
   /// \return Void.
-  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
+  void HandleActorStateTransition(const ActorID &actor_id,
+                                  ActorRegistration &&actor_registration);
 
   /// Publish an actor's state transition to all other nodes.
   ///

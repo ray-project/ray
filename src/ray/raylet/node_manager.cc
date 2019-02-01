@@ -139,7 +139,7 @@ ray::Status NodeManager::RegisterGcs() {
     if (!data.empty()) {
       // We only need the last entry, because it represents the latest state of
       // this actor.
-      HandleActorStateTransition(actor_id, data.back());
+      HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
     }
   };
 
@@ -488,8 +488,7 @@ void NodeManager::PublishActorStateTransition(
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
-                                             const ActorTableDataT &data) {
-  ActorRegistration actor_registration(data);
+                                             ActorRegistration &&actor_registration) {
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
                  << ", node_manager_id = " << actor_registration.GetNodeManagerId()
                  << ", state = " << EnumNameActorState(actor_registration.GetState())
@@ -749,7 +748,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     // So if we receive any actor tasks before we receive GCS notification,
     // these tasks can be correctly routed to the `MethodsWaitingForActorCreation` queue,
     // instead of being assigned to the dead actor.
-    HandleActorStateTransition(actor_id, new_actor_data);
+    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
   }
   ray::gcs::ActorTable::WriteCallback failure_callback = nullptr;
   if (was_local) {
@@ -1360,7 +1359,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           if (!data.empty()) {
             // The actor has been created. We only need the last entry, because
             // it represents the latest state of this actor.
-            HandleActorStateTransition(actor_id, data.back());
+            HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
           }
         };
         RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
@@ -1712,61 +1711,51 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 }
 
-void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
-  // If this was an actor creation task, then convert the worker to an actor
-  // and notify the other node managers.
-  if (task.GetTaskSpecification().IsActorCreationTask()) {
-    // Convert the worker to an actor.
-    auto actor_id = task.GetTaskSpecification().ActorCreationId();
-    worker.AssignActorId(actor_id);
-    // Publish the actor creation event to all other nodes so that methods for
-    // the actor will be forwarded directly to this node.
-    auto actor_entry = actor_registry_.find(actor_id);
-    ActorTableDataT new_actor_data;
-    if (actor_entry == actor_registry_.end()) {
-      // Set all of the static fields for the actor. These fields will not
-      // change even if the actor fails or is reconstructed.
-      new_actor_data.actor_id = actor_id.binary();
-      new_actor_data.actor_creation_dummy_object_id =
-          task.GetTaskSpecification().ActorDummyObject().binary();
-      new_actor_data.driver_id = task.GetTaskSpecification().DriverId().binary();
-      new_actor_data.max_reconstructions =
-          task.GetTaskSpecification().MaxActorReconstructions();
-      // This is the first time that the actor has been created, so the number
-      // of remaining reconstructions is the max.
-      new_actor_data.remaining_reconstructions =
-          task.GetTaskSpecification().MaxActorReconstructions();
-    } else {
-      // If we've already seen this actor, it means that this actor was reconstructed.
-      // Thus, its previous state must be RECONSTRUCTING.
-      RAY_CHECK(actor_entry->second.GetState() == ActorState::RECONSTRUCTING);
-      // Copy the static fields from the current actor entry.
-      new_actor_data = actor_entry->second.GetTableData();
-      // We are reconstructing the actor, so subtract its
-      // remaining_reconstructions by 1.
-      new_actor_data.remaining_reconstructions--;
-    }
-
-    // Set the new fields for the actor's state to indicate that the actor is
-    // now alive on this node manager.
-    new_actor_data.node_manager_id =
-        gcs_client_->client_table().GetLocalClientId().binary();
-    new_actor_data.state = ActorState::ALIVE;
-    HandleActorStateTransition(actor_id, new_actor_data);
-    PublishActorStateTransition(
-        actor_id, new_actor_data,
-        /*failure_callback=*/
-        [](gcs::AsyncGcsClient *client, const ActorID &id, const ActorTableDataT &data) {
-          // Only one node at a time should succeed at creating the actor.
-          RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
-        });
+ActorTableDataT NodeManager::CreateActorTableDataFromCreationTask(const Task &task) {
+  RAY_CHECK(task.GetTaskSpecification().IsActorCreationTask());
+  // Convert the worker to an actor.
+  auto actor_id = task.GetTaskSpecification().ActorCreationId();
+  // Publish the actor creation event to all other nodes so that methods for
+  // the actor will be forwarded directly to this node.
+  auto actor_entry = actor_registry_.find(actor_id);
+  ActorTableDataT new_actor_data;
+  // TODO(swang): If this is an actor that was reconstructed, and previous
+  // actor notifications were delayed, then this node may not have an entry for
+  // the actor in actor_regisry_. Then, the fields for the number of
+  // reconstructions will be wrong.
+  if (actor_entry == actor_registry_.end()) {
+    // Set all of the static fields for the actor. These fields will not
+    // change even if the actor fails or is reconstructed.
+    new_actor_data.actor_id = actor_id.binary();
+    new_actor_data.actor_creation_dummy_object_id =
+        task.GetTaskSpecification().ActorDummyObject().binary();
+    new_actor_data.driver_id = task.GetTaskSpecification().DriverId().binary();
+    new_actor_data.max_reconstructions =
+        task.GetTaskSpecification().MaxActorReconstructions();
+    // This is the first time that the actor has been created, so the number
+    // of remaining reconstructions is the max.
+    new_actor_data.remaining_reconstructions =
+        task.GetTaskSpecification().MaxActorReconstructions();
+  } else {
+    // If we've already seen this actor, it means that this actor was reconstructed.
+    // Thus, its previous state must be RECONSTRUCTING.
+    RAY_CHECK(actor_entry->second.GetState() == ActorState::RECONSTRUCTING);
+    // Copy the static fields from the current actor entry.
+    new_actor_data = actor_entry->second.GetTableData();
+    // We are reconstructing the actor, so subtract its
+    // remaining_reconstructions by 1.
+    new_actor_data.remaining_reconstructions--;
   }
 
-  // Update the actor's frontier.
-  UpdateActorFrontier(task);
+  // Set the new fields for the actor's state to indicate that the actor is
+  // now alive on this node manager.
+  new_actor_data.node_manager_id =
+      gcs_client_->client_table().GetLocalClientId().binary();
+  new_actor_data.state = ActorState::ALIVE;
+  return new_actor_data;
 }
 
-void NodeManager::UpdateActorFrontier(const Task &task) {
+void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
   ActorHandleID actor_handle_id;
   bool resumed_from_checkpoint = false;
@@ -1780,10 +1769,67 @@ void NodeManager::UpdateActorFrontier(const Task &task) {
     actor_id = task.GetTaskSpecification().ActorId();
     actor_handle_id = task.GetTaskSpecification().ActorHandleId();
   }
-  auto actor_entry = actor_registry_.find(actor_id);
-  RAY_CHECK(actor_entry != actor_registry_.end());
+
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    // This was an actor creation task. Convert the worker to an actor.
+    worker.AssignActorId(actor_id);
+    // Notify the other node managers that the actor has been created.
+    const auto new_actor_data = CreateActorTableDataFromCreationTask(task);
+    if (resumed_from_checkpoint) {
+      // This actor was resumed from a checkpoint. In this case, we first look
+      // up the checkpoint in GCS and use it to restore the actor registration
+      // and frontier.
+      const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
+      checkpoint_id_to_restore_.erase(actor_id);
+      RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
+                     << actor_id;
+      RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
+          JobID::nil(), checkpoint_id,
+          [this, actor_id, new_actor_data](ray::gcs::AsyncGcsClient *client,
+                                           const UniqueID &checkpoint_id,
+                                           const ActorCheckpointDataT &checkpoint_data) {
+            RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
+                          << " from checkpoint " << checkpoint_id;
+            ActorRegistration actor_registration =
+                ActorRegistration(new_actor_data, checkpoint_data);
+            // Mark the unreleased dummy objects in the checkpoint frontier as local.
+            for (const auto &entry : actor_registration.GetDummyObjects()) {
+              HandleObjectLocal(entry.first);
+            }
+            HandleActorStateTransition(actor_id, std::move(actor_registration));
+            PublishActorStateTransition(
+                actor_id, new_actor_data,
+                /*failure_callback=*/
+                [](gcs::AsyncGcsClient *client, const ActorID &id,
+                   const ActorTableDataT &data) {
+                  // Only one node at a time should succeed at creating the actor.
+                  RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
+                });
+          },
+          [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
+            RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
+                           << " for actor " << actor_id << " in GCS.";
+          }));
+    } else {
+      // The actor did not resume from a checkpoint. Immediately notify the
+      // other node managers that the actor has been created.
+      HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
+      PublishActorStateTransition(
+          actor_id, new_actor_data,
+          /*failure_callback=*/
+          [](gcs::AsyncGcsClient *client, const ActorID &id,
+             const ActorTableDataT &data) {
+            // Only one node at a time should succeed at creating the actor.
+            RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
+          });
+    }
+  }
 
   if (!resumed_from_checkpoint) {
+    // The actor was not resumed from a checkpoint. We extend the actor's
+    // frontier as usual since there is no frontier to restore.
+    auto actor_entry = actor_registry_.find(actor_id);
+    RAY_CHECK(actor_entry != actor_registry_.end());
     // Extend the actor's frontier to include the executed task.
     const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
     const ObjectID object_to_release =
@@ -1802,48 +1848,6 @@ void NodeManager::UpdateActorFrontier(const Task &task) {
     // dummy objects properly in case the actor fails and needs to be
     // reconstructed.
     HandleObjectLocal(dummy_object);
-  } else {
-    // If this actor was resumed from a checkpoint.
-    // Look up the checkpoint in GCS and use it to restore actor registration.
-    const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
-    checkpoint_id_to_restore_.erase(actor_id);
-    RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
-                   << actor_id;
-    RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
-        JobID::nil(), checkpoint_id,
-        [this, actor_entry](ray::gcs::AsyncGcsClient *client,
-                            const UniqueID &checkpoint_id,
-                            const ActorCheckpointDataT &checkpoint_data) {
-          RAY_LOG(INFO) << "Restoring registration for actor " << actor_entry->first
-                        << " from checkpoint " << checkpoint_id;
-          actor_entry->second.RestoreFrontier(checkpoint_data);
-          // Mark the unreleased dummy objects as local.
-          for (const auto &entry : actor_entry->second.GetDummyObjects()) {
-            HandleObjectLocal(entry.first);
-          }
-          // The actor's state is now restored. Resubmit the waiting actor tasks, because
-          // some tasks may be before the checkpoint, and will otherwise get stuck in the
-          // waiting queue forever.
-          std::unordered_set<TaskID> waiting_actor_task_ids;
-          for (const auto &task : local_queues_.GetTasks(TaskState::WAITING)) {
-            if (task.GetTaskSpecification().ActorId() == actor_entry->first) {
-              waiting_actor_task_ids.insert(task.GetTaskSpecification().TaskId());
-            }
-          }
-          for (const auto &task : local_queues_.RemoveTasks(waiting_actor_task_ids)) {
-            if (!lineage_cache_.RemoveWaitingTask(
-                    task.GetTaskSpecification().TaskId())) {
-              RAY_LOG(WARNING) << "Task " << task.GetTaskSpecification().TaskId()
-                               << " already removed from the lineage cache. This is most "
-                                  "likely due to reconstruction.";
-            }
-            SubmitTask(task, Lineage());
-          }
-        },
-        [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
-          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
-                         << " for actor " << actor_id << " in GCS.";
-        }));
   }
 }
 
