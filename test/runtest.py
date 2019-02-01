@@ -2538,8 +2538,11 @@ def test_inline_objects(shutdown_only):
     for _ in range(100):
         inline_object = a.create_inline_object.remote()
         ray.get(inline_object)
-        ray.worker.global_worker.plasma_client.delete(
-            [ray.pyarrow.plasma.ObjectID(inline_object.binary())])
+        plasma_id = ray.pyarrow.plasma.ObjectID(inline_object.binary())
+        # This while loop is necessary because sometimes the object is still
+        # there immediately after plasma_client.delete.
+        while ray.worker.global_worker.plasma_client.contains(plasma_id):
+            ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Make sure we can still get an inlined object created by an actor even
         # after it has been evicted.
         try:
@@ -2556,8 +2559,11 @@ def test_inline_objects(shutdown_only):
     for _ in range(10):
         non_inline_object = a.create_non_inline_object.remote()
         ray.get(non_inline_object)
-        ray.worker.global_worker.plasma_client.delete(
-            [ray.pyarrow.plasma.ObjectID(non_inline_object.binary())])
+        plasma_id = ray.pyarrow.plasma.ObjectID(non_inline_object.binary())
+        # This while loop is necessary because sometimes the object is still
+        # there immediately after plasma_client.delete.
+        while ray.worker.global_worker.plasma_client.contains(plasma_id):
+            ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Objects created by an actor that were evicted and larger than the
         # maximum inline object size cannot be retrieved or reconstructed.
         with pytest.raises(ray.worker.RayTaskError):
