@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import copy
-import logging
 import os
 
 try:
@@ -12,16 +10,16 @@ try:
 except Exception:
     sgo = None
 
-from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
 class SigOptSearch(SuggestionAlgorithm):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. Can only support 10 concurrent trials at once.
+    Requires SigOpt to be installed. Can only support 10 concurrent trials
+    at once, or whatever is allowed by the user's SigOpt plan.
 
-    Parameters: TODO: change depending on how sigopt initializes objects
+    Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
@@ -32,13 +30,21 @@ class SigOptSearch(SuggestionAlgorithm):
 
     Example:
         >>> space = [
-        >>>     {'name': 'x1',
-        >>>      'type': 'double',
-        >>>      'bounds': { 'min': -70.0, 'max': 70.0 },
+        >>>     {
+        >>>         'name': 'width',
+        >>>         'type': 'int',
+        >>>         'bounds': {
+        >>>             'min': 0,
+        >>>             'max': 20
+        >>>         },
         >>>     },
-        >>>     {'name': 'x2',
-        >>>      'type': 'double',
-        >>>      'bounds': { 'min': -70.0, 'max': 70.0 },
+        >>>     {
+        >>>         'name': 'height',
+        >>>         'type': 'int',
+        >>>         'bounds': {
+        >>>             'min': -100,
+        >>>             'max': 100
+        >>>         },
         >>>     },
         >>> ]
         >>> config = {
@@ -54,12 +60,13 @@ class SigOptSearch(SuggestionAlgorithm):
         >>>     parameters, max_concurrent=4, reward_attr="neg_mean_loss")
     """
 
-    def __init__(self,
-                 space,
-                 name='test', # TODO
-                 max_concurrent=10,
-                 reward_attr="episode_reward_mean",
-                 **kwargs):
+    def __init__(
+            self,
+            space,
+            name='test',  # TODO
+            max_concurrent=10,
+            reward_attr="episode_reward_mean",
+            **kwargs):
         assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
@@ -67,7 +74,7 @@ class SigOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping = {}
 
         self.conn = sgo.Connection(client_token=os.environ['SIGOPT_KEY'])
-        
+
         self.experiment = self.conn.experiments().create(
             name=name,
             parameters=space,
@@ -81,8 +88,9 @@ class SigOptSearch(SuggestionAlgorithm):
             return None
 
         # Get new suggestion from SigOpt
-        suggestion = self.conn.experiments(self.experiment.id).suggestions().create()
-        
+        suggestion = self.conn.experiments(
+            self.experiment.id).suggestions().create()
+
         self._live_trial_mapping[trial_id] = suggestion
 
         return copy.deepcopy(suggestion.assignments)
@@ -96,7 +104,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to SigOpt unless early terminated or errored.
-        
+
         Creates SigOpt Observation object for trial.
         """
         if result:

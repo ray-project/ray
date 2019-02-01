@@ -1,4 +1,4 @@
-"""This test checks that HyperOpt is functional.
+"""This test checks that SigOpt is functional.
 
 It also checks that it is usable with a separate scheduler.
 """
@@ -35,13 +35,21 @@ if __name__ == '__main__':
     register_trainable("exp", easy_objective)
 
     space = [
-        {'name': 'width',
-         'type': 'int',
-         'bounds': { 'min': 0, 'max': 20 },
+        {
+            'name': 'width',
+            'type': 'int',
+            'bounds': {
+                'min': 0,
+                'max': 20
+            },
         },
-        {'name': 'height',
-         'type': 'int',
-         'bounds': { 'min': -100, 'max': 100 },
+        {
+            'name': 'height',
+            'type': 'int',
+            'bounds': {
+                'min': -100,
+                'max': 100
+            },
         },
     ]
 
