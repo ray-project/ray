@@ -180,6 +180,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self._is_discrete = False
         self.grads = None
 
+        output_hidden_shape = None
+        actions_shape = [None]
+
         # Create input placeholders
         if existing_inputs:
             actions, dones, behaviour_logits, rewards, observations, \
@@ -187,39 +190,37 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_state_in = existing_inputs[7:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
-            self.output_hidden_shape = \
-                config["output_hidden_shape"] or [action_space.n]
-            logit_dim = sum(self.output_hidden_shape)
             if isinstance(action_space, gym.spaces.Discrete):
                 self._is_discrete = True
-                actions = tf.placeholder(tf.int64, [None], name="ac")
-            elif isinstance(action_space, gym.spaces.Box):
-                actions = tf.placeholder(
-                    tf.int64, [None, *action_space.shape], name="ac")
+                output_hidden_shape = [action_space.n]
+            elif isinstance(action_space,
+                            gym.spaces.multi_discrete.MultiDiscrete):
+                actions_shape = [None, len(action_space.nvec)]
+                output_hidden_shape = action_space.nvec
             else:
                 raise UnsupportedSpaceException(
                     "Action space {} is not supported for IMPALA.".format(
                         action_space))
+
+            actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
             behaviour_logits = tf.placeholder(tf.float32,
-                                              [None, logit_dim],
+                                              [None, sum(output_hidden_shape)],
                                               name="behaviour_logits")
-
-            unpacked_behaviour_logits = tf.split(
-                behaviour_logits, self.output_hidden_shape, axis=1)
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
             existing_seq_lens = None
 
+        # Create unpacked behaviour logits
+        unpacked_behaviour_logits = tf.split(
+            behaviour_logits, output_hidden_shape, axis=1)
+
         # Setup the policy
-        dist_class, cat_logit_dim = ModelCatalog.get_action_dist(
+        dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"],
             dist_type=self.config["dist_type"])
-
-        if self._is_discrete:
-            logit_dim = cat_logit_dim
 
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
@@ -236,9 +237,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
         unpacked_outputs = tf.split(
-            self.model.outputs, self.output_hidden_shape, axis=1)
-        dist_inputs = self.model.outputs if self._is_discrete \
-            else unpacked_outputs
+            self.model.outputs, output_hidden_shape, axis=1)
+        dist_inputs = self.model.outputs if self._is_discrete else \
+            unpacked_outputs
+
         action_dist = dist_class(dist_inputs)
         values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,

@@ -116,8 +116,6 @@ class ModelCatalog(object):
                         "The squash_to_range option is deprecated. See the "
                         "clip_actions agent option instead.")
                 return dist, action_space.shape[0] * 2
-            elif dist_type == "categorical":
-                return MultiCategorical, None
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
@@ -135,6 +133,8 @@ class ModelCatalog(object):
                 child_distributions=child_dist,
                 action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            return MultiCategorical, sum(action_space.nvec)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
@@ -169,6 +169,11 @@ class ModelCatalog(object):
             return tf.placeholder(
                 tf.int64 if all_discrete else tf.float32,
                 shape=(None, size),
+                name="action")
+        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            return tf.placeholder(
+                tf.as_dtype(action_space.dtype),
+                shape=(None, len(action_space.nvec)),
                 name="action")
         else:
             raise NotImplementedError("action space {}"

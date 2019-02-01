@@ -72,8 +72,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # Actions and arguments are chosen based on this distribution, if provided
     "dist_type": None,
-    # If output of IMPALA network has special shape that is flattened
-    "output_hidden_shape": None,
 
     # Learning params.
     "grad_clip": 40.0,
