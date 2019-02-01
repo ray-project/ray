@@ -27,7 +27,7 @@ while ! [[ $(echo $WHEELS | wc -w) == 10 ]]; do
     ((COUNT++))
 done
 
-# Rename wheels to ray_nightly-{version}.dev{date}-{info}.whl
+# Rename wheels to ray-{version}.dev{date}-{info}.whl
 pushd $WHEEL_DIR
 DATE=$(date +"%Y%m%d")
 VERSION_PATTERN="[0-9]\+\.[0-9]\+\.[0-9]\+"
@@ -35,7 +35,7 @@ for FILE in $WHEELS; do
     VERSION=$(echo $FILE | grep -o $VERSION_PATTERN)
     INFO_PATTERN="(?<=$VERSION-).*(?=\.whl)"
     INFO=$(echo $FILE | grep -P -o $INFO_PATTERN)
-    NEW_FILE="ray_nightly-$VERSION.dev$DATE-$INFO.whl"
+    NEW_FILE="ray-$VERSION.dev$DATE-$INFO.whl"
     mv $FILE $NEW_FILE
 done
 popd
