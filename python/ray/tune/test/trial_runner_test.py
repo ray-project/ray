@@ -23,7 +23,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import Trial, Resources, ExportFormat
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
@@ -678,6 +678,47 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
+
+    def testExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                path = export_dir + "/exported"
+                with open(path, "w") as f:
+                    f.write("OK")
+                return {export_formats[0]: path}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "export_formats": ["format"]
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(
+                os.path.exists(os.path.join(trial.logdir, "exported")))
+
+    def testInvalidExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                ExportFormat.validate(export_formats)
+                return {}
+
+        def fail_trial():
+            run_experiments({
+                "foo": {
+                    "run": train,
+                    "export_formats": ["format"]
+                }
+            })
+
+        self.assertRaises(TuneError, fail_trial)
 
     def testDeprecatedResources(self):
         class train(Trainable):
