@@ -400,10 +400,10 @@ class ObjectManager : public ObjectManagerInterface {
   /// including when the object was last pushed to other object managers.
   std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
 
-  /// Set of objects created from inlined data. Set of objects created from
-  /// inlined data retrieved from the GCS. Objects in this map will not be
-  /// added to the GCS object table since a GCS entry with the inlined data
-  /// already exists.
+  /// Set of objects created from inlined data whose locations and/or evictions
+  /// should not be reported to the GCS. This includes objects that were
+  /// created from data retrieved from the GCS, since a GCS entry with the
+  /// inlined data already exists.
   std::unordered_set<ObjectID> local_inlined_objects_;
 
   /// This is used as the callback identifier in Pull for

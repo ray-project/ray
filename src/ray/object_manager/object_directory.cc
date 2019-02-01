@@ -38,26 +38,29 @@ void UpdateObjectLocations(const std::vector<ObjectTableDataT> &location_history
     // is set to true, it should never go back to false.
     *has_been_created = true;
   }
-  *inline_object_flag = false;
   for (const auto &object_table_data : location_history) {
     ClientID client_id = ClientID::from_binary(object_table_data.manager);
     if (object_table_data.inline_object_flag) {
-      // This is an inlined object. Read object's data from the object's GCS entry.
-      *inline_object_flag = object_table_data.inline_object_flag;
-      inline_object_data->assign(object_table_data.inline_object_data.begin(),
-                                 object_table_data.inline_object_data.end());
-      inline_object_metadata->assign(object_table_data.inline_object_metadata.begin(),
-                                     object_table_data.inline_object_metadata.end());
+      if (!*inline_object_flag) {
+        // This is the first time we're receiving the inline object data. Read
+        // object's data from the GCS entry.
+        *inline_object_flag = object_table_data.inline_object_flag;
+        inline_object_data->assign(object_table_data.inline_object_data.begin(),
+                                   object_table_data.inline_object_data.end());
+        inline_object_metadata->assign(object_table_data.inline_object_metadata.begin(),
+                                       object_table_data.inline_object_metadata.end());
+      }
       // We got the data and metadata of the object so exit the loop.
       break;
+    }
+
+    if (!object_table_data.is_eviction) {
+      client_ids->insert(client_id);
     } else {
-      if (!object_table_data.is_eviction) {
-        client_ids->insert(client_id);
-      } else {
-        client_ids->erase(client_id);
-      }
+      client_ids->erase(client_id);
     }
   }
+
   if (!*inline_object_flag) {
     // Filter out the removed clients from the object locations.
     for (auto it = client_ids->begin(); it != client_ids->end();) {
@@ -114,6 +117,8 @@ ray::Status ObjectDirectory::ReportObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
     const std::vector<uint8_t> &inline_object_data,
     const std::string &inline_object_metadata) {
+  RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id << " inline? "
+                 << inline_object_flag;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
@@ -134,6 +139,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
+  RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();

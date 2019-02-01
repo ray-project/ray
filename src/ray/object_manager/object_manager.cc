@@ -66,30 +66,35 @@ void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
-  std::vector<uint8_t> inline_object_data;
-  std::string inline_object_metadata;
-  bool inline_object_flag = false;
-
-  if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
-    // Inline object. Store the object's data in the object's GCS entry.
-    std::vector<plasma::ObjectBuffer> object_buffers;
-    // NOTE: This is a blocking call.
-    RAY_ARROW_CHECK_OK(
-        store_client_.Get({object_id.to_plasma_id()}, -1, &object_buffers));
-    inline_object_flag = true;
-    inline_object_data.assign(
-        object_buffers[0].data->data(),
-        object_buffers[0].data->data() + object_buffers[0].data->size());
-    inline_object_metadata.assign(
-        object_buffers[0].metadata->data(),
-        object_buffers[0].metadata->data() + object_buffers[0].metadata->size());
-  }
-
   // If this object was created from inlined data, this means it is already in GCS,
   // so no need to write it again.
   if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
+    std::vector<uint8_t> inline_object_data;
+    std::string inline_object_metadata;
+    bool inline_object_flag = false;
+    if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
+      // Inline object. Try to get the data from the object store.
+      plasma::ObjectBuffer object_buffer;
+      plasma::ObjectID plasma_id = object_id.to_plasma_id();
+      RAY_ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
+      if (object_buffer.data != nullptr) {
+        // The object exists. Store the object data in the GCS entry.
+        inline_object_flag = true;
+        inline_object_data.assign(
+            object_buffer.data->data(),
+            object_buffer.data->data() + object_buffer.data->size());
+        inline_object_metadata.assign(
+            object_buffer.metadata->data(),
+            object_buffer.metadata->data() + object_buffer.metadata->size());
+        // Mark this object as inlined, so that if this object is later
+        // evicted, we do not report it to the GCS.
+        local_inlined_objects_.insert(object_id);
+      }
+    }
+
     RAY_CHECK_OK(object_directory_->ReportObjectAdded(
         object_id, client_id_, object_info, inline_object_flag, inline_object_data,
         inline_object_metadata));
@@ -115,10 +120,10 @@ void ObjectManager::HandleObjectAdded(
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Object removed " << object_id;
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  if (it->second.object_info.data_size >
-      RayConfig::instance().inline_object_max_size_bytes()) {
+  if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
     // Inline object data can be retrieved by any node by contacting the GCS,
     // so only report that the object was evicted if it wasn't inlined.
     RAY_CHECK_OK(object_directory_->ReportObjectRemoved(object_id, client_id_));
@@ -226,7 +231,14 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
-  RAY_CHECK(client_vector.size() != 1 || client_vector[0] != client_id_);
+  if (client_vector.size() == 1 && client_vector[0] == client_id_) {
+    RAY_LOG(ERROR) << "The object manager with client ID " << client_id_
+                   << " is trying to pull object " << object_id
+                   << " but the object table suggests that this object manager "
+                   << "already has the object. The object may have been evicted.";
+    it->second.timer_set = false;
+    return;
+  }
 
   // Choose a random client to pull the object from.
   // Generate a random index.
