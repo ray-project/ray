@@ -8,9 +8,9 @@ import logging
 import os
 
 try:
-    from sigopt import Connection
+    import sigopt as sgo
 except Exception:
-    Connection = None
+    sgo = None
 
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
@@ -60,13 +60,13 @@ class SigOptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        assert Connection is not None, "SigOpt must be installed!"
+        assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self._live_trial_mapping = {}
 
-        self.conn = Connection(client_token=os.environ['SIGOPT_KEY'])
+        self.conn = sgo.Connection(client_token=os.environ['SIGOPT_KEY'])
         
         self.experiment = self.conn.experiments().create(
             name=name,
@@ -81,11 +81,11 @@ class SigOptSearch(SuggestionAlgorithm):
             return None
 
         # Get new suggestion from SigOpt
-        suggestion = self.conn.experiments(self.experiment.id).suggestions().create().assignments
+        suggestion = self.conn.experiments(self.experiment.id).suggestions().create()
         
         self._live_trial_mapping[trial_id] = suggestion
 
-        return copy.deepcopy(suggestion)
+        return copy.deepcopy(suggestion.assignments)
 
     def on_trial_result(self, trial_id, result):
         pass
@@ -96,11 +96,17 @@ class SigOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to SigOpt unless early terminated or errored.
-
-        The result is internally negated when interacting with HyperOpt
-        so that HyperOpt can "maximize" this value, as it minimizes on default.
+        
+        Creates SigOpt Observation object for trial.
         """
-        pass
+        if result:
+            self.conn.experiments(self.experiment.id).observations().create(
+                suggestion=self._live_trial_mapping[trial_id].id,
+                value=result[self._reward_attr],
+            )
+            # Update the experiment object
+            self.experiment = self.conn.experiments(self.experiment.id).fetch()
+            del self._live_trial_mapping[trial_id]
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

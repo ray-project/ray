@@ -57,6 +57,6 @@ if __name__ == '__main__':
             },
         }
     }
-    algo = SigOptSearch(space, max_concurrent=4, reward_attr="neg_mean_loss")
+    algo = SigOptSearch(space, max_concurrent=1, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(config, search_alg=algo, scheduler=scheduler)
