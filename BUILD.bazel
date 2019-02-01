@@ -484,6 +484,7 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
+        "@plasma//:plasma_client_java",
         "//:raylet_library_java"
     ],
     outs = ["ray_pkg"],
@@ -504,8 +505,14 @@ genrule(
         mkdir -p $(location ray_pkg)/src/ray/raylet &&
         for f in $(locations //:raylet_library_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/src/ray/raylet/"""
         + select({
-            "@bazel_tools//src/conditions:windows": "liblibraylet_library_java.dll",
-            "@bazel_tools//src/conditions:darwin": "liblibraylet_library_java.dylib",
-            "//conditions:default": "liblibraylet_library_java.so"})
+            "@bazel_tools//src/conditions:windows": "libraylet_library_java.dll",
+            "@bazel_tools//src/conditions:darwin": "libraylet_library_java.dylib",
+            "//conditions:default": "libraylet_library_java.so"})
+        + "; fi done &&" +
+        """for f in $(locations @plasma//:plasma_client_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/src/ray/raylet/"""
+        + select({
+            "@bazel_tools//src/conditions:windows": "libplasma_java.dll",
+            "@bazel_tools//src/conditions:darwin": "libplasma_java.dylib",
+            "//conditions:default": "libplasma_java.so"})
         + "; fi done"
 )
