@@ -192,7 +192,7 @@ class LoadMetrics(object):
                     resources_total[resource_id] = 0.0
                 resources_used[resource_id] += used
                 resources_total[resource_id] += amount
-                assert used >= 0
+                used = max(0, used)
                 if amount > 0:
                     frac = used / float(amount)
                     if frac > max_frac:
