@@ -61,6 +61,26 @@ cc_library(
 )
 
 cc_library(
+    name = "plasma_client_java",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "@bazel_tools//tools/jdk:current_java_runtime",
+        "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc"
+        ],
+    hdrs = [
+        "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h",
+    ],
+    includes = [
+        "cpp/src",
+        "../../external/local_jdk/include"] + select({
+            "@bazel_tools//src/conditions:windows": ["../../external/local_jdk/include/win32"],
+            "@bazel_tools//src/conditions:darwin": ["../../external/local_jdk/include/darwin"],
+            "//conditions:default": ["external/local_jdk/include/linux"]
+        }),
+    deps = ["@plasma//:plasma_client"],
+)	
+
+cc_library(
     name = "plasma_lib",
     hdrs = [
         "cpp/src/plasma/events.h",
