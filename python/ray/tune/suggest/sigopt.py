@@ -103,6 +103,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to SigOpt unless early terminated or errored.
+        
         If a trial fails, it will be reported as a failed Observation, telling
         the optimizer that the Suggestion led to a metric failure, which 
         updates the feasible region and improves parameter recommendation.
