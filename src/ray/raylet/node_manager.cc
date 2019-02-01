@@ -1193,6 +1193,12 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
 void NodeManager::TreatTaskAsFailed(const Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  // If this was an actor creation task that tried to resume from a checkpoint,
+  // then erase it here since the task did not finish.
+  if (spec.IsActorCreationTask()) {
+    ActorID actor_id = spec.ActorCreationId();
+    checkpoint_id_to_restore_.erase(actor_id);
+  }
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();
