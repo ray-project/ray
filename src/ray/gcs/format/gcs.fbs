@@ -345,8 +345,9 @@ table ActorCheckpointData {
 table ActorCheckpointIdData {
   // ID of this actor.
   actor_id: string;
-  // A list of the available checkpoint IDs for this actor.
-  checkpoint_ids: [string];
+  // IDs of this actor's available checkpoints.
+  // Note, this is a long string that concatenates all the IDs.
+  checkpoint_ids: string;
   // A list of the timestamps for each of the above `checkpoint_ids`.
   timestamps: [long];
 }

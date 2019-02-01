@@ -11,7 +11,8 @@ import time
 import ray
 from ray.function_manager import FunctionDescriptor
 import ray.gcs_utils
-import ray.ray_constants as ray_constants
+
+from ray.ray_constants import ID_SIZE
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -720,7 +721,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == ray_constants.ID_SIZE
+            assert len(actor_id) == ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
@@ -930,13 +931,18 @@ class GlobalState(object):
         entry = (
             ray.gcs_utils.ActorCheckpointIdData.GetRootAsActorCheckpointIdData(
                 gcs_entry.Entries(0), 0))
+        checkpoint_ids_str = entry.CheckpointIds()
+        num_checkpoints = len(checkpoint_ids_str) // ID_SIZE
+        assert len(checkpoint_ids_str) % ID_SIZE == 0
+        checkpoint_ids = [
+            ray.ActorCheckpointID(
+                checkpoint_ids_str[(i * ID_SIZE):((i + 1) * ID_SIZE)])
+            for i in range(num_checkpoints)
+        ]
         return {
             "ActorID": ray.utils.binary_to_hex(entry.ActorId()),
-            "CheckpointIds": [
-                ray.ObjectID(entry.CheckpointIds(i))
-                for i in range(entry.CheckpointIdsLength())
-            ],
+            "CheckpointIds": checkpoint_ids,
             "Timestamps": [
-                entry.Timestamps(i) for i in range(entry.TimestampsLength())
+                entry.Timestamps(i) for i in range(num_checkpoints)
             ],
         }

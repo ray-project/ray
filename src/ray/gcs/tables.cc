@@ -449,14 +449,16 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     std::shared_ptr<ActorCheckpointIdDataT> copy =
         std::make_shared<ActorCheckpointIdDataT>(data);
     copy->timestamps.push_back(current_sys_time_ms());
-    copy->checkpoint_ids.push_back(checkpoint_id.binary());
+    copy->checkpoint_ids += checkpoint_id.binary();
     auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
     while (copy->timestamps.size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
-      const auto &checkpoint_id = UniqueID::from_binary(*copy->checkpoint_ids.begin());
-      RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor " << actor_id;
+      const auto &checkpoint_id =
+          UniqueID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+      RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
+                     << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
-      copy->checkpoint_ids.erase(copy->checkpoint_ids.begin());
+      copy->checkpoint_ids.erase(0, kUniqueIDSize);
       // TODO(hchen): also delete checkpoint data from GCS.
     }
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
@@ -467,7 +469,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
         std::make_shared<ActorCheckpointIdDataT>();
     data->actor_id = id.binary();
     data->timestamps.push_back(current_sys_time_ms());
-    data->checkpoint_ids.push_back(checkpoint_id.binary());
+    data->checkpoint_ids = checkpoint_id.binary();
     RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
   };
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);

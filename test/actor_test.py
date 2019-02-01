@@ -28,6 +28,8 @@ def ray_start_regular(request):
     # Start the Ray processes.
     ray.init(
         num_cpus=1,
+        redirect_output=True,
+        redirect_worker_output=True,
         _internal_config=json.dumps(internal_config),
     )
     yield None
