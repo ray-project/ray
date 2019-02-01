@@ -30,6 +30,7 @@ class SkoptSearch(SuggestionAlgorithm):
             to 10.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
+            
     Example:
         >>> from skopt import Optimizer
         >>> optimizer = Optimizer([(-2.0, 2.0)])
