@@ -286,12 +286,6 @@ class NodeManager {
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
 
-  /// When an actor becomes alive, resubmit those tasks that are waiting for actor
-  /// creation.
-  ///
-  /// \param actor_id ID of the actor.
-  void ResubmitTasksWaitingForActorCreation(const ActorID &actor_id);
-
   /// Publish an actor's state transition to all other nodes.
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
@@ -402,6 +396,13 @@ class NodeManager {
   ///
   /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
+
+  /// Update actor frontier when a task finishes.
+  /// If the task is an actor creation task and the actor was resumed from a checkpoint,
+  /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
+  ///
+  /// \param task The task that just finished.
+  void UpdateActorFrontier(const Task &task);
 
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.

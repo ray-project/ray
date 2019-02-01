@@ -487,40 +487,6 @@ void NodeManager::PublishActorStateTransition(
       JobID::nil(), actor_id, actor_notification, nullptr, failure_callback, log_length));
 }
 
-void NodeManager::ResubmitTasksWaitingForActorCreation(const ActorID &actor_id) {
-  // The actor's location is now known. Dequeue any methods that were
-  // submitted before the actor's location was known.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto &methods = local_queues_.GetTasks(TaskState::WAITING_FOR_ACTOR_CREATION);
-  std::unordered_set<TaskID> created_actor_method_ids;
-  for (const auto &method : methods) {
-    if (method.GetTaskSpecification().ActorId() == actor_id) {
-      created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
-    }
-  }
-  // Resubmit the methods that were submitted before the actor's location was
-  // known.
-  auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-  for (const auto &method : created_actor_methods) {
-    if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
-      RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
-                       << " already removed from the lineage cache. This is most "
-                          "likely due to reconstruction.";
-    }
-    // Maintain the invariant that if a task is in the
-    // MethodsWaitingForActorCreation queue, then it is subscribed to its
-    // respective actor creation task. Since the actor location is now known,
-    // we can remove the task from the queue and forget its dependency on the
-    // actor creation task.
-    RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
-        method.GetTaskSpecification().TaskId()));
-    // The task's uncommitted lineage was already added to the local lineage
-    // cache upon the initial submission, so it's okay to resubmit it with an
-    // empty lineage this time.
-    SubmitTask(method, Lineage());
-  }
-}
-
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                                              const ActorTableDataT &data) {
   ActorRegistration actor_registration(data);
@@ -553,35 +519,36 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
 
   if (actor_registration.GetState() == ActorState::ALIVE) {
-    // The actor's location is now known.
-    bool resumed_from_checkpoint = checkpoint_id_to_restore_.count(actor_id) > 0;
-    if (!resumed_from_checkpoint) {
-      // If the actor wasn't resumed from a checkpoint, just resubmit the waiting tasks.
-      ResubmitTasksWaitingForActorCreation(actor_id);
-    } else {
-      // If this actor was resumed from a checkpoint, look up the checkpoint in GCS,
-      // retore actor state, and resubmit the waiting tasks.
-      const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
-      checkpoint_id_to_restore_.erase(actor_id);
-      RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
-                     << actor_id;
-      RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
-          JobID::nil(), checkpoint_id,
-          [this, it](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id,
-                     const ActorCheckpointDataT &checkpoint_data) {
-            RAY_LOG(INFO) << "Restoring registration for actor " << it->first
-                          << " from checkpoint " << checkpoint_id;
-            it->second.RestoreFrontier(checkpoint_data);
-            // Mark the unreleased dummy objects as local.
-            for (const auto &entry : it->second.GetDummyObjects()) {
-              HandleObjectLocal(entry.first);
-            }
-            ResubmitTasksWaitingForActorCreation(it->first);
-          },
-          [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
-            RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
-                           << " for actor " << actor_id << " in GCS.";
-          }));
+    // The actor's location is now known. Dequeue any methods that were
+    // submitted before the actor's location was known.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    const auto &methods = local_queues_.GetTasks(TaskState::WAITING_FOR_ACTOR_CREATION);
+    std::unordered_set<TaskID> created_actor_method_ids;
+    for (const auto &method : methods) {
+      if (method.GetTaskSpecification().ActorId() == actor_id) {
+        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+      }
+    }
+    // Resubmit the methods that were submitted before the actor's location was
+    // known.
+    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
+    for (const auto &method : created_actor_methods) {
+      if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
+        RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
+                         << " already removed from the lineage cache. This is most "
+                            "likely due to reconstruction.";
+      }
+      // Maintain the invariant that if a task is in the
+      // MethodsWaitingForActorCreation queue, then it is subscribed to its
+      // respective actor creation task. Since the actor location is now known,
+      // we can remove the task from the queue and forget its dependency on the
+      // actor creation task.
+      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+          method.GetTaskSpecification().TaskId()));
+      // The task's uncommitted lineage was already added to the local lineage
+      // cache upon the initial submission, so it's okay to resubmit it with an
+      // empty lineage this time.
+      SubmitTask(method, Lineage());
     }
   } else if (actor_registration.GetState() == ActorState::DEAD) {
     // When an actor dies, loop over all of the queued tasks for that actor
@@ -1746,17 +1713,12 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
-  bool resumed_from_checkpoint = false;
   // If this was an actor creation task, then convert the worker to an actor
   // and notify the other node managers.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // Convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
     worker.AssignActorId(actor_id);
-    // Check if the actor was resumed from a checkpoint
-    if (checkpoint_id_to_restore_.count(actor_id)) {
-      resumed_from_checkpoint = true;
-    }
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     auto actor_entry = actor_registry_.find(actor_id);
@@ -1800,20 +1762,28 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
         });
   }
 
-  // If the actor wasn't resumed from a checkpoint, update the actor's frontier.
-  if (!resumed_from_checkpoint) {
-    ActorID actor_id;
-    ActorHandleID actor_handle_id;
-    if (task.GetTaskSpecification().IsActorCreationTask()) {
-      actor_id = task.GetTaskSpecification().ActorCreationId();
-      actor_handle_id = ActorHandleID::nil();
-    } else {
-      actor_id = task.GetTaskSpecification().ActorId();
-      actor_handle_id = task.GetTaskSpecification().ActorHandleId();
-    }
-    auto actor_entry = actor_registry_.find(actor_id);
-    RAY_CHECK(actor_entry != actor_registry_.end());
+  // Update the actor's frontier.
+  UpdateActorFrontier(task);
+}
 
+void NodeManager::UpdateActorFrontier(const Task &task) {
+  ActorID actor_id;
+  ActorHandleID actor_handle_id;
+  bool resumed_from_checkpoint = false;
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    actor_id = task.GetTaskSpecification().ActorCreationId();
+    actor_handle_id = ActorHandleID::nil();
+    if (checkpoint_id_to_restore_.count(actor_id) > 0) {
+      resumed_from_checkpoint = true;
+    }
+  } else {
+    actor_id = task.GetTaskSpecification().ActorId();
+    actor_handle_id = task.GetTaskSpecification().ActorHandleId();
+  }
+  auto actor_entry = actor_registry_.find(actor_id);
+  RAY_CHECK(actor_entry != actor_registry_.end());
+
+  if (!resumed_from_checkpoint) {
     // Extend the actor's frontier to include the executed task.
     const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
     const ObjectID object_to_release =
@@ -1832,6 +1802,30 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // dummy objects properly in case the actor fails and needs to be
     // reconstructed.
     HandleObjectLocal(dummy_object);
+  } else {
+    // If this actor was resumed from a checkpoint.
+    // Look up the checkpoint in GCS and use it to restore actor registration.
+    const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
+    checkpoint_id_to_restore_.erase(actor_id);
+    RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
+                   << actor_id;
+    RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
+        JobID::nil(), checkpoint_id,
+        [this, actor_entry](ray::gcs::AsyncGcsClient *client,
+                            const UniqueID &checkpoint_id,
+                            const ActorCheckpointDataT &checkpoint_data) {
+          RAY_LOG(INFO) << "Restoring registration for actor " << actor_entry->first
+                        << " from checkpoint " << checkpoint_id;
+          actor_entry->second.RestoreFrontier(checkpoint_data);
+          // Mark the unreleased dummy objects as local.
+          for (const auto &entry : actor_entry->second.GetDummyObjects()) {
+            HandleObjectLocal(entry.first);
+          }
+        },
+        [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
+          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
+                         << " for actor " << actor_id << " in GCS.";
+        }));
   }
 }
 
