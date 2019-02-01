@@ -74,7 +74,8 @@ class Experiment(object):
             experiment regardless of the checkpoint_freq. Default is False.
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Defaults to 3.
+            checkpointing is enabled. Setting to -1 will lead to infinite
+            recovery retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         repeat: Deprecated and will be removed in future versions of

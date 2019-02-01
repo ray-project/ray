@@ -55,8 +55,8 @@ RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 
 # Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
 logger = logging.getLogger(__name__)
 
 ProcessInfo = collections.namedtuple("ProcessInfo", [
@@ -849,9 +849,9 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None):
         logger.warning("Failed to start the UI, you may need to run "
                        "'pip install jupyter'.")
     else:
-        logger.info("\n" + "=" * 70)
-        logger.info("View the web UI at {}".format(webui_url))
-        logger.info("=" * 70 + "\n")
+        print("\n" + "=" * 70)
+        print("View the web UI at {}".format(webui_url))
+        print("=" * 70 + "\n")
         return webui_url, process_info
     return None, None
 

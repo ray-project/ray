@@ -57,7 +57,7 @@ def try_to_create_directory(directory_path):
         try:
             os.makedirs(directory_path)
         except OSError as e:
-            if e.errno != os.errno.EEXIST:
+            if e.errno != errno.EEXIST:
                 raise e
             logger.warning(
                 "Attempted to create '{}', but the directory already "
