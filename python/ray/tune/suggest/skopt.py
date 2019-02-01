@@ -78,6 +78,7 @@ class SkoptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to skopt unless early terminated or errored.
+        
         The result is internally negated when interacting with Skopt
         so that Skopt Optimizers can "maximize" this value,
         as it minimizes on default.
@@ -88,4 +89,3 @@ class SkoptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
-        
