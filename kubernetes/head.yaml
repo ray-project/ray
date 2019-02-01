@@ -4,7 +4,6 @@ metadata:
   name: ray-head
 spec:
   ports:
-  ports:
     - name: redis-primary
       port: 6379
       targetPort: 6379
@@ -23,14 +22,15 @@ spec:
   selector:
     component: ray-head
 ---
-apiVersion: v1
-kind: ReplicationController
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: ray-head-controller
+  name: ray-head
 spec:
   replicas: 1
   selector:
-    component: ray-head
+    matchLabels:
+      component: ray-head
   template:
     metadata:
       labels:
@@ -40,7 +40,7 @@ spec:
         - name: ray-head
           image: rayproject/examples
           command: [ "/bin/bash", "-c", "--" ]
-          args: ["ray start --head --redis-port=6379 --redis-shard-ports=6380,6381 --object-manager-port=12345 --node-manager-port=12346 --node-ip-address=$MY_POD_IP && while true; do sleep 30; done;"]
+          args: ["ray start --head --redis-port=6379 --redis-shard-ports=6380,6381 --object-manager-port=12345 --node-manager-port=12346 --node-ip-address=$MY_POD_IP --block"]
           ports:
             - containerPort: 6379
             - containerPort: 6380
@@ -54,4 +54,4 @@ spec:
                   fieldPath: status.podIP
           resources:
             requests:
-              cpu: 10
+              cpu: 2

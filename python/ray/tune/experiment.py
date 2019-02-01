@@ -72,9 +72,12 @@ class Experiment(object):
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        export_formats (list): List of formats that exported at the end of
+            the experiment. Default is None.
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Defaults to 3.
+            checkpointing is enabled. Setting to -1 will lead to infinite
+            recovery retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         repeat: Deprecated and will be removed in future versions of
@@ -118,6 +121,7 @@ class Experiment(object):
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 export_formats=None,
                  max_failures=3,
                  restore=None,
                  repeat=None,
@@ -145,6 +149,7 @@ class Experiment(object):
             "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": restore
         }

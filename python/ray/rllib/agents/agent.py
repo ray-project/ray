@@ -22,7 +22,7 @@ from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources
+from ray.tune.trial import Resources, ExportFormat
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -130,7 +130,7 @@ COMMON_CONFIG = {
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
 
-    # === Offline Data Input / Output ===
+    # === Offline Datasets ===
     # __sphinx_doc_input_begin__
     # Specify how to generate experiences:
     #  - "sampler": generate experiences via online simulation (default)
@@ -440,7 +440,10 @@ class Agent(Trainable):
         self.local_evaluator.set_weights(weights)
 
     @DeveloperAPI
-    def make_local_evaluator(self, env_creator, policy_graph):
+    def make_local_evaluator(self,
+                             env_creator,
+                             policy_graph,
+                             extra_config=None):
         """Convenience method to return configured local evaluator."""
 
         return self._make_evaluator(
@@ -448,11 +451,14 @@ class Agent(Trainable):
             env_creator,
             policy_graph,
             0,
-            # important: allow local tf to use more CPUs for optimization
-            merge_dicts(self.config, {
-                "tf_session_args": self.
-                config["local_evaluator_tf_session_args"]
-            }))
+            merge_dicts(
+                # important: allow local tf to use more CPUs for optimization
+                merge_dicts(
+                    self.config, {
+                        "tf_session_args": self.
+                        config["local_evaluator_tf_session_args"]
+                    }),
+                extra_config or {}))
 
     @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
@@ -595,6 +601,20 @@ class Agent(Trainable):
             input_creator=input_creator,
             input_evaluation_method=config["input_evaluation"],
             output_creator=output_creator)
+
+    @override(Trainable)
+    def _export_model(self, export_formats, export_dir):
+        ExportFormat.validate(export_formats)
+        exported = {}
+        if ExportFormat.CHECKPOINT in export_formats:
+            path = os.path.join(export_dir, ExportFormat.CHECKPOINT)
+            self.export_policy_checkpoint(path)
+            exported[ExportFormat.CHECKPOINT] = path
+        if ExportFormat.MODEL in export_formats:
+            path = os.path.join(export_dir, ExportFormat.MODEL)
+            self.export_policy_model(path)
+            exported[ExportFormat.MODEL] = path
+        return exported
 
     def __getstate__(self):
         state = {}
