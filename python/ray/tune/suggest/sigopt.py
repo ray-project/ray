@@ -16,15 +16,16 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 class SigOptSearch(SuggestionAlgorithm):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. Can only support 10 concurrent trials
-    at once, or whatever is allowed by the user's SigOpt plan.
+    Requires SigOpt to be installed. 
+    The number of concurrent trials supported depends on the user's 
+    SigOpt plan. Defaults to 1.
 
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
+            to 1.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
 
@@ -63,8 +64,8 @@ class SigOptSearch(SuggestionAlgorithm):
     def __init__(
             self,
             space,
-            name='test',  # TODO
-            max_concurrent=10,
+            name='Default Tune Experiment',
+            max_concurrent=1,
             reward_attr="episode_reward_mean",
             **kwargs):
         assert sgo is not None, "SigOpt must be installed!"
