@@ -349,7 +349,7 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
         attach_info = "Use `{}` to check on command status.".format(
             attach_command)
         logger.info(attach_info)
-        
+
     provider.cleanup()
 
 
