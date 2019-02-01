@@ -1821,6 +1821,24 @@ void NodeManager::UpdateActorFrontier(const Task &task) {
           for (const auto &entry : actor_entry->second.GetDummyObjects()) {
             HandleObjectLocal(entry.first);
           }
+          // The actor's state is now restored. Resubmit the waiting actor tasks, because
+          // some tasks may be before the checkpoint, and will otherwise get stuck in the
+          // waiting queue forever.
+          std::unordered_set<TaskID> waiting_actor_task_ids;
+          for (const auto &task : local_queues_.GetTasks(TaskState::WAITING)) {
+            if (task.GetTaskSpecification().ActorId() == actor_entry->first) {
+              waiting_actor_task_ids.insert(task.GetTaskSpecification().TaskId());
+            }
+          }
+          for (const auto &task : local_queues_.RemoveTasks(waiting_actor_task_ids)) {
+            if (!lineage_cache_.RemoveWaitingTask(
+                    task.GetTaskSpecification().TaskId())) {
+              RAY_LOG(WARNING) << "Task " << task.GetTaskSpecification().TaskId()
+                               << " already removed from the lineage cache. This is most "
+                                  "likely due to reconstruction.";
+            }
+            SubmitTask(task, Lineage());
+          }
         },
         [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
           RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
