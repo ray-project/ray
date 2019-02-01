@@ -1,4 +1,5 @@
 """This test checks that Skopt  is functional.
+
 It also checks that it is usable with a separate scheduler.
 """
 from __future__ import absolute_import
