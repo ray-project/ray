@@ -782,6 +782,11 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             "classes. In Python 2, you must declare the class with "
             "'class ClassName(object):' instead of 'class ClassName:'.")
 
+    if issubclass(cls, Checkpointable) and inspect.isabstract(cls):
+        raise TypeError(
+            "A checkpointable actor class should implement all abstract "
+            "methods in the `Checkpointable` interface.")
+
     if checkpoint_interval is None:
         checkpoint_interval = -1
     if max_reconstructions is None:

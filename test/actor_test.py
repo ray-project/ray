@@ -2508,3 +2508,15 @@ def test_deleting_actor_checkpoint(ray_start_regular):
         assert len(ray.get(actor.get_checkpoint_ids.remote())) == i
     for _ in range(20):
         assert len(ray.get(actor.get_checkpoint_ids.remote())) == 20
+
+
+def test_bad_checkpointable_actor_class():
+    """Test error raised if an actor class doesn't implement all abstract
+    methods in the Checkpointable interface."""
+
+    with pytest.raises(TypeError):
+
+        @ray.remote
+        class BadCheckpointableActor(ray.actor.Checkpointable):
+            def should_checkpoint(self, checkpoint_context):
+                return True
