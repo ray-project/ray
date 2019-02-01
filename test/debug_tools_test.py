@@ -14,7 +14,7 @@ import ray
 def ray_gdb_start():
     # Setup environment and start ray
     _environ = os.environ.copy()
-    for process_name in ["RAYLET", "PLASMA_STORE"]
+    for process_name in ["RAYLET", "PLASMA_STORE"]:
         os.environ["RAY_{}_GDB".format(process_name)] = "1"
         os.environ["RAY_{}_TMUX".format(process_name)] = "1"
     ray.init(num_cpus=1)
