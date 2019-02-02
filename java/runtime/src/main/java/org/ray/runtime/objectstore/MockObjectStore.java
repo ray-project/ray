@@ -57,25 +57,26 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    ArrayList<byte[]> rets = new ArrayList<>();
-    for (byte[] objId : objectIds) {
-      //tod test
-      if (data.containsKey(new UniqueId(objId))) {
-        rets.add(objId);
+  public List<ObjectStoreData> get(byte[][] objectIds, int timeoutMs) {
+    ArrayList<ObjectStoreData> rets = new ArrayList<>();
+    // TODO(yuhguo): make ObjectStoreData public, otherwise this is accessible.
+    /*for (byte[] objId : objectIds) {
+      UniqueId uniqueId = new UniqueId(objId);
+      ObjectStoreData fullData = new ObjectStoreData(null, null);
+      if (data.containsKey(uniqueId)) {
+        fullData.data = data.get(uniqueId);
       }
-    }
+      if (metadata.containsKey(uniqueId)) {
+        fullData.metadata = metadata.get(uniqueId);
+      }
+      rets.add(fullData);
+    }*/
     return rets;
   }
 
   @Override
   public byte[] hash(byte[] objectId) {
     return null;
-  }
-
-  @Override
-  public void fetch(byte[][] objectIds) {
-
   }
 
   @Override
@@ -89,8 +90,12 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public boolean contains(byte[] objectId) {
+  public void delete(byte[] objectId) {
+    return;
+  }
 
+  @Override
+  public boolean contains(byte[] objectId) {
     return data.containsKey(new UniqueId(objectId));
   }
 
