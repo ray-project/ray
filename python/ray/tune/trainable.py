@@ -182,6 +182,8 @@ class Trainable(object):
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
         result.setdefault(EPISODES_TOTAL, self._episodes_total)
 
+        result.setdefault("training_iteration", self._iteration) # TODO:
+
         # Provides auto-filled neg_mean_loss for avoiding regressions
         if result.get("mean_loss"):
             result.setdefault("neg_mean_loss", -result["mean_loss"])
@@ -191,7 +193,7 @@ class Trainable(object):
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
-            training_iteration=self._iteration,
+            # training_iteration=self._iteration, # after setdefault, don't need this line anymore
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),

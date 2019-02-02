@@ -41,6 +41,7 @@ class StatusReporter(object):
 
         with self._lock:
             self._latest_result = self._last_result = kwargs.copy()
+        # TODO: add counter for __call__
 
     def _get_and_clear_status(self):
         if self._error:
@@ -53,6 +54,9 @@ class StatusReporter(object):
         with self._lock:
             res = self._latest_result
             self._latest_result = None
+
+            res["training_iteration"]
+
             return res
 
     def _stop(self):
