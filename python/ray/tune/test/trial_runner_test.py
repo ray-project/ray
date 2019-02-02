@@ -1043,6 +1043,61 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
+    def testCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testExtraCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(
+                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources2(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource1))
+        resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource2))
+        resource3 = Resources(cpu=1, gpu=0, custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource3))
+        resource4 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource4))
+
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
@@ -1885,6 +1940,7 @@ class ResourcesTest(unittest.TestCase):
         self.assertTrue(new_res.gpu == 0)
         self.assertTrue(new_res.extra_cpu == 0)
         self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(new_res.get("a") == 0)
 
     def testSerialization(self):
         original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
