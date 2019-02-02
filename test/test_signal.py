@@ -205,7 +205,7 @@ def test_actor_crash_init3(ray_start):
     a.method.remote()
     time.sleep(2)
     result_list = signal.receive([a], timeout=5)
-    assert len(result_list) == 2
+    assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
 
