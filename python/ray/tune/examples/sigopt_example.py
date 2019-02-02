@@ -25,6 +25,10 @@ def easy_objective(config, reporter):
 
 if __name__ == '__main__':
     import argparse
+    import os
+
+    assert "SIGOPT_KEY" in os.environ, \
+        "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -65,6 +69,7 @@ if __name__ == '__main__':
             },
         }
     }
-    algo = SigOptSearch(space, max_concurrent=1, reward_attr="neg_mean_loss")
+    algo = SigOptSearch(space, name="SigOpt Example Experiment", 
+        max_concurrent=1, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(config, search_alg=algo, scheduler=scheduler)

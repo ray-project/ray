@@ -16,12 +16,14 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 class SigOptSearch(SuggestionAlgorithm):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed.
+    Requires SigOpt to be installed. Requires user to store their SigOpt 
+    API key locally as an environment variable at `SIGOPT_KEY`.
 
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
+        name (str): Name of experiment. Required by SigOpt.
         max_concurrent (int): Number of maximum concurrent trials supported 
             based on the user's SigOpt plan. Defaults to 1.
         reward_attr (str): The training result objective value attribute.
@@ -56,22 +58,26 @@ class SigOptSearch(SuggestionAlgorithm):
         >>>     }
         >>> }
         >>> algo = SigOptSearch(
-        >>>     parameters, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>>     parameters, name="SigOpt Example Experiment", 
+        >>>     max_concurrent=1, reward_attr="neg_mean_loss")
     """
 
     def __init__(
             self,
             space,
-            name='Default Tune Experiment',
+            name="Default Tune Experiment",
             max_concurrent=1,
             reward_attr="episode_reward_mean",
             **kwargs):
         assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
+        assert "SIGOPT_KEY" in os.environ, \
+            "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self._live_trial_mapping = {}
 
+        # Create a connection with SigOpt API to run experiments, requires API key
         self.conn = sgo.Connection(client_token=os.environ['SIGOPT_KEY'])
 
         self.experiment = self.conn.experiments().create(
