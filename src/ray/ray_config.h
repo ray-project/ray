@@ -20,6 +20,7 @@ class RayConfig {
                                               \
  public:                                      \
   inline type name() { return name##_; }
+
 #include "ray_config_def.h"
 /// -------------------------------------------------------------------------
 #undef RAY_CONFIG

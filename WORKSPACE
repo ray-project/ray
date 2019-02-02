@@ -21,9 +21,32 @@ git_repository(
     commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
 )
 
+git_repository(
+    name   = "com_github_gflags_gflags",
+    remote = "https://github.com/gflags/gflags.git",
+    tag = "v2.2.2",
+)
+
+new_git_repository(
+    name   = "com_github_google_glog",
+    build_file = "//bazel:BUILD.glog",
+    remote = "https://github.com/google/glog.git",
+    tag = "v0.3.5",
+)
+
 new_git_repository(
     name = "plasma",
     build_file = "@//bazel:BUILD.plasma",
     remote = "https://github.com/ray-project/arrow",
-    commit = "1e4f867eb1dc31107331ab1defdffb94467f31dc",
+    commit = "6a27c660ea700febf6fd73b2e851ab96e9315134",
 )
+
+new_git_repository(
+    name="cython",
+    build_file="@//bazel:BUILD.cython",
+    remote = "https://github.com/cython/cython",
+    commit = "49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e",
+)
+
+load("@//bazel:python_configure.bzl", "python_configure")
+python_configure(name="local_config_python")

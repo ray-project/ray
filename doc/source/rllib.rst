@@ -6,6 +6,7 @@ RLlib is an open-source library for reinforcement learning that offers both a co
 .. image:: rllib-stack.svg
 
 Learn more about RLlib's design by reading the `ICML paper <https://arxiv.org/abs/1712.09381>`__.
+To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__.
 
 Installation
 ------------
@@ -99,6 +100,7 @@ Development
 -----------
 
 * `Development Install <rllib-dev.html#development-install>`__
+* `API Stability <rllib-dev.html#api-stability>`__
 * `Features <rllib-dev.html#feature-development>`__
 * `Benchmarks <rllib-dev.html#benchmarks>`__
 * `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
@@ -117,6 +119,11 @@ Package Reference
 * `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
 * `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 * `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
+
+Examples
+--------
+
+You can find an index of RLlib code examples on `this page <rllib-examples.html>`__. This includes tuned hyperparameters, demo scripts on how to use specific features of RLlib, and several community examples of applications built on RLlib.
 
 Troubleshooting
 ---------------

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import errno
 import logging
 import tensorflow as tf
 import numpy as np
@@ -205,6 +206,12 @@ class TFPolicyGraph(PolicyGraph):
     @override(PolicyGraph)
     def export_checkpoint(self, export_dir, filename_prefix="model"):
         """Export tensorflow checkpoint to export_dir."""
+        try:
+            os.makedirs(export_dir)
+        except OSError as e:
+            # ignore error if export dir already exists
+            if e.errno != errno.EEXIST:
+                raise
         save_path = os.path.join(export_dir, filename_prefix)
         with self._sess.graph.as_default():
             saver = tf.train.Saver()

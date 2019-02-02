@@ -57,6 +57,9 @@ class RayParams(object):
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        logging_level: Logging level, default will be logging.INFO.
+        logging_format: Logging format, default contains a timestamp,
+            filename, line number, and message. See ray_constants.py.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path

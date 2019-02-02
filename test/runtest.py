@@ -2311,7 +2311,7 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_id_hex = ray.ObjectID.nil_id().hex()
+    nil_id_hex = ray.ObjectID.nil().hex()
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
@@ -2386,34 +2386,41 @@ def test_global_state_api(shutdown_only):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_log_file_api(shutdown_only):
+    """Tests that stderr and stdout are redirected appropriately."""
     ray.init(num_cpus=1, redirect_worker_output=True)
 
-    message = "unique message"
+    message_1 = "unique message"
+    message_2 = "message unique"
 
     @ray.remote
     def f():
-        logger.info(message)
+        print(message_1, file=sys.stdout)
+        print(message_2, file=sys.stderr)
         # The call to sys.stdout.flush() seems to be necessary when using
         # the system Python 2.7 on Ubuntu.
         sys.stdout.flush()
+        sys.stderr.flush()
 
     ray.get(f.remote())
 
     # Make sure that the message appears in the log files.
     start_time = time.time()
-    found_message = False
+    found_message_1 = False
+    found_message_2 = False
     while time.time() - start_time < 10:
         log_files = ray.global_state.log_files()
         for ip, innerdict in log_files.items():
             for filename, contents in innerdict.items():
                 contents_str = "".join(contents)
-                if message in contents_str:
-                    found_message = True
-        if found_message:
+                if message_1 in contents_str:
+                    found_message_1 = True
+                if message_2 in contents_str:
+                    found_message_2 = True
+        if found_message_1 and found_message_2:
             break
         time.sleep(0.1)
 
-    assert found_message is True
+    assert found_message_1 and found_message_2
 
 
 @pytest.mark.skipif(
@@ -2442,17 +2449,17 @@ def test_workers(shutdown_only):
 
 
 def test_specific_driver_id():
-    dummy_driver_id = ray.ObjectID(b"00112233445566778899")
+    dummy_driver_id = ray.DriverID(b"00112233445566778899")
     ray.init(driver_id=dummy_driver_id)
 
     @ray.remote
     def f():
-        return ray.worker.global_worker.task_driver_id.id()
+        return ray.worker.global_worker.task_driver_id.binary()
 
-    assert_equal(dummy_driver_id.id(), ray.worker.global_worker.worker_id)
+    assert_equal(dummy_driver_id.binary(), ray.worker.global_worker.worker_id)
 
     task_driver_id = ray.get(f.remote())
-    assert_equal(dummy_driver_id.id(), task_driver_id)
+    assert_equal(dummy_driver_id.binary(), task_driver_id)
 
     ray.shutdown()
 
@@ -2460,8 +2467,8 @@ def test_specific_driver_id():
 def test_object_id_properties():
     id_bytes = b"00112233445566778899"
     object_id = ray.ObjectID(id_bytes)
-    assert object_id.id() == id_bytes
-    object_id = ray.ObjectID.nil_id()
+    assert object_id.binary() == id_bytes
+    object_id = ray.ObjectID.nil()
     assert object_id.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
         ray.ObjectID(id_bytes + b"1234")
@@ -2469,7 +2476,7 @@ def test_object_id_properties():
         ray.ObjectID(b"0123456789")
     object_id = ray.ObjectID(_random_string())
     assert not object_id.is_nil()
-    assert object_id.id() != id_bytes
+    assert object_id.binary() != id_bytes
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
@@ -2506,7 +2513,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.wait([x_id])
     ray.wait([f.remote()])
     assert not ray.worker.global_worker.plasma_client.contains(
-        ray.pyarrow.plasma.ObjectID(x_id.id()))
+        ray.pyarrow.plasma.ObjectID(x_id.binary()))
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
@@ -2534,7 +2541,7 @@ def test_ray_setproctitle(shutdown_only):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.ObjectID.nil_id()
+    driver_id = ray.DriverID.nil()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 
@@ -2544,13 +2551,13 @@ def test_duplicate_error_messages(shutdown_only):
     r = ray.worker.global_worker.redis_client
 
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
                       error_data)
 
     # Before https://github.com/ray-project/ray/pull/3316 this would
     # give an error
     r.execute_command("RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.ERROR_INFO,
-                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.id(),
+                      ray.gcs_utils.TablePubsub.ERROR_INFO, driver_id.binary(),
                       error_data)
 
 
@@ -2600,3 +2607,11 @@ def test_pandas_parquet_serialization():
     pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
     # Clean up
     shutil.rmtree(tempdir)
+
+
+def test_socket_dir_not_existing(shutdown_only):
+    random_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                           "raylet_socket")
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)

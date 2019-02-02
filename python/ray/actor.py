@@ -12,12 +12,12 @@ import traceback
 
 import ray.cloudpickle as pickle
 from ray.function_manager import FunctionDescriptor
-import ray.raylet
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
 from ray.utils import _random_string
-from ray import ObjectID
+from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
+                 DriverID)
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
@@ -38,11 +38,12 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     Returns:
         An ID for the new actor handle.
     """
+    assert isinstance(actor_handle_id, ActorHandleID)
     handle_id_hash = hashlib.sha1()
-    handle_id_hash.update(actor_handle_id.id())
+    handle_id_hash.update(actor_handle_id.binary())
     handle_id_hash.update(str(num_forks).encode("ascii"))
     handle_id = handle_id_hash.digest()
-    return ObjectID(handle_id)
+    return ActorHandleID(handle_id)
 
 
 def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
@@ -65,11 +66,13 @@ def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
     Returns:
         An ID for the new actor handle.
     """
+    assert isinstance(actor_handle_id, ActorHandleID)
+    assert isinstance(current_task_id, TaskID)
     handle_id_hash = hashlib.sha1()
-    handle_id_hash.update(actor_handle_id.id())
-    handle_id_hash.update(current_task_id.id())
+    handle_id_hash.update(actor_handle_id.binary())
+    handle_id_hash.update(current_task_id.binary())
     handle_id = handle_id_hash.digest()
-    return ObjectID(handle_id)
+    return ActorHandleID(handle_id)
 
 
 def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
@@ -83,7 +86,8 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
         checkpoint: The state object to save.
         frontier: The task frontier at the time of the checkpoint.
     """
-    actor_key = b"Actor:" + actor_id.id()
+    assert isinstance(actor_id, ActorID)
+    actor_key = b"Actor:" + actor_id.binary()
     worker.redis_client.hmset(
         actor_key, {
             "checkpoint_index": checkpoint_index,
@@ -155,7 +159,8 @@ def get_actor_checkpoint(worker, actor_id):
             exists, all objects are set to None.  The checkpoint index is the .
             executed on the actor before the checkpoint was made.
     """
-    actor_key = b"Actor:" + actor_id.id()
+    assert isinstance(actor_id, ActorID)
+    actor_key = b"Actor:" + actor_id.binary()
     checkpoint_index, checkpoint, frontier = worker.redis_client.hmget(
         actor_key, ["checkpoint_index", "checkpoint", "frontier"])
     if checkpoint_index is not None:
@@ -370,7 +375,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ObjectID(_random_string())
+        actor_id = ActorID(_random_string())
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -423,6 +428,7 @@ class ActorClass(object):
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
+            assert isinstance(actor_cursor, ObjectID)
 
         actor_handle = ActorHandle(
             actor_id, self._modified_class.__module__, self._class_name,
@@ -502,14 +508,17 @@ class ActorHandle(object):
                  actor_method_cpus,
                  actor_driver_id,
                  actor_handle_id=None):
+        assert isinstance(actor_id, ActorID)
+        assert isinstance(actor_driver_id, DriverID)
         self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         # False if this actor handle was created by forking or pickling. True
         # if it was created by the _serialization_helper function.
         self._ray_original_handle = actor_handle_id is None
         if self._ray_original_handle:
-            self._ray_actor_handle_id = ObjectID.nil_id()
+            self._ray_actor_handle_id = ActorHandleID.nil()
         else:
+            assert isinstance(actor_handle_id, ActorHandleID)
             self._ray_actor_handle_id = actor_handle_id
         self._ray_actor_cursor = actor_cursor
         self._ray_actor_counter = 0
@@ -646,7 +655,7 @@ class ActorHandle(object):
         # not just the first one.
         worker = ray.worker.get_global_worker()
         if (worker.mode == ray.worker.SCRIPT_MODE
-                and self._ray_actor_driver_id.id() != worker.worker_id):
+                and self._ray_actor_driver_id.binary() != worker.worker_id):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
@@ -684,22 +693,22 @@ class ActorHandle(object):
         else:
             actor_handle_id = self._ray_actor_handle_id
 
+        # Note: _ray_actor_cursor and _ray_actor_creation_dummy_object_id
+        # could be None.
         state = {
-            "actor_id": self._ray_actor_id.id(),
-            "actor_handle_id": actor_handle_id.id(),
+            "actor_id": self._ray_actor_id,
+            "actor_handle_id": actor_handle_id,
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
-            "actor_cursor": self._ray_actor_cursor.id()
-            if self._ray_actor_cursor is not None else None,
+            "actor_cursor": self._ray_actor_cursor,
             "actor_method_names": self._ray_actor_method_names,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
             # Actors in local mode don't have dummy objects.
             "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id.id()
-            if self._ray_actor_creation_dummy_object_id is not None else None,
+            _ray_actor_creation_dummy_object_id,
             "actor_method_cpus": self._ray_actor_method_cpus,
-            "actor_driver_id": self._ray_actor_driver_id.id(),
+            "actor_driver_id": self._ray_actor_driver_id,
             "ray_forking": ray_forking
         }
 
@@ -711,7 +720,7 @@ class ActorHandle(object):
             # to release, since it could be unpickled and submit another
             # dependent task at any time. Therefore, we notify the backend of a
             # random handle ID that will never actually be used.
-            new_actor_handle_id = ObjectID(_random_string())
+            new_actor_handle_id = ActorHandleID(_random_string())
         # Notify the backend to expect this new actor handle. The backend will
         # not release the cursor for any new handles until the first task for
         # each of the new handles is submitted.
@@ -733,7 +742,7 @@ class ActorHandle(object):
         worker.check_connected()
 
         if state["ray_forking"]:
-            actor_handle_id = ObjectID(state["actor_handle_id"])
+            actor_handle_id = state["actor_handle_id"]
         else:
             # Right now, if the actor handle has been pickled, we create a
             # temporary actor handle id for invocations.
@@ -747,25 +756,21 @@ class ActorHandle(object):
             # same actor is likely a performance bug. We should consider
             # logging a warning in these cases.
             actor_handle_id = compute_actor_handle_id_non_forked(
-                ObjectID(state["actor_handle_id"]), worker.current_task_id)
-
-        # This is the driver ID of the driver that owns the actor, not
-        # necessarily the driver that owns this actor handle.
-        actor_driver_id = ObjectID(state["actor_driver_id"])
+                state["actor_handle_id"], worker.current_task_id)
 
         self.__init__(
-            ObjectID(state["actor_id"]),
+            state["actor_id"],
             state["module_name"],
             state["class_name"],
-            ObjectID(state["actor_cursor"])
-            if state["actor_cursor"] is not None else None,
+            state["actor_cursor"],
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ObjectID(state["actor_creation_dummy_object_id"])
-            if state["actor_creation_dummy_object_id"] is not None else None,
+            state["actor_creation_dummy_object_id"],
             state["actor_method_cpus"],
-            actor_driver_id,
+            # This is the driver ID of the driver that owns the actor, not
+            # necessarily the driver that owns this actor handle.
+            state["actor_driver_id"],
             actor_handle_id=actor_handle_id)
 
     def __getstate__(self):
@@ -887,7 +892,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = _random_string()
+    class_id = ActorClassID(_random_string())
 
     return ActorClass(Class, class_id, checkpoint_interval,
                       max_reconstructions, num_cpus, num_gpus, resources,

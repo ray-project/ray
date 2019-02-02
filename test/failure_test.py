@@ -2,19 +2,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import json
 import os
-import ray
+import pytest
 import sys
 import tempfile
 import threading
 import time
 
+import numpy as np
+import redis
+
+import ray
 import ray.ray_constants as ray_constants
 from ray.utils import _random_string
-import pytest
-
 from ray.test.cluster_utils import Cluster
 
 
@@ -618,6 +619,44 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
 
 
+def test_redis_module_failure(shutdown_only):
+    address_info = ray.init(num_cpus=1)
+    redis_address = address_info["redis_address"]
+    redis_address = redis_address.split(":")
+    assert len(redis_address) == 2
+
+    def run_failure_test(expecting_message, *command):
+        with pytest.raises(
+                Exception, match=".*{}.*".format(expecting_message)):
+            client = redis.StrictRedis(
+                host=redis_address[0], port=int(redis_address[1]))
+            client.execute_command(*command)
+
+    def run_one_command(*command):
+        client = redis.StrictRedis(
+            host=redis_address[0], port=int(redis_address[1]))
+        client.execute_command(*command)
+
+    run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
+    run_failure_test("Prefix must be in the TablePrefix range",
+                     "RAY.TABLE_ADD", 100000, 1, 1, 1)
+    run_failure_test("Prefix must be in the TablePrefix range",
+                     "RAY.TABLE_REQUEST_NOTIFICATIONS", 100000, 1, 1, 1)
+    run_failure_test("Prefix must be a valid TablePrefix integer",
+                     "RAY.TABLE_ADD", b"a", 1, 1, 1)
+    run_failure_test("Pubsub channel must be in the TablePubsub range",
+                     "RAY.TABLE_ADD", 1, 10000, 1, 1)
+    run_failure_test("Pubsub channel must be a valid integer", "RAY.TABLE_ADD",
+                     1, b"a", 1, 1)
+    run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+                     -1)
+    run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+                     b"a")
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 1, 1)
+    run_failure_test("Appended a duplicate entry", "RAY.TABLE_APPEND", 1, 1, 1,
+                     1, 1)
+
+
 @pytest.fixture
 def ray_start_two_nodes():
     # Start the Ray processes.
@@ -675,8 +714,6 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(
-            ray.raylet.RayCommonError,
-            match=r".*raylet client may be closed.*"):
+    with pytest.raises(Exception, match=r".*Connection closed unexpectedly.*"):
         ray.get(nonexistent_id)
     thread.join()
