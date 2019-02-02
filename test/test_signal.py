@@ -20,12 +20,7 @@ def ray_start():
 
 def test_task_to_driver(ray_start):
     # Send a signal from a task and another signal on behalf of the task
-    # from the driver. The
-
-
-
-
-     driver gets both signals.
+    # from the driver. The driver gets both signals.
 
     @ray.remote
     def task_send_signal(value):

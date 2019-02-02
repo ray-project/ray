@@ -86,12 +86,9 @@ def receive(virtual_sources, timeout=float('inf')):
     remaining_time = timeout
 
     virtual_sources_from_source = dict()
-    source_ids = []
     for vs in virtual_sources:
         source_id = _get_signal_source_id(vs)
         # Make sure source_ids only contain unique identifiers.
-        if source_id not in source_ids:
-            source_ids.append(source_id)
         if source_id not in virtual_sources_from_source.keys():
             virtual_sources_from_source[source_id] = []
         virtual_sources_from_source[source_id].append(vs)
@@ -101,7 +98,7 @@ def receive(virtual_sources, timeout=float('inf')):
     # Store the reverse mapping from signals to
     # source ids in the source_id_from_signal_id dictionary.
     source_id_from_signal_id = dict()
-    for source_id in source_ids:
+    for source_id in virtual_sources_from_source.keys():
         signal_id = _get_signal_id(source_id, signal_counters[source_id])
         source_id_from_signal_id[signal_id] = source_id
 
