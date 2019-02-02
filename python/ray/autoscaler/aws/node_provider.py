@@ -214,9 +214,6 @@ class AWSNodeProvider(NodeProvider):
         })
         self.ec2.create_instances(**conf)
 
-    def terminate_node(self, node_id):
-        self.terminate_nodes([node_id])
-
     def terminate_nodes(self, node_ids):
         self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
@@ -224,25 +221,54 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache.pop(node_id, None)
             self.tag_cache_pending.pop(node_id, None)
 
-    def _get_node(self, node_id):
+    def terminate_node(self, node_id):
+        self.terminate_nodes([node_id])
+
+    def _get_nodes(self, node_ids):
         """Refresh and get info for this node, updating the cache."""
         self.non_terminated_nodes({})  # Side effect: updates cache
 
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
+        expected_nodes = set(node_ids)
+        found_nodes = set(self.cached_nodes.keys())
+        missing_nodes = expected_nodes - found_nodes
 
-        # Node not in {pending, running} -- retry with a point query. This
-        # usually means the node was recently preempted or terminated.
-        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
-        return matches[0]
+        if not missing_nodes:
+            return [self.cached_nodes[node_id] for node_id in node_ids]
+
+        fetched_nodes = list(self.ec2.instances.filter(
+            InstanceIds=list(missing_nodes)))
+        missing_nodes -= set(node.id for node in fetched_nodes)
+        assert not missing_nodes, missing_nodes
+
+        self.cached_nodes.update({
+            node.id: node for node in fetched_nodes
+        })
+
+        result = [self.cached_nodes[node_id] for node_id in node_ids]
+
+        return result
+
+    def _get_node(self, node_id):
+        return self._get_nodes([node_id])[0]
+
+    def _get_cached_nodes(self, node_ids):
+        nodes_by_id = {
+            node_id: self.cached_nodes.get(node_id, None)
+            for node_id in node_ids
+        }
+
+        non_cached_node_ids = [k for k, v in nodes_by_id.items() if v is None]
+
+        if non_cached_node_ids:
+            # Note: this fetches the nodes and saves them to self.cached_nodes
+            self._get_nodes(non_cached_node_ids)
+
+        result = [self.cached_nodes[node_id] for node_id in node_ids]
+
+        return result
 
     def _get_cached_node(self, node_id):
-        """Return node info from cache if possible, otherwise fetches it."""
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-
-        return self._get_node(node_id)
+        return self._get_cached_nodes([node_id])[0]
 
     def cleanup(self):
         self.tag_cache_update_event.set()
