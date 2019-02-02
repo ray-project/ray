@@ -511,10 +511,22 @@ def start_redis(node_ip_address,
             "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
             "supports 1-node chain for that shard only.")
 
+    if use_credis:
+        redis_executable = CREDIS_EXECUTABLE
+        # TODO: We need credis here because some symbols need to be
+        # imported from credis dynamically through dlopen when Ray is built
+        # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
+        # shard.
+        # See src/ray/gcs/redis_module/ray_redis_module.cc
+        redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+    else:
+        redis_executable = REDIS_EXECUTABLE
+        redis_modules = [REDIS_MODULE]
+
     # Start the primary Redis shard.
     port, p = _start_redis_instance(
-        REDIS_EXECUTABLE,
-        modules=[REDIS_MODULE],
+        redis_executable,
+        modules=redis_modules,
         port=port,
         password=password,
         redis_max_clients=redis_max_clients,
