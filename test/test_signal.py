@@ -96,13 +96,13 @@ def test_task_done(ray_start):
 
 def test_task_done2(ray_start):
 
-    @ray.remote
+    @ray.remote(num_return_vals=2)
     def test_function():
         return 1, 2
 
-    object_id1 = test_function.remote()
+    object_id1, object_id2 = test_function.remote()
     ray.get(object_id1)
-    result_list = signal.receive([object_id1, object_id1], timeout=5)
+    result_list = signal.receive([object_id1, object_id2], timeout=5)
     assert len(result_list) == 2
     assert type(result_list[0][1]) == signal.DoneSignal
 
