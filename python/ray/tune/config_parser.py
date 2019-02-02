@@ -103,6 +103,12 @@ def make_parser(parser_creator=None, **kwargs):
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
     parser.add_argument(
+        "--export-formats",
+        default=None,
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
+    parser.add_argument(
         "--max-failures",
         default=3,
         type=int,
@@ -181,6 +187,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
+        export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
