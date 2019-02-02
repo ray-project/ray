@@ -696,6 +696,28 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
+    def testCustomResources(self):
+        ray.shutdown()
+        ray.init(resources={"hi": 3})
+
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "resources_per_trial": {
+                    "cpu": 1,
+                    "custom_resources": {
+                        "hi": 2
+                    }
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
     def testCustomLogger(self):
         class CustomLogger(Logger):
             def on_result(self, result):
