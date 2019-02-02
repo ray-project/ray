@@ -2607,3 +2607,11 @@ def test_pandas_parquet_serialization():
     pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
     # Clean up
     shutil.rmtree(tempdir)
+
+
+def test_socket_dir_not_existing(shutdown_only):
+    random_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                           "raylet_socket")
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
