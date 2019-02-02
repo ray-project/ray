@@ -1,11 +1,13 @@
 package org.ray.runtime.objectstore;
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.apache.arrow.plasma.ObjectStoreLink.ObjectStoreData;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.raylet.MockRayletClient;
@@ -59,18 +61,18 @@ public class MockObjectStore implements ObjectStoreLink {
   @Override
   public List<ObjectStoreData> get(byte[][] objectIds, int timeoutMs) {
     ArrayList<ObjectStoreData> rets = new ArrayList<>();
-    // TODO(yuhguo): make ObjectStoreData public, otherwise this is accessible.
-    /*for (byte[] objId : objectIds) {
+    // TODO(yuhguo): make ObjectStoreData's constructor public.
+    for (byte[] objId : objectIds) {
       UniqueId uniqueId = new UniqueId(objId);
-      ObjectStoreData fullData = new ObjectStoreData(null, null);
-      if (data.containsKey(uniqueId)) {
-        fullData.data = data.get(uniqueId);
+      try {
+        Constructor<ObjectStoreData> constructor = ObjectStoreData.class.getConstructor(
+            byte[].class, byte[].class);
+        constructor.setAccessible(true);
+        rets.add(constructor.newInstance(metadata.get(uniqueId), data.get(uniqueId)));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-      if (metadata.containsKey(uniqueId)) {
-        fullData.metadata = metadata.get(uniqueId);
-      }
-      rets.add(fullData);
-    }*/
+    }
     return rets;
   }
 
