@@ -1,23 +1,26 @@
 halfcheetah-appo:
     env: HalfCheetah-v2
     run: APPO
-    local_dir: /data/mluo/halfcheetah_appo_results
+    local_dir: /data/mluo/hc-appo
+    stop:
+        episode_reward_mean: 7500
     config:
         vtrace: False
-        gamma: 0.995
-        sample_batch_size: 2048
-        train_batch_size: 32768
-        num_workers: 47
+        gamma: 0.99
+        lambda: 0.95
+        sample_batch_size: 256
+        train_batch_size: 4096
+        num_workers: 16
+        num_gpus: 1
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_data_loader_buffers: 1
-        num_envs_per_worker: 5
-        minibatch_buffer_size: 5
-        num_sgd_iter: 20
-        clip_param: 0.3
-        num_gpus: 1
-        grad_clip: 10
+        num_envs_per_worker: 16
+        minibatch_buffer_size: 16
+        num_sgd_iter: 1
+        clip_param: 0.2
+        lr: .0003
+        vf_loss_coeff: 0.5
         entropy_coeff: 0.0
-        vf_loss_coeff: 1.0
-        grad_clip: 40.0
+        grad_clip: 0.5
 

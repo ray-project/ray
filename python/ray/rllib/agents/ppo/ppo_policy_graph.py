@@ -114,6 +114,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.action_space = action_space
         self.config = config
+        #self.config["train_batch_size"] = self.config["sgd_minibatch_size"]*16*self.config["num_envs_per_worker"]
+        #print(self.config["train_batch_size"]) 
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
         dist_cls, logit_dim = ModelCatalog.get_action_dist(
@@ -257,6 +259,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "entropy": self.loss_obj.mean_entropy
         }
 
+
     @override(TFPolicyGraph)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
@@ -289,8 +292,12 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer):
-        return optimizer.compute_gradients(
-            self._loss, colocate_gradients_with_ops=True)
+        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          tf.get_variable_scope().name)
+        grads = tf.gradients(self._loss, self.var_list)
+        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+        clipped_grads = list(zip(self.grads, self.var_list))
+        return clipped_grads
 
     @override(PolicyGraph)
     def get_initial_state(self):

@@ -56,6 +56,7 @@ DEFAULT_CONFIG = with_common_config({
     # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
     # sampling tasks for performance but can waste a large portion of samples.
     "straggler_mitigation": False,
+    "grad_clip": 0.5,
 })
 # __sphinx_doc_end__
 # yapf: enable

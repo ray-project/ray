@@ -1,16 +1,23 @@
 halfcheetah-ppo:
     env: HalfCheetah-v2
-    local_dir: /data/mluo/ppo-appo
+    local_dir: /data/mluo/ppo-16-batchsmall
     run: PPO
     stop:
-        episode_reward_mean: 3500
+        episode_reward_mean: 9800
+        time_total_s: 10800           
     config:
-        gamma: 0.995
+        gamma: 0.99
+        lambda: 0.95
         kl_coeff: 1.0
-        num_sgd_iter: 20
-        lr: .0001
-        sgd_minibatch_size: 32768
-        train_batch_size: 160000
-        num_workers: 47
+        num_sgd_iter: 32
+        lr: .0003
+        vf_loss_coeff: 0.5
+        clip_param: 0.2
+        sgd_minibatch_size: 4096
+        train_batch_size: 65536 #Should be sgd_minibatch_size * num_workers * num_env/worker
+        num_workers: 16
         num_gpus: 1
-        batch_mode: complete_episodes
+        grad_clip: 0.5
+        num_envs_per_worker: 
+            grid_search: [16, 32]
+        batch_mode: truncate_episodes
