@@ -51,8 +51,11 @@ class Resources(
             launch additional Ray actors that use CPUs.
         extra_gpu (float): Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
-        custom_resources (dict):
-        extra_custom_resources (dict):
+        custom_resources (dict): Mapping of resource to quantity to allocate
+            to the trial.
+        extra_custom_resources (dict): Extra custom resources to reserve in
+            case the trial needs to launch additional Ray actors that use
+            any of these custom resources.
 
     """
 

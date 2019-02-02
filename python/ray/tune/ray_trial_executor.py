@@ -285,14 +285,15 @@ class RayTrialExecutor(TrialExecutor):
         assert currently_available.extra_cpu == 0
         assert currently_available.extra_gpu == 0
         assert all(
-            val == 0 for val in currently_available.extra_custom_resources)
+            val == 0
+            for val in currently_available.extra_custom_resources.values())
 
         leftover = Resources.subtract(currently_available, resources)
         have_space = (
             resources.cpu_total() <= currently_available.cpu
             and resources.gpu_total() <= currently_available.gpu and all(
-                resources.get_res_total(res) <= val
-                for res, val in currently_available.custom_resources.items()))
+                resources.get_res_total(res) <= currently_available.get(res)
+                for res in resources.custom_resources))
 
         if have_space:
             return True
