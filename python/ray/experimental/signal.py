@@ -152,7 +152,7 @@ def receive(virtual_sources, timeout=float('inf')):
 
     return results
 
-def forget(source_ids):
+def forget(virtual_sources):
     """Ignore all previous signals of each source_id in source_ids.
     The index of the next expected signal from source_id is set to the
     last signal's index plus 1. This means that the next receive() on source_id
@@ -165,8 +165,9 @@ def forget(source_ids):
         ray.worker.global_worker.signal_counters = dict()
     signal_counters = ray.worker.global_worker.signal_counters
 
-    for source_id in source_ids:
-        source_key = ray._raylet.compute_task_id(source_id._ray_actor_creation_dummy_object_id).binary()
+    for vs in virtual_sources:
+        source_id = _get_signal_source_id(vs)
+        source_key = source_id.binary()
         value = ray.worker.global_worker.redis_client.get(source_key)
         if value != None:
             signal_counters[source_id] = int(value) + 1
