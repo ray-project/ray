@@ -1719,10 +1719,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
 ActorTableDataT NodeManager::CreateActorTableDataFromCreationTask(const Task &task) {
   RAY_CHECK(task.GetTaskSpecification().IsActorCreationTask());
-  // Convert the worker to an actor.
   auto actor_id = task.GetTaskSpecification().ActorCreationId();
-  // Publish the actor creation event to all other nodes so that methods for
-  // the actor will be forwarded directly to this node.
   auto actor_entry = actor_registry_.find(actor_id);
   ActorTableDataT new_actor_data;
   // TODO(swang): If this is an actor that was reconstructed, and previous

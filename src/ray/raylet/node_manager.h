@@ -286,7 +286,8 @@ class NodeManager {
   /// old state transition.
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
-  /// \param data Data associated with this notification.
+  /// \param actor_registration The ActorRegistration object that represents actor's
+  /// new state.
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id,
                                   ActorRegistration &&actor_registration);
