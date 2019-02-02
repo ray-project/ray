@@ -489,11 +489,6 @@ void NodeManager::PublishActorStateTransition(
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                                              ActorRegistration &&actor_registration) {
-  RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
-                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                 << ", state = " << EnumNameActorState(actor_registration.GetState())
-                 << ", remaining_reconstructions = "
-                 << actor_registration.GetRemainingReconstructions();
   // Update local registry.
   auto it = actor_registry_.find(actor_id);
   if (it == actor_registry_.end()) {
@@ -516,6 +511,11 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       return;
     }
   }
+  RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
+                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
+                 << ", state = " << EnumNameActorState(actor_registration.GetState())
+                 << ", remaining_reconstructions = "
+                 << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorState::ALIVE) {
     // The actor's location is now known. Dequeue any methods that were
