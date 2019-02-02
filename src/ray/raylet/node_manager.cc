@@ -90,7 +90,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()) num_retries=300);
 }
 
 ray::Status NodeManager::RegisterGcs() {
