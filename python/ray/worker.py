@@ -1000,8 +1000,7 @@ class Worker(object):
                 self._actor_checkpoint_ids.append(checkpoint_id)
                 if (len(self._actor_checkpoint_ids) >
                         ray._config.num_actor_checkpoints_to_keep()):
-                    actor.checkpoint_expired(self._actor_checkpoint_ids[0])
-                    del self._actor_checkpoint_ids[0]
+                    actor.checkpoint_expired(self._actor_checkpoint_ids.pop(0))
                 actor.save_checkpoint(actor_id, checkpoint_id)
                 self._num_tasks_since_last_checkpoint = 0
                 self._last_checkpoint_timestamp = now

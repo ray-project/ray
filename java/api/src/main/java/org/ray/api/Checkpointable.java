@@ -64,8 +64,8 @@ public interface Checkpointable {
    * callback to save actor's checkpoint and the given checkpoint id to persistent storage.
    *
    * @param actorId Actor’s ID.
-   * @param checkpointId An ID that represents this actor’s current state in GCS. You should save
-   * this checkpoint ID together with actor’s checkpoint data.
+   * @param checkpointId An ID that represents this actor’s current state in GCS. You should
+   *     save this checkpoint ID together with actor’s checkpoint data.
    */
   void saveCheckpoint(UniqueId actorId, UniqueId checkpointId);
 
@@ -77,11 +77,11 @@ public interface Checkpointable {
    * return the checkpoint ID. Otherwise, it should do nothing and return null.
    *
    * @param actorId Actor's ID.
-   * @param availableCheckpoints A list of available checkpoint IDs and their timestamps, sorted by
-   * timestamp in descending order. Note, this method must return the ID of one checkpoint in this
-   * list, or null. Otherwise, an exception will be thrown.
+   * @param availableCheckpoints A list of available checkpoint IDs and their timestamps, sorted
+   *     by timestamp in descending order. Note, this method must return the ID of one checkpoint in
+   *     this list, or null. Otherwise, an exception will be thrown.
    * @return The ID of the checkpoint from which the actor was resumed, or null if the actor should
-   * restart from the beginning.
+   *     restart from the beginning.
    */
   UniqueId loadCheckpoint(UniqueId actorId, List<Checkpoint> availableCheckpoints);
 

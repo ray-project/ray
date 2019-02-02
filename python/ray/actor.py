@@ -897,7 +897,6 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
 
 ray.worker.global_worker.make_actor = make_actor
 
-
 CheckpointContext = namedtuple(
     'CheckpointContext',
     [

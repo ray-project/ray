@@ -28,8 +28,6 @@ def ray_start_regular(request):
     # Start the Ray processes.
     ray.init(
         num_cpus=1,
-        redirect_output=True,
-        redirect_worker_output=True,
         _internal_config=json.dumps(internal_config),
     )
     yield None
@@ -2475,7 +2473,9 @@ def test_actor_checkpointing(ray_start_regular):
     "ray_start_regular",
     # This overwrite currently isn't effective,
     # see https://github.com/ray-project/ray/issues/3926.
-    [{"num_actor_checkpoints_to_keep": 20}],
+    [{
+        "num_actor_checkpoints_to_keep": 20
+    }],
     indirect=True,
 )
 def test_deleting_actor_checkpoint(ray_start_regular):
