@@ -94,6 +94,18 @@ def test_task_done(ray_start):
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.DoneSignal
 
+def test_task_done2(ray_start):
+
+    @ray.remote
+    def test_function():
+        return 1, 2
+
+    object_id1 = test_function.remote()
+    ray.get(object_id1)
+    result_list = signal.receive([object_id1, object_id1], timeout=5)
+    assert len(result_list) == 2
+    assert type(result_list[0][1]) == signal.DoneSignal
+
 
 def test_task_crash(ray_start):
     # Get an error when ray.get() is called on the return of a failed task.
