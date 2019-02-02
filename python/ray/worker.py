@@ -117,6 +117,25 @@ class RayTaskError(Exception):
         return "\n".join(out)
 
 
+class ActorCheckpointInfo(object):
+    """Information used to maintain actor checkpoints."""
+
+    __slots__ = [
+        # Number of tasks executed since last checkpoint.
+        "num_tasks_since_last_checkpoint",
+        # Timestamp of the last checkpoint, in milliseconds.
+        "last_checkpoint_timestamp",
+        # IDs of the previous checkpoints.
+        "checkpoint_ids",
+    ]
+
+    def __init__(self, num_tasks_since_last_checkpoint,
+                 last_checkpoint_timestamp, checkpoint_ids):
+        self.num_tasks_since_last_checkpoint = num_tasks_since_last_checkpoint
+        self.last_checkpoint_timestamp = last_checkpoint_timestamp
+        self.checkpoint_ids = checkpoint_ids
+
+
 class Worker(object):
     """A class used to define the control flow of a worker process.
 
@@ -141,6 +160,8 @@ class Worker(object):
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
+        # Information used to maintain actor checkpoints.
+        self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
         # The number of threads Plasma should use when putting an object in the
         # object store.
@@ -966,9 +987,11 @@ class Worker(object):
             return
 
         if is_actor_creation_task:
-            self._num_tasks_since_last_checkpoint = 0
-            self._last_checkpoint_timestamp = int(1000 * time.time())
-            self._actor_checkpoint_ids = []
+            self.actor_checkpoint_info[actor_id] = ActorCheckpointInfo(
+                num_tasks_since_last_checkpoint=0,
+                last_checkpoint_timestamp=int(1000 * time.time()),
+                checkpoint_ids=[],
+            )
             checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
             if len(checkpoints) > 0:
                 # If we found previously saved checkpoints for this actor,
@@ -987,24 +1010,27 @@ class Worker(object):
                     self.raylet_client.notify_actor_resumed_from_checkpoint(
                         actor_id, checkpoint_id)
         elif is_actor_task:
-            self._num_tasks_since_last_checkpoint += 1
+            checkpoint_info = self.actor_checkpoint_info[actor_id]
+            checkpoint_info.num_tasks_since_last_checkpoint += 1
             now = int(1000 * time.time())
             checkpoint_context = ray.actor.CheckpointContext(
-                actor_id, self._num_tasks_since_last_checkpoint,
-                now - self._last_checkpoint_timestamp)
+                actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
+                now - checkpoint_info.last_checkpoint_timestamp)
             if actor.should_checkpoint(checkpoint_context):
                 # If `should_checkpoint` returns True, notify raylet to prepare
                 # a checkpoint and then call `save_checkpoint`.
                 checkpoint_id = self.raylet_client.prepare_actor_checkpoint(
                     actor_id)
-                self._actor_checkpoint_ids.append(checkpoint_id)
-                if (len(self._actor_checkpoint_ids) >
+                checkpoint_info.checkpoint_ids.append(checkpoint_id)
+                if (len(checkpoint_info.checkpoint_ids) >
                         ray._config.num_actor_checkpoints_to_keep()):
-                    actor.checkpoint_expired(actor_id,
-                                             self._actor_checkpoint_ids.pop(0))
+                    actor.checkpoint_expired(
+                        actor_id,
+                        checkpoint_info.checkpoint_ids.pop(0),
+                    )
                 actor.save_checkpoint(actor_id, checkpoint_id)
-                self._num_tasks_since_last_checkpoint = 0
-                self._last_checkpoint_timestamp = now
+                checkpoint_info.num_tasks_since_last_checkpoint = 0
+                checkpoint_info.last_checkpoint_timestamp = now
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
