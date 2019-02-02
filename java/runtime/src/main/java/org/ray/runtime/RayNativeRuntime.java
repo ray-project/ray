@@ -16,6 +16,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.ActorCheckpointIdData;
+import org.ray.runtime.generated.TablePrefix;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.runner.RunManager;
@@ -149,7 +150,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
    */
   List<Checkpoint> getCheckpointsForActor(UniqueId actorId) {
     List<Checkpoint> checkpoints = new ArrayList<>();
-    byte[] key = ArrayUtils.addAll("ACTOR_CHECKPOINT_ID".getBytes(), actorId.getBytes());
+    // TODO(hchen): implement the equivalent of Python's `GlobalState`, to avoid looping over
+    //  all redis shards..
+    String prefix = TablePrefix.name(TablePrefix.ACTOR_CHECKPOINT_ID);
+    byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());
     for (RedisClient client : redisClients) {
       byte[] result = client.get(key, null);
       if (result == null) {

@@ -56,7 +56,7 @@ public class Worker {
   /**
    * Timestamp of the last actor checkpoint.
    */
-  private long lastCheckpointTs = 0;
+  private long lastCheckpointTimestamp = 0;
 
 
   public Worker(AbstractRayRuntime runtime) {
@@ -137,13 +137,13 @@ public class Worker {
       return;
     }
     CheckpointContext checkpointContext = new CheckpointContext(actorId,
-        ++numTasksSinceLastCheckpoint, System.currentTimeMillis() - lastCheckpointTs);
+        ++numTasksSinceLastCheckpoint, System.currentTimeMillis() - lastCheckpointTimestamp);
     Checkpointable checkpointable = (Checkpointable) actor;
     if (!checkpointable.shouldCheckpoint(checkpointContext)) {
       return;
     }
     numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTs = System.currentTimeMillis();
+    lastCheckpointTimestamp = System.currentTimeMillis();
     UniqueId checkpointId = runtime.rayletClient.prepareCheckpoint(actorId);
     checkpointIds.add(checkpointId);
     if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
@@ -162,7 +162,7 @@ public class Worker {
       return;
     }
     numTasksSinceLastCheckpoint = 0;
-    lastCheckpointTs = System.currentTimeMillis();
+    lastCheckpointTimestamp = System.currentTimeMillis();
     checkpointIds = new ArrayList<>();
     List<Checkpoint> availableCheckpoints = ((RayNativeRuntime) runtime)
         .getCheckpointsForActor(actorId);
