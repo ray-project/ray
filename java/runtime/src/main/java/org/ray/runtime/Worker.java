@@ -147,7 +147,7 @@ public class Worker {
     UniqueId checkpointId = runtime.rayletClient.prepareCheckpoint(actorId);
     checkpointIds.add(checkpointId);
     if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
-      ((Checkpointable) actor).checkpointExpired(checkpointIds.get(0));
+      ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));
       checkpointIds.remove(0);
     }
     checkpointable.saveCheckpoint(actorId, checkpointId);

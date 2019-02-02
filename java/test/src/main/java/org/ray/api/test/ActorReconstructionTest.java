@@ -106,8 +106,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     @Override
-    public void checkpointExpired(UniqueId checkpointId) {
-
+    public void checkpointExpired(UniqueId actorId, UniqueId checkpointId) {
     }
   }
 

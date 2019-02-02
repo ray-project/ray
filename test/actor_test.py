@@ -2437,7 +2437,7 @@ def test_actor_checkpointing(ray_start_regular):
                                for checkpoint in available_checkpoints)
                     return checkpoint_id
 
-        def checkpoint_expired(self, checkpoint_id):
+        def checkpoint_expired(self, actor_id, checkpoint_id):
             pass
 
     def kill_actor(actor):
@@ -2501,7 +2501,7 @@ def test_deleting_actor_checkpoint(ray_start_regular):
         def load_checkpoint(self, actor_id, available_checkpoints):
             pass
 
-        def checkpoint_expired(self, checkpoint_id):
+        def checkpoint_expired(self, actor_id, checkpoint_id):
             assert checkpoint_id == self.checkpoint_ids[0]
             del self.checkpoint_ids[0]
 

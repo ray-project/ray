@@ -986,7 +986,7 @@ class Checkpointable(six.with_metaclass(ABCMeta)):
         pass
 
     @abstractmethod
-    def checkpoint_expired(self, checkpoint_id):
+    def checkpoint_expired(self, actor_id, checkpoint_id):
         """Delete an expired checkpoint.
 
         This method will be called when an checkpoint is expired. You should
@@ -995,6 +995,7 @@ class Checkpointable(six.with_metaclass(ABCMeta)):
         configured at `RayConfig.num_actor_checkpoints_to_keep`.
 
         Args:
+            actor_id: ID of the actor.
             checkpoint_id: ID of the checkpoint that has expired.
         Returns:
             None.

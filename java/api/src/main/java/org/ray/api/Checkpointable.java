@@ -92,7 +92,8 @@ public interface Checkpointable {
    * delete your application checkpoint data. Note, the maximum number of checkpoints kept in the
    * backend can be configured at `RayConfig.num_actor_checkpoints_to_keep`.
    *
+   * @param actorId ID of the actor.
    * @param checkpointId ID of the checkpoint that has expired.
    */
-  void checkpointExpired(UniqueId checkpointId);
+  void checkpointExpired(UniqueId actorId, UniqueId checkpointId);
 }
