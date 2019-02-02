@@ -353,9 +353,8 @@ cc_library(
     includes = [
         "src" ,
         "external/local_jdk/include"] + select({
-            "@bazel_tools//src/conditions:windows": ["external/local_jdk/include/win32"],
             "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
-            "//conditions:default": ["external/local_jdk/include/linux"]
+            "//conditions:default": []
         }),
     deps = ["@plasma//:plasma_client",
             "//:raylet_lib"],
