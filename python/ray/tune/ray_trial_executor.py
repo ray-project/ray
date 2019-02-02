@@ -271,8 +271,6 @@ class RayTrialExecutor(TrialExecutor):
         num_cpus = resources.pop("CPU")
         num_gpus = resources.pop("GPU")
         custom_resources = resources
-        assert "CPU" not in custom_resources
-        assert "GPU" not in custom_resources
 
         self._avail_resources = Resources(
             int(num_cpus), int(num_gpus), custom_resources=custom_resources)
@@ -280,15 +278,10 @@ class RayTrialExecutor(TrialExecutor):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
+        self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
-        assert currently_available.extra_cpu == 0
-        assert currently_available.extra_gpu == 0
-        assert all(
-            val == 0
-            for val in currently_available.extra_custom_resources.values())
 
-        leftover = Resources.subtract(currently_available, resources)
         have_space = (
             resources.cpu_total() <= currently_available.cpu
             and resources.gpu_total() <= currently_available.gpu and all(
@@ -300,10 +293,10 @@ class RayTrialExecutor(TrialExecutor):
 
         can_overcommit = self._queue_trials
 
-        if (resources.cpu_total() > 0 and leftover.cpu <= 0) or \
-           (resources.gpu_total() > 0 and leftover.gpu <= 0) or \
+        if (resources.cpu_total() > 0 and currently_available.cpu <= 0) or \
+           (resources.gpu_total() > 0 and currently_available.gpu <= 0) or \
            any((resources.get_res_total(res_name) > 0
-                and leftover.get(res_name) <= 0)
+                and currently_available.get(res_name) <= 0)
                for res_name in resources.custom_resources):
             can_overcommit = False  # requested resource is already saturated
 
