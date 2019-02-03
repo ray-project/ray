@@ -51,10 +51,6 @@ class GCPNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
-        # Cache of ip lookups. We assume IPs never change once assigned.
-        self.internal_ip_cache = {}
-        self.external_ip_cache = {}
-
     def nodes(self, tag_filters):
         if tag_filters:
             label_filter_expr = "(" + " AND ".join([
@@ -130,23 +126,30 @@ class GCPNodeProvider(NodeProvider):
         return result
 
     def external_ip(self, node_id):
-        if node_id in self.external_ip_cache:
-            return self.external_ip_cache[node_id]
         node = self._get_cached_node(node_id)
-        # TODO: Is there a better and more reliable way to do this?
-        ip = (node.get("networkInterfaces", [{}])[0].get(
-            "accessConfigs", [{}])[0].get("natIP", None))
-        if ip:
-            self.external_ip_cache[node_id] = ip
+
+        def get_external_ip(node):
+            return node.get("networkInterfaces", [{}])[0].get(
+                "accessConfigs", [{}])[0].get("natIP", None)
+
+        ip = get_external_ip(node)
+        if ip is None:
+            node = self._get_node(node_id)
+            ip = get_external_ip(node)
+
         return ip
 
     def internal_ip(self, node_id):
-        if node_id in self.internal_ip_cache:
-            return self.internal_ip_cache[node_id]
         node = self._get_cached_node(node_id)
-        ip = node.get("networkInterfaces", [{}])[0].get("networkIP")
-        if ip:
-            self.internal_ip_cache[node_id] = ip
+
+        def get_internal_ip(node):
+            return node.get("networkInterfaces", [{}])[0].get("networkIP")
+
+        ip = get_internal_ip(node)
+        if ip is None:
+            node = self._get_node(node_id)
+            ip = get_internal_ip(node)
+
         return ip
 
     def create_node(self, base_config, tags, count):
