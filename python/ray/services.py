@@ -513,7 +513,7 @@ def start_redis(node_ip_address,
 
     if use_credis:
         redis_executable = CREDIS_EXECUTABLE
-        # TODO: We need credis here because some symbols need to be
+        # TODO(suquark): We need credis here because some symbols need to be
         # imported from credis dynamically through dlopen when Ray is built
         # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
         # shard.
@@ -579,7 +579,7 @@ def start_redis(node_ip_address,
             # It is important to load the credis module BEFORE the ray module,
             # as the latter contains an extern declaration that the former
             # supplies.
-            redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
+            redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
         else:
             redis_executable = REDIS_EXECUTABLE
             redis_modules = [REDIS_MODULE]
@@ -625,10 +625,19 @@ def start_redis(node_ip_address,
         #
         # Currently we have num_redis_shards == 1, so only one chain will be
         # created, and the chain only contains master.
+
+        # TODO(suquark): Currently, this is not correct because we are
+        # using the master replica as the primary shard. This should be
+        # fixed later. I had tried to fix it but failed because of heartbeat
+        # issues.
+        primary_client = redis.StrictRedis(
+            host=node_ip_address, port=port, password=password)
         shard_client = redis.StrictRedis(
             host=node_ip_address, port=redis_shard_port, password=password)
-        shard_client.execute_command("MASTER.ADD", node_ip_address,
-                                     redis_shard_port)
+        primary_client.execute_command("MASTER.ADD", node_ip_address,
+                                       redis_shard_port)
+        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
+                                     node_ip_address, port)
 
     return redis_address, redis_shards, processes
 
