@@ -229,6 +229,7 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache_pending.pop(node_id, None)
 
     def _get_node(self, node_id):
+        """Refresh and get info for this node, updating the cache."""
         self.nodes({})  # Side effect: fetches and caches the node.
 
         assert node_id in self.cached_nodes, "Invalid instance id {}".format(
@@ -237,6 +238,7 @@ class AWSNodeProvider(NodeProvider):
         return self.cached_nodes[node_id]
 
     def _get_cached_node(self, node_id):
+         """Return info from this node from cache if possible, otherwise fetching it."""
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
 
