@@ -141,13 +141,13 @@ COMMON_CONFIG = {
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
     #  - a function that returns a rllib.offline.InputReader
     "input": "sampler",
-    # Specify how to evaluate the current policy. This only makes sense to set
-    # when the input is not already generating simulation data:
-    #  - None: don't evaluate the policy. The episode reward and other
-    #    metrics will be NaN if using offline data.
+    # Specify how to evaluate the current policy. This only has an effect when
+    # reading offline experiences. Available options:
+    #  - "is": the step-wise importance sampling estimator.
+    #  - "wis": the weighted step-wise is estimator.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    "input_evaluation": None,
+    "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behaviour* policy, which is typically undesirable for
@@ -528,10 +528,6 @@ class Agent(Trainable):
             raise ValueError(
                 "The `use_gpu_for_workers` config is deprecated, please use "
                 "`num_gpus_per_worker=1` instead.")
-        if (config["input"] == "sampler"
-                and config["input_evaluation"] is not None):
-            raise ValueError(
-                "`input_evaluation` should not be set when input=sampler")
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
@@ -567,6 +563,11 @@ class Agent(Trainable):
                     max_file_size=config["output_max_file_size"],
                     compress_columns=config["output_compress_columns"]))
 
+        if config["input"] == "sampler":
+            input_evaluation = []
+        else:
+            input_evaluation = config["input_evaluation"]
+
         return cls(
             env_creator,
             self.config["multiagent"]["policy_graphs"] or policy_graph,
@@ -593,7 +594,7 @@ class Agent(Trainable):
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            input_evaluation_method=config["input_evaluation"],
+            input_evaluation=input_evaluation,
             output_creator=output_creator)
 
     def __getstate__(self):

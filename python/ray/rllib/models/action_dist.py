@@ -24,6 +24,7 @@ class ActionDistribution(object):
     @DeveloperAPI
     def __init__(self, inputs):
         self.inputs = inputs
+        self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
     def logp(self, x):
@@ -37,13 +38,27 @@ class ActionDistribution(object):
 
     @DeveloperAPI
     def entropy(self):
-        """The entroy of the action distribution."""
+        """The entropy of the action distribution."""
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def _build_sample_op(self):
+        """Implement this instead of sample(), to enable op reuse.
+
+        This is needed since the sample op is non-deterministic and is shared
+        between sample() and sampled_action_prob().
+        """
         raise NotImplementedError
 
     @DeveloperAPI
     def sample(self):
         """Draw a sample from the action distribution."""
-        raise NotImplementedError
+        return self.sample_op
+
+    @DeveloperAPI
+    def sampled_action_prob(self):
+        """Returns the log probability of the sampled action."""
+        return tf.exp(self.logp(self.sample_op))
 
 
 class Categorical(ActionDistribution):
@@ -95,7 +110,7 @@ class Categorical(ActionDistribution):
             p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
 
     @override(ActionDistribution)
-    def sample(self):
+    def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
 
@@ -136,7 +151,7 @@ class DiagGaussian(ActionDistribution):
             reduction_indices=[1])
 
     @override(ActionDistribution)
-    def sample(self):
+    def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
 
@@ -149,6 +164,10 @@ class Deterministic(ActionDistribution):
     @override(ActionDistribution)
     def sample(self):
         return self.inputs
+
+    @override(ActionDistribution)
+    def sampled_action_prob(self):
+        return 1.0
 
 
 class MultiActionDistribution(ActionDistribution):
@@ -204,6 +223,13 @@ class MultiActionDistribution(ActionDistribution):
     @override(ActionDistribution)
     def sample(self):
         return TupleActions([s.sample() for s in self.child_distributions])
+
+    @override(ActionDistribution)
+    def sampled_action_prob(self):
+        p = self.child_distributions[0].sampled_action_prob()
+        for c in self.child_distributions[1:]:
+            p *= c.sampled_action_prob()
+        return p
 
 
 TupleActions = namedtuple("TupleActions", ["batches"])

@@ -18,8 +18,9 @@ from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, \
-    InputReader, OffPolicyEstimator, WeightedImportanceSamplingEstimator
+from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.offline.off_policy_estimator import \
+    ImportanceSamplingEstimator, WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
@@ -117,7 +118,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_level=None,
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
-                 input_evaluation_method=None,
+                 input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput()):
         """Initialize a policy evaluator.
 
@@ -184,11 +185,11 @@ class PolicyEvaluator(EvaluatorInterface):
             callbacks (dict): Dict of custom debug callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
-            input_evaluation_method (str): How to evaluate the current policy.
-                This only applies when the input is reading offline data.
-                Options are:
-                  - None: don't evaluate the policy. The episode reward and
-                    other metrics will be NaN.
+            input_evaluation (set): How to evaluate the policy performance.
+                This only makes sense to set when the input is reading offline
+                data. The possible values include:
+                  - "is": the step-wise importance sampling estimator.
+                  - "wis": the weighted step-wise is estimator.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
@@ -320,7 +321,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                blackhole_outputs=input_evaluation_method == "simulation")
+                blackhole_outputs="simulation" in input_evaluation)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -339,22 +340,21 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.io_context = IOContext(log_dir, policy_config, worker_index, self)
         self.reward_estimators = []
-        if input_evaluation_method == "simulation":
-            logger.warning(
-                "Requested 'simulation' input evaluation method: "
-                "will discard all sampler outputs and keep only metrics.")
-            sample_async = True
-        elif input_evaluation_method == "importance_sampling":
-            wis = ImportanceSamplingEstimator(ioctx)
-            self.reward_estimators.append(wis)
-        elif input_evaluation_method == "weighted_importance_sampling":
-            wis = WeightedImportanceSamplingEstimator(ioctx)
-            self.reward_estimators.append(wis)
-        elif input_evaluation_method is None:
-            pass
-        else:
-            raise ValueError("Unknown evaluation method: {}".format(
-                input_evaluation_method))
+        for method in input_evaluation:
+            if method == "simulation":
+                logger.warning(
+                    "Requested 'simulation' input evaluation method: "
+                    "will discard all sampler outputs and keep only metrics.")
+                sample_async = True
+            elif method == "is":
+                ise = ImportanceSamplingEstimator(self.io_context)
+                self.reward_estimators.append(ise)
+            elif method == "weighted_importance_sampling":
+                wise = WeightedImportanceSamplingEstimator(self.io_context)
+                self.reward_estimators.append(wise)
+            else:
+                raise ValueError(
+                    "Unknown evaluation method: {}".format(method))
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
         self.output_writer = output_creator(self.io_context)
@@ -399,9 +399,10 @@ class PolicyEvaluator(EvaluatorInterface):
         self.output_writer.write(batch)
 
         # Do off-policy estimation if needed
-        if self.off_policy_estimator:
+        if self.reward_estimators:
             for sub_batch in batch.split_by_episode():
-                self.off_policy_estimator.process(sub_batch)
+                for estimator in self.reward_esimators:
+                    estimator.process(sub_batch)
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
