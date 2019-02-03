@@ -1,5 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+cluster_name: gpu
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -68,6 +68,10 @@ head_node:
     guestAccelerators:
       acceleratorType: nvidia-tesla-k80
       acceleratorCount: 1
+    metadata:
+      items:
+        - key: install-nvidia-driver
+          value: true
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
