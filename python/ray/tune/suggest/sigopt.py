@@ -16,7 +16,7 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 class SigOptSearch(SuggestionAlgorithm):
     """A wrapper around SigOpt to provide trial suggestions.
 
-    Requires SigOpt to be installed. Requires user to store their SigOpt 
+    Requires SigOpt to be installed. Requires user to store their SigOpt
     API key locally as an environment variable at `SIGOPT_KEY`.
 
     Parameters:
@@ -24,7 +24,7 @@ class SigOptSearch(SuggestionAlgorithm):
             from this configuration and will be used to override
             parameters generated in the variant generation process.
         name (str): Name of experiment. Required by SigOpt.
-        max_concurrent (int): Number of maximum concurrent trials supported 
+        max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
@@ -58,26 +58,25 @@ class SigOptSearch(SuggestionAlgorithm):
         >>>     }
         >>> }
         >>> algo = SigOptSearch(
-        >>>     parameters, name="SigOpt Example Experiment", 
+        >>>     parameters, name="SigOpt Example Experiment",
         >>>     max_concurrent=1, reward_attr="neg_mean_loss")
     """
 
-    def __init__(
-            self,
-            space,
-            name="Default Tune Experiment",
-            max_concurrent=1,
-            reward_attr="episode_reward_mean",
-            **kwargs):
+    def __init__(self,
+                 space,
+                 name="Default Tune Experiment",
+                 max_concurrent=1,
+                 reward_attr="episode_reward_mean",
+                 **kwargs):
         assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         assert "SIGOPT_KEY" in os.environ, \
-            "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
+            "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
         self._max_concurrent = max_concurrent
         self._reward_attr = reward_attr
         self._live_trial_mapping = {}
 
-        # Create a connection with SigOpt API to run experiments, requires API key
+        # Create a connection with SigOpt API, requires API key
         self.conn = sgo.Connection(client_token=os.environ['SIGOPT_KEY'])
 
         self.experiment = self.conn.experiments().create(
@@ -109,9 +108,9 @@ class SigOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to SigOpt unless early terminated or errored.
-        
+
         If a trial fails, it will be reported as a failed Observation, telling
-        the optimizer that the Suggestion led to a metric failure, which 
+        the optimizer that the Suggestion led to a metric failure, which
         updates the feasible region and improves parameter recommendation.
 
         Creates SigOpt Observation object for trial.
@@ -126,9 +125,7 @@ class SigOptSearch(SuggestionAlgorithm):
         elif error or early_terminated:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
-                failed=True,
-                suggestion=self._live_trial_mapping[trial_id].id
-            )
+                failed=True, suggestion=self._live_trial_mapping[trial_id].id)
         del self._live_trial_mapping[trial_id]
 
     def _num_live_trials(self):
