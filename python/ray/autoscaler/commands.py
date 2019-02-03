@@ -26,6 +26,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.docker import with_docker_exec
 
 logger = logging.getLogger(__name__)
 
@@ -247,19 +248,16 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                         provider.external_ip(head_node)))
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
-        for s in init_commands:
-            if ("ray start" in s and "docker exec" in s
-                    and "--autoscaling-config" in s):
-                monitor_str = "docker exec {} /bin/sh -c {}".format(
-                    config["docker"]["container_name"], quote(monitor_str))
+        use_docker = bool(config["docker"]["container_name"])
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
         else:
             modifiers = ""
         print("To monitor auto-scaling activity, you can run:\n\n"
-              "  ray exec {} {}{}\n".format(config_file, quote(monitor_str),
-                                            modifiers))
+              "  ray exec {} {}{}{}\n".format(config_file, "--docker "
+                                              if use_docker else " ",
+                                              quote(monitor_str), modifiers))
         print("To open a console on the cluster:\n\n"
               "  ray attach {}{}\n".format(config_file, modifiers))
         print("To ssh manually to the cluster, run:\n\n"
@@ -292,17 +290,18 @@ def attach_cluster(config_file, start, use_tmux, override_cluster_name, new):
         else:
             cmd = "screen -L -xRR"
 
-    exec_cluster(config_file, cmd, False, False, False, start,
+    exec_cluster(config_file, cmd, False, False, False, False, start,
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, screen, tmux, stop, start,
+def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
                  override_cluster_name, port_forward):
     """Runs a command on the specified cluster.
 
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
+        docker: whether to run command in docker container of config
         screen: whether to run in a screen
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
@@ -331,6 +330,12 @@ def exec_cluster(config_file, cmd, screen, tmux, stop, start,
             [],
             "",
         )
+        if docker:
+            container_name = config["docker"]["container_name"]
+            if not container_name:
+                raise ValueError("Docker container not specified in config.")
+            cmd = with_docker_exec([cmd], container_name=container_name)[0]
+
         if stop:
             cmd += (
                 "; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "

@@ -105,12 +105,15 @@ def docker_start_cmds(user, image, mount, cname, user_options):
 
     user_options_str = " ".join(user_options)
     # docker run command
+    docker_check = [
+        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||"
+    ]
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
         port_flags, mount_flags, env_flags, user_options_str, "--net=host",
         image, "bash"
     ]
-    cmds.append(" ".join(docker_run))
+    cmds.append(" ".join(docker_check + docker_run))
     docker_update = []
     docker_update.append("apt-get -y update")
     docker_update.append("apt-get -y upgrade")
@@ -127,6 +130,7 @@ def docker_autoscaler_setup(cname):
         cmds.append("docker cp {path} {cname}:{dpath}".format(
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
-            with_docker_exec(["cp {} {}".format("/" + base_path, path)],
-                             container_name=cname))
+            with_docker_exec(
+                ["cp {} {}".format("/" + base_path, path)],
+                container_name=cname))
     return cmds

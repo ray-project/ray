@@ -628,6 +628,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
+    "--docker",
+    is_flag=True,
+    default=False,
+    help="Runs command in container specified in cluster_config.")
+@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -652,9 +657,9 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
-def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
-             port_forward):
-    exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
+def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
+             cluster_name, port_forward):
+    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
                  cluster_name, port_forward)
 
 
