@@ -199,7 +199,7 @@ class GCPNodeProvider(NodeProvider):
 
             name_label = labels[TAG_RAY_NODE_NAME]
             assert (len(name_label) <=
-                    (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
+                    (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 3)), (
                         name_label, len(name_label))
 
             machine_type = ("zones/{zone}/machineTypes/{machine_type}"
