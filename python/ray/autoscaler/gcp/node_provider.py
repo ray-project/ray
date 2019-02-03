@@ -110,7 +110,7 @@ class GCPNodeProvider(NodeProvider):
         project_id = self.provider_config["project_id"]
         availability_zone = self.provider_config["availability_zone"]
 
-        node = self._get_cached_node(node_id)
+        node = self._get_node(node_id)
         operation = self.compute.instances().setLabels(
             project=project_id,
             zone=availability_zone,
