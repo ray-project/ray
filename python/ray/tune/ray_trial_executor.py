@@ -234,6 +234,7 @@ class RayTrialExecutor(TrialExecutor):
         committed = self._committed_resources
         all_keys = set(resources.custom_resources.keys() +
                        committed.custom_resources.keys())
+
         custom_resources = {
             k: committed.get(k, 0) + resources.get(k, 0)
             for k in all_keys
@@ -249,6 +250,7 @@ class RayTrialExecutor(TrialExecutor):
 
         all_keys = set(resources.custom_resources.keys() +
                        committed.custom_resources.keys())
+
         custom_resources = {
             k: committed.get(k, 0) - resources.get(k, 0)
             for k in all_keys
