@@ -136,13 +136,3 @@ flatbuffer_cc_library(
 )
 
 exports_files(["cpp/src/plasma/format/common.fbs"])
-
-java_library(
-    name="arrow_plasma_java_pkg",
-    visibility = ["//visibility:public"],
-    srcs=glob([
-        "java/*.java",
-        "java/*.properties",
-        ]),
-    runtime_deps=[":plasma_client_java"],
-)

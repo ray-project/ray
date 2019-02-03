@@ -471,15 +471,6 @@ cc_library(
     ]
 )
 
-java_library(
-    name="ray_java_pkg",
-    srcs=glob([
-        "java/*.java",
-        "java/*.properties",
-        ]),
-    runtime_deps=["@plasma//:arrow_plasma_java_pkg"]
-)
-
 genrule(
     name = "ray_pkg",
     srcs = [
@@ -493,9 +484,7 @@ genrule(
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
-        "@plasma//:arrow_plasma_java_pkg",
         "//:raylet_library_java",
-        "//:ray_java_pkg"
     ],
     outs = ["ray_pkg"],
     cmd = """
@@ -513,8 +502,6 @@ genrule(
         cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
         mv python $(location ray_pkg) &&
         mkdir -p $(location ray_pkg)/java_lib &&
-        cp $(location @plasma//:arrow_plasma_java_pkg) $(location ray_pkg)/java_lib &&
-        cp $(location //:ray_java_pkg) $(location ray_pkg)/java_lib &&
         for f in $(locations //:raylet_library_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/java_lib/"""
         + select({
             "@bazel_tools//src/conditions:darwin": "libraylet_library_java.dylib",
