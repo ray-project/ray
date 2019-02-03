@@ -74,9 +74,9 @@ cc_library(
         "cpp/src",
         "../../external/local_jdk/include"] + select({
             "@bazel_tools//src/conditions:darwin": ["../../external/local_jdk/include/darwin"],
-            "//conditions:default": []
+            "//conditions:default": ["../../external/local_jdk/include/linux"]
         }),
-    deps = ["@plasma//:plasma_client"],
+    deps = [":plasma_client"],
 )	
 
 cc_library(
@@ -136,3 +136,13 @@ flatbuffer_cc_library(
 )
 
 exports_files(["cpp/src/plasma/format/common.fbs"])
+
+java_library(
+    name="arrow_plasma_java_pkg",
+    visibility = ["//visibility:public"],
+    srcs=glob([
+        "java/*.java",
+        "java/*.properties",
+        ]),
+    runtime_deps=[":plasma_client_java"],
+)

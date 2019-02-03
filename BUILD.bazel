@@ -354,7 +354,7 @@ cc_library(
         "src" ,
         "external/local_jdk/include"] + select({
             "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
-            "//conditions:default": []
+            "//conditions:default": ["external/local_jdk/include/linux"]
         }),
     deps = ["@plasma//:plasma_client",
             "//:raylet_lib"],
@@ -471,6 +471,15 @@ cc_library(
     ]
 )
 
+java_library(
+    name="ray_java_pkg",
+    srcs=glob([
+        "java/*.java",
+        "java/*.properties",
+        ]),
+    runtime_deps=["@plasma//:arrow_plasma_java_pkg"]
+)
+
 genrule(
     name = "ray_pkg",
     srcs = [
@@ -484,7 +493,9 @@ genrule(
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
-        "//:raylet_library_java"
+        "@plasma//:arrow_plasma_java_pkg",
+        "//:raylet_library_java",
+        "//:ray_java_pkg"
     ],
     outs = ["ray_pkg"],
     cmd = """
@@ -501,16 +512,16 @@ genrule(
         cp $(location @plasma//:plasma_store_server) python/ray/core/src/plasma/ &&
         cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
         mv python $(location ray_pkg) &&
-        mkdir -p $(location ray_pkg)/src/ray/raylet &&
-        for f in $(locations //:raylet_library_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/src/ray/raylet/"""
+        mkdir -p $(location ray_pkg)/java_lib &&
+        cp $(location @plasma//:arrow_plasma_java_pkg) $(location ray_pkg)/java_lib &&
+        cp $(location //:ray_java_pkg) $(location ray_pkg)/java_lib &&
+        for f in $(locations //:raylet_library_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/java_lib/"""
         + select({
-            "@bazel_tools//src/conditions:windows": "libraylet_library_java.dll",
             "@bazel_tools//src/conditions:darwin": "libraylet_library_java.dylib",
             "//conditions:default": "libraylet_library_java.so"})
         + "; fi done &&" +
-        """for f in $(locations @plasma//:plasma_client_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/src/ray/raylet/"""
+        """for f in $(locations @plasma//:plasma_client_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/java_lib/"""
         + select({
-            "@bazel_tools//src/conditions:windows": "libplasma_java.dll",
             "@bazel_tools//src/conditions:darwin": "libplasma_java.dylib",
             "//conditions:default": "libplasma_java.so"})
         + "; fi done"
