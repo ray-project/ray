@@ -142,10 +142,20 @@ class AWSNodeProvider(NodeProvider):
             return dict(d1, **d2)
 
     def external_ip(self, node_id):
-        return self._get_cached_node(node_id).public_ip_address
+        node = self._get_cached_node(node_id)
+
+        if node.public_ip_address is None:
+            node = self._get_node(node_id)
+
+        return node.public_ip_address
 
     def internal_ip(self, node_id):
-        return self._get_cached_node(node_id).private_ip_address
+        node = self._get_cached_node(node_id)
+
+        if node.private_ip_address is None:
+            node = self._get_node(node_id)
+
+        return node.private_ip_address
 
     def set_node_tags(self, node_id, tags):
         with self.tag_cache_lock:
