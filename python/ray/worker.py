@@ -1810,7 +1810,7 @@ def connect(info,
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
-        plasma.connect(info["store_socket_name"]))
+        plasma.connect(info["store_socket_name"]), num_retries=300)
 
     raylet_socket = info["raylet_socket_name"]
 
