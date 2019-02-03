@@ -257,7 +257,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "entropy": self.loss_obj.mean_entropy
         }
 
-
     @override(TFPolicyGraph)
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
@@ -290,12 +289,16 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer):
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-        grads = tf.gradients(self._loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-        clipped_grads = list(zip(self.grads, self.var_list))
-        return clipped_grads
+        if self.config["grad_clip"] is not None:
+            self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                              tf.get_variable_scope().name)
+            grads = tf.gradients(self._loss, self.var_list)
+            self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+            clipped_grads = list(zip(self.grads, self.var_list))
+            return clipped_grads
+        else:
+            return optimizer.compute_gradients(
+                self._loss, colocate_gradients_with_ops=True)
 
     @override(PolicyGraph)
     def get_initial_state(self):
