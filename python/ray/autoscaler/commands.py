@@ -12,6 +12,7 @@ import logging
 import sys
 import click
 import random
+from functools import partial
 
 import yaml
 try:  # py3
@@ -126,7 +127,9 @@ def kill_node(config_file, yes, override_cluster_name):
 
     confirm("This will kill a node in your cluster", yes)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider_creator = partial(
+        get_node_provider, config["provider"], config["cluster_name"])
+    provider = provider_creator()
     try:
         nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
@@ -135,7 +138,7 @@ def kill_node(config_file, yes, override_cluster_name):
         updater = NodeUpdaterThread(
             node_id=node,
             provider_config=config["provider"],
-            provider=provider,
+            provider_creator=provider_creator,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
@@ -160,7 +163,9 @@ def kill_node(config_file, yes, override_cluster_name):
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider_creator = partial(
+        get_node_provider, config["provider"], config["cluster_name"])
+    provider = provider_creator()
     try:
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",
@@ -234,7 +239,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
-            provider=provider,
+            provider_creator=provider_creator,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
@@ -334,12 +339,14 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider_creator = partial(
+        get_node_provider, config["provider"], config["cluster_name"])
+    provider = provider_creator()
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
-            provider=provider,
+            provider_creator=provider_creator,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
@@ -431,12 +438,14 @@ def rsync(config_file, source, target, override_cluster_name, down):
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider_creator = partial(
+        get_node_provider, config["provider"], config["cluster_name"])
+    provider = provider_creator()
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
-            provider=provider,
+            provider_creator=provider_creator,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],

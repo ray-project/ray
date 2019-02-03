@@ -45,7 +45,7 @@ class NodeUpdater(object):
     def __init__(self,
                  node_id,
                  provider_config,
-                 provider,
+                 provider_creator,
                  auth_config,
                  cluster_name,
                  file_mounts,
@@ -63,7 +63,7 @@ class NodeUpdater(object):
         self.node_id = node_id
         self.use_internal_ip = (use_internal_ip or provider_config.get(
             "use_internal_ips", False))
-        self.provider = provider
+        self.provider = provider_creator()
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path

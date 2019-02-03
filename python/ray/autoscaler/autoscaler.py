@@ -11,6 +11,8 @@ import os
 import subprocess
 import threading
 import time
+from functools import partial
+
 from collections import defaultdict
 
 import numpy as np
@@ -256,10 +258,10 @@ class LoadMetrics(object):
 
 
 class NodeLauncher(threading.Thread):
-    def __init__(self, provider, queue, pending, *args, **kwargs):
+    def __init__(self, provider_creator, queue, pending, *args, **kwargs):
         self.queue = queue
         self.pending = pending
-        self.provider = provider
+        self.provider = provider_creator()
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_nodes(self, config, count):
@@ -363,7 +365,7 @@ class StandardAutoscaler(object):
             max_concurrent_launches / float(max_launch_batch))
         for i in range(int(max_batches)):
             node_launcher = NodeLauncher(
-                provider=self.provider,
+                provider_creator=self.provider_creator,
                 queue=self.launch_queue,
                 pending=self.num_launches_pending)
             node_launcher.daemon = True
@@ -381,6 +383,13 @@ class StandardAutoscaler(object):
             assert os.path.exists(local_path)
 
         logger.info("StandardAutoscaler: {}".format(self.config))
+
+    @property
+    def provider_creator(self):
+        provider_creator = partial(get_node_provider,
+                                   self.config["provider"],
+                                   self.config["cluster_name"])
+        return provider_creator
 
     def update(self):
         try:
@@ -565,7 +574,7 @@ class StandardAutoscaler(object):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
-            provider=self.provider,
+            provider_creator=self.provider_creator,
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts={},
@@ -600,7 +609,7 @@ class StandardAutoscaler(object):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
-            provider=self.provider,
+            provider_creator=self.provider_creator,
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
