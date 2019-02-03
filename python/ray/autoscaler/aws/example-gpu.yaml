@@ -18,7 +18,7 @@ initial_workers: 0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:latest-gpu"
+    image: "tensorflow/tensorflow:1.12.0-gpu"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
     install_docker: False
     run_options:
