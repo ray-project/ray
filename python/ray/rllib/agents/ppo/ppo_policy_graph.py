@@ -114,8 +114,6 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.action_space = action_space
         self.config = config
-        #self.config["train_batch_size"] = self.config["sgd_minibatch_size"]*16*self.config["num_envs_per_worker"]
-        #print(self.config["train_batch_size"]) 
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
         dist_cls, logit_dim = ModelCatalog.get_action_dist(
