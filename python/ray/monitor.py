@@ -239,7 +239,6 @@ class Monitor(object):
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                message_handler = None
                 if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
                     # Similar functionality as local scheduler info channel
                     message_handler = self.xray_heartbeat_batch_handler
@@ -250,7 +249,6 @@ class Monitor(object):
                     raise Exception("This code should be unreachable.")
 
                 # Call the handler.
-                assert (message_handler is not None)
                 message_handler(channel, data)
 
     def update_local_scheduler_map(self):

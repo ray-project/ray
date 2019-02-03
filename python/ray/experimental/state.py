@@ -152,7 +152,7 @@ class GlobalState(object):
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if (num_redis_shards < 1):
+            if num_redis_shards < 1:
                 raise Exception("Expected at least one Redis shard, found "
                                 "{}.".format(num_redis_shards))
 
