@@ -20,6 +20,8 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
+    install_docker: False  # Setting this to true installs Docker (but not nvidia-docker)
+    run_options: []  # Extra options to pass into "docker run"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
