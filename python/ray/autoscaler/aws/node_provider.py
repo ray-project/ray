@@ -127,11 +127,11 @@ class AWSNodeProvider(NodeProvider):
         return [node.id for node in nodes]
 
     def is_running(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         return node.state["Name"] == "running"
 
     def is_terminated(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         state = node.state["Name"]
         return state not in ["running", "pending"]
 
@@ -142,10 +142,10 @@ class AWSNodeProvider(NodeProvider):
             return dict(d1, **d2)
 
     def external_ip(self, node_id):
-        return self._node(node_id).public_ip_address
+        return self._get_cached_node(node_id).public_ip_address
 
     def internal_ip(self, node_id):
-        return self._node(node_id).private_ip_address
+        return self._get_cached_node(node_id).private_ip_address
 
     def set_node_tags(self, node_id, tags):
         with self.tag_cache_lock:
@@ -205,7 +205,7 @@ class AWSNodeProvider(NodeProvider):
         self.ec2.create_instances(**conf)
 
     def terminate_node(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         node.terminate()
 
         self.tag_cache.pop(node_id, None)
@@ -218,13 +218,19 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache.pop(node_id, None)
             self.tag_cache_pending.pop(node_id, None)
 
-    def _node(self, node_id):
-        if node_id not in self.cached_nodes:
-            self.nodes({})  # Side effect: should cache it.
+    def _get_node(self, node_id):
+        self.nodes({})  # Side effect: fetches and caches the node.
 
         assert node_id in self.cached_nodes, "Invalid instance id {}".format(
             node_id)
+
         return self.cached_nodes[node_id]
+
+    def _get_cached_node(self, node_id):
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
+
+        return self._get_node(node_id)
 
     def cleanup(self):
         self.tag_cache_update_event.set()
