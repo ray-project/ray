@@ -44,6 +44,8 @@ DEFAULT_CONFIG = with_common_config({
     # Clip param for the value function. Note that this is sensitive to the
     # scale of the rewards. If your expected V is large, increase this.
     "vf_clip_param": 10.0,
+    # If specified, clip the global norm of gradients by this amount
+    "grad_clip": None,
     # Target value for KL divergence
     "kl_target": 0.01,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
@@ -56,7 +58,6 @@ DEFAULT_CONFIG = with_common_config({
     # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
     # sampling tasks for performance but can waste a large portion of samples.
     "straggler_mitigation": False,
-    "grad_clip": 0.5,
 })
 # __sphinx_doc_end__
 # yapf: enable
