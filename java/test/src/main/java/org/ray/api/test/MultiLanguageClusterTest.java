@@ -24,8 +24,15 @@ public class MultiLanguageClusterTest {
   }
 
   @BeforeMethod
-  public void setUp() throws InterruptedException, IOException {
-    if (0 != startCluster()) {
+  public void setUp() throws InterruptedException {
+    // The behaviors of executing `ray` command in different systems may be
+    // different. Some systems will throw IOException with `no such file` message,
+    // but some systems will return 0.
+    try {
+      if (0 != startCluster()) {
+        throw new SkipException("Since there is no ray command, we skip this test.");
+      }
+    } catch (IOException e) {
       throw new SkipException("Since there is no ray command, we skip this test.");
     }
 

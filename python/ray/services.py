@@ -60,8 +60,7 @@ RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
 
 DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
-    os.path.join(os.path.abspath(os.path.dirname(__file__)),
-                 "../../../build/java/*"))
+    os.path.join(os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"))
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
