@@ -316,10 +316,11 @@ class PolicyEvaluator(EvaluatorInterface):
                     "will discard all sampler outputs and keep only metrics.")
                 sample_async = True
             elif method == "is":
-                ise = ImportanceSamplingEstimator(self.io_context)
+                ise = ImportanceSamplingEstimator.create(self.io_context)
                 self.reward_estimators.append(ise)
             elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator(self.io_context)
+                wise = WeightedImportanceSamplingEstimator.create(
+                    self.io_context)
                 self.reward_estimators.append(wise)
             else:
                 raise ValueError(

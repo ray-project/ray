@@ -60,7 +60,22 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. image:: offline-q.png
 
-If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
+**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(episode_batch)`` to perform counterfactual estimation as needed. The estimators take in a policy graph object and gamma value for the environment:
+
+.. code-block:: python
+
+    agent = DQNAgent(...)
+    ...  # train agent offline
+
+    from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+
+    estimator = WeightedImportanceSamplingEstimator(agent.get_policy(), gamma=0.99)
+    for batch in my_data_batches:
+        for episode in batch.split_by_episode():
+            print(estimator.estimate(episode))
+
+
+**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -12,13 +12,13 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf"""
 
-    def __init__(self, ioctx):
-        OffPolicyEstimator.__init__(self, ioctx)
+    def __init__(self, policy, gamma):
+        OffPolicyEstimator.__init__(self, policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def process(self, batch):
+    def estimate(self, batch):
         self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
@@ -53,4 +53,4 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
                 "V_step_WIS": V_step_WIS,
                 "V_gain_est": V_step_WIS / max(1e-8, V_prev),
             })
-        self.estimates.append(estimation)
+        return estimation
