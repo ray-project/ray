@@ -1579,8 +1579,13 @@ def print_logs(redis_client):
     # derived from the same redis client. Can they interact?
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
-    for msg in pubsub_client.listen():
-        print(ray.utils.decode(msg["data"]), file=sys.stderr)
+    try:
+        for msg in pubsub_client.listen():
+            print(ray.utils.decode(msg["data"]), file=sys.stderr)
+    except redis.ConnectionError:
+        # When Redis terminates the listen call will throw a ConnectionError,
+        # which we catch here.
+        pass
 
 
 def print_error_messages_raylet(task_error_queue):
