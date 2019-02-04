@@ -17,7 +17,6 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
-from ray.autoscaler.updater import NodeUpdaterThread
 import pytest
 
 
@@ -166,9 +165,9 @@ class LoadMetricsTest(unittest.TestCase):
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
         debug = lm.info_string()
-        assert "ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU" in debug
-        assert "NumNodesConnected: 2" in debug
-        assert "NumNodesUsed: 1.88" in debug
+        assert "ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU" in debug
+        assert "NumNodesConnected=2" in debug
+        assert "NumNodesUsed=1.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -528,18 +527,12 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
-        assert len(
-            self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "uninitialized"
-            })) == 2
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
 
@@ -552,18 +545,12 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
-        assert len(
-            self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "uninitialized"
-            })) == 2
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: "update-failed"})
@@ -577,8 +564,6 @@ class AutoscalingTest(unittest.TestCase):
             LoadMetrics(),
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         autoscaler.update()
@@ -686,8 +671,6 @@ class AutoscalingTest(unittest.TestCase):
             lm,
             max_failures=0,
             process_runner=runner,
-            verbose_updates=True,
-            node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(2)

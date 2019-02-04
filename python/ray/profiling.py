@@ -111,7 +111,7 @@ class Profiler(object):
         timeline until after the task has completed. For very long-running
         tasks, we may want profiling information to appear more quickly.
         In such cases, this function can be called. Note that as an
-        aalternative, we could start thread in the background on workers that
+        alternative, we could start a thread in the background on workers that
         calls this automatically.
         """
         with self.lock:
@@ -137,7 +137,7 @@ class RayLogSpanRaylet(object):
 
     Attributes:
         event_type (str): The type of the event being logged.
-        contents: Additional information to log.
+        extra_data: Additional information to log.
     """
 
     def __init__(self, profiler, event_type, extra_data=None):

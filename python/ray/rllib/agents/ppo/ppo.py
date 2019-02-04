@@ -44,6 +44,8 @@ DEFAULT_CONFIG = with_common_config({
     # Clip param for the value function. Note that this is sensitive to the
     # scale of the rewards. If your expected V is large, increase this.
     "vf_clip_param": 10.0,
+    # If specified, clip the global norm of gradients by this amount
+    "grad_clip": None,
     # Target value for KL divergence
     "kl_target": 0.01,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
@@ -104,9 +106,16 @@ class PPOAgent(Agent):
             self.local_evaluator.for_policy(
                 lambda pi: pi.update_kl(fetches["kl"]))
         else:
+
+            def update(pi, pi_id):
+                if pi_id in fetches:
+                    pi.update_kl(fetches[pi_id]["kl"])
+                else:
+                    logger.debug(
+                        "No data for {}, not updating kl".format(pi_id))
+
             # multi-agent
-            self.local_evaluator.foreach_trainable_policy(
-                lambda pi, pi_id: pi.update_kl(fetches[pi_id]["kl"]))
+            self.local_evaluator.foreach_trainable_policy(update)
         res = self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"])
         res.update(
