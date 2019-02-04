@@ -4,7 +4,6 @@ metadata:
   name: ray-head
 spec:
   ports:
-  ports:
     - name: redis-primary
       port: 6379
       targetPort: 6379
@@ -23,14 +22,15 @@ spec:
   selector:
     component: ray-head
 ---
-apiVersion: v1
-kind: ReplicationController
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: ray-head-controller
+  name: ray-head
 spec:
   replicas: 1
   selector:
-    component: ray-head
+    matchLabels:
+      component: ray-head
   template:
     metadata:
       labels:
@@ -57,16 +57,17 @@ spec:
                   fieldPath: status.podIP
           resources:
             requests:
-              cpu: 10
+              cpu: 2
 ---
-apiVersion: v1
-kind: ReplicationController
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: ray-worker-controller
+  name: ray-worker
 spec:
   replicas: 3
   selector:
-    component: ray-worker
+    matchLabels:
+      component: ray-worker
   template:
     metadata:
       labels:
@@ -76,7 +77,7 @@ spec:
         - name: ray-worker
           image: rayproject/examples
           command: ["/bin/bash", "-c", "--"]
-          args: ["ray start --node-ip-address=$MY_POD_IP --redis-address=$(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head\"));sys.stdout.flush()'):6379 --object-manager-port=12345 --node-manager-port=12346 && while true; do sleep 30; done;"]
+          args: ["ray start --node-ip-address=$MY_POD_IP --redis-address=$(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head\"));sys.stdout.flush()'):6379 --object-manager-port=12345 --node-manager-port=12346 --block"]
           ports:
             - containerPort: 12345
             - containerPort: 12346
@@ -87,4 +88,4 @@ spec:
                   fieldPath: status.podIP
           resources:
             requests:
-              cpu: 10
+              cpu: 2

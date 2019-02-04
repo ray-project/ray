@@ -254,7 +254,8 @@ class PolicyEvaluator(EvaluatorInterface):
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
         if _has_tensorflow_graph(policy_dict):
-            if (ray.worker._mode() != ray.worker.LOCAL_MODE
+            if (ray.is_initialized()
+                    and ray.worker._mode() != ray.worker.LOCAL_MODE
                     and not ray.get_gpu_ids()):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
@@ -596,6 +597,7 @@ class PolicyEvaluator(EvaluatorInterface):
         preprocessors = {}
         for name, (cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
+            logger.debug("Creating policy graph for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
