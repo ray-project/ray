@@ -9,7 +9,6 @@ from __future__ import print_function
 import gym
 import ray
 import tensorflow as tf
-from ray.rllib.agents.impala import multi_vtrace
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
@@ -22,75 +21,6 @@ from ray.rllib.utils.explained_variance import explained_variance
 
 
 class VTraceLoss(object):
-    def __init__(self,
-                 actions,
-                 actions_logp,
-                 actions_entropy,
-                 dones,
-                 behaviour_logits,
-                 target_logits,
-                 discount,
-                 rewards,
-                 values,
-                 bootstrap_value,
-                 valid_mask,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=-0.01,
-                 clip_rho_threshold=1.0,
-                 clip_pg_rho_threshold=1.0):
-        """Policy gradient loss with vtrace importance weighting.
-
-        VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
-        batch_size. The reason we need to know `B` is for V-trace to properly
-        handle episode cut boundaries.
-
-        Args:
-            actions: An int32 tensor of shape [T, B].
-            actions_logp: A float32 tensor of shape [T, B].
-            actions_entropy: A float32 tensor of shape [T, B].
-            dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
-            target_logits: A float32 tensor of shape [T, B, NUM_ACTIONS].
-            discount: A float32 scalar.
-            rewards: A float32 tensor of shape [T, B].
-            values: A float32 tensor of shape [T, B].
-            bootstrap_value: A float32 tensor of shape [B].
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-        """
-
-        # Compute vtrace on the CPU for better perf.
-        with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.from_logits(
-                behaviour_policy_logits=behaviour_logits,
-                target_policy_logits=target_logits,
-                actions=tf.cast(actions, tf.int32),
-                discounts=tf.to_float(~dones) * discount,
-                rewards=rewards,
-                values=values,
-                bootstrap_value=bootstrap_value,
-                clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
-
-        # The policy gradients loss
-        self.pi_loss = -tf.reduce_sum(
-            tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
-                            valid_mask))
-
-        # The baseline loss
-        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-
-        # The entropy loss
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
-
-        # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff +
-                           self.entropy * entropy_coeff)
-
-
-class MultiVTraceLoss(object):
     def __init__(self,
                  actions,
                  actions_logp,
@@ -136,7 +66,7 @@ class MultiVTraceLoss(object):
         """
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
-            self.vtrace_returns = multi_vtrace.from_logits(
+            self.vtrace_returns = vtrace.from_logits(
                 behaviour_policy=behaviour_logits,
                 target_policy=target_logits,
                 actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
@@ -251,10 +181,12 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
             Args:
                 tensor: A tensor or list of tensors to reshape.
-                drop_last: A bool indicating whether to drop the last trajectory item.
+                drop_last: A bool indicating whether to drop the last
+                trajectory item.
 
             Returns:
-                res: A tensor with swapped axes or a list of tensors with swapped axes.
+                res: A tensor with swapped axes or a list of tensors with
+                swapped axes.
             """
             if isinstance(tensor, list):
                 return [make_time_major(t, drop_last) for t in tensor]
@@ -293,7 +225,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             actions, axis=1)
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-        self.loss = MultiVTraceLoss(
+        self.loss = VTraceLoss(
             actions=make_time_major(loss_actions, drop_last=True),
             actions_logp=make_time_major(action_dist.logp(logp_action),
                                          drop_last=True),
