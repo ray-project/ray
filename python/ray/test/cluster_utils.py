@@ -120,7 +120,7 @@ class Cluster(object):
         assert not node.any_processes_alive(), (
             "There are zombie processes left over after killing.")
 
-    def _wait_for_node(self, node, timeout=60):
+    def _wait_for_node(self, node, timeout=30):
         """Wait until this node has appeared in the client table.
 
         Args:
@@ -148,7 +148,7 @@ class Cluster(object):
                 time.sleep(0.1)
         raise Exception("Timed out while waiting for nodes to join.")
 
-    def wait_for_nodes(self, timeout=60):
+    def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
 
         This will wait until the number of live nodes in the client table

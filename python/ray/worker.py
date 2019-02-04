@@ -1809,6 +1809,8 @@ def connect(info,
             # parsed in the log monitor process.
             print("Ray worker pid: {}".format(os.getpid()))
             print("Ray worker pid: {}".format(os.getpid()), file=sys.stderr)
+            sys.stdout.flush()
+            sys.stderr.flush()
 
         # Register the worker with Redis.
         worker_dict = {
