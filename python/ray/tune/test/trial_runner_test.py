@@ -1146,6 +1146,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.PENDING)
 
         runner.step()
+        self.assertTrue(sum([t.status == Trial.RUNNING for t in trials]) < 2)
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
@@ -1370,6 +1371,9 @@ class TrialRunnerTest(unittest.TestCase):
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
+
+            # trial_executor mutates return value, so refresh here.
+            resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
