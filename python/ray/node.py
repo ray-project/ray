@@ -210,7 +210,7 @@ class Node(object):
                                     or get_raylet_socket_name())
         self.prepare_socket_file(self._raylet_socket_name)
         stdout_file, stderr_file = new_raylet_log_file(
-            redirect_output=self._ray_params.redirect_worker_output)
+            redirect_output=self._ray_params.redirect_output)
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
