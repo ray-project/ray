@@ -6,18 +6,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
-import ray
 import tensorflow as tf
+import gym
+
+import ray
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
-from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.models.action_dist import MultiCategorical
 
 
 class VTraceLoss(object):
@@ -50,14 +51,14 @@ class VTraceLoss(object):
             dones: A bool tensor of shape [T, B].
             behaviour_logits: A list with length of ACTION_SPACE of float32
                 tensors of shapes
-                [T, B, OUTPUT_HIDDEN_SHAPE[0]],
+                [T, B, ACTION_SPACE[0]],
                 ...,
-                [T, B, OUTPUT_HIDDEN_SHAPE[-1]]
+                [T, B, ACTION_SPACE[-1]]
             target_logits: A list with length of ACTION_SPACE of float32
                 tensors of shapes
-                [T, B, OUTPUT_HIDDEN_SHAPE[0]],
+                [T, B, ACTION_SPACE[0]],
                 ...,
-                [T, B, OUTPUT_HIDDEN_SHAPE[-1]]
+                [T, B, ACTION_SPACE[-1]]
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
