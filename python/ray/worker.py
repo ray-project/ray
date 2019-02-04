@@ -1574,9 +1574,6 @@ def print_logs(redis_client):
     Args:
         redis_client: A client to the primary Redis shard.
     """
-    # TODO(rkn): The redis client is thread safe, but how does this pubsub
-    # client relate to the pubsub client in the error printing thread? They are
-    # derived from the same redis client. Can they interact?
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
     try:
@@ -1744,11 +1741,8 @@ def connect(info,
 
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
-    worker.redis_client = thread_safe_client(
-        redis.StrictRedis(
-            host=redis_ip_address,
-            port=int(redis_port),
-            password=redis_password))
+    worker.redis_client = redis.StrictRedis(
+        host=redis_ip_address, port=int(redis_port), password=redis_password)
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
