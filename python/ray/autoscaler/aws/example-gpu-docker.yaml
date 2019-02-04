@@ -18,7 +18,7 @@ initial_workers: 0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:1.12.0-gpu"
+    image: "tensorflow/tensorflow:1.12.0-gpu-py3"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
     install_docker: False
     run_options:
@@ -93,16 +93,8 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp35-cp35m-manylinux1_x86_64.whl
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    #- pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp27-cp27mu-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp35-cp35m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
