@@ -14,8 +14,6 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     def __init__(self, ioctx):
         OffPolicyEstimator.__init__(self, ioctx)
-        # TODO(ekl) consider synchronizing these as MeanStdFilter. This is a
-        # bit tricky since we don't know the max episode length here.
         self.filter_values = []
         self.filter_counts = []
 
@@ -42,7 +40,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
                 self.filter_values[t] += v
                 self.filter_counts[t] += 1.0
 
-        # calculate stepwise IS estimate
+        # calculate stepwise weighted IS estimate
         V_prev, V_step_WIS = 0.0, 0.0
         for t in range(batch.count - 1):
             V_prev += rewards[t] * self.gamma**t
