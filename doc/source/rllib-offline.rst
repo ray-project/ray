@@ -67,10 +67,13 @@ This example plot shows the Q-value metric in addition to importance sampling (I
     agent = DQNAgent(...)
     ...  # train agent offline
 
+    from ray.rllib.offline.json_reader import JsonReader
     from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 
     estimator = WeightedImportanceSamplingEstimator(agent.get_policy(), gamma=0.99)
-    for batch in my_data_batches:
+    reader = JsonReader("/path/to/data")
+    for _ in range(1000):
+        batch = reader.next()
         for episode in batch.split_by_episode():
             print(estimator.estimate(episode))
 
