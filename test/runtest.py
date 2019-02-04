@@ -2601,9 +2601,22 @@ def test_pandas_parquet_serialization():
     pytest.importorskip("pandas")
 
     import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
     tempdir = tempfile.mkdtemp()
     filename = os.path.join(tempdir, "parquet-test")
     pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
+    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
+        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
+        pq.write_table(table, f, compression="lz4")
     # Clean up
     shutil.rmtree(tempdir)
+
+
+def test_socket_dir_not_existing(shutdown_only):
+    random_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                           "raylet_socket")
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)

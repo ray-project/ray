@@ -32,11 +32,14 @@ class StatusReporter(object):
     def __call__(self, **kwargs):
         """Report updated training status.
 
+        Pass in `done=True` when the training job is completed.
+
         Args:
             kwargs: Latest training result status.
 
         Example:
             >>> reporter(mean_accuracy=1, training_iteration=4)
+            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
         """
 
         with self._lock:
@@ -48,6 +51,9 @@ class StatusReporter(object):
         if self._done and not self._latest_result:
             if not self._last_result:
                 raise TuneError("Trial finished without reporting result!")
+            logger.warning("Trial detected as completed; re-reporting "
+                           "last result. To avoid this, include done=True "
+                           "upon the last reporter call.")
             self._last_result.update(done=True)
             return self._last_result
         with self._lock:

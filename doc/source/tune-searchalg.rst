@@ -13,6 +13,7 @@ Currently, Tune offers the following search algorithms:
 
 - `Grid Search and Random Search <tune-searchalg.html#variant-generation-grid-search-random-search>`__
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
+- `SigOpt <tune-searchalg.html#sigopt-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -70,6 +71,35 @@ This algorithm requires using the `HyperOpt search space specification <https://
 An example of this can be found in `hyperopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.HyperOptSearch
+    :show-inheritance:
+    :noindex:
+
+SigOpt Search
+-------------
+
+The ``SigOptSearch`` is a SearchAlgorithm that is backed by `SigOpt <https://sigopt.com/>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SigOptSearch.
+
+In order to use this search algorithm, you will need to install SigOpt via the following command:
+
+.. code-block:: bash
+
+    $ pip install sigopt
+
+This algorithm requires the user to have a `SigOpt API key <https://app.sigopt.com/docs/overview/authentication>`__ to make requests to the API. Store the API token as an environment variable named ``SIGOPT_KEY`` like follows:
+
+.. code-block:: bash
+
+    $ export SIGOPT_KEY= ...
+
+This algorithm requires using the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__. You can use SigOptSearch like follows:
+
+.. code-block:: python
+
+    run_experiments(experiment_config, search_alg=SigOptSearch(sigopt_space, ... ))
+
+An example of this can be found in `sigopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.SigOptSearch
     :show-inheritance:
     :noindex:
 

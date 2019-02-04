@@ -86,7 +86,7 @@ class UnifiedLogger(Logger):
                  upload_uri=None,
                  custom_loggers=None,
                  sync_function=None):
-        self._logger_list = [_JsonLogger, _TFLogger, _VisKitLogger]
+        self._logger_list = [_JsonLogger, _TFLogger, _CSVLogger]
         self._sync_function = sync_function
         self._log_syncer = None
         if custom_loggers:
@@ -101,7 +101,7 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
             except Exception:
-                logger.exception("Could not instantiate {} - skipping.".format(
+                logger.warning("Could not instantiate {} - skipping.".format(
                     str(cls)))
         self._log_syncer = get_syncer(
             self.logdir, self.uri, sync_function=self._sync_function)
@@ -116,6 +116,7 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
         self._log_syncer.sync_now(force=True)
+        self._log_syncer.close()
 
     def flush(self):
         for _logger in self._loggers:
@@ -216,7 +217,7 @@ class _TFLogger(Logger):
         self._file_writer.close()
 
 
-class _VisKitLogger(Logger):
+class _CSVLogger(Logger):
     def _init(self):
         """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
@@ -230,7 +231,9 @@ class _VisKitLogger(Logger):
             self._csv_out = csv.DictWriter(self._file, result.keys())
             if not self._continuing:
                 self._csv_out.writeheader()
-        self._csv_out.writerow(result.copy())
+        self._csv_out.writerow(
+            {k: v
+             for k, v in result.items() if k in self._csv_out.fieldnames})
 
     def flush(self):
         self._file.flush()
