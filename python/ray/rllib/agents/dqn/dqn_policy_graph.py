@@ -424,9 +424,10 @@ class DQNPolicyGraph(TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
-        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **{
-            "q_values": self.q_values,
-        })
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                "q_values": self.q_values,
+            })
 
     @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
