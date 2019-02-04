@@ -167,7 +167,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                    for b in self.batch_buffer) >= self.train_batch_size:
                 train_batch = self.batch_buffer[0].concat_samples(
                     self.batch_buffer)
-                self.learner.inqueue.put(train_batch)
+                # defensive copy against plasma ref count bugs, see #3884
+                self.learner.inqueue.put(train_batch.copy())
                 self.batch_buffer = []
 
             # If the batch was replayed, skip the update below.
