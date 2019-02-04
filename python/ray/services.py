@@ -556,12 +556,6 @@ def start_redis(node_ip_address,
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
-    # Record the log files in Redis.
-    record_log_files_in_redis(
-        redis_address,
-        node_ip_address, [redis_stdout_file, redis_stderr_file],
-        password=password)
-
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
     primary_redis_client = redis.StrictRedis(
@@ -621,11 +615,6 @@ def start_redis(node_ip_address,
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
-
-        record_log_files_in_redis(
-            redis_address,
-            node_ip_address, [redis_stdout_file, redis_stderr_file],
-            password=password)
 
     if use_credis:
         # Configure the chain state. The way it is intended to work is
