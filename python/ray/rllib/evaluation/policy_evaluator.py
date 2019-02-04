@@ -185,7 +185,7 @@ class PolicyEvaluator(EvaluatorInterface):
             callbacks (dict): Dict of custom debug callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
-            input_evaluation (set): How to evaluate the policy performance.
+            input_evaluation (list): How to evaluate the policy performance.
                 This only makes sense to set when the input is reading offline
                 data. The possible values include:
                   - "is": the step-wise importance sampling estimator.
