@@ -22,7 +22,7 @@ import ray
 import ray.ray_constants as ray_constants
 
 from ray.tempfile_services import (
-    get_gdbinit_path,
+    get_gdb_init_path,
     get_ipython_notebook_path,
     get_logs_dir_path,
     get_temp_root,
@@ -304,8 +304,9 @@ def start_ray_process(command,
         [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
          ]) > 1:
         raise ValueError(
-            "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
-            "'use_perftools_profiler' flags can be used at a time.")
+            "At most one of the 'use_gdb', 'use_valgrind', "
+            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
+            "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -317,7 +318,7 @@ def start_ray_process(command,
     if use_gdb:
         if not use_tmux:
             raise ValueError(
-                "If 'use_gdb' is true, the 'use_tmux' must be true as well.")
+                "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
         gdb_init_path = get_gdb_init_path(process_type)
         ray_process_path = command[0]
         ray_process_args = command[1:]
@@ -341,9 +342,9 @@ def start_ray_process(command,
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
     if use_tmux:
-        # The command has to be created exactly as below to ensure that it works
-        # on all versions of tmux. (Tested with tmux 1.8-5, travis' version, and
-        # tmux 2.1)
+        # The command has to be created exactly as below to ensure that it
+        # works on all versions of tmux. (Tested with tmux 1.8-5, travis'
+        # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
     process = subprocess.Popen(

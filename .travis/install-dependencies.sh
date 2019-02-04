@@ -45,7 +45,7 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison tmux gdb > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
@@ -62,7 +62,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     echo "Updating brew."
     brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool openssl bison tmux gdb > /dev/null
+  brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
