@@ -2483,7 +2483,6 @@ def test_deleting_actor_checkpoint(ray_start_regular):
 
     @ray.remote
     class CheckpointableActor(ray.actor.Checkpointable):
-
         def __init__(self):
             self.checkpoint_ids = []
 
