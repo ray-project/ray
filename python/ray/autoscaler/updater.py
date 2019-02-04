@@ -218,10 +218,7 @@ class NodeUpdater(object):
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.setup_cmds:
-                self.ssh_cmd(
-                    cmd,
-                    # verbose=True,
-                    redirect=open("/dev/null", "w"))
+                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
@@ -253,7 +250,6 @@ class NodeUpdater(object):
                 cmd,
                 connect_timeout=120,
                 redirect=None,
-                verbose=False,
                 allocate_tty=False,
                 emulate_interactive=True,
                 expect_error=False,
@@ -261,9 +257,8 @@ class NodeUpdater(object):
 
         self.set_ssh_ip_if_required()
 
-        if verbose:
-            logger.info("NodeUpdater: "
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
+        logger.info("NodeUpdater: Running {} on {}...".format(
+            cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
