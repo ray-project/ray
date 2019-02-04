@@ -307,6 +307,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         with tf.variable_scope(Q_SCOPE) as scope:
             q_values, q_logits, q_dist, _ = self._build_q_network(
                 self.cur_observations, observation_space)
+            self.q_values = q_values
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -420,6 +421,12 @@ class DQNPolicyGraph(TFPolicyGraph):
                 self.loss.loss, var_list=self.q_func_vars)
         grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
+
+    @override(TFPolicyGraph)
+    def extra_compute_action_fetches(self):
+        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **{
+            "q_values": self.q_values,
+        })
 
     @override(TFPolicyGraph)
     def extra_compute_action_feed_dict(self):
