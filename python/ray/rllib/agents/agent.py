@@ -13,7 +13,8 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
+    ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
@@ -153,6 +154,10 @@ COMMON_CONFIG = {
     # policy, not the *behaviour* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
+    # If positive, input batches will be shuffled via a sliding window buffer
+    # of this number of batches. Use this if the input data is not in random
+    # enough order. Input is delayed until the shuffle buffer is filled.
+    "shuffle_buffer_size": 0,
     # __sphinx_doc_input_end__
     # __sphinx_doc_output_begin__
     # Specify where experiences should be saved:
@@ -542,9 +547,13 @@ class Agent(Trainable):
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: MixedInput(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                MixedInput(config["input"], ioctx),
+                config["shuffle_buffer_size"]))
         else:
-            input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                JsonReader(config["input"], ioctx),
+                config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
