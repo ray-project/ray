@@ -49,6 +49,9 @@ enum class TaskState {
 
 class TaskQueue {
  public:
+  /// TaskQueue destructor.
+  virtual ~TaskQueue() {}
+
   /// \brief Append a task to queue.
   ///
   /// \param task_id The task ID for the task to append.
@@ -102,6 +105,9 @@ class ReadyQueue : public TaskQueue {
   ReadyQueue(){};
 
   ReadyQueue(const ReadyQueue &other) = delete;
+
+  /// ReadyQueue destructor.
+  virtual ~ReadyQueue() {}
 
   /// \brief Append a task to queue.
   ///

@@ -23,7 +23,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.trial import (Trial, Resources, resources_to_json,
+from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
                             json_to_resources)
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
@@ -680,6 +680,47 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                path = export_dir + "/exported"
+                with open(path, "w") as f:
+                    f.write("OK")
+                return {export_formats[0]: path}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "export_formats": ["format"]
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(
+                os.path.exists(os.path.join(trial.logdir, "exported")))
+
+    def testInvalidExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                ExportFormat.validate(export_formats)
+                return {}
+
+        def fail_trial():
+            run_experiments({
+                "foo": {
+                    "run": train,
+                    "export_formats": ["format"]
+                }
+            })
+
+        self.assertRaises(TuneError, fail_trial)
+
     def testDeprecatedResources(self):
         class train(Trainable):
             def _train(self):
@@ -690,6 +731,28 @@ class RunExperimentTest(unittest.TestCase):
                 "run": train,
                 "trial_resources": {
                     "cpu": 1
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCustomResources(self):
+        ray.shutdown()
+        ray.init(resources={"hi": 3})
+
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "resources_per_trial": {
+                    "cpu": 1,
+                    "custom_resources": {
+                        "hi": 2
+                    }
                 }
             }
         })
@@ -1042,6 +1105,61 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testExtraCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(
+                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources2(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource1))
+        resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource2))
+        resource3 = Resources(cpu=1, gpu=0, custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource3))
+        resource4 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource4))
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -1888,6 +2006,7 @@ class ResourcesTest(unittest.TestCase):
         self.assertTrue(new_res.gpu == 0)
         self.assertTrue(new_res.extra_cpu == 0)
         self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(new_res.get("a") == 0)
 
     def testSerialization(self):
         original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})

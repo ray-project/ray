@@ -232,12 +232,13 @@ class RayTrialExecutor(TrialExecutor):
 
     def _commit_resources(self, resources):
         committed = self._committed_resources
+        all_keys = set(resources.custom_resources.keys() +
+                       committed.custom_resources.keys())
+
         custom_resources = {
-            res: (committed.get(res) + resources.get_res_total(res))
-            for res in resources.custom_resources
+            k: committed.get(k, 0) + resources.get(k, 0)
+            for k in all_keys
         }
-        for resource, val in committed.custom_resources.items():
-            custom_resources.setdefault(resource, val)
 
         self._committed_resources = Resources(
             committed.cpu + resources.cpu_total(),
@@ -246,13 +247,14 @@ class RayTrialExecutor(TrialExecutor):
 
     def _return_resources(self, resources):
         committed = self._committed_resources
-        custom_resources = {
-            res: (committed.get(res) - resources.get_res_total(res))
-            for res in resources.custom_resources
-        }
-        for resource, val in committed.custom_resources.items():
-            custom_resources.setdefault(resource, val)
 
+        all_keys = set(resources.custom_resources.keys() +
+                       committed.custom_resources.keys())
+
+        custom_resources = {
+            k: committed.get(k, 0) - resources.get(k, 0)
+            for k in all_keys
+        }
         self._committed_resources = Resources(
             committed.cpu - resources.cpu_total(),
             committed.gpu - resources.gpu_total(),
@@ -271,8 +273,6 @@ class RayTrialExecutor(TrialExecutor):
         num_cpus = resources.pop("CPU")
         num_gpus = resources.pop("GPU")
         custom_resources = resources
-        assert "CPU" not in custom_resources
-        assert "GPU" not in custom_resources
 
         self._avail_resources = Resources(
             int(num_cpus), int(num_gpus), custom_resources=custom_resources)
@@ -280,29 +280,25 @@ class RayTrialExecutor(TrialExecutor):
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
+        self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
-        assert currently_available.extra_cpu == 0
-        assert currently_available.extra_gpu == 0
-        assert all(
-            val == 0 for val in currently_available.extra_custom_resources)
 
-        leftover = Resources.subtract(currently_available, resources)
         have_space = (
             resources.cpu_total() <= currently_available.cpu
             and resources.gpu_total() <= currently_available.gpu and all(
-                resources.get_res_total(res) <= val
-                for res, val in currently_available.custom_resources.items()))
+                resources.get_res_total(res) <= currently_available.get(res)
+                for res in resources.custom_resources))
 
         if have_space:
             return True
 
         can_overcommit = self._queue_trials
 
-        if (resources.cpu_total() > 0 and leftover.cpu <= 0) or \
-           (resources.gpu_total() > 0 and leftover.gpu <= 0) or \
+        if (resources.cpu_total() > 0 and currently_available.cpu <= 0) or \
+           (resources.gpu_total() > 0 and currently_available.gpu <= 0) or \
            any((resources.get_res_total(res_name) > 0
-                and leftover.get(res_name) <= 0)
+                and currently_available.get(res_name) <= 0)
                for res_name in resources.custom_resources):
             can_overcommit = False  # requested resource is already saturated
 
@@ -397,3 +393,14 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception("Error restoring runner for Trial %s.", trial)
             self.set_status(trial, Trial.ERROR)
             return False
+
+    def export_trial_if_needed(self, trial):
+        """Exports model of this trial based on trial.export_formats.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        if trial.export_formats and len(trial.export_formats) > 0:
+            return ray.get(
+                trial.runner.export_model.remote(trial.export_formats))
+        return {}
