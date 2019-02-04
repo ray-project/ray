@@ -1146,6 +1146,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.PENDING)
 
         runner.step()
+        self.assertTrue(sum([t.status == Trial.RUNNING for t in trials]) < 2)
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 

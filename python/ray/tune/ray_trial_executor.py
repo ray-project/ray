@@ -232,11 +232,11 @@ class RayTrialExecutor(TrialExecutor):
 
     def _commit_resources(self, resources):
         committed = self._committed_resources
-        all_keys = set(resources.custom_resources.keys() +
-                       committed.custom_resources.keys())
+        all_keys = set(resources.custom_resources).union(
+            set(committed.custom_resources))
 
         custom_resources = {
-            k: committed.get(k, 0) + resources.get(k, 0)
+            k: committed.get(k) + resources.get_res_total(k)
             for k in all_keys
         }
 
@@ -248,11 +248,11 @@ class RayTrialExecutor(TrialExecutor):
     def _return_resources(self, resources):
         committed = self._committed_resources
 
-        all_keys = set(resources.custom_resources.keys() +
-                       committed.custom_resources.keys())
+        all_keys = set(resources.custom_resources).union(
+            set(committed.custom_resources))
 
         custom_resources = {
-            k: committed.get(k, 0) - resources.get(k, 0)
+            k: committed.get(k) - resources.get_res_total(k)
             for k in all_keys
         }
         self._committed_resources = Resources(
