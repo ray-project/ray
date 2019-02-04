@@ -34,7 +34,12 @@ class UniqueIdFromJByteArray {
 inline void ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status,
                                      const std::string &message) {
   if (!status.ok()) {
+    RAY_LOG(ERROR) << "ThrowRayExceptionIfNotOK";
     jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
+    if (exception_class == 0) {
+      exception_class = env->FindClass("java/lang/RuntimeException");
+    }
+    RAY_LOG(ERROR) << "ThrowRayExceptionIfNotOK: jclass=" << exception_class;
     env->ThrowNew(exception_class, message.c_str());
   }
 }
@@ -138,6 +143,7 @@ JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
     JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly,
     jbyteArray currentTaskId) {
+  RAY_LOG(ERROR) << "Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct";
   std::vector<ObjectID> object_ids;
   auto len = env->GetArrayLength(objectIds);
   for (int i = 0; i < len; i++) {
@@ -151,6 +157,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
   auto raylet_client = reinterpret_cast<RayletClient *>(client);
   auto status =
       raylet_client->FetchOrReconstruct(object_ids, fetchOnly, *current_task_id.PID);
+  RAY_LOG(ERROR) << "FetchOrReconstruct status: " << status.message();
   ThrowRayExceptionIfNotOK(env, status, "[RayletClient] Failed to fetch or reconstruct.");
 }
 
