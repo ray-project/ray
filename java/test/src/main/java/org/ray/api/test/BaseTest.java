@@ -25,6 +25,7 @@ public class BaseTest {
     // We could not enable this until `systemInfo` enabled.
     //File rayletSocketFIle = new File(Ray.systemInfo().rayletSocketName());
     Ray.shutdown();
+    afterShutdownRay();
 
     //remove raylet socket file
     //rayletSocketFIle.delete();
@@ -39,4 +40,7 @@ public class BaseTest {
 
   }
 
+  protected void afterShutdownRay() {
+
+  }
 }
