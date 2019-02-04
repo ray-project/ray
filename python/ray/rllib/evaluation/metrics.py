@@ -106,7 +106,7 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
             acc[k].append(v)
     for name, metrics in estimators.items():
         for k, v_list in metrics.items():
-            metrics[k] = np.mean(v)
+            metrics[k] = np.mean(v_list)
         estimators[name] = dict(metrics)
 
     return dict(
@@ -117,7 +117,7 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         episodes_this_iter=len(new_episodes),
         policy_reward_mean=dict(policy_rewards),
         custom_metrics=dict(custom_metrics),
-        estimator=dict(estimators),
+        off_policy_estimator=dict(estimators),
         num_metric_batches_dropped=num_dropped)
 
 

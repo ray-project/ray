@@ -13,11 +13,13 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate",
                                ["estimator_name", "metrics"])
 
 
-# TODO(ekl): implement model-based estimators from literature, e.g., doubly
-# robust, MAGIC. This will require adding some way of training a model
-# (we should probably piggyback this on RLlib model API).
 class OffPolicyEstimator(object):
-    """Interface for an off policy reward estimator (experimental)."""
+    """Interface for an off policy reward estimator (experimental).
+
+    TODO(ekl): implement model-based estimators from literature, e.g., doubly
+    robust, MAGIC. This will require adding some way of training a model
+    (we should probably piggyback this on RLlib model API).
+    """
 
     def __init__(self, ioctx):
         self.ioctx = ioctx
@@ -108,7 +110,7 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
                 pt_prev = 1.0
             else:
                 pt_prev = p[t - 1]
-            p.append(pt_prev * new_prob / old_prob)
+            p.append(pt_prev * new_prob[t] / old_prob[t])
 
         # calculate stepwise IS estimate
         V_prev, V_step_IS = 0.0, 0.0
@@ -132,8 +134,45 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     def __init__(self, ioctx):
         OffPolicyEstimator.__init__(self, ioctx)
+        # TODO(ekl) consider synchronizing these as MeanStdFilter. This is a
+        # bit tricky since we don't know the max episode length here.
+        self.filter_values = []
+        self.filter_counts = []
 
     def process(self, batch):
         if not self.can_estimate_for(batch):
             return
-        pass
+
+        rewards, old_prob = batch["rewards"], batch["action_prob"]
+        new_prob = self.action_prob(batch)
+
+        # calculate importance ratios
+        p = []
+        for t in range(batch.count - 1):
+            if t == 0:
+                pt_prev = 1.0
+            else:
+                pt_prev = p[t - 1]
+            p.append(pt_prev * new_prob[t] / old_prob[t])
+        for t, v in enumerate(p):
+            if t >= len(self.filter_values):
+                self.filter_values.append(v)
+                self.filter_counts.append(1.0)
+            else:
+                self.filter_values[t] += v
+                self.filter_counts[t] += 1.0
+
+        # calculate stepwise IS estimate
+        V_prev, V_step_WIS = 0.0, 0.0
+        for t in range(batch.count - 1):
+            V_prev += rewards[t] * self.gamma**t
+            w_t = self.filter_values[t] / self.filter_counts[t]
+            V_step_WIS += p[t] / w_t * rewards[t] * self.gamma**t
+
+        estimation = OffPolicyEstimate(
+            "wis", {
+                "V_prev": V_prev,
+                "V_step_WIS": V_step_WIS,
+                "V_gain_est": V_step_WIS / V_prev,
+            })
+        self.estimates.append(estimation)

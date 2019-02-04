@@ -230,8 +230,14 @@ class TFPolicyGraph(PolicyGraph):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self):
-        """Extra values to fetch and return from compute_actions()."""
-        return {"action_prob": self._action_prob}  # e.g, value function
+        """Extra values to fetch and return from compute_actions().
+
+        By default we only return action probability info (if present).
+        """
+        if self._action_prob is not None:
+            return {"action_prob": self._action_prob}
+        else:
+            return {}
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):

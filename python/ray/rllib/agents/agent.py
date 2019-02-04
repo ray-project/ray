@@ -143,8 +143,8 @@ COMMON_CONFIG = {
     "input": "sampler",
     # Specify how to evaluate the current policy. This only has an effect when
     # reading offline experiences. Available options:
+    #  - "wis": the weighted step-wise importance sampling estimator.
     #  - "is": the step-wise importance sampling estimator.
-    #  - "wis": the weighted step-wise is estimator.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
     "input_evaluation": ["is", "wis"],
