@@ -154,6 +154,9 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   - export PYTHONPATH="$PYTHONPATH:./test/"
 
+  # ray debug tools tests
+  - python -m pytest -v --durations=10 test/debug_tools_test.py
+
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
   - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
@@ -201,9 +204,6 @@ script:
 
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py
-
-  # ray debug tools tests
-  - python -m pytest -v --durations=10 test/debug_tools_test.py
 
   # modin test files
   - python python/ray/test/test_modin.py
