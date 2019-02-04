@@ -85,7 +85,7 @@ In order to use this search algorithm, you will need to install SigOpt via the f
 
     $ pip install sigopt
 
-This algorithm requires the user to have a `SigOpt API key <https://app.sigopt.com/docs/overview/authentication>`__ to make requests to the API. Store the API token as an environment variable named `SIGOPT_KEY`__ like follows:
+This algorithm requires the user to have a `SigOpt API key <https://app.sigopt.com/docs/overview/authentication>`__ to make requests to the API. Store the API token as an environment variable named ``SIGOPT_KEY`` like follows:
 
 .. code-block:: bash
 
