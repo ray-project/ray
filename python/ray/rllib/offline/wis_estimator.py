@@ -21,8 +21,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def process(self, batch):
-        if not self.can_estimate_for(batch):
-            return
+        self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
         new_prob = self.action_prob(batch)
@@ -54,6 +53,6 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
             "wis", {
                 "V_prev": V_prev,
                 "V_step_WIS": V_step_WIS,
-                "V_gain_est": V_step_WIS / V_prev,
+                "V_gain_est": V_step_WIS / max(1e-8, V_prev),
             })
         self.estimates.append(estimation)

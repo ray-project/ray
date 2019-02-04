@@ -45,20 +45,20 @@ class OffPolicyEstimator(object):
         raise NotImplementedError
 
     @DeveloperAPI
-    def can_estimate_for(self, batch):
+    def check_can_estimate_for(self, batch):
         """Returns whether we can support OPE for this batch."""
 
         if isinstance(batch, MultiAgentBatch):
-            logger.warning(
-                "IS-estimation is not implemented for multi-agent batches")
-            return False
+            raise ValueError(
+                "IS-estimation is not implemented for multi-agent batches. "
+                "You can set `input_evaluation: []` to resolve this.")
 
         if "action_prob" not in batch:
-            logger.warning(
+            raise ValueError(
                 "Off-policy estimation is not possible unless the inputs "
-                "include action probabilities (i.e., the 'action_prob' key).")
-            return False
-        return True
+                "include action probabilities (i.e., the policy is stochastic "
+                "and emits the 'action_prob' key). You can set "
+                "`input_evaluation: []` to resolve this.")
 
     @DeveloperAPI
     def action_prob(self, batch):
@@ -79,7 +79,8 @@ class OffPolicyEstimator(object):
             raise ValueError(
                 "Off-policy estimation is not possible unless the policy "
                 "returns action probabilities when computing actions (i.e., "
-                "the 'action_prob' key is defined).")
+                "the 'action_prob' key is output by the policy graph). You "
+                "can set `input_evaluation: []` to resolve this.")
         return info["action_prob"]
 
     @DeveloperAPI

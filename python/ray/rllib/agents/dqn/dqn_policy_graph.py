@@ -8,7 +8,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models import ModelCatalog, Categorical
 from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -182,7 +182,14 @@ class QNetwork(object):
 
 
 class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, stochastic, eps):
+    def __init__(self, q_values, observations, num_actions, stochastic, eps,
+                 softmax, softmax_temp):
+        if softmax:
+            action_dist = Categorical(q_values / softmax_temp)
+            self.action = action_dist.sample()
+            self.action_prob = action_dist.sampled_action_prob()
+            return
+
         deterministic_actions = tf.argmax(q_values, axis=1)
         batch_size = tf.shape(observations)[0]
 
@@ -200,6 +207,7 @@ class QValuePolicy(object):
                                       deterministic_actions)
         self.action = tf.cond(stochastic, lambda: stochastic_actions,
                               lambda: deterministic_actions)
+        self.action_prob = None
 
 
 class QLoss(object):
@@ -303,7 +311,8 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
-        self.output_actions = self._build_q_value_policy(q_values)
+        self.output_actions, self.action_prob = self._build_q_value_policy(
+            q_values)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -387,6 +396,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
+            action_prob=self.action_prob,
             loss=model.loss() + self.loss.loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops)
@@ -474,8 +484,11 @@ class DQNPolicyGraph(TFPolicyGraph):
         return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
-        return QValuePolicy(q_values, self.cur_observations, self.num_actions,
-                            self.stochastic, self.eps).action
+        policy = QValuePolicy(q_values, self.cur_observations,
+                              self.num_actions, self.stochastic, self.eps,
+                              self.config["soft_q"],
+                              self.config["softmax_temp"])
+        return policy.action, policy.action_prob
 
     def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
                       q_dist_tp1_best):
@@ -511,26 +524,13 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy_graph, sample_batch):
-    obs, actions, rewards, new_obs, dones = [
-        list(x) for x in sample_batch.columns(
-            ["obs", "actions", "rewards", "new_obs", "dones"])
-    ]
-
+def _postprocess_dqn(policy_graph, batch):
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
         _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"], obs, actions, rewards,
-                      new_obs, dones)
-
-    batch = SampleBatch({
-        "obs": obs,
-        "actions": actions,
-        "rewards": rewards,
-        "new_obs": new_obs,
-        "dones": dones,
-        "weights": np.ones_like(rewards)
-    })
+                      policy_graph.config["gamma"],
+                      batch["obs"], batch["actions"], batch["rewards"],
+                      batch["new_obs"], batch["dones"])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
@@ -540,6 +540,8 @@ def _postprocess_dqn(policy_graph, sample_batch):
         new_priorities = (
             np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
         batch.data["weights"] = new_priorities
+    else:
+        batch.data["weights"] = np.ones_like(batch["rewards"])
 
     return batch
 

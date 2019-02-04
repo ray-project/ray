@@ -39,10 +39,24 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
+            "input_evaluation": [],
             "exploration_final_eps": 0,
             "exploration_fraction": 0}'
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value:
+Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, soft Q learning can be used to enable `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). In this mode, actions will be sampled from a categorical distribution over the Q-values instead of with argmax:
+
+.. code-block:: bash
+
+    $ rllib train \
+        --run=DQN \
+        --env=CartPole-v0 \
+        --config='{
+            "input": "/tmp/cartpole-out",
+            "input_evaluation": ["is", "wis"],
+            "soft_q": true,
+            "softmax_temp": 1.0}'
+
+This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
 .. image:: offline-q.png
 

@@ -55,6 +55,11 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
+    # Use softmax for sampling actions.
+    "soft_q": False,
+    # Softmax temperature. Q values are divided by this value prior to softmax.
+    # Softmax approaches argmax as the temperature drops to zero.
+    "softmax_temp": 1.0,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
