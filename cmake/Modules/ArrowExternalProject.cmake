@@ -14,7 +14,7 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-set(arrow_URL https://github.com/apache/arrow.git)
+set(arrow_URL https://github.com/pcmoritz/arrow.git)
 # This commit is based on https://github.com/apache/arrow/pull/3490. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
@@ -25,7 +25,7 @@ set(arrow_URL https://github.com/apache/arrow.git)
 # WARNING: If the arrow version is updated, you need to also update the
 # SETUPTOOLS_SCM_PRETEND_VERSION version string in the ThirdpartyToolchain.cmake
 # file
-set(arrow_TAG 73792817a039a16c179cbb2716ab2cf0c918f77e)
+set(arrow_TAG b8934d0e9c8fc4b3070085802672ccd493487d75)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
