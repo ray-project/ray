@@ -34,6 +34,11 @@ class HyperOptSearch(SuggestionAlgorithm):
             to 10.
         reward_attr (str): The training result objective value attribute.
             This refers to an increasing value.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want hyperopt to run first to help the TPE algorithm
+            make better suggestions for future parameters. Needs to be
+            a list of dict of hyperopt-named variables (see example)
 
     Example:
         >>> space = {
@@ -41,10 +46,16 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'height': hp.uniform('height', -100, 100),
         >>>     'activation': hp.choice("activation", ["relu", "tanh"])
         >>> }
+        >>> current_best_params = [{
+        >>>     'width': 10,
+        >>>     'height': 0,
+        >>>     'activation': "relu",
+        >>> }]
         >>> config = {
         >>>     "my_exp": {
         >>>         "run": "exp",
         >>>         "num_samples": 10 if args.smoke_test else 1000,
+        >>>         "points_to_evaluate": current_best_params
         >>>         "stop": {
         >>>             "training_iteration": 100
         >>>         },
