@@ -403,12 +403,10 @@ class FunctionActorManager(object):
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                traceback_str,
-                driver_id=driver_id,
-                data={
-                    "function_id": function_id.binary(),
-                    "function_name": function_name
-                })
+                "Failed to unpickle the remote function '{}' with function ID "
+                "{}. Traceback:\n{}".format(function_name, function_id.hex(),
+                                            traceback_str),
+                driver_id=driver_id)
         else:
             # The below line is necessary. Because in the driver process,
             # if the function is defined in the file where the python script
@@ -506,7 +504,6 @@ class FunctionActorManager(object):
         Args:
             key: The key to store the actor class info at.
             actor_class_info: Information about the actor class.
-            worker: The worker to use to connect to Redis.
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
@@ -577,7 +574,6 @@ class FunctionActorManager(object):
 
         Args:
             actor_class_key: The key in Redis to use to fetch the actor.
-            worker: The worker to use.
         """
         actor_id = self._worker.actor_id
         (driver_id_str, class_name, module, pickled_class, checkpoint_interval,
@@ -642,11 +638,10 @@ class FunctionActorManager(object):
                 traceback.format_exc())
             # Log the error message.
             push_error_to_driver(
-                self._worker,
-                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                traceback_str,
-                driver_id,
-                data={"actor_id": actor_id.binary()})
+                self._worker, ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+                "Failed to unpickle actor class '{}' for actor ID {}. "
+                "Traceback:\n{}".format(class_name, actor_id.hex(),
+                                        traceback_str), driver_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.
@@ -680,7 +675,6 @@ class FunctionActorManager(object):
         necessary checkpointing operations.
 
         Args:
-            worker (Worker): The worker that is executing the actor.
             method_name (str): The name of the actor method.
             method (instancemethod): The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
