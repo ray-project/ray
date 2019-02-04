@@ -40,8 +40,6 @@ namespace gcs {
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
-  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " Append to table "
-                 << EnumNameTablePrefix(prefix_) << " key " << id;
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
@@ -61,8 +59,6 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
-  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " AppendAt to table "
-                 << EnumNameTablePrefix(prefix_) << " key " << id << " at " << log_length;
   num_appends_++;
   auto callback = [this, id, dataT, done, failure](const std::string &data) {
     if (data.empty()) {
@@ -183,8 +179,6 @@ std::string Log<ID, Data>::DebugString() const {
 template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
-  RAY_LOG(DEBUG) << client_->client_table().GetLocalClientId() << " Add to table "
-                 << EnumNameTablePrefix(prefix_) << " key " << id;
   num_adds_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
     if (done != nullptr) {
