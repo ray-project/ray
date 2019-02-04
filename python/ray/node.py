@@ -62,6 +62,11 @@ class Node(object):
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+        else:
+            redis_client = ray.services.create_redis_client(
+                ray_params.redis_address, ray_params.redis_password)
+            ray_params.include_java = (
+                ray.services.include_java_from_redis(redis_client))
 
         self._ray_params = ray_params
         self._config = (json.loads(ray_params._internal_config)
@@ -224,7 +229,10 @@ class Node(object):
             use_profiler=use_profiler,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            config=self._config)
+            config=self._config,
+            include_java=self._ray_params.include_java,
+            java_worker_options=self._ray_params.java_worker_options,
+        )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

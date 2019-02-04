@@ -21,14 +21,19 @@ import pyarrow
 import ray
 import ray.ray_constants as ray_constants
 
-from ray.tempfile_services import (get_ipython_notebook_path, get_temp_root,
-                                   new_redis_log_file)
+from ray.tempfile_services import (
+    get_ipython_notebook_path,
+    get_logs_dir_path,
+    get_temp_root,
+    new_redis_log_file,
+)
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
+RAY_HOME = os.path.join(os.path.dirname(__file__), "../..")
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/thirdparty/redis/src/redis-server")
@@ -59,6 +64,10 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
     "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+
+DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
+    os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"))
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -91,6 +100,18 @@ def get_port(address):
 
 def new_port():
     return random.randint(10000, 65535)
+
+
+def include_java_from_redis(redis_client):
+    """This is used for query include_java bool from redis.
+
+    Args:
+        redis_client (StrictRedis): The redis client to GCS.
+
+    Returns:
+        True if this cluster backend enables Java worker.
+    """
+    return redis_client.get("INCLUDE_JAVA") == b"1"
 
 
 def remaining_processes_alive():
@@ -249,8 +270,8 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
 
     Returns:
-        Inormation about the process that was started including a handle to the
-            process that was started.
+        Information about the process that was started including a handle to
+            the process that was started.
     """
     # Detect which flags are set through environment variables.
     valgrind_env_var = "RAY_{}_VALGRIND".format(process_type.upper())
@@ -451,7 +472,8 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                redis_max_memory=None):
+                redis_max_memory=None,
+                include_java=False):
     """Start the Redis global state store.
 
     Args:
@@ -481,6 +503,8 @@ def start_redis(node_ip_address,
             LRU eviction of entries. This only applies to the sharded redis
             tables (task, object, and profile tables). By default, this is
             capped at 10GB but can be set higher.
+        include_java (bool): If True, the raylet backend can also support
+            Java worker.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -554,6 +578,10 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     primary_redis_client.set("RedirectOutput", 1
                              if redirect_worker_output else 0)
+
+    # put the include_java bool to primary redis-server, so that other nodes
+    # can access it and know whether or not to enable cross-languages.
+    primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
@@ -960,7 +988,9 @@ def start_raylet(redis_address,
                  use_profiler=False,
                  stdout_file=None,
                  stderr_file=None,
-                 config=None):
+                 config=None,
+                 include_java=False,
+                 java_worker_options=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -989,7 +1019,9 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-
+        include_java (bool): If True, the raylet backend can also support
+            Java worker.
+        java_worker_options (str): The command options for Java worker.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1015,6 +1047,14 @@ def start_raylet(redis_address,
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
+
+    if include_java is True:
+        java_worker_options = (java_worker_options
+                               or DEFAULT_JAVA_WORKER_OPTIONS)
+        java_worker_command = build_java_worker_command(
+            java_worker_options, redis_address, plasma_store_name, raylet_name)
+    else:
+        java_worker_command = ""
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
@@ -1052,7 +1092,7 @@ def start_raylet(redis_address,
         resource_argument,
         config_str,
         start_worker_command,
-        "",  # Worker command for Java, not needed for Python.
+        java_worker_command,
         redis_password or "",
         get_temp_root(),
     ]
@@ -1071,6 +1111,40 @@ def start_raylet(redis_address,
         password=redis_password)
 
     return process_info
+
+
+def build_java_worker_command(java_worker_options, redis_address,
+                              plasma_store_name, raylet_name):
+    """This method assembles the command used to start a Java worker.
+
+    Args:
+        java_worker_options (str): The command options for Java worker.
+        redis_address (str): Redis address of GCS.
+        plasma_store_name (str): The name of the plasma store socket to connect
+           to.
+        raylet_name (str): The name of the raylet socket to create.
+
+    Returns:
+        The command string for starting Java worker.
+    """
+    assert java_worker_options is not None
+
+    command = "java {} ".format(java_worker_options)
+    if redis_address is not None:
+        command += "-Dray.redis.address={} ".format(redis_address)
+
+    if plasma_store_name is not None:
+        command += (
+            "-Dray.object-store.socket-name={} ".format(plasma_store_name))
+
+    if raylet_name is not None:
+        command += "-Dray.raylet.socket-name={} ".format(raylet_name)
+
+    command += "-Dray.home={} ".format(RAY_HOME)
+    command += "-Dray.log-dir={} ".format(get_logs_dir_path())
+    command += "org.ray.runtime.runner.worker.DefaultWorker"
+
+    return command
 
 
 def determine_plasma_store_config(object_store_memory=None,
