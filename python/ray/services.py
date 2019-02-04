@@ -341,6 +341,9 @@ def start_ray_process(command,
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
     if use_tmux:
+        # The command has to be created exactly as below to ensure that it works
+        # on all versions of tmux. (Tested with tmux 1.8-5, travis' version, and
+        # tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
     process = subprocess.Popen(
