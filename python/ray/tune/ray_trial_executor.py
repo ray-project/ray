@@ -270,6 +270,7 @@ class RayTrialExecutor(TrialExecutor):
                 logger.warning("Cluster resources not detected. Retrying...")
                 time.sleep(0.5)
 
+        resources = resources.copy()
         num_cpus = resources.pop("CPU")
         num_gpus = resources.pop("GPU")
         custom_resources = resources
