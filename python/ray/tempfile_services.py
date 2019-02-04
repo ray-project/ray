@@ -142,6 +142,12 @@ def get_ipython_notebook_path():
     return notebook_name
 
 
+def get_gdb_init_path(process_type):
+    return make_inc_temp(
+        prefix="gdb_init_{}".format(process_type),
+        directory_name=get_temp_root())
+
+
 def new_log_files(name, redirect_output):
     """Generate partially randomized filenames for log files.
 
