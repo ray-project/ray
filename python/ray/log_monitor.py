@@ -27,8 +27,6 @@ class LogMonitor(object):
             process is running on. This will be used to determine which log
             files to track.
         redis_client: A client used to communicate with the Redis server.
-        log_filenames: A list of the names of the log files that this monitor
-            process is monitoring.
         log_files: A dictionary mapping the name of a log file to a list of
             strings representing its contents.
         log_file_handles: A dictionary mapping the name of a log file to a file
