@@ -1029,7 +1029,12 @@ def start_raylet(redis_address,
         java_worker_options = (java_worker_options
                                or DEFAULT_JAVA_WORKER_OPTIONS)
         java_worker_command = build_java_worker_command(
-            java_worker_options, redis_address, plasma_store_name, raylet_name)
+            java_worker_options,
+            redis_address,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+        )
     else:
         java_worker_command = ""
 
@@ -1086,8 +1091,12 @@ def start_raylet(redis_address,
     return process_info
 
 
-def build_java_worker_command(java_worker_options, redis_address,
-                              plasma_store_name, raylet_name):
+def build_java_worker_command(java_worker_options,
+                              redis_address,
+                              plasma_store_name,
+                              raylet_name,
+                              redis_password,
+                              ):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1096,7 +1105,7 @@ def build_java_worker_command(java_worker_options, redis_address,
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
-
+        redis_password (str): The password of connect to redis.
     Returns:
         The command string for starting Java worker.
     """
@@ -1112,6 +1121,9 @@ def build_java_worker_command(java_worker_options, redis_address,
 
     if raylet_name is not None:
         command += "-Dray.raylet.socket-name={} ".format(raylet_name)
+
+    if redis_password is not None:
+        command += ("-Dray.redis-password=%s", redis_password)
 
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(get_logs_dir_path())
