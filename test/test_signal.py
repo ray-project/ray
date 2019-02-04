@@ -4,6 +4,7 @@ import time
 import ray
 import ray.experimental.signal as signal
 
+
 class UserSignal(signal.Signal):
     def __init__(self, value):
         self.value = value
@@ -42,6 +43,7 @@ def test_send_signal_from_actor_to_driver(ray_start):
     class ActorSendSignal(object):
         def __init__(self):
             pass
+
         def send_signal(self, value):
             signal.send(UserSignal(value))
 
@@ -65,6 +67,7 @@ def test_send_signals_from_actor_to_driver(ray_start):
     class ActorSendSignals(object):
         def __init__(self):
             pass
+
         def send_signals(self, value, count):
             for i in range(count):
                 signal.send(UserSignal(value + str(i)))
@@ -83,7 +86,6 @@ def test_send_signals_from_actor_to_driver(ray_start):
 
 
 def test_task_done(ray_start):
-
     @ray.remote
     def test_function():
         return 1
@@ -94,8 +96,8 @@ def test_task_done(ray_start):
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.DoneSignal
 
-def test_task_done2(ray_start):
 
+def test_task_done2(ray_start):
     @ray.remote(num_return_vals=2)
     def test_function():
         return 1, 2
@@ -146,6 +148,7 @@ def test_actor_crash(ray_start):
     class Actor(object):
         def __init__(self):
             pass
+
         def crash(self):
             raise Exception("exception message")
 
@@ -167,13 +170,14 @@ def test_actor_crash_init(ray_start):
     class ActorCrashInit(object):
         def __init__(self):
             raise Exception("exception message")
+
         def m(self):
             return 1
 
     # Using try and catch won't catch the exception in the __init__.
     a = ActorCrashInit.remote()
     time.sleep(2)
-    result_list = signal.receive([a], timeout = 5)
+    result_list = signal.receive([a], timeout=5)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -186,6 +190,7 @@ def test_actor_crash_init2(ray_start):
     class ActorCrashInit(object):
         def __init__(self):
             raise Exception("exception message")
+
         def method(self):
             return 1
 
@@ -210,6 +215,7 @@ def test_actor_crash_init3(ray_start):
     class ActorCrashInit(object):
         def __init__(self):
             raise Exception("exception message")
+
         def method(self):
             return 1
 
@@ -229,6 +235,7 @@ def test_send_signals_from_actor_to_actor(ray_start):
     class ActorSendSignals(object):
         def __init__(self):
             pass
+
         def send_signals(self, value, count):
             for i in range(count):
                 signal.send(UserSignal(value + str(i)))
@@ -237,8 +244,10 @@ def test_send_signals_from_actor_to_actor(ray_start):
     class ActorGetSignalsAll(object):
         def __init__(self):
             self.received_signals = []
+
         def register_handle(self, handle):
             self.this_actor = handle
+
         def get_signals(self, source_ids, count):
             new_signals = signal.receive(source_ids, timeout=10)
             for s in new_signals:
@@ -247,6 +256,7 @@ def test_send_signals_from_actor_to_actor(ray_start):
                 self.this_actor.get_signals.remote(source_ids, count)
             else:
                 return
+
         def get_count(self):
             return len(self.received_signals)
 
@@ -273,6 +283,7 @@ def test_forget(ray_start):
     class ActorSendSignals(object):
         def __init__(self):
             pass
+
         def send_signals(self, value, count):
             for i in range(count):
                 signal.send(UserSignal(value + str(i)))

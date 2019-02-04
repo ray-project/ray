@@ -9,16 +9,20 @@ import ray
 
 START_SIGNAL_COUNTER = 10000
 
+
 class Signal(object):
     """Signal object"""
     pass
 
+
 class DoneSignal(Signal):
     pass
+
 
 class ErrorSignal(Signal):
     def __init__(self, error):
         self.error = error
+
 
 def _get_task_id(source):
     """Return the task id associated to the generic source of the signal.
@@ -29,8 +33,9 @@ def _get_task_id(source):
          - If source is an actor handle, return id of actor's task creator.
          - If source is a task id, return same task id.
     """
-    if  type(source) is ray.actor.ActorHandle:
-        return ray._raylet.compute_task_id(source._ray_actor_creation_dummy_object_id)
+    if type(source) is ray.actor.ActorHandle:
+        return ray._raylet.compute_task_id(
+            source._ray_actor_creation_dummy_object_id)
     else:
         # When called from send() via _get_signa_id() source is a task id.
         if type(source) is ray.TaskID:
@@ -38,10 +43,12 @@ def _get_task_id(source):
         else:
             return ray._raylet.compute_task_id(source)
 
+
 def _get_signal_id(source, counter):
     return ray._raylet.compute_signal_id(_get_task_id(source), counter)
 
-def send(signal, source_id = None):
+
+def send(signal, source_id=None):
     """Send signal on behalf of source.
     Each signal is identified by (source, index), where index is incremented
     every time a signal is sent, starting from 1.
@@ -52,7 +59,8 @@ def send(signal, source_id = None):
     """
     if source_id == None:
         if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-            source_key = ray.worker.global_worker.actor_creation_task_id.binary()
+            source_key = ray.worker.global_worker.actor_creation_task_id.binary(
+            )
         else:
             # No actors; this function must have been called from a task
             source_key = ray.worker.global_worker.current_task_id.binary()
@@ -61,11 +69,13 @@ def send(signal, source_id = None):
 
     index = ray.worker.global_worker.redis_client.incr(source_key)
     if index < START_SIGNAL_COUNTER:
-        ray.worker.global_worker.redis_client.set(source_key, START_SIGNAL_COUNTER)
+        ray.worker.global_worker.redis_client.set(source_key,
+                                                  START_SIGNAL_COUNTER)
         index = START_SIGNAL_COUNTER
 
     object_id = _get_signal_id(ray.ObjectID(source_key), index)
     ray.worker.global_worker.store_and_register(object_id, signal)
+
 
 def receive(sources, timeout=float('inf')):
     """Get all signals from each source in sources.
@@ -108,31 +118,34 @@ def receive(sources, timeout=float('inf')):
     # Store the reverse mapping from a signal to the id of the task
     # generating that signal in the task_id_from_signal_id dictionary.
     task_id_from_signal_id = dict()
-    for task_id  in sources_from_task_id.keys():
-        signal_id = _get_signal_id(task_id , signal_counters[task_id ])
+    for task_id in sources_from_task_id.keys():
+        signal_id = _get_signal_id(task_id, signal_counters[task_id])
         task_id_from_signal_id[signal_id] = task_id
 
     while True:
-        ready_ids, _ = ray.wait(task_id_from_signal_id .keys(),
-            num_returns=len(task_id_from_signal_id .keys()), timeout=0)
+        ready_ids, _ = ray.wait(
+            task_id_from_signal_id.keys(),
+            num_returns=len(task_id_from_signal_id.keys()),
+            timeout=0)
         if len(ready_ids) > 0:
             for signal_id in ready_ids:
                 signal = ray.get(signal_id)
-                task_id  = task_id_from_signal_id [signal_id]
+                task_id = task_id_from_signal_id[signal_id]
                 if isinstance(signal, Signal):
-                    for source in sources_from_task_id[task_id ]:
+                    for source in sources_from_task_id[task_id]:
                         results.append((source, signal))
                     if type(signal) == DoneSignal:
-                        del signal_counters[task_id ]
+                        del signal_counters[task_id]
 
                 # We read this signal so forget it.
-                del task_id_from_signal_id [signal_id]
+                del task_id_from_signal_id[signal_id]
 
-                if task_id  in signal_counters:
+                if task_id in signal_counters:
                     # Compute id of the next expected signal for this source id.
-                    signal_counters[task_id ] += 1
-                    signal_id = _get_signal_id(task_id , signal_counters[task_id ])
-                    task_id_from_signal_id [signal_id] = task_id
+                    signal_counters[task_id] += 1
+                    signal_id = _get_signal_id(task_id,
+                                               signal_counters[task_id])
+                    task_id_from_signal_id[signal_id] = task_id
                 else:
                     break
             current_time = time.time()
@@ -143,24 +156,25 @@ def receive(sources, timeout=float('inf')):
         else:
             break
 
-
     if (remaining_time < 0) or (len(results) > 0):
         return results
 
     # Thee are no past signals for any source passed to this function, and the
     # timeout has not expired yet. Wait for future signals or until timeout expires.
-    ready_ids, _ = ray.wait(task_id_from_signal_id .keys(), 1, timeout=remaining_time)
+    ready_ids, _ = ray.wait(
+        task_id_from_signal_id.keys(), 1, timeout=remaining_time)
 
     for ready_id in ready_ids:
-        signal_counters[task_id_from_signal_id [ready_id]] += 1
+        signal_counters[task_id_from_signal_id[ready_id]] += 1
         signal = ray.get(signal_id)
         if isinstance(signal, Signal):
-            for source in sources_from_task_id[task_id ]:
+            for source in sources_from_task_id[task_id]:
                 results.append((source, signal))
             if type(signal) == DoneSignal:
-                del signal_counters[task_id ]
+                del signal_counters[task_id]
 
     return results
+
 
 def forget(sources):
     """Ignore all previous signals associated with each source S corresponding to
@@ -182,6 +196,7 @@ def forget(sources):
             signal_counters[source_id] = int(value) + 1
         else:
             signal_counters[source_id] = START_SIGNAL_COUNTER
+
 
 def reset():
     """
