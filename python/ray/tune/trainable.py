@@ -204,7 +204,7 @@ class Trainable(object):
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
 
-        self._result_logger.on_result(result)
+        self._log_result(result)
 
         return result
 
@@ -416,6 +416,15 @@ class Trainable(object):
                 Copy of `self.config`.
         """
         pass
+
+    def _log_result(self, result):
+        """Subclasses can optionally override this to customize logging.
+
+        Args:
+            result (dict): Training result returned by _train().
+        """
+
+        self._result_logger.on_result(result)
 
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""

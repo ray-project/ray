@@ -292,13 +292,18 @@ class Agent(Trainable):
             logger.debug("synchronized filters: {}".format(
                 self.local_evaluator.filters))
 
+        return result
+
+    @override(Trainable)
+    def _log_result(self, result):
         if self.config["callbacks"].get("on_train_result"):
             self.config["callbacks"]["on_train_result"]({
                 "agent": self,
                 "result": result,
             })
-
-        return result
+        # log after the callback is invoked, so that the user has a chance
+        # to mutate the result
+        Trainable._log_result(self, result)
 
     @override(Trainable)
     def _setup(self, config):
