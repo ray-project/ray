@@ -129,8 +129,7 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
                              for env, act in zip(self.envs, actions)])
 
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
-        for step_out in step_outs:
-            obs, rew, done, info = step_out
+        for obs, rew, done, info in step_outs:
             obs_batch.append(obs)
             rew_batch.append(rew)
             done_batch.append(done)

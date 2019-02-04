@@ -29,7 +29,7 @@ class EnvContext(dict):
         self.remote = remote
 
     def align(self, env_config=None, worker_index=None, vector_index=None,
-              remote=None, placeholder_env=None):
+              remote=None):
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,

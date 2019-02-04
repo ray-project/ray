@@ -55,10 +55,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
 
-        self._last_sampled_time = time.time()
-        self._last_sampled_mean = None
-        self._last_trained_time = time.time()
-        self._last_trained_mean = None
+        self._stats_start_time = time.time()
+        self._last_stats_time = {}
+        self._last_stats_val = {}
 
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
@@ -111,6 +110,14 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
 
+    def add_mean_stat(self, key, val):
+        new_time = time.time()
+        old_time = self._last_stats_time[key] \
+            if key in self._last_stats_time \
+            else self._stats_start_time
+        self._last_stats_val[key] = round(val / (new_time - old_time), 3)
+        self._last_stats_time[key] = new_time
+
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
@@ -119,16 +126,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         time_delta = time.time() - start
 
         if sample_timesteps > 0:
-            new_sampled_time = time.time()
-            self._last_sampled_mean = sample_timesteps / \
-                (new_sampled_time - self._last_sampled_time)
-            self._last_sampled_time = new_sampled_time
+            self.add_mean_stat("sample_throughput", sample_timesteps)
 
         if train_timesteps > 0:
-            new_trained_time = time.time()
-            self._last_trained_mean = train_timesteps / \
-                (new_trained_time - self._last_trained_time)
-            self._last_trained_time = new_trained_time
+            self.add_mean_stat("train_throughput", train_timesteps)
 
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
@@ -156,15 +157,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
+            **self._last_stats_val,
         }
-        if self._last_sampled_mean is not None:
-            stats["sample_throughput"] = round(
-                self._last_sampled_mean, 3)
-            self._last_sampled_mean = None
-        if self._last_trained_mean is not None:
-            stats["train_throughput"] = round(
-                self._last_trained_mean, 3)
-            self._last_trained_mean = None
+        self._last_stats_val.clear()
         if self.learner.stats:
             stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)

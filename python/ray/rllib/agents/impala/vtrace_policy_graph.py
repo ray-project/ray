@@ -138,14 +138,12 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             behaviour_logits = tf.placeholder(tf.float32,
                                               [None, sum(output_hidden_shape)],
                                               name="behaviour_logits")
+            unpacked_behaviour_logits = tf.split(
+                behaviour_logits, output_hidden_shape, axis=1)
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
             existing_seq_lens = None
-
-        # Create unpacked behaviour logits
-        unpacked_behaviour_logits = tf.split(
-            behaviour_logits, output_hidden_shape, axis=1)
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(

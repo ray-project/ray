@@ -200,6 +200,7 @@ class PolicyEvaluator(EvaluatorInterface):
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
+        env_context = EnvContext(env_config or {}, worker_index)
         policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
@@ -217,7 +218,6 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
 
-        env_context = EnvContext(env_config or {}, worker_index)
         self.env = env_creator(env_context)
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, BaseEnv):
@@ -243,12 +243,19 @@ class PolicyEvaluator(EvaluatorInterface):
                     env = _monitor(env, monitor_path)
                 return env
         else:
+
             def wrap(env):
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
 
         self.env = wrap(self.env)
+
+        def make_env(vector_index):
+            return wrap(
+                env_creator(
+                    env_context.align(vector_index=vector_index,
+                                      remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -288,12 +295,6 @@ class PolicyEvaluator(EvaluatorInterface):
                                   policy.observation_space.shape)
             for (policy_id, policy) in self.policy_map.items()
         }
-
-        def make_env(vector_index):
-            return wrap(
-                env_creator(
-                    env_context.align(vector_index=vector_index,
-                                      remote=remote_worker_envs)))
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
