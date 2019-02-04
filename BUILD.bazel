@@ -338,27 +338,44 @@ pyx_library(
     deps = ["//:raylet_lib"]
 )
 
-cc_library(
-    name = "raylet_library_java",
+cc_binary(
+    name = "raylet_library_java.so",
     srcs = [
         "@bazel_tools//tools/jdk:current_java_runtime",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc"
-        ],
-    hdrs = [
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
         "src/ray/id.h",
         "src/ray/raylet/raylet_client.h",
         "src/ray/util/logging.h"
-    ],
+        ],
     includes = [
-        "src" ,
+        "src",
         "external/local_jdk/include"] + select({
             "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
             "//conditions:default": ["external/local_jdk/include/linux"]
         }),
+    linkshared = 1,
+    linkstatic = 1,
     deps = ["@plasma//:plasma_client",
             "//:raylet_lib"],
-)	
+)
+
+genrule(
+    name = "raylet-jni-darwin-compat",
+    srcs = [":raylet_library_java.so"],
+    outs = ["raylet_library_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "raylet_library_java",
+    visibility = ["//visibility:public"],
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":raylet_library_java.dylib"],
+        "//conditions:default": [":raylet_library_java.so"],
+    })
+)
 
 flatbuffer_py_library(
     name = "python_gcs_fbs",
@@ -502,14 +519,7 @@ genrule(
         cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
         mv python $(location ray_pkg) &&
         mkdir -p $(location ray_pkg)/java_lib &&
-        for f in $(locations //:raylet_library_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/java_lib/"""
-        + select({
-            "@bazel_tools//src/conditions:darwin": "libraylet_library_java.dylib",
-            "//conditions:default": "libraylet_library_java.so"})
-        + "; fi done &&" +
-        """for f in $(locations @plasma//:plasma_client_java); do if [[ $$f == *".so"* ]]; then cp $$f $(location ray_pkg)/java_lib/"""
-        + select({
-            "@bazel_tools//src/conditions:darwin": "libplasma_java.dylib",
-            "//conditions:default": "libplasma_java.so"})
-        + "; fi done"
+        cp $(location @plasma//:plasma_client_java) $(location ray_pkg)/java_lib &&
+        cp $(location //:raylet_library_java) $(location ray_pkg)/java_lib
+        """
 )
