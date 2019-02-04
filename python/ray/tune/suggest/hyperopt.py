@@ -82,7 +82,8 @@ class HyperOptSearch(SuggestionAlgorithm):
             self._points_to_evaluate = 0
         else:
             assert type(points_to_evaluate) == list
-            self._hpopt_trials = generate_trials_to_calculate(points_to_evaluate)
+            self._hpopt_trials = generate_trials_to_calculate(
+                points_to_evaluate)
             self._hpopt_trials.refresh()
             self._points_to_evaluate = len(points_to_evaluate)
         self._live_trial_mapping = {}
