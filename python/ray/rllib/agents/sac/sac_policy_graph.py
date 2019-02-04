@@ -46,12 +46,11 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_losses()
 
         self.loss_inputs = (
-            ("observations", self._observations_ph),
-            ("next_observations", self._next_observations_ph),
+            ("obs", self._observations_ph),
+            ("new_obs", self._next_observations_ph),
             ("actions", self._actions_ph),
             ("rewards", self._rewards_ph),
-            ("terminals", self._terminals_ph),
-            ("importance_weights", self._importance_weights_ph),
+            ("dones", self._terminals_ph),
         )
 
         TFPolicyGraph.__init__(
@@ -86,13 +85,10 @@ class SACPolicyGraph(TFPolicyGraph):
             tf.float32, (None, *action_shape), name="actions")
 
         self._rewards_ph = tf.placeholder(
-            tf.float32, (None, 1), name="rewards")
+            tf.float32, (None), name="rewards")
 
         self._terminals_ph = tf.placeholder(
-            tf.bool, (None, 1), name="terminals")
-
-        self._importance_weights_ph = tf.placeholder(
-            tf.float32, (None, 1), name="importance_weights")
+            tf.bool, (None), name="terminals")
 
     def _init_models(self, observation_space, action_space):
         """Initialize models for value-functions and policy."""
@@ -125,7 +121,7 @@ class SACPolicyGraph(TFPolicyGraph):
         actions = self.policy.actions([self._observations_ph])
         log_pis = self.policy.log_pis([self._observations_ph], actions)
 
-        assert log_pis.shape.as_list() == [None, 1]
+#        assert log_pis.shape.as_list() == [None, 1]
 
         Q_log_targets = self.Q([self._observations_ph, actions])
 
@@ -133,7 +129,7 @@ class SACPolicyGraph(TFPolicyGraph):
 
         policy_kl_losses = self.alpha * log_pis - Q_log_targets
 
-        assert policy_kl_losses.shape.as_list() == [None, 1]
+#        assert policy_kl_losses.shape.as_list() == [None, 1]
 
         self.policy_loss = tf.reduce_mean(policy_kl_losses)
 
@@ -152,7 +148,7 @@ class SACPolicyGraph(TFPolicyGraph):
             + discount
             * (1.0 - tf.to_float(self._terminals_ph)) * next_values)
 
-        assert Q_targets.shape.as_list() == [None, 1]
+#        assert Q_targets.shape.as_list() == [None, 1]
 
         Q_values = self.Q([self._observations_ph, self._actions_ph])
         self.Q_loss = tf.losses.mean_squared_error(
