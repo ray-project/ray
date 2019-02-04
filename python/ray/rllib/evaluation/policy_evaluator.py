@@ -349,7 +349,7 @@ class PolicyEvaluator(EvaluatorInterface):
             elif method == "is":
                 ise = ImportanceSamplingEstimator(self.io_context)
                 self.reward_estimators.append(ise)
-            elif method == "weighted_importance_sampling":
+            elif method == "wis":
                 wise = WeightedImportanceSamplingEstimator(self.io_context)
                 self.reward_estimators.append(wise)
             else:
@@ -401,7 +401,7 @@ class PolicyEvaluator(EvaluatorInterface):
         # Do off-policy estimation if needed
         if self.reward_estimators:
             for sub_batch in batch.split_by_episode():
-                for estimator in self.reward_esimators:
+                for estimator in self.reward_estimators:
                     estimator.process(sub_batch)
 
         if self.compress_observations:

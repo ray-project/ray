@@ -8,6 +8,8 @@ import collections
 
 import ray
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.evaluation.sampler import RolloutMetrics
+from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,9 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         logger.warning("WARNING: {} workers have NOT returned metrics".format(
             num_dropped))
 
+    episodes, estimates = _partition(episodes)
+    new_episodes, _ = _partition(new_episodes)
+
     episode_rewards = []
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)
@@ -94,6 +99,16 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
             custom_metrics[k + "_max"] = float("nan")
         del custom_metrics[k]
 
+    estimators = collections.defaultdict(lambda: collections.defaultdict(list))
+    for e in estimates:
+        acc = estimators[e.estimator_name]
+        for k, v in e.metrics.items():
+            acc[k].append(v)
+    for name, metrics in estimators.items():
+        for k, v_list in metrics.items():
+            metrics[k] = np.mean(v)
+        estimators[name] = dict(metrics)
+
     return dict(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
@@ -102,4 +117,19 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
         episodes_this_iter=len(new_episodes),
         policy_reward_mean=dict(policy_rewards),
         custom_metrics=dict(custom_metrics),
+        estimator=dict(estimators),
         num_metric_batches_dropped=num_dropped)
+
+
+def _partition(episodes):
+    """Divides metrics data into true rollouts vs off-policy estimates."""
+
+    rollouts, estimates = [], []
+    for e in episodes:
+        if isinstance(e, RolloutMetrics):
+            rollouts.append(e)
+        elif isinstance(e, OffPolicyEstimate):
+            estimates.append(e)
+        else:
+            raise ValueError("Unknown metric type: {}".format(e))
+    return rollouts, estimates
