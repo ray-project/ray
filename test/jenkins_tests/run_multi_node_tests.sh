@@ -249,7 +249,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --env CartPole-v0 \
     --run MARWIL \
     --stop '{"training_iteration": 2}' \
-    --config '{"input": "/ray/python/ray/rllib/test/data/cartpole_small", "learning_starts": 0}'
+    --config '{"input": "/ray/python/ray/rllib/test/data/cartpole_small", "learning_starts": 0, "input_evaluation": ["wis", "is"], "shuffle_buffer_size": 10}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_local.py

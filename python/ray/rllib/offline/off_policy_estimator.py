@@ -16,17 +16,14 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate",
 
 @DeveloperAPI
 class OffPolicyEstimator(object):
-    """Interface for an off policy reward estimator (experimental).
-
-    TODO(ekl): implement model-based estimators from literature, e.g., doubly
-    robust, MAGIC. This will require adding some way of training a model
-    (we should probably piggyback this on RLlib model API).
-    """
+    """Interface for an off policy reward estimator (experimental)."""
 
     @DeveloperAPI
     def __init__(self, ioctx):
         self.ioctx = ioctx
         self.gamma = ioctx.evaluator.policy_config["gamma"]
+
+        # Grab a reference to the current model
         keys = list(ioctx.evaluator.policy_map.keys())
         if len(keys) > 1:
             logger.warning(
@@ -34,6 +31,8 @@ class OffPolicyEstimator(object):
             self.policy = None
         else:
             self.policy = ioctx.evaluator.get_policy(keys[0])
+
+        # Buffer of metrics that will be collected by the driver
         self.estimates = []
 
     @DeveloperAPI

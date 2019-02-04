@@ -105,10 +105,7 @@ class TFPolicyGraph(PolicyGraph):
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()
-        if action_prob is None:
-            self._action_prob = tf.constant(float("nan"))
-        else:
-            self._action_prob = action_prob
+        self._action_prob = action_prob
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         for i, ph in enumerate(self._state_inputs):

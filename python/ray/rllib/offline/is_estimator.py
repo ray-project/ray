@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
+    OffPolicyEstimate
 from ray.rllib.utils.annotations import override
 
 
