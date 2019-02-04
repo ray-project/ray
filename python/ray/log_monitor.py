@@ -9,11 +9,8 @@ import os
 import traceback
 
 import colorama
-import redis
 
 import ray.ray_constants as ray_constants
-from ray.services import get_ip_address
-from ray.services import get_port
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -69,16 +66,12 @@ class LogMonitor(object):
             false otherwise.
     """
 
-    def __init__(self,
-                 logs_dir,
-                 redis_ip_address,
-                 redis_port,
-                 redis_password=None):
+    def __init__(self, logs_dir, redis_address, redis_password=None):
         """Initialize the log monitor object."""
         self.host = os.uname()[1]
         self.logs_dir = logs_dir
-        self.redis_client = redis.StrictRedis(
-            host=redis_ip_address, port=redis_port, password=redis_password)
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -262,23 +255,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    redis_ip_address = get_ip_address(args.redis_address)
-    redis_port = get_port(args.redis_address)
-
     log_monitor = LogMonitor(
-        args.logs_dir,
-        redis_ip_address,
-        redis_port,
-        redis_password=args.redis_password)
+        args.logs_dir, args.redis_address, redis_password=args.redis_password)
 
     try:
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = redis.StrictRedis(
-            host=redis_ip_address,
-            port=redis_port,
-            password=args.redis_password)
+        redis_client = ray.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The log monitor on node {} failed with the following "
                    "error:\n{}".format(os.uname()[1], traceback_str))
