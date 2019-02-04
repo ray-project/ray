@@ -158,6 +158,9 @@ class Worker(object):
         # It is a DriverID.
         self.task_driver_id = DriverID.nil()
         self._task_context = threading.local()
+        # This event is checked regularly by all of the threads so that they
+        # know when to exit.
+        self.threads_stopped = threading.Event()
 
     @property
     def task_context(self):
@@ -1532,6 +1535,15 @@ def shutdown(worker=global_worker):
     if hasattr(worker, "plasma_client"):
         worker.plasma_client.disconnect()
 
+    # Shutdown all of the threads that we've started.
+    worker.threads_stopped.set()
+    worker.import_thread.join_import_thread()
+    worker.profiler.join_flush_thread()
+    worker.listener_thread.join()
+    worker.printer_thread.join()
+    if worker.logger_thread is not None:
+        worker.logger_thread.join()
+
     # Shut down the Ray processes.
     global _global_node
     if _global_node is not None:
@@ -1568,35 +1580,52 @@ last_task_error_raise_time = 0
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 
-def print_logs(redis_client):
+def print_logs(redis_client, threads_stopped):
     """Prints log messages from workers on all of the nodes.
 
     Args:
         redis_client: A client to the primary Redis shard.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
-    try:
-        for msg in pubsub_client.listen():
-            print(ray.utils.decode(msg["data"]), file=sys.stderr)
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
+    while True:
+        # Exit if we received a signal that we should stop.
+        if threads_stopped.is_set():
+            return
+
+        msg = pubsub_client.get_message()
+        if msg is None:
+            continue
+        print(ray.utils.decode(msg["data"]), file=sys.stderr)
 
 
-def print_error_messages_raylet(task_error_queue):
+def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
     This checks periodically if any un-raised errors occured in the background.
+
+    Args:
+        task_error_queue (queue.Queue): A queue used to receive errors from the
+            thread that listens to Redis.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
     """
 
     while True:
-        error, t = task_error_queue.get()
+        # Exit if we received a signal that we should stop.
+        if threads_stopped.is_set():
+            return
+
+        try:
+            error, t = task_error_queue.get(block=False)
+        except queue.Empty:
+            continue
         # Delay errors a little bit of time to attempt to suppress redundant
         # messages originating from the worker.
         while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
-            time.sleep(1)
+            threads_stopped.wait(timeout=1)
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
             logger.debug("Suppressing error from worker: {}".format(error))
         else:
@@ -1604,11 +1633,18 @@ def print_error_messages_raylet(task_error_queue):
                 "Possible unhandled error from worker: {}".format(error))
 
 
-def listen_error_messages_raylet(worker, task_error_queue):
+def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
     tuples to the output queue.
+
+    Args:
+        worker: The worker class that this thread belongs to.
+        task_error_queue (queue.Queue): A queue used to communicate with the
+            thread that prints the errors found by this thread.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
     """
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
@@ -1629,33 +1665,33 @@ def listen_error_messages_raylet(worker, task_error_queue):
         for error_message in error_messages:
             logger.error(error_message)
 
-    try:
-        for msg in worker.error_message_pubsub_client.listen():
+    while True:
+        # Exit if we received a signal that we should stop.
+        if threads_stopped.is_set():
+            return
 
-            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-                msg["data"], 0)
-            assert gcs_entry.EntriesLength() == 1
-            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
-                gcs_entry.Entries(0), 0)
-            job_id = error_data.JobId()
-            if job_id not in [
-                    worker.task_driver_id.binary(),
-                    DriverID.nil().binary()
-            ]:
-                continue
+        msg = worker.error_message_pubsub_client.get_message()
+        if msg is None:
+            continue
+        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+            msg["data"], 0)
+        assert gcs_entry.EntriesLength() == 1
+        error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
+            gcs_entry.Entries(0), 0)
+        job_id = error_data.JobId()
+        if job_id not in [
+                worker.task_driver_id.binary(),
+                DriverID.nil().binary()
+        ]:
+            continue
 
-            error_message = ray.utils.decode(error_data.ErrorMessage())
-            if (ray.utils.decode(
-                    error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
-                # Delay it a bit to see if we can suppress it
-                task_error_queue.put((error_message, time.time()))
-            else:
-                logger.error(error_message)
-
-    except redis.ConnectionError:
-        # When Redis terminates the listen call will throw a ConnectionError,
-        # which we catch here.
-        pass
+        error_message = ray.utils.decode(error_data.ErrorMessage())
+        if (ray.utils.decode(
+                error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
+            # Delay it a bit to see if we can suppress it
+            task_error_queue.put((error_message, time.time()))
+        else:
+            logger.error(error_message)
 
 
 def is_initialized():
@@ -1701,7 +1737,7 @@ def connect(info,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker)
+    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
     # Initialize some fields.
     if mode is WORKER_MODE:
@@ -1893,7 +1929,9 @@ def connect(info,
     )
 
     # Start the import thread
-    import_thread.ImportThread(worker, mode).start()
+    worker.import_thread = import_thread.ImportThread(worker, mode,
+                                                      worker.threads_stopped)
+    worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1903,25 +1941,27 @@ def connect(info,
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         q = queue.Queue()
-        listener = threading.Thread(
+        worker.listener_thread = threading.Thread(
             target=listen_error_messages_raylet,
             name="ray_listen_error_messages",
-            args=(worker, q))
-        printer = threading.Thread(
+            args=(worker, q, worker.threads_stopped))
+        worker.printer_thread = threading.Thread(
             target=print_error_messages_raylet,
             name="ray_print_error_messages",
-            args=(q, ))
-        listener.daemon = True
-        listener.start()
-        printer.daemon = True
-        printer.start()
+            args=(q, worker.threads_stopped))
+        worker.listener_thread.daemon = True
+        worker.listener_thread.start()
+        worker.printer_thread.daemon = True
+        worker.printer_thread.start()
         if log_to_driver:
-            log_thread = threading.Thread(
+            worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
-                args=(worker.redis_client, ))
-            log_thread.daemon = True
-            log_thread.start()
+                args=(worker.redis_client, worker.threads_stopped))
+            worker.logger_thread.daemon = True
+            worker.logger_thread.start()
+        else:
+            worker.logger_thread = None
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.

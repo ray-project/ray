@@ -69,21 +69,28 @@ class Profiler(object):
         worker: the worker to profile.
         events: the buffer of events.
         lock: the lock to protect access of events.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
     """
 
-    def __init__(self, worker):
+    def __init__(self, worker, threads_stopped):
         self.worker = worker
         self.events = []
         self.lock = threading.Lock()
+        self.threads_stopped = threads_stopped
 
     def start_flush_thread(self):
-        t = threading.Thread(
+        self.t = threading.Thread(
             target=self._periodically_flush_profile_events,
             name="ray_push_profiling_information")
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
-        t.daemon = True
-        t.start()
+        self.t.daemon = True
+        self.t.start()
+
+    def join_flush_thread(self):
+        """Wait for the flush thread to exit."""
+        self.t.join()
 
     def _periodically_flush_profile_events(self):
         """Drivers run this as a thread to flush profile data in the
@@ -94,7 +101,14 @@ class Profiler(object):
         # if either of those things changes, then we could run into issues.
         try:
             while True:
-                time.sleep(1)
+                # Sleep for 1 second. This will be interrupted if
+                # self.threads_stopped is set.
+                self.threads_stopped.wait(timeout=1)
+
+                # Exit if we received a signal that we should stop.
+                if self.threads_stopped.is_set():
+                    return
+
                 self.flush_profile_data()
         except AttributeError:
             # TODO(suquark): It is a bad idea to ignore "AttributeError".
