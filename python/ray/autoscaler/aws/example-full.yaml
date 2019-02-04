@@ -20,7 +20,6 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
-    install_docker: False  # Setting this to true installs Docker (but not nvidia-docker)
     run_options: []  # Extra options to pass into "docker run"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -56,7 +55,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -72,7 +71,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:

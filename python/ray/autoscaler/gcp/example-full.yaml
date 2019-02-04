@@ -20,7 +20,6 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
-    install_docker: False  # Setting this to true installs Docker (but not nvidia-docker)
     run_options: []  # Extra options to pass into "docker run"
 
 
@@ -68,9 +67,9 @@ head_node:
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
 
-    # If the network interface is specified as below in both head and worker 
+    # If the network interface is specified as below in both head and worker
     # nodes, the manual network config is used.  Otherwise an existing subnet is
-    # used.  To use a shared subnet, ask the subnet owner to grant permission 
+    # used.  To use a shared subnet, ask the subnet owner to grant permission
     # for 'compute.subnetworks.use' to the ray autoscaler account...
     # networkInterfaces:
     #   - kind: compute#networkInterface

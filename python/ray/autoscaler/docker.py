@@ -18,7 +18,6 @@ def dockerize_if_needed(config):
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
     run_options = config["docker"].get("run_options", [])
-    install_docker = config["docker"].get("install_docker", False)
     ssh_user = config["auth"]["ssh_user"]
     if not docker_image:
         if cname:
@@ -30,13 +29,10 @@ def dockerize_if_needed(config):
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
-    install_commands = (docker_install_cmds(ssh_user, docker_image, cname)
-                        if install_docker else [])
-
     config["setup_commands"] = (
-        install_commands + docker_start_cmds(
-            ssh_user, docker_image, docker_mounts, cname, run_options) +
-        with_docker_exec(config["setup_commands"], container_name=cname))
+        docker_start_cmds(ssh_user, docker_image, docker_mounts, cname,
+                          run_options) + with_docker_exec(
+                              config["setup_commands"], container_name=cname))
 
     config["head_setup_commands"] = with_docker_exec(
         config["head_setup_commands"], container_name=cname)
@@ -63,20 +59,6 @@ def with_docker_exec(cmds, container_name, env_vars=None):
         "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
                                                   quote(cmd)) for cmd in cmds
     ]
-
-
-def docker_install_cmds(user, image, cname):
-    cmds = [
-        aptwait_cmd() + " && sudo apt-get update",
-        aptwait_cmd() + " && sudo apt-get install -y docker.io",
-        "sudo kill -SIGUSR1 $(pidof dockerd) || true",
-        "sudo service docker start",
-        "sudo usermod -a -G docker {}".format(user),
-        "docker rm -f {} || true".format(cname),
-        "docker pull {}".format(image),
-    ]
-
-    return cmds
 
 
 def aptwait_cmd():

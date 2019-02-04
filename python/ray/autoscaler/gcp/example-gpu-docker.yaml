@@ -20,7 +20,6 @@ initial_workers: 0
 docker:
     image: "tensorflow/tensorflow:1.12.0-gpu-py3"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
-    install_docker: False
     run_options:
       - --runtime=nvidia
 
