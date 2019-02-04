@@ -307,6 +307,24 @@ class PolicyEvaluator(EvaluatorInterface):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
+        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
+        self.reward_estimators = []
+        for method in input_evaluation:
+            if method == "simulation":
+                logger.warning(
+                    "Requested 'simulation' input evaluation method: "
+                    "will discard all sampler outputs and keep only metrics.")
+                sample_async = True
+            elif method == "is":
+                ise = ImportanceSamplingEstimator(self.io_context)
+                self.reward_estimators.append(ise)
+            elif method == "wis":
+                wise = WeightedImportanceSamplingEstimator(self.io_context)
+                self.reward_estimators.append(wise)
+            else:
+                raise ValueError(
+                    "Unknown evaluation method: {}".format(method))
+
         if sample_async:
             self.sampler = AsyncSampler(
                 self.async_env,
@@ -338,23 +356,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions)
 
-        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
-        self.reward_estimators = []
-        for method in input_evaluation:
-            if method == "simulation":
-                logger.warning(
-                    "Requested 'simulation' input evaluation method: "
-                    "will discard all sampler outputs and keep only metrics.")
-                sample_async = True
-            elif method == "is":
-                ise = ImportanceSamplingEstimator(self.io_context)
-                self.reward_estimators.append(ise)
-            elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator(self.io_context)
-                self.reward_estimators.append(wise)
-            else:
-                raise ValueError(
-                    "Unknown evaluation method: {}".format(method))
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
         self.output_writer = output_creator(self.io_context)
