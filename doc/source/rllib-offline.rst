@@ -43,7 +43,7 @@ Then, we can tell DQN to train using these previously generated experiences with
             "exploration_final_eps": 0,
             "exploration_fraction": 0}'
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, soft Q learning can be used to enable `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). In this mode, actions will be sampled from a categorical distribution over the Q-values instead of with argmax:
+**Off-policy estimation:** Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__ can be used, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). For DQN, this means enabling soft Q learning so that actions are sampled from a probability distribution:
 
 .. code-block:: bash
 
@@ -60,7 +60,7 @@ This example plot shows the Q-value metric in addition to importance sampling (I
 
 .. image:: offline-q.png
 
-In offline input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning.
+If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

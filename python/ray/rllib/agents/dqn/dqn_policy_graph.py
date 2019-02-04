@@ -9,7 +9,6 @@ import tensorflow.contrib.layers as layers
 
 import ray
 from ray.rllib.models import ModelCatalog, Categorical
-from ray.rllib.evaluation.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -484,10 +483,9 @@ class DQNPolicyGraph(TFPolicyGraph):
         return qnet.value, qnet.logits, qnet.dist, qnet.model
 
     def _build_q_value_policy(self, q_values):
-        policy = QValuePolicy(q_values, self.cur_observations,
-                              self.num_actions, self.stochastic, self.eps,
-                              self.config["soft_q"],
-                              self.config["softmax_temp"])
+        policy = QValuePolicy(
+            q_values, self.cur_observations, self.num_actions, self.stochastic,
+            self.eps, self.config["soft_q"], self.config["softmax_temp"])
         return policy.action, policy.action_prob
 
     def _build_q_loss(self, q_t_selected, q_logits_t_selected, q_tp1_best,
@@ -528,9 +526,9 @@ def _postprocess_dqn(policy_graph, batch):
     # N-step Q adjustments
     if policy_graph.config["n_step"] > 1:
         _adjust_nstep(policy_graph.config["n_step"],
-                      policy_graph.config["gamma"],
-                      batch["obs"], batch["actions"], batch["rewards"],
-                      batch["new_obs"], batch["dones"])
+                      policy_graph.config["gamma"], batch["obs"],
+                      batch["actions"], batch["rewards"], batch["new_obs"],
+                      batch["dones"])
 
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
