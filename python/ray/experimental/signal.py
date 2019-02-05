@@ -2,11 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+from collections import defaultdict
 
 import ray
-
-START_SIGNAL_COUNTER = 10000
+import cloudpickle
 
 
 class Signal(object):
@@ -64,24 +63,19 @@ def send(signal, source_id=None):
     if source_id is None:
         if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
             global_worker = ray.worker.global_worker
-            source_key = global_worker.actor_creation_task_id.binary()
+            source_key = global_worker.actor_creation_task_id.hex()
         else:
             # No actors; this function must have been called from a task
-            source_key = ray.worker.global_worker.current_task_id.binary()
+            source_key = ray.worker.global_worker.current_task_id.hex()
     else:
-        source_key = source_id.binary()
+        source_key = source_id.hex()
 
-    index = ray.worker.global_worker.redis_client.incr(source_key)
-    if index < START_SIGNAL_COUNTER:
-        ray.worker.global_worker.redis_client.set(source_key,
-                                                  START_SIGNAL_COUNTER)
-        index = START_SIGNAL_COUNTER
-
-    object_id = _get_signal_id(ray.ObjectID(source_key), index)
-    ray.worker.global_worker.store_and_register(object_id, signal)
+    encoded_signal = ray.utils.binary_to_hex(cloudpickle.dumps(signal))
+    ray.worker.global_worker.redis_client.execute_command(
+        "XADD " + source_key + " * signal " + encoded_signal)
 
 
-def receive(sources, timeout=float('inf')):
+def receive(sources, timeout=10**12):
     """Get all signals from each source in sources.
 
     A source can be an object id or an actor handle.
@@ -101,87 +95,39 @@ def receive(sources, timeout=float('inf')):
         more than a signal associated with the same source.
     """
     if not hasattr(ray.worker.global_worker, "signal_counters"):
-        ray.worker.global_worker.signal_counters = dict()
+        ray.worker.global_worker.signal_counters = defaultdict(lambda: b"0")
 
     signal_counters = ray.worker.global_worker.signal_counters
+
+    # Construct the redis query.
+    query = "XREAD BLOCK "
+    query += str(1000 * timeout)
+    query += " STREAMS "
+    query += " ".join([_get_task_id(source).hex() for source in sources])
+    query += " "
+    query += " ".join(
+       [ray.utils.decode(signal_counters[_get_task_id(source)]) for source in sources])
+    print("query", query)
+
+    answers = ray.worker.global_worker.redis_client.execute_command(query)
+    if not answers:
+        return []
+    # There will be one answer per source
+    assert len(answers) == len(sources)
+
     results = []
-    previous_time = time.time()
-    remaining_time = timeout
-
-    # Store the mapping between signal's source and the task id associated
-    # with the source in the sources_from_task_id dictionary.
-    sources_from_task_id = dict()
-    for s in sources:
-        task_id = _get_task_id(s)
-        if task_id not in sources_from_task_id.keys():
-            sources_from_task_id[task_id] = []
-        # Multiple sources can map to the same task id. One example is a task
-        # returning multiple objects, and these objects are used as sources
-        # in receive(). In this case, each returned object will map to the
-        # same task.
-        sources_from_task_id[task_id].append(s)
-        if task_id not in signal_counters:
-            signal_counters[task_id] = START_SIGNAL_COUNTER
-
-    # Store the reverse mapping from a signal to the id of the task
-    # generating that signal in the task_id_from_signal_id dictionary.
-    task_id_from_signal_id = dict()
-    for task_id in sources_from_task_id.keys():
-        signal_id = _get_signal_id(task_id, signal_counters[task_id])
-        task_id_from_signal_id[signal_id] = task_id
-
-    while True:
-        ready_ids, _ = ray.wait(
-            task_id_from_signal_id.keys(),
-            num_returns=len(task_id_from_signal_id.keys()),
-            timeout=0)
-        if len(ready_ids) > 0:
-            for signal_id in ready_ids:
-                signal = ray.get(signal_id)
-                task_id = task_id_from_signal_id[signal_id]
-                if isinstance(signal, Signal):
-                    for source in sources_from_task_id[task_id]:
-                        results.append((source, signal))
-                    if type(signal) == DoneSignal:
-                        del signal_counters[task_id]
-
-                # We read this signal so forget it.
-                del task_id_from_signal_id[signal_id]
-
-                if task_id in signal_counters:
-                    # Compute id of the next expected signal for this
-                    # source id.
-                    signal_counters[task_id] += 1
-                    signal_id = _get_signal_id(task_id,
-                                               signal_counters[task_id])
-                    task_id_from_signal_id[signal_id] = task_id
-                else:
-                    break
-            current_time = time.time()
-            remaining_time -= (current_time - previous_time)
-            previous_time = current_time
-            if remaining_time < 0:
-                break
-        else:
-            break
-
-    if (remaining_time < 0) or (len(results) > 0):
-        return results
-
-    # There are no past signals for any source passed to this function,
-    # and the timeout has not expired yet. Wait for future signals or
-    # until timeout expires.
-    ready_ids, _ = ray.wait(
-        task_id_from_signal_id.keys(), 1, timeout=remaining_time)
-
-    for ready_id in ready_ids:
-        signal_counters[task_id_from_signal_id[ready_id]] += 1
-        signal = ray.get(signal_id)
-        if isinstance(signal, Signal):
-            for source in sources_from_task_id[task_id]:
-                results.append((source, signal))
-            if type(signal) == DoneSignal:
-                del signal_counters[task_id]
+    # Decoding is a little bit involved. Iterate through all the sources:
+    for i, answer in enumerate(answers):
+        # Make sure the answer corresponds to the source
+        assert ray.utils.decode(answer[0]) == _get_task_id(sources[i]).hex()
+        # The list of results for that source is stored in answer[1]
+        for r in answer[1]:
+            # Now it gets tricky: r[0] is the redis internal sequence id
+            signal_counters[_get_task_id(sources[i])] = r[0]
+            # r[1] contains a list with elements (key, value), in our case
+            # we only have one key "signal" and the value is the signal.
+            signal = cloudpickle.loads(ray.utils.hex_to_binary(r[1][1]))
+            results.append((sources[i], signal))
 
     return results
 
@@ -196,18 +142,7 @@ def forget(sources):
     Args:
         sources: list of sources whose past signals are forgotten.
     """
-    if not hasattr(ray.worker.global_worker, "signal_counters"):
-        ray.worker.global_worker.signal_counters = dict()
-    signal_counters = ray.worker.global_worker.signal_counters
-
-    for s in sources:
-        source_id = _get_task_id(s)
-        source_key = source_id.binary()
-        value = ray.worker.global_worker.redis_client.get(source_key)
-        if value is not None:
-            signal_counters[source_id] = int(value) + 1
-        else:
-            signal_counters[source_id] = START_SIGNAL_COUNTER
+    receive(sources, timeout=0)
 
 
 def reset():
@@ -217,4 +152,4 @@ def reset():
     If the worker calls receive() on a source_id next, it will get all the
     signals generated by (or on behalf of) source_id from the beginning.
     """
-    ray.worker.global_worker.signal_counters = dict()
+    ray.worker.global_worker.signal_counters = defaultdict(lambda: b"0")
