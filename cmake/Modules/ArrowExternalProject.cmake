@@ -25,7 +25,7 @@ set(arrow_URL https://github.com/pcmoritz/arrow.git)
 # WARNING: If the arrow version is updated, you need to also update the
 # SETUPTOOLS_SCM_PRETEND_VERSION version string in the ThirdpartyToolchain.cmake
 # file
-set(arrow_TAG 8365796e71454a3835468dfa56ff3a156b771ea3)
+set(arrow_TAG bd7a68954bd8d5da0f324b97fe94d3de4331e247)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
