@@ -117,6 +117,9 @@ class _LogSyncer(object):
         logger.debug("Created LogSyncer for {} -> {}".format(
             local_dir, remote_dir))
 
+    def close(self):
+        self.logfile.close()
+
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
