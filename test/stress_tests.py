@@ -197,7 +197,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = 10**9
+    plasma_store_memory = int(0.8 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
