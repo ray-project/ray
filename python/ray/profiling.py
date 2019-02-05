@@ -111,15 +111,7 @@ class Profiler(object):
             self.flush_profile_data()
 
     def flush_profile_data(self):
-        """Push the logged profiling data to the global control store.
-
-        By default, profiling information for a given task won't appear in the
-        timeline until after the task has completed. For very long-running
-        tasks, we may want profiling information to appear more quickly.
-        In such cases, this function can be called. Note that as an
-        alternative, we could start a thread in the background on workers that
-        calls this automatically.
-        """
+        """Push the logged profiling data to the global control store."""
         with self.lock:
             events = self.events
             self.events = []

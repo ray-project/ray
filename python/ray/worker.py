@@ -2005,10 +2005,14 @@ def disconnect(worker=global_worker):
     # the remote functions will be exported. This is mostly relevant for the
     # tests.
     if worker.connected:
-        # Shutdown all of the threads that we've started.
+        # Shutdown all of the threads that we've started. TODO(rkn): This
+        # should be handled cleanly in the worker object's destructor and not
+        # in this disconnect method.
         worker.threads_stopped.set()
-        worker.import_thread.join_import_thread()
-        worker.profiler.join_flush_thread()
+        if hasattr(worker, "import_thread"):
+            worker.import_thread.join_import_thread()
+        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
+            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):
