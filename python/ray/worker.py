@@ -1530,19 +1530,6 @@ def shutdown(worker=global_worker):
     will need to reload the module.
     """
     disconnect(worker)
-    if hasattr(worker, "raylet_client"):
-        del worker.raylet_client
-    if hasattr(worker, "plasma_client"):
-        worker.plasma_client.disconnect()
-
-    # Shutdown all of the threads that we've started.
-    worker.threads_stopped.set()
-    worker.import_thread.join_import_thread()
-    worker.profiler.join_flush_thread()
-    worker.listener_thread.join()
-    worker.printer_thread.join()
-    if worker.logger_thread is not None:
-        worker.logger_thread.join()
 
     # Shut down the Ray processes.
     global _global_node
@@ -2019,10 +2006,25 @@ def disconnect(worker=global_worker):
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the
     # tests.
+    if worker.connected:
+        # Shutdown all of the threads that we've started.
+        worker.threads_stopped.set()
+        worker.import_thread.join_import_thread()
+        worker.profiler.join_flush_thread()
+        worker.listener_thread.join()
+        worker.printer_thread.join()
+        if worker.logger_thread is not None:
+            worker.logger_thread.join()
+
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
+
+    if hasattr(worker, "raylet_client"):
+        del worker.raylet_client
+    if hasattr(worker, "plasma_client"):
+        worker.plasma_client.disconnect()
 
 
 @contextmanager
