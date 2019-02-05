@@ -54,11 +54,16 @@ def ray_start_cluster():
 
 @pytest.fixture()
 def two_node_cluster():
+    internal_config = json.dumps({
+        "initial_reconstruction_timeout_milliseconds": 200,
+        "num_heartbeats_timeout": 10,
+    })
     cluster = ray.test.cluster_utils.Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=1)
+        remote_node = cluster.add_node(
+            num_cpus=1, _internal_config=internal_config)
     ray.init(redis_address=cluster.redis_address)
-    yield cluster
+    yield cluster, remote_node
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -81,6 +86,69 @@ def head_node_cluster(request):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.fixture
+def ray_checkpointable_actor_cls(request):
+    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
+    if not os.path.isdir(checkpoint_dir):
+        os.mkdir(checkpoint_dir)
+
+    class CheckpointableActor(ray.actor.Checkpointable):
+        def __init__(self):
+            self.value = 0
+            self.resumed_from_checkpoint = False
+            self.checkpoint_dir = checkpoint_dir
+
+        def local_plasma(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get(self):
+            return self.value
+
+        def was_resumed_from_checkpoint(self):
+            return self.resumed_from_checkpoint
+
+        def get_pid(self):
+            return os.getpid()
+
+        def should_checkpoint(self, checkpoint_context):
+            # Checkpoint the actor when value is increased to 3.
+            should_checkpoint = self.value == 3
+            return should_checkpoint
+
+        def save_checkpoint(self, actor_id, checkpoint_id):
+            actor_id, checkpoint_id = actor_id.hex(), checkpoint_id.hex()
+            # Save checkpoint into a file.
+            with open(self.checkpoint_dir + actor_id, "a+") as f:
+                print(checkpoint_id, self.value, file=f)
+
+        def load_checkpoint(self, actor_id, available_checkpoints):
+            actor_id = actor_id.hex()
+            filename = self.checkpoint_dir + actor_id
+            # Load checkpoint from the file.
+            if not os.path.isfile(filename):
+                return None
+
+            with open(filename, "r") as f:
+                lines = f.readlines()
+                checkpoint_id, value = lines[-1].split(" ")
+                self.value = int(value)
+                self.resumed_from_checkpoint = True
+                checkpoint_id = ray.ActorCheckpointID(
+                    ray.utils.hex_to_binary(checkpoint_id))
+                assert any(checkpoint_id == checkpoint.checkpoint_id
+                           for checkpoint in available_checkpoints)
+                return checkpoint_id
+
+        def checkpoint_expired(self, actor_id, checkpoint_id):
+            pass
+
+    return CheckpointableActor
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -1464,146 +1532,6 @@ def setup_counter_actor(test_checkpoint=False,
     return actor, ids
 
 
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_checkpointing(two_node_cluster):
-    cluster = two_node_cluster
-    actor, ids = setup_counter_actor(test_checkpoint=True)
-    # Wait for the last task to finish running.
-    ray.get(ids[-1])
-
-    # Kill the corresponding plasma store to get rid of the cached objects.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
-    # Check that the actor restored from a checkpoint.
-    assert ray.get(actor.test_restore.remote())
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(actor.inc.remote())
-    assert x == 101
-    # Check that the number of inc calls since actor initialization is less
-    # than the counter value, since the actor initialized from a
-    # checkpoint.
-    num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-    assert num_inc_calls < x
-
-
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_remote_checkpoint(two_node_cluster):
-    cluster = two_node_cluster
-    actor, ids = setup_counter_actor(test_checkpoint=True)
-
-    # Do a remote checkpoint call and wait for it to finish.
-    ray.get(actor.__ray_checkpoint__.remote())
-
-    # Kill the corresponding plasma store to get rid of the cached objects.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
-    # Check that the actor restored from a checkpoint.
-    assert ray.get(actor.test_restore.remote())
-    # Check that the number of inc calls since actor initialization is
-    # exactly zero, since there could not have been another inc call since
-    # the remote checkpoint.
-    num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-    assert num_inc_calls == 0
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(actor.inc.remote())
-    assert x == 101
-
-
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_lost_checkpoint(two_node_cluster):
-    cluster = two_node_cluster
-    actor, ids = setup_counter_actor(test_checkpoint=True)
-    # Wait for the first fraction of tasks to finish running.
-    ray.get(ids[len(ids) // 10])
-
-    # Kill the corresponding plasma store to get rid of the cached objects.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
-    # Check that the actor restored from a checkpoint.
-    assert ray.get(actor.test_restore.remote())
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(actor.inc.remote())
-    assert x == 101
-    # Check that the number of inc calls since actor initialization is less
-    # than the counter value, since the actor initialized from a
-    # checkpoint.
-    num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-    assert num_inc_calls < x
-    assert 5 < num_inc_calls
-
-
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_checkpoint_exception(two_node_cluster):
-    cluster = two_node_cluster
-    actor, ids = setup_counter_actor(test_checkpoint=True, save_exception=True)
-    # Wait for the last task to finish running.
-    ray.get(ids[-1])
-
-    # Kill the corresponding plasma store to get rid of the cached objects.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(actor.inc.remote())
-    assert x == 101
-    # Check that the number of inc calls since actor initialization is
-    # equal to the counter value, since the actor did not initialize from a
-    # checkpoint.
-    num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-    assert num_inc_calls == x
-    # Check that errors were raised when trying to save the checkpoint.
-    errors = ray.error_info()
-    assert 0 < len(errors)
-    for error in errors:
-        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-
-
-@pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-def test_checkpoint_resume_exception(two_node_cluster):
-    cluster = two_node_cluster
-    actor, ids = setup_counter_actor(
-        test_checkpoint=True, resume_exception=True)
-    # Wait for the last task to finish running.
-    ray.get(ids[-1])
-
-    # Kill the corresponding plasma store to get rid of the cached objects.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
-    # Check that we can submit another call on the actor and get the
-    # correct counter result.
-    x = ray.get(actor.inc.remote())
-    assert x == 101
-    # Check that the number of inc calls since actor initialization is
-    # equal to the counter value, since the actor did not initialize from a
-    # checkpoint.
-    num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
-    assert num_inc_calls == x
-    # Check that an error was raised when trying to resume from the
-    # checkpoint.
-    errors = ray.error_info()
-    assert len(errors) == 1
-    for error in errors:
-        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-
-
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_distributed_handle(two_node_cluster):
     cluster = two_node_cluster
@@ -2385,60 +2313,8 @@ def test_multiple_actor_reconstruction(head_node_cluster):
         assert ray.get(result_id_list) == results
 
 
-def test_actor_checkpointing(ray_start_regular):
-    """Test actor checkpointing and restoring form a checkpoint."""
-
-    @ray.remote(max_reconstructions=2)
-    class CheckpointableActor(ray.actor.Checkpointable):
-        def __init__(self, checkpoint_dir):
-            self.value = 0
-            self.resumed_from_checkpoint = False
-            self.increase_called = False
-            self.checkpoint_dir = checkpoint_dir
-
-        def increase(self):
-            self.increase_called = True
-            self.value += 1
-            return self.value
-
-        def was_resumed_from_checkpoint(self):
-            return self.resumed_from_checkpoint
-
-        def get_pid(self):
-            return os.getpid()
-
-        def should_checkpoint(self, checkpoint_context):
-            # Checkpoint the actor when value is increased to 3.
-            should_checkpoint = self.increase_called and self.value == 3
-            self.increase_called = False
-            return should_checkpoint
-
-        def save_checkpoint(self, actor_id, checkpoint_id):
-            actor_id, checkpoint_id = actor_id.hex(), checkpoint_id.hex()
-            # Save checkpoint into a file.
-            with open(self.checkpoint_dir + actor_id, "w") as f:
-                print(checkpoint_id, self.value, file=f)
-
-        def load_checkpoint(self, actor_id, available_checkpoints):
-            actor_id = actor_id.hex()
-            filename = self.checkpoint_dir + actor_id
-            # Load checkpoint from the file.
-            if not os.path.isfile(filename):
-                return None
-            else:
-                with open(filename, "r") as f:
-                    line = f.readline()
-                    checkpoint_id, value = line.split(" ")
-                    self.value = int(value)
-                    self.resumed_from_checkpoint = True
-                    checkpoint_id = ray.ActorCheckpointID(
-                        ray.utils.hex_to_binary(checkpoint_id))
-                    assert any(checkpoint_id == checkpoint.checkpoint_id
-                               for checkpoint in available_checkpoints)
-                    return checkpoint_id
-
-        def checkpoint_expired(self, actor_id, checkpoint_id):
-            pass
+def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
+    """Test actor checkpointing and restoring from a checkpoint."""
 
     def kill_actor(actor):
         """Kill actor process."""
@@ -2446,27 +2322,197 @@ def test_actor_checkpointing(ray_start_regular):
         os.kill(pid, signal.SIGKILL)
         time.sleep(1)
 
-    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
-    if not os.path.isdir(checkpoint_dir):
-        os.mkdir(checkpoint_dir)
-
-    actor = CheckpointableActor.remote(checkpoint_dir)
-    # Call increase 3 times
+    actor = ray.remote(
+        max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
+    # Call increase 3 times.
+    expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
+        expected += 1
     # Assert that the actor wasn't resumed from a checkpoint.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
-    # kill actor process.
+    # Kill actor process.
     kill_actor(actor)
     # Assert that the actor was resumed from a checkpoint and its value is
     # still correct.
-    assert ray.get(actor.increase.remote()) == 4
+    assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
+    # Submit some more tasks. These should get replayed since they happen after
+    # the checkpoint.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
     # Kill actor again and check that reconstruction still works after the
     # actor resuming from a checkpoint.
     kill_actor(actor)
+    assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+
+def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
+    """Test checkpointing of a remote actor through method invocation."""
+
+    def kill_actor(actor):
+        """Kill actor process."""
+        pid = ray.get(actor.get_pid.remote())
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+
+    @ray.remote(max_reconstructions=2)
+    class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
+        def should_checkpoint(self, checkpoint_context):
+            return False
+
+    actor = RemoteCheckpointableActor.remote()
+    # Call increase 3 times.
+    expected = 0
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Call a checkpoint task.
+    actor.__ray_checkpoint__.remote()
+    # Assert that the actor wasn't resumed from a checkpoint.
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+    # Kill actor process.
+    kill_actor(actor)
+    # Assert that the actor was resumed from a checkpoint and its value is
+    # still correct.
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+    # Submit some more tasks. These should get replayed since they happen after
+    # the checkpoint.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Kill actor again and check that reconstruction still works after the
+    # actor resuming from a checkpoint.
+    kill_actor(actor)
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+
+def test_checkpointing_on_node_failure(two_node_cluster,
+                                       ray_checkpointable_actor_cls):
+    """Test actor checkpointing on a remote node."""
+    # Place the actor on the remote node.
+    cluster, remote_node = two_node_cluster
+    actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
+    actor = actor_cls.remote()
+    while (ray.get(actor.local_plasma.remote()) !=
+           remote_node.plasma_store_socket_name):
+        actor = actor_cls.remote()
+
+    # Call increase several times.
+    expected = 0
+    for _ in range(6):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Assert that the actor wasn't resumed from a checkpoint.
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+    # Kill actor process.
+    cluster.remove_node(remote_node)
+    # Assert that the actor was resumed from a checkpoint and its value is
+    # still correct.
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
+
+
+def test_checkpointing_save_exception(ray_start_regular,
+                                      ray_checkpointable_actor_cls):
+    """Test actor can still be recovered if checkpoints fail to complete."""
+
+    def kill_actor(actor):
+        """Kill actor process."""
+        pid = ray.get(actor.get_pid.remote())
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+
+    @ray.remote(max_reconstructions=2)
+    class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
+        def save_checkpoint(self, actor_id, checkpoint_context):
+            raise Exception("Error during save")
+
+    actor = RemoteCheckpointableActor.remote()
+    # Call increase 3 times.
+    expected = 0
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Assert that the actor wasn't resumed from a checkpoint.
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+    # Kill actor process.
+    kill_actor(actor)
+    # Assert that the actor still wasn't resumed from a checkpoint and its
+    # value is still correct.
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+
+    # Submit some more tasks. These should get replayed since they happen after
+    # the checkpoint.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Kill actor again, and check that reconstruction still works and the actor
+    # wasn't resumed from a checkpoint.
+    kill_actor(actor)
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+
+    # Check that checkpointing errors were pushed to the driver.
+    errors = ray.error_info()
+    assert len(errors) > 0
+    for error in errors:
+        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
+
+
+def test_checkpointing_load_exception(ray_start_regular,
+                                      ray_checkpointable_actor_cls):
+    """Test actor can still be recovered if checkpoints fail to load."""
+
+    def kill_actor(actor):
+        """Kill actor process."""
+        pid = ray.get(actor.get_pid.remote())
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+
+    @ray.remote(max_reconstructions=2)
+    class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
+        def load_checkpoint(self, actor_id, checkpoints):
+            raise Exception("Error during load")
+
+    actor = RemoteCheckpointableActor.remote()
+    # Call increase 3 times.
+    expected = 0
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Assert that the actor wasn't resumed from a checkpoint.
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+    # Kill actor process.
+    kill_actor(actor)
+    # Assert that the actor still wasn't resumed from a checkpoint and its
+    # value is still correct.
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+
+    # Submit some more tasks. These should get replayed since they happen after
+    # the checkpoint.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+        expected += 1
+    # Kill actor again, and check that reconstruction still works and the actor
+    # wasn't resumed from a checkpoint.
+    kill_actor(actor)
+    assert ray.get(actor.get.remote()) == expected
+    assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
+
+    # Check that checkpointing errors were pushed to the driver.
+    errors = ray.error_info()
+    assert len(errors) > 0
+    for error in errors:
+        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
 @pytest.mark.parametrize(
