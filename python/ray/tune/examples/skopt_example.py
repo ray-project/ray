@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
 
     config = {
-        "skopt": {
+        "skopt_exp": {
             "run": "exp",
             "num_samples": 10 if args.smoke_test else 50,
             "config": {
@@ -48,9 +48,9 @@ if __name__ == '__main__':
             },
         }
     }
-    optimizer = Optimizer([(-2,2),(-2,2)])
+    optimizer = Optimizer([(0,20),(-100,100)], "ET", acq_optimizer="sampling")
     algo = SkoptSearch(
-        optimizer, ["height", "width"],
+        optimizer, ["width", "height"],
         max_concurrent=4, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(config, search_alg=algo, scheduler=scheduler)
