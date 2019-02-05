@@ -17,6 +17,8 @@ RESULT_FILE=$ROOT_DIR/"results-$(date '+%Y-%m-%d_%H-%M-%S').log"
 
 echo "Testing on latest version of Ray: $RAY_VERSION"
 echo "Logging to" $RESULT_FILE
+echo $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem || true
+
 touch $RESULT_FILE
 
 # This function identifies the right string for the Ray wheel.

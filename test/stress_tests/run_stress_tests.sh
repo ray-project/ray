@@ -3,9 +3,12 @@
 # Show explicitly which commands are currently running.
 set -x
 
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 RESULT_FILE=$ROOT_DIR/results-$(date '+%Y-%m-%d_%H-%M-%S').log
 echo "Logging to" $RESULT_FILE
+echo $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem || true
+
 touch $RESULT_FILE
 
 run_test(){
