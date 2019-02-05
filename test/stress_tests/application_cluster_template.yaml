@@ -89,6 +89,7 @@ setup_commands:
     - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
     - rllib || pip install -U <<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
     - pip install -U tensorflow-gpu
+    - echo "sudo halt" | at now + 60 minutes
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
