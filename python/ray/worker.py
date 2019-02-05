@@ -34,8 +34,7 @@ import ray.signature
 import ray.tempfile_services as tempfile_services
 import ray.ray_constants as ray_constants
 from ray import import_thread
-from ray import (UniqueID, ObjectID, DriverID, ActorID, ActorHandleID,
-                 FunctionID, ActorClassID, ClientID, TaskID)
+from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
@@ -1100,10 +1099,7 @@ def _initialize_serialization(driver_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
-    for id_type in [
-            UniqueID, ObjectID, DriverID, ActorID, ActorHandleID, FunctionID,
-            ActorClassID, ClientID, TaskID
-    ]:
+    for id_type in ray._ID_TYPES:
         serialization_context.register_type(
             id_type,
             "{}.{}".format(id_type.__module__, id_type.__name__),
