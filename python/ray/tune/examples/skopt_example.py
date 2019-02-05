@@ -9,7 +9,7 @@ from __future__ import print_function
 import ray
 from ray.tune import run_experiments, register_trainable
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest import SkoptSearch
+from ray.tune.suggest import SkOptSearch
 
 
 def easy_objective(config, reporter):
@@ -49,7 +49,7 @@ if __name__ == '__main__':
         }
     }
     optimizer = Optimizer([(0,20),(-100,100)], "ET", acq_optimizer="sampling")
-    algo = SkoptSearch(
+    algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4, reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")

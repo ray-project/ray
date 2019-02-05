@@ -14,7 +14,7 @@ except Exception:
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
-class SkoptSearch(SuggestionAlgorithm):
+class SkOptSearch(SuggestionAlgorithm):
     """A wrapper around skopt to provide trial suggestions.
 
     Requires skopt to be installed.
@@ -41,7 +41,7 @@ class SkoptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     }
         >>> }
-        >>> algo = SkoptSearch(optimizer, ["width", "height"], max_concurrent=4,
+        >>> algo = SkOptSearch(optimizer, ["width", "height"], max_concurrent=4,
         >>>     reward_attr="neg_mean_loss")
     """
 
@@ -51,14 +51,15 @@ class SkoptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        assert skopt is not None, "skopt must be installed! You can install Skopt with the command: `pip install scikit-optimize`."
+        assert skopt is not None, """skopt must be installed! 
+            You can install Skopt with the command: `pip install scikit-optimize`."""
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
         self._reward_attr = reward_attr
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
-        super(SkoptSearch, self).__init__(**kwargs)
+        super(SkOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
