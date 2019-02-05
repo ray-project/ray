@@ -1964,8 +1964,6 @@ def connect(info,
                 args=(worker.redis_client, worker.threads_stopped))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
-        else:
-            worker.logger_thread = None
 
     # If we are using the raylet code path and we are not in local mode, start
     # a background thread to periodically flush profiling data to the GCS.
@@ -2011,10 +2009,13 @@ def disconnect(worker=global_worker):
         worker.threads_stopped.set()
         worker.import_thread.join_import_thread()
         worker.profiler.join_flush_thread()
-        worker.listener_thread.join()
-        worker.printer_thread.join()
-        if worker.logger_thread is not None:
+        if hasattr(worker, "listener_thread"):
+            worker.listener_thread.join()
+        if hasattr(worker, "printer_thread"):
+            worker.printer_thread.join()
+        if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
+        worker.threads_stopped.clear()
 
     worker.connected = False
     worker.cached_functions_to_run = []
