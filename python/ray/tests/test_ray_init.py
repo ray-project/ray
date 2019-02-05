@@ -7,7 +7,7 @@ import pytest
 import redis
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 
 
 @pytest.fixture

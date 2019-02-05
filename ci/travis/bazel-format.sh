@@ -43,7 +43,7 @@ while [[ $# > 0 ]]; do
   shift
 done
 
-pushd $ROOT_DIR/..
+pushd $ROOT_DIR/../..
 BAZEL_FILES="bazel/BUILD bazel/BUILD.plasma bazel/ray.bzl BUILD.bazel WORKSPACE"
-buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES 
+buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES
 popd

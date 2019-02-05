@@ -14,8 +14,8 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
-import ray.test.test_utils
-import ray.test.cluster_utils
+import ray.tests.utils
+import ray.tests.cluster_utils
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def shutdown_only():
 
 @pytest.fixture()
 def ray_start_cluster():
-    cluster = ray.test.cluster_utils.Cluster()
+    cluster = ray.tests.cluster_utils.Cluster()
     yield cluster
 
     # The code after the yield will run as teardown code.
@@ -58,7 +58,7 @@ def two_node_cluster():
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     })
-    cluster = ray.test.cluster_utils.Cluster()
+    cluster = ray.tests.cluster_utils.Cluster()
     for _ in range(2):
         remote_node = cluster.add_node(
             num_cpus=1, _internal_config=internal_config)
@@ -73,7 +73,7 @@ def two_node_cluster():
 @pytest.fixture
 def head_node_cluster(request):
     timeout = getattr(request, "param", 200)
-    cluster = ray.test.cluster_utils.Cluster(
+    cluster = ray.tests.cluster_utils.Cluster(
         initialize_head=True,
         connect=True,
         head_node_args={
@@ -418,7 +418,7 @@ def test_actor_class_name(ray_start_regular):
     assert len(actor_keys) == 1
     actor_class_info = r.hgetall(actor_keys[0])
     assert actor_class_info[b"class_name"] == b"Foo"
-    assert actor_class_info[b"module"] == b"actor_test"
+    assert actor_class_info[b"module"] == b"ray.tests.test_actor"
 
 
 def test_multiple_return_values(ray_start_regular):
@@ -483,13 +483,13 @@ def test_actor_deletion(ray_start_regular):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.test.test_utils.wait_for_pid_to_exit(pid)
+    ray.tests.utils.wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.test.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [ray.tests.utils.wait_for_pid_to_exit(pid) for pid in pids]
 
     @ray.remote
     class Actor(object):

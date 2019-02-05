@@ -9,21 +9,21 @@ echo "PYTHON is $PYTHON"
 
 if [[ "$PYTHON" == "2.7" ]]; then
 
-  pushd "$ROOT_DIR/../python"
+  pushd "$ROOT_DIR/../../python"
     python setup.py install --user
   popd
 
 elif [[ "$PYTHON" == "3.5" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
-  pushd "$ROOT_DIR/../python"
+  pushd "$ROOT_DIR/../../python"
     python setup.py install --user
   popd
 
 elif [[ "$LINT" == "1" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
-  pushd "$ROOT_DIR/../python"
+  pushd "$ROOT_DIR/../../python"
     python setup.py install --user
   popd
 
