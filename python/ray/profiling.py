@@ -99,24 +99,16 @@ class Profiler(object):
         # the local scheduler client. This should be ok because it doesn't read
         # from the local scheduler client and we have the GIL here. However,
         # if either of those things changes, then we could run into issues.
-        try:
-            while True:
-                # Sleep for 1 second. This will be interrupted if
-                # self.threads_stopped is set.
-                self.threads_stopped.wait(timeout=1)
+        while True:
+            # Sleep for 1 second. This will be interrupted if
+            # self.threads_stopped is set.
+            self.threads_stopped.wait(timeout=1)
 
-                # Exit if we received a signal that we should stop.
-                if self.threads_stopped.is_set():
-                    return
+            # Exit if we received a signal that we should stop.
+            if self.threads_stopped.is_set():
+                return
 
-                self.flush_profile_data()
-        except AttributeError:
-            # TODO(suquark): It is a bad idea to ignore "AttributeError".
-            # It has caused some very unexpected behaviors when implementing
-            # new features (related to AttributeError).
-
-            # This is to suppress errors that occur at shutdown.
-            pass
+            self.flush_profile_data()
 
     def flush_profile_data(self):
         """Push the logged profiling data to the global control store.

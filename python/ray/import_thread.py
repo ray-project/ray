@@ -5,8 +5,6 @@ from __future__ import print_function
 import threading
 import traceback
 
-import redis
-
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
@@ -63,31 +61,26 @@ class ImportThread(object):
                 num_imported += 1
                 self._process_key(key)
 
-        try:
-            while True:
-                # Exit if we received a signal that we should stop.
-                if self.threads_stopped.is_set():
-                    return
+        while True:
+            # Exit if we received a signal that we should stop.
+            if self.threads_stopped.is_set():
+                return
 
-                msg = import_pubsub_client.get_message()
-                if msg is None:
-                    self.threads_stopped.wait(timeout=0.01)
+            msg = import_pubsub_client.get_message()
+            if msg is None:
+                self.threads_stopped.wait(timeout=0.01)
+                continue
+
+            with self.worker.lock:
+                if msg["type"] == "subscribe":
                     continue
-
-                with self.worker.lock:
-                    if msg["type"] == "subscribe":
-                        continue
-                    assert msg["data"] == b"rpush"
-                    num_imports = self.redis_client.llen("Exports")
-                    assert num_imports >= num_imported
-                    for i in range(num_imported, num_imports):
-                        num_imported += 1
-                        key = self.redis_client.lindex("Exports", i)
-                        self._process_key(key)
-        except redis.ConnectionError:
-            # When Redis terminates the listen call will throw a
-            # ConnectionError, which we catch here.
-            pass
+                assert msg["data"] == b"rpush"
+                num_imports = self.redis_client.llen("Exports")
+                assert num_imports >= num_imported
+                for i in range(num_imported, num_imports):
+                    num_imported += 1
+                    key = self.redis_client.lindex("Exports", i)
+                    self._process_key(key)
 
     def _process_key(self, key):
         """Process the given export key from redis."""
