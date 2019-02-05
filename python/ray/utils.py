@@ -276,9 +276,10 @@ def setup_logger(logging_level, logging_format):
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
     global _default_handler
-    _default_handler = logging.StreamHandler()
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler()
+        logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
-    logger.addHandler(_default_handler)
     logger.propagate = False
 
 
