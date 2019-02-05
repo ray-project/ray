@@ -322,7 +322,7 @@ class RayTrialExecutor(TrialExecutor):
             status = "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
-            customs = ",".join([
+            customs = ", ".join([
                 "{}/{} {}".format(
                     self._committed_resources.get_res_total(name),
                     self._avail_resources.get_res_total(name), name)
