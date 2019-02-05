@@ -6,8 +6,6 @@ import numpy as np
 import copy
 import logging
 
-import pdb
-
 try:
     import skopt
 except Exception:
@@ -33,7 +31,7 @@ class SkoptSearch(SuggestionAlgorithm):
 
     Example:
         >>> from skopt import Optimizer
-        >>> optimizer = Optimizer([(-2.0, 2.0)])
+        >>> optimizer = Optimizer([(0,20),(-100,100)], "ET", acq_optimizer="sampling")
         >>> config = {
         >>>     "my_exp": {
         >>>         "run": "exp",
@@ -43,8 +41,8 @@ class SkoptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     }
         >>> }
-        >>> algo = SkoptSearch(
-        >>>     optimizer, ["length"], max_concurrent=4, reward_attr="neg_mean_loss")
+        >>> algo = SkoptSearch(optimizer, ["width", "height"], max_concurrent=4,
+        >>>     reward_attr="neg_mean_loss")
     """
 
     def __init__(self,
@@ -53,7 +51,7 @@ class SkoptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        assert skopt is not None, "skopt must be installed!"
+        assert skopt is not None, "skopt must be installed! You can install Skopt with the command: `pip install scikit-optimize`."
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
