@@ -28,6 +28,7 @@ class StatusReporter(object):
         self._lock = threading.Lock()
         self._error = None
         self._done = False
+        self._iteration = 0
 
     def __call__(self, **kwargs):
         """Report updated training status.
@@ -44,7 +45,7 @@ class StatusReporter(object):
 
         with self._lock:
             self._latest_result = self._last_result = kwargs.copy()
-        # TODO: add counter for __call__
+        self._iteration += 1
 
     def _get_and_clear_status(self):
         if self._error:
@@ -60,9 +61,7 @@ class StatusReporter(object):
         with self._lock:
             res = self._latest_result
             self._latest_result = None
-
-            res["training_iteration"]
-
+            res["training_iteration"] = self._iteration
             return res
 
     def _stop(self):

@@ -20,7 +20,8 @@ import ray
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
-                             EPISODES_THIS_ITER, EPISODES_TOTAL)
+                             EPISODES_THIS_ITER, EPISODES_TOTAL,
+                             TRAINING_ITERATION)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -181,8 +182,7 @@ class Trainable(object):
         # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
         result.setdefault(EPISODES_TOTAL, self._episodes_total)
-
-        result.setdefault("training_iteration", self._iteration) # TODO:
+        result.setdefault(TRAINING_ITERATION, self._iteration)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
         if result.get("mean_loss"):
@@ -193,7 +193,6 @@ class Trainable(object):
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
-            # training_iteration=self._iteration, # after setdefault, don't need this line anymore
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
