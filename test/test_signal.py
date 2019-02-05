@@ -183,8 +183,9 @@ def test_actor_crash_init(ray_start):
 
 
 def test_actor_crash_init2(ray_start):
-    # Get errors when (1) __init__ fails, and (2) subsequently when ray.get() is
-    # called on the return parameter of another method of the actor.
+    # Get errors when (1) __init__ fails, and (2) subsequently when
+    # ray.get() is called on the return parameter of another method
+    # of the actor.
 
     @ray.remote
     class ActorCrashInit(object):
@@ -275,9 +276,9 @@ def test_send_signals_from_actor_to_actor(ray_start):
 
 
 def test_forget(ray_start):
-    # Send "count" signals on behalf of an actor, then ignore all these signals,
-    # and then send anther "count" signals on behalf of the same actor. Then
-    # show that the driver only gets the last "count" signals.
+    # Send "count" signals on behalf of an actor, then ignore all these
+    # signals, and then send anther "count" signals on behalf of the same
+    # actor. Then show that the driver only gets the last "count" signals.
 
     @ray.remote
     class ActorSendSignals(object):
@@ -296,5 +297,3 @@ def test_forget(ray_start):
     ray.get(a.send_signals.remote(signal_value, count))
     result_list = signal.receive([a], timeout=10)
     assert len(result_list) == count
-    # for i in range(count):
-    #    assert signal_value + str(i) == (result_list[i][1]).value()
