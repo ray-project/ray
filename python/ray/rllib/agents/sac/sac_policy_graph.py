@@ -85,10 +85,10 @@ class SACPolicyGraph(TFPolicyGraph):
             tf.float32, (None, *action_shape), name="actions")
 
         self._rewards_ph = tf.placeholder(
-            tf.float32, (None), name="rewards")
+            tf.float32, (None, ), name="rewards")
 
         self._terminals_ph = tf.placeholder(
-            tf.bool, (None), name="terminals")
+            tf.bool, (None, ), name="terminals")
 
     def _init_models(self, observation_space, action_space):
         """Initialize models for value-functions and policy."""
@@ -121,34 +121,38 @@ class SACPolicyGraph(TFPolicyGraph):
         actions = self.policy.actions([self._observations_ph])
         log_pis = self.policy.log_pis([self._observations_ph], actions)
 
-#        assert log_pis.shape.as_list() == [None, 1]
+        assert log_pis.shape.as_list() == [None, 1]
 
         Q_log_targets = self.Q([self._observations_ph, actions])
 
-        # assert self._reparameterize
-
         policy_kl_losses = self.alpha * log_pis - Q_log_targets
 
-#        assert policy_kl_losses.shape.as_list() == [None, 1]
+        assert policy_kl_losses.shape.as_list() == [None, 1]
 
         self.policy_loss = tf.reduce_mean(policy_kl_losses)
 
-    def _init_critic_loss(self):
+    def _get_Q_target(self):
         next_actions = self.policy.actions([self._next_observations_ph])
         next_log_pis = self.policy.log_pis(
             [self._next_observations_ph], next_actions)
 
         next_Q_values = self.Q([self._next_observations_ph, next_actions])
-        next_values = next_Q_values - self.alpha * next_log_pis
 
+        next_values = next_Q_values - self.alpha * next_log_pis
         discount = self.config['gamma']
 
-        Q_targets = tf.stop_gradient(
-            self._rewards_ph
+        # td target
+        Q_targets = (
+            self._rewards_ph[:, None]
             + discount
-            * (1.0 - tf.to_float(self._terminals_ph)) * next_values)
+            * (1.0 - tf.to_float(self._terminals_ph[:, None])) * next_values)
 
-#        assert Q_targets.shape.as_list() == [None, 1]
+        return Q_targets
+
+    def _init_critic_loss(self):
+        Q_targets = tf.stop_gradient(self._get_Q_target())
+
+        assert Q_targets.shape.as_list() == [None, 1]
 
         Q_values = self.Q([self._observations_ph, self._actions_ph])
         self.Q_loss = tf.losses.mean_squared_error(
