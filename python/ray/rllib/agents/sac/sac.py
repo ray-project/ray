@@ -68,10 +68,19 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     "optimization": {
-        # Learning rate for adam optimizer
-        "policy_lr": 3e-4,
-        "Q_lr": 3e-4,
-        "entropy_lr": 3e-4,
+        # Learning rate for adam optimizer. Note: SAC currently only uses
+        # a single optimizer for all the three losses (policy, Q, and entropy).
+        # The "learning rate" of these are controlled with the loss weights
+        # below. TODO(hartikainen): I think these should eventually use their
+        # own optimizers for two reasons: 1) controlling the learning rate
+        # seems a more "standard" and direct way of controlling the learning
+        # rates, and 2) sharing the optimizers decouples all the three models
+        # to each other.
+        'learning_rate': 3e-4,
+
+        'policy_loss_weight': 1.0,
+        'Q_loss_weight': 1.0,
+        'entropy_loss_weight': 1.0,
     },
     # If not None, clip gradients during optimization at this value
     # TODO(hartikainen): Make sure this works or remove the option.

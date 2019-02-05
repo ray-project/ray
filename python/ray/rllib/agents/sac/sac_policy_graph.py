@@ -177,48 +177,36 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_critic_loss()
         self._init_entropy_loss()
 
+        config = self.config['optimization']
+
         self.total_loss = (
-            self.policy_loss
-            + self.Q_loss
-            + self.entropy_loss)
+            config['policy_loss_weight'] * self.policy_loss
+            + config['Q_loss_weight'] * self.Q_loss
+            + config['entropy_loss_weight'] * self.entropy_loss)
 
     @override(TFPolicyGraph)
     def optimizer(self):
-        config = self.config['optimization']
-
-        entropy_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["entropy_lr"])
-        policy_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["policy_lr"])
-        Q_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["Q_lr"])
-
-        optimizers = {
-            'entropy': entropy_optimizer,
-            'policy': policy_optimizer,
-            'Q': Q_optimizer,
-        }
-
-        return optimizers
+        optimizer = tf.train.AdamOptimizer(
+            learning_rate=self.config['optimization']["learning_rate"])
+        return optimizer
 
     @override(TFPolicyGraph)
-    def gradients(self, optimizers):
-        entropy_optimizer = optimizers['entropy']
-        policy_optimizer = optimizers['policy']
-        Q_optimizer = optimizers['Q']
-
-        policy_grads_and_vars = policy_optimizer.compute_gradients(
+    def gradients(self, optimizer):
+        policy_grads_and_vars = optimizer.compute_gradients(
             self.policy_loss, var_list=self.policy.trainable_variables)
-        Q_grads_and_vars = Q_optimizer.compute_gradients(
+        Q_grads_and_vars = optimizer.compute_gradients(
             self.Q_loss, var_list=self.Q.trainable_variables)
-        entropy_grads_and_vars = entropy_optimizer.compute_gradients(
+        entropy_grads_and_vars = optimizer.compute_gradients(
             self.entropy_loss, var_list=self.log_alpha)
 
-        grads_and_vars = {
-            'entropy': entropy_grads_and_vars,
-            'policy': policy_grads_and_vars,
-            'Q': Q_grads_and_vars,
-        }
+        grads_and_vars = (
+            policy_grads_and_vars
+            + Q_grads_and_vars
+            + entropy_grads_and_vars)
+
+        grads_and_vars = tuple(
+            grad_and_var for grad_and_var in grads_and_vars
+            if grad_and_var is not None)
 
         return grads_and_vars
 
