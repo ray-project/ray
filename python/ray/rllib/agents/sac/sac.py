@@ -44,7 +44,7 @@ DEFAULT_CONFIG = with_common_config({
     # Update the target network every `target_update_interval` steps.
     "target_update_interval": 1,
     # Update the target by \tau * policy + (1-\tau) * target_policy
-    "tau": 2e-3,
+    "tau": 5e-3,
 
     # Target entropy lower bound. This is the inverse of reward scale,
     # and will be optimized automatically.
