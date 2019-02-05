@@ -2539,10 +2539,7 @@ def test_inline_objects(shutdown_only):
         inline_object = a.create_inline_object.remote()
         ray.get(inline_object)
         plasma_id = ray.pyarrow.plasma.ObjectID(inline_object.binary())
-        # This while loop is necessary because sometimes the object is still
-        # there immediately after plasma_client.delete.
-        while ray.worker.global_worker.plasma_client.contains(plasma_id):
-            ray.worker.global_worker.plasma_client.delete([plasma_id])
+        ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Make sure we can still get an inlined object created by an actor even
         # after it has been evicted.
         try:
