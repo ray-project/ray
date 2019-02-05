@@ -1,6 +1,6 @@
 """This test checks that the Trial Runner is functional.
 
-Specifically, it checks that the logging mechanisms are 
+Specifically, it checks that the logging mechanisms are
 functional and accurate.
 """
 from __future__ import absolute_import
@@ -12,12 +12,8 @@ from ray.tune import run_experiments, register_trainable
 
 
 def easy_objective(config, reporter):
-    import time
     for i in range(config["iterations"]):
-        reporter(
-            itr=i,
-            done=i==99
-        )
+        reporter(itr=i, done=i == 99)
 
 
 if __name__ == '__main__':
