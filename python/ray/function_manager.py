@@ -510,8 +510,7 @@ class FunctionActorManager(object):
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names,
-                           checkpoint_interval):
+    def export_actor_class(self, Class, actor_method_names):
         function_descriptor = FunctionDescriptor.from_class(Class)
         # `task_driver_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
@@ -528,7 +527,6 @@ class FunctionActorManager(object):
             "class_name": Class.__name__,
             "module": Class.__module__,
             "class": pickle.dumps(Class),
-            "checkpoint_interval": checkpoint_interval,
             "driver_id": driver_id.binary(),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
@@ -576,17 +574,16 @@ class FunctionActorManager(object):
             actor_class_key: The key in Redis to use to fetch the actor.
         """
         actor_id = self._worker.actor_id
-        (driver_id_str, class_name, module, pickled_class, checkpoint_interval,
+        (driver_id_str, class_name, module, pickled_class,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [
                  "driver_id", "class_name", "module", "class",
-                 "checkpoint_interval", "actor_method_names"
+                 "actor_method_names"
              ])
 
         class_name = decode(class_name)
         module = decode(module)
         driver_id = ray.DriverID(driver_id_str)
-        checkpoint_interval = int(checkpoint_interval)
         actor_method_names = json.loads(decode(actor_method_names))
 
         # In Python 2, json loads strings as unicode, so convert them back to
@@ -605,7 +602,6 @@ class FunctionActorManager(object):
             pass
 
         self._worker.actors[actor_id] = TemporaryActor()
-        self._worker.actor_checkpoint_interval = checkpoint_interval
 
         def temporary_actor_method(*xs):
             raise Exception(
@@ -694,31 +690,6 @@ class FunctionActorManager(object):
             # to execute.
             self._worker.actor_task_counter += 1
 
-            # If this is the first task to execute on the actor, try to resume
-            # from a checkpoint.
-            # Current __init__ will be called by default. So the real function
-            # call will start from 2.
-            if actor_imported and self._worker.actor_task_counter == 2:
-                checkpoint_resumed = ray.actor.restore_and_log_checkpoint(
-                    self._worker, actor)
-                if checkpoint_resumed:
-                    # NOTE(swang): Since we did not actually execute the
-                    # __init__ method, this will put None as the return value.
-                    # If the __init__ method is supposed to return multiple
-                    # values, an exception will be logged.
-                    return
-
-            # Determine whether we should checkpoint the actor.
-            checkpointing_on = (actor_imported
-                                and self._worker.actor_checkpoint_interval > 0)
-            # We should checkpoint the actor if user checkpointing is on, we've
-            # executed checkpoint_interval tasks since the last checkpoint, and
-            # the method we're about to execute is not a checkpoint.
-            save_checkpoint = (checkpointing_on
-                               and (self._worker.actor_task_counter %
-                                    self._worker.actor_checkpoint_interval == 0
-                                    and method_name != "__ray_checkpoint__"))
-
             # Execute the assigned method and save a checkpoint if necessary.
             try:
                 if is_class_method(method):
@@ -728,14 +699,71 @@ class FunctionActorManager(object):
             except Exception:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown.
-                if save_checkpoint:
-                    ray.actor.save_and_log_checkpoint(self._worker, actor)
+                if isinstance(actor, ray.actor.Checkpointable):
+                    self._save_and_log_checkpoint(actor, method_name)
                 raise
             else:
-                # Save the checkpoint before returning the method's return
-                # values.
-                if save_checkpoint:
-                    ray.actor.save_and_log_checkpoint(self._worker, actor)
+                # Handle any checkpointing operations before storing the
+                # method's return values.
+                if isinstance(actor, ray.actor.Checkpointable):
+                    # If this is the first task to execute on the actor, try to
+                    # resume from a checkpoint.
+                    if self._worker.actor_task_counter == 1:
+                        if actor_imported:
+                            self._restore_and_log_checkpoint(
+                                actor, method_name)
+                    else:
+                        # Save the checkpoint before returning the method's
+                        # return values.
+                        self._save_and_log_checkpoint(actor, method_name)
                 return method_returns
 
         return actor_method_executor
+
+    def _save_and_log_checkpoint(self, actor, method_name):
+        actor_id = self._worker.actor_id
+        checkpoint_info = self._worker.actor_checkpoint_info[actor_id]
+        checkpoint_info.num_tasks_since_last_checkpoint += 1
+        now = int(1000 * time.time())
+        checkpoint_context = ray.actor.CheckpointContext(
+            actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
+            now - checkpoint_info.last_checkpoint_timestamp)
+        # If `should_checkpoint` returns True and the method we're about
+        # to execute is not itself a checkpoint, notify raylet to
+        # prepare a checkpoint and then call `save_checkpoint`.
+        should_checkpoint = (actor.should_checkpoint(checkpoint_context)
+                             and method_name != "__ray_checkpoint__")
+
+        if should_checkpoint:
+            try:
+                self._worker._save_actor_checkpoint()
+            except Exception as e:
+                # Checkpoint save or reload failed. Notify the driver.
+                traceback_str = ray.utils.format_error_message(
+                    traceback.format_exc())
+                ray.utils.push_error_to_driver(
+                    self._worker,
+                    ray_constants.CHECKPOINT_PUSH_ERROR,
+                    traceback_str,
+                    driver_id=self._worker.task_driver_id,
+                    data={
+                        "actor_class": actor.__class__.__name__,
+                        "function_name": method_name,
+                    })
+
+    def _restore_and_log_checkpoint(self, actor, method_name):
+        try:
+            self._worker._restore_actor_checkpoint()
+        except Exception as e:
+            # Checkpoint save or reload failed. Notify the driver.
+            traceback_str = ray.utils.format_error_message(
+                traceback.format_exc())
+            ray.utils.push_error_to_driver(
+                self._worker,
+                ray_constants.CHECKPOINT_PUSH_ERROR,
+                traceback_str,
+                driver_id=self._worker.task_driver_id,
+                data={
+                    "actor_class": actor.__class__.__name__,
+                    "function_name": method_name,
+                })

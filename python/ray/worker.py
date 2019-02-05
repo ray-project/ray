@@ -918,6 +918,11 @@ class Worker(object):
             self.actor_id = task.actor_creation_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
+            self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
+                num_tasks_since_last_checkpoint=0,
+                last_checkpoint_timestamp=int(1000 * time.time()),
+                checkpoint_ids=[],
+            )
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
@@ -950,7 +955,6 @@ class Worker(object):
             with profiling.profile("task", extra_data=extra_data, worker=self):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
-                    self._handle_actor_checkpoint(task)
                 # Reset the state fields so the next task can run.
                 self.task_context.current_task_id = TaskID.nil()
                 self.task_context.task_index = 0
@@ -971,66 +975,53 @@ class Worker(object):
             self.raylet_client.disconnect()
             sys.exit(0)
 
-    def _handle_actor_checkpoint(self, task):
-        """Handle actor checkpoint, if the worker is a checkpointable
-        actor.
+    def _restore_actor_checkpoint(self):
+        """Restore an actor from a checkpoint.
+
+        This should only be called on workers that have just executed an actor
+        creation task.
         """
-        is_actor_creation_task = not task.actor_creation_id().is_nil()
-        is_actor_task = not task.actor_id().is_nil()
-        if not is_actor_creation_task and not is_actor_task:
-            return
         actor_id = self.actor_id
         actor = self.actors[actor_id]
-        # An actor that needs checkpointing must inherit from the
-        # `Checkpointable` interface.
-        if not isinstance(actor, ray.actor.Checkpointable):
-            return
+        checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
+        if len(checkpoints) > 0:
+            # If we found previously saved checkpoints for this actor,
+            # call the `load_checkpoint` callback.
+            checkpoint_id = actor.load_checkpoint(actor_id, checkpoints)
+            if checkpoint_id is not None:
+                # Check that the returned checkpoint id is in the
+                # `available_checkpoints` list.
+                msg = ("`load_checkpoint must return a checkpoint id that " +
+                       "exists in the `available_checkpoints` list, or eone.")
+                assert any(checkpoint_id == checkpoint.checkpoint_id
+                           for checkpoint in checkpoints), msg
+                # Notify raylet that this actor has been resumed from
+                # a checkpoint.
+                self.raylet_client.notify_actor_resumed_from_checkpoint(
+                    actor_id, checkpoint_id)
 
-        if is_actor_creation_task:
-            self.actor_checkpoint_info[actor_id] = ActorCheckpointInfo(
-                num_tasks_since_last_checkpoint=0,
-                last_checkpoint_timestamp=int(1000 * time.time()),
-                checkpoint_ids=[],
+    def _save_actor_checkpoint(self):
+        """Save an actor checkpoint.
+
+        Returns:
+            The result of the actor's user-defined `save_checkpoint` method.
+        """
+        actor_id = self.actor_id
+        actor = self.actors[self.actor_id]
+        checkpoint_info = self.actor_checkpoint_info[actor_id]
+        now = int(1000 * time.time())
+        checkpoint_id = self.raylet_client.prepare_actor_checkpoint(actor_id)
+        checkpoint_info.checkpoint_ids.append(checkpoint_id)
+        return_value = actor.save_checkpoint(actor_id, checkpoint_id)
+        if (len(checkpoint_info.checkpoint_ids) >
+                ray._config.num_actor_checkpoints_to_keep()):
+            actor.checkpoint_expired(
+                actor_id,
+                checkpoint_info.checkpoint_ids.pop(0),
             )
-            checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
-            if len(checkpoints) > 0:
-                # If we found previously saved checkpoints for this actor,
-                # call the `load_checkpoint` callback.
-                checkpoint_id = actor.load_checkpoint(actor_id, checkpoints)
-                if checkpoint_id is not None:
-                    # Check that the returned checkpoint id is in the
-                    # `available_checkpoints` list.
-                    msg = (
-                        "`load_checkpoint must return a checkpoint id that " +
-                        "exists in the `available_checkpoints` list, or None.")
-                    assert any(checkpoint_id == checkpoint.checkpoint_id
-                               for checkpoint in checkpoints), msg
-                    # Notify raylet that this actor has been resumed from
-                    # a checkpoint.
-                    self.raylet_client.notify_actor_resumed_from_checkpoint(
-                        actor_id, checkpoint_id)
-        elif is_actor_task:
-            checkpoint_info = self.actor_checkpoint_info[actor_id]
-            checkpoint_info.num_tasks_since_last_checkpoint += 1
-            now = int(1000 * time.time())
-            checkpoint_context = ray.actor.CheckpointContext(
-                actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
-                now - checkpoint_info.last_checkpoint_timestamp)
-            if actor.should_checkpoint(checkpoint_context):
-                # If `should_checkpoint` returns True, notify raylet to prepare
-                # a checkpoint and then call `save_checkpoint`.
-                checkpoint_id = self.raylet_client.prepare_actor_checkpoint(
-                    actor_id)
-                checkpoint_info.checkpoint_ids.append(checkpoint_id)
-                if (len(checkpoint_info.checkpoint_ids) >
-                        ray._config.num_actor_checkpoints_to_keep()):
-                    actor.checkpoint_expired(
-                        actor_id,
-                        checkpoint_info.checkpoint_ids.pop(0),
-                    )
-                actor.save_checkpoint(actor_id, checkpoint_id)
-                checkpoint_info.num_tasks_since_last_checkpoint = 0
-                checkpoint_info.last_checkpoint_timestamp = now
+        checkpoint_info.num_tasks_since_last_checkpoint = 0
+        checkpoint_info.last_checkpoint_timestamp = now
+        return return_value
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
@@ -2464,16 +2455,12 @@ def make_decorator(num_return_vals=None,
                    num_gpus=None,
                    resources=None,
                    max_calls=None,
-                   checkpoint_interval=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
-            if checkpoint_interval is not None:
-                raise Exception("The keyword 'checkpoint_interval' is not "
-                                "allowed for remote functions.")
             if max_reconstructions is not None:
                 raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
@@ -2506,7 +2493,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
                                      resources, actor_method_cpus,
-                                     checkpoint_interval, max_reconstructions)
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2578,7 +2565,7 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', 'checkpoint_interval',"
+                    "'resources', 'max_calls', "
                     "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
@@ -2586,7 +2573,7 @@ def remote(*args, **kwargs):
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "checkpoint_interval", "max_reconstructions"
+            "max_calls", "max_reconstructions"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2603,7 +2590,6 @@ def remote(*args, **kwargs):
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
-    checkpoint_interval = kwargs.get("checkpoint_interval")
     max_reconstructions = kwargs.get("max_reconstructions")
 
     return make_decorator(
@@ -2612,6 +2598,5 @@ def remote(*args, **kwargs):
         num_gpus=num_gpus,
         resources=resources,
         max_calls=max_calls,
-        checkpoint_interval=checkpoint_interval,
         max_reconstructions=max_reconstructions,
         worker=worker)
