@@ -71,6 +71,7 @@ class ImportThread(object):
 
                 msg = import_pubsub_client.get_message()
                 if msg is None:
+                    self.threads_stopped.wait(timeout=0.01)
                     continue
 
                 with self.worker.lock:

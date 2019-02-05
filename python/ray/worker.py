@@ -1590,6 +1590,11 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    # Keep track of the number of consecutive log messages that have been
+    # received with no break in between. If this number grows continually, then
+    # the worker is probably not able to process the log messages as rapidly as
+    # they are coming in.
+    num_consecutive_messages_received = 0
     while True:
         # Exit if we received a signal that we should stop.
         if threads_stopped.is_set():
@@ -1597,8 +1602,18 @@ def print_logs(redis_client, threads_stopped):
 
         msg = pubsub_client.get_message()
         if msg is None:
+            num_consecutive_messages_received = 0
+            threads_stopped.wait(timeout=0.01)
             continue
+        num_consecutive_messages_received += 1
         print(ray.utils.decode(msg["data"]), file=sys.stderr)
+
+        if (num_consecutive_messages_received % 100 == 0
+                and num_consecutive_messages_received > 0):
+            logger.warning(
+                "The driver may not be able to keep up with the stdout/stderr "
+                "of the workers. To avoid forwarding logs to the driver, use "
+                "'ray.init(log_to_driver=False)'.")
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1621,6 +1636,7 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
         try:
             error, t = task_error_queue.get(block=False)
         except queue.Empty:
+            threads_stopped.wait(timeout=0.01)
             continue
         # Delay errors a little bit of time to attempt to suppress redundant
         # messages originating from the worker.
@@ -1672,6 +1688,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
         msg = worker.error_message_pubsub_client.get_message()
         if msg is None:
+            threads_stopped.wait(timeout=0.01)
             continue
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             msg["data"], 0)
