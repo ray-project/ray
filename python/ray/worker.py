@@ -1099,22 +1099,11 @@ def _initialize_serialization(driver_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
-    # Define a custom serializer and deserializer for handling Object IDs.
-    def object_id_custom_serializer(obj):
-        return obj.binary()
-
-    def object_id_custom_deserializer(serialized_obj):
-        return ObjectID(serialized_obj)
-
-    # We register this serializer on each worker instead of calling
-    # register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ObjectID,
-        "ray.ObjectID",
-        pickle=False,
-        custom_serializer=object_id_custom_serializer,
-        custom_deserializer=object_id_custom_deserializer)
+    for id_type in ray._ID_TYPES:
+        serialization_context.register_type(
+            id_type,
+            "{}.{}".format(id_type.__module__, id_type.__name__),
+            pickle=True)
 
     def actor_handle_serializer(obj):
         return obj._serialization_helper(True)
