@@ -117,7 +117,9 @@ class PolicyEvaluator(EvaluatorInterface):
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation_method=None,
-                 output_creator=lambda ioctx: NoopOutput()):
+                 output_creator=lambda ioctx: NoopOutput(),
+                 remote_worker_envs=False,
+                 entangled_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -192,6 +194,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
+            remote_worker_envs (bool): Whether environments should be remote,
+                in another process, and executed in parallel
+            entangled_worker_envs (bool): Whether environments are entangled,
+                physicallky one, logically many
         """
 
         if log_level:
@@ -248,9 +254,14 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.env = wrap(self.env)
 
-        def make_env(vector_index):
+        def make_env(input):
             return wrap(
-                env_creator(env_context.with_vector_index(vector_index)))
+                env_creator(
+                    env_context.align(
+                        vector_index=0 if entangled_worker_envs else input,
+                        entangled_envs_num=input if entangled_worker_envs
+                        else 0,
+                        remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -261,7 +272,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     and not ray.get_gpu_ids()):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
-                            " on CPU (please ignore any CUDA init errors)")
+                    " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -293,7 +304,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
-            self.env, make_env=make_env, num_envs=num_envs)
+            self.env, make_env=make_env, num_envs=num_envs,
+            remote_envs=remote_worker_envs,
+            entangled_envs=entangled_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
