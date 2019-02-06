@@ -249,10 +249,9 @@ class RayTrialExecutor(TrialExecutor):
                 time.sleep(0.5)
 
         if not resources or "CPU" not in resources:
-            raise TuneError(
-                "Cluster resources cannot be detected. "
-                "You can resume this experiment by passing in "
-                "`resume=True` to `run_experiments`.")
+            raise TuneError("Cluster resources cannot be detected. "
+                            "You can resume this experiment by passing in "
+                            "`resume=True` to `run_experiments`.")
 
         num_cpus = resources["CPU"]
         num_gpus = resources["GPU"]
