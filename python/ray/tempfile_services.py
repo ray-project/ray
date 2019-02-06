@@ -1,4 +1,3 @@
-import binascii
 import collections
 import datetime
 import errno
@@ -57,7 +56,7 @@ def try_to_create_directory(directory_path):
         try:
             os.makedirs(directory_path)
         except OSError as e:
-            if e.errno != os.errno.EEXIST:
+            if e.errno != errno.EEXIST:
                 raise e
             logger.warning(
                 "Attempted to create '{}', but the directory already "
@@ -130,7 +129,7 @@ def get_object_store_socket_name():
     return make_inc_temp(prefix="plasma_store", directory_name=sockets_dir)
 
 
-def get_ipython_notebook_path(port):
+def get_ipython_notebook_path():
     """Get a new ipython notebook path"""
 
     notebook_filepath = os.path.join(
@@ -140,11 +139,13 @@ def get_ipython_notebook_path(port):
     notebook_name = make_inc_temp(
         suffix=".ipynb", prefix="ray_ui", directory_name=get_temp_root())
     shutil.copy(notebook_filepath, notebook_name)
-    new_notebook_directory = os.path.dirname(notebook_name)
-    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-    webui_url = ("http://localhost:{}/notebooks/{}?token={}".format(
-        port, os.path.basename(notebook_name), token))
-    return new_notebook_directory, webui_url, token
+    return notebook_name
+
+
+def get_gdb_init_path(process_type):
+    return make_inc_temp(
+        prefix="gdb_init_{}".format(process_type),
+        directory_name=get_temp_root())
 
 
 def new_log_files(name, redirect_output):

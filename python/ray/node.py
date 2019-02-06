@@ -16,7 +16,8 @@ from ray.tempfile_services import (
     get_logs_dir_path, get_object_store_socket_name, get_raylet_socket_name,
     new_log_monitor_log_file, new_monitor_log_file,
     new_raylet_monitor_log_file, new_plasma_store_log_file,
-    new_raylet_log_file, new_webui_log_file, set_temp_root)
+    new_raylet_log_file, new_webui_log_file, set_temp_root,
+    try_to_create_directory)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -61,6 +62,11 @@ class Node(object):
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+        else:
+            redis_client = ray.services.create_redis_client(
+                ray_params.redis_address, ray_params.redis_password)
+            ray_params.include_java = (
+                ray.services.include_java_from_redis(redis_client))
 
         self._ray_params = ray_params
         self._config = (json.loads(ray_params._internal_config)
@@ -101,6 +107,23 @@ class Node(object):
     def raylet_socket_name(self):
         """Get the node's raylet socket name."""
         return self._raylet_socket_name
+
+    def prepare_socket_file(self, socket_path):
+        """Prepare the socket file for raylet and plasma.
+
+        This method helps to prepare a socket file.
+        1. Make the directory if the directory does not exist.
+        2. If the socket file exists, raise exception.
+
+        Args:
+            socket_path (string): the socket file to prepare.
+        """
+        if not os.path.exists(socket_path):
+            path = os.path.dirname(socket_path)
+            if not os.path.isdir(path):
+                try_to_create_directory(path)
+        else:
+            raise Exception("Socket file {} exists!".format(socket_path))
 
     def start_redis(self):
         """Start the Redis servers."""
@@ -155,6 +178,7 @@ class Node(object):
         self._plasma_store_socket_name = (
             self._ray_params.plasma_store_socket_name
             or get_object_store_socket_name())
+        self.prepare_socket_file(self._plasma_store_socket_name)
         stdout_file, stderr_file = (new_plasma_store_log_file(
             self._ray_params.redirect_output))
         process_info = ray.services.start_plasma_store(
@@ -186,6 +210,7 @@ class Node(object):
         # If the user specified a socket name, use it.
         self._raylet_socket_name = (self._ray_params.raylet_socket_name
                                     or get_raylet_socket_name())
+        self.prepare_socket_file(self._raylet_socket_name)
         stdout_file, stderr_file = new_raylet_log_file(
             redirect_output=self._ray_params.redirect_worker_output)
         process_info = ray.services.start_raylet(
@@ -204,7 +229,10 @@ class Node(object):
             use_profiler=use_profiler,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            config=self._config)
+            config=self._config,
+            include_java=self._ray_params.include_java,
+            java_worker_options=self._ray_params.java_worker_options,
+        )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

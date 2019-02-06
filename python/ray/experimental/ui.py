@@ -97,7 +97,7 @@ def get_sliders(update):
         with out_recursion:
             smallest, largest, num_tasks = ray.global_state._job_length()
             diff = largest - smallest
-            if num_tasks is not 0:
+            if num_tasks != 0:
 
                 # Describes the initial values that the slider/text box
                 # values should be set to.

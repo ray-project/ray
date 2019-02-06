@@ -4,6 +4,8 @@ We define different types for different IDs for type safety.
 See https://github.com/ray-project/ray/issues/3721.
 """
 
+# WARNING: Any additional ID types defined in this file must be added to the
+# _ID_TYPES list at the bottom of this file.
 from ray.includes.common cimport (
     CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
     CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
@@ -278,3 +280,7 @@ cdef class ActorClassID(UniqueID):
 
     def __repr__(self):
         return "ActorClassID(" + self.hex() + ")"
+
+
+_ID_TYPES = [UniqueID, ObjectID, TaskID, ClientID, DriverID, ActorID,
+             ActorHandleID, FunctionID, ActorClassID]

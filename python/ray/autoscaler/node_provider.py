@@ -3,8 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import logging
 import os
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def import_aws():
@@ -174,3 +177,14 @@ class NodeProvider(object):
     def terminate_node(self, node_id):
         """Terminates the specified node."""
         raise NotImplementedError
+
+    def terminate_nodes(self, node_ids):
+        """Terminates a set of nodes. May be overridden with a batch method."""
+        for node_id in node_ids:
+            logger.info("NodeProvider: "
+                        "{}: Terminating node".format(node_id))
+            self.terminate_node(node_id)
+
+    def cleanup(self):
+        """Clean-up when a Provider is no longer required."""
+        pass
