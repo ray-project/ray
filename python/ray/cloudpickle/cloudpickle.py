@@ -673,17 +673,17 @@ class CloudPickler(Pickler):
         # save the dict
         dct = func.__dict__
 
-        base_globals = self.globals_ref.get(id(func.__globals__), None)
-        if base_globals is None:
-            # For functions defined in a well behaved module use
-            # vars(func.__module__) for base_globals. This is necessary to
-            # share the global variables across multiple pickled functions from
-            # this module.
-            if func.__module__ is not None:
-                base_globals = func.__module__
-            else:
-                base_globals = {}
-        self.globals_ref[id(func.__globals__)] = base_globals
+        # base_globals represents the future global namespace of func at
+        # unpickling time. Looking it up and storing it in globals_ref allow
+        # functions sharing the same globals at pickling time to also
+        # share them at unpickling time, at one condition: since globals_ref is
+        # an attribute of a Cloudpickler instance, and that a new Pickler is
+        # created each time pickle.dump or pickle.dumps is called, functions
+        # also need to be saved within the same invokation of
+        # pickle.dump/pickle.dumps (for example: pickle.dumps([f1, f2])). There
+        # is no such limitation when using Cloudpickler.dump, as long as the
+        # multiple invokations are bound to the same Cloudpickler.
+        base_globals = self.globals_ref.setdefault(id(func.__globals__), {})
 
         return (code, f_globals, defaults, closure, dct, base_globals)
 
