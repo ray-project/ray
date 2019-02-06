@@ -86,6 +86,11 @@ class Monitor(object):
                             str(e)))
                     self.issue_gcs_flushes = False
 
+    def __del__(self):
+        """Destruct the monitor object."""
+        # We close the pubsub client to avoid leaking file descriptors.
+        self.primary_subscribe_client.close()
+
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
 

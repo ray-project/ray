@@ -1577,30 +1577,34 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
-    # Keep track of the number of consecutive log messages that have been
-    # received with no break in between. If this number grows continually, then
-    # the worker is probably not able to process the log messages as rapidly as
-    # they are coming in.
-    num_consecutive_messages_received = 0
-    while True:
-        # Exit if we received a signal that we should stop.
-        if threads_stopped.is_set():
-            return
+    try:
+        # Keep track of the number of consecutive log messages that have been
+        # received with no break in between. If this number grows continually,
+        # then the worker is probably not able to process the log messages as
+        # rapidly as they are coming in.
+        num_consecutive_messages_received = 0
+        while True:
+            # Exit if we received a signal that we should stop.
+            if threads_stopped.is_set():
+                return
 
-        msg = pubsub_client.get_message()
-        if msg is None:
-            num_consecutive_messages_received = 0
-            threads_stopped.wait(timeout=0.01)
-            continue
-        num_consecutive_messages_received += 1
-        print(ray.utils.decode(msg["data"]), file=sys.stderr)
+            msg = pubsub_client.get_message()
+            if msg is None:
+                num_consecutive_messages_received = 0
+                threads_stopped.wait(timeout=0.01)
+                continue
+            num_consecutive_messages_received += 1
+            print(ray.utils.decode(msg["data"]), file=sys.stderr)
 
-        if (num_consecutive_messages_received % 100 == 0
-                and num_consecutive_messages_received > 0):
-            logger.warning(
-                "The driver may not be able to keep up with the stdout/stderr "
-                "of the workers. To avoid forwarding logs to the driver, use "
-                "'ray.init(log_to_driver=False)'.")
+            if (num_consecutive_messages_received % 100 == 0
+                    and num_consecutive_messages_received > 0):
+                logger.warning(
+                    "The driver may not be able to keep up with the "
+                    "stdout/stderr of the workers. To avoid forwarding logs "
+                    "to the driver, use 'ray.init(log_to_driver=False)'.")
+    finally:
+        # Close the pubsub client to avoid leaking file descriptors.
+        pubsub_client.close()
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1662,40 +1666,44 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
     # worker.error_message_pubsub_client.psubscribe("*")
 
-    # Get the exports that occurred before the call to subscribe.
-    with worker.lock:
-        error_messages = global_state.error_messages(worker.task_driver_id)
-        for error_message in error_messages:
-            logger.error(error_message)
+    try:
+        # Get the exports that occurred before the call to subscribe.
+        with worker.lock:
+            error_messages = global_state.error_messages(worker.task_driver_id)
+            for error_message in error_messages:
+                logger.error(error_message)
 
-    while True:
-        # Exit if we received a signal that we should stop.
-        if threads_stopped.is_set():
-            return
+        while True:
+            # Exit if we received a signal that we should stop.
+            if threads_stopped.is_set():
+                return
 
-        msg = worker.error_message_pubsub_client.get_message()
-        if msg is None:
-            threads_stopped.wait(timeout=0.01)
-            continue
-        gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
-            msg["data"], 0)
-        assert gcs_entry.EntriesLength() == 1
-        error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
-            gcs_entry.Entries(0), 0)
-        job_id = error_data.JobId()
-        if job_id not in [
-                worker.task_driver_id.binary(),
-                DriverID.nil().binary()
-        ]:
-            continue
+            msg = worker.error_message_pubsub_client.get_message()
+            if msg is None:
+                threads_stopped.wait(timeout=0.01)
+                continue
+            gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
+                msg["data"], 0)
+            assert gcs_entry.EntriesLength() == 1
+            error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
+                gcs_entry.Entries(0), 0)
+            job_id = error_data.JobId()
+            if job_id not in [
+                    worker.task_driver_id.binary(),
+                    DriverID.nil().binary()
+            ]:
+                continue
 
-        error_message = ray.utils.decode(error_data.ErrorMessage())
-        if (ray.utils.decode(
-                error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
-            # Delay it a bit to see if we can suppress it
-            task_error_queue.put((error_message, time.time()))
-        else:
-            logger.error(error_message)
+            error_message = ray.utils.decode(error_data.ErrorMessage())
+            if (ray.utils.decode(
+                    error_data.Type()) == ray_constants.TASK_PUSH_ERROR):
+                # Delay it a bit to see if we can suppress it
+                task_error_queue.put((error_message, time.time()))
+            else:
+                logger.error(error_message)
+    finally:
+        # Close the pubsub client to avoid leaking file descriptors.
+        worker.error_message_pubsub_client.close()
 
 
 def is_initialized():

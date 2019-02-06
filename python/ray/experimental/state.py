@@ -841,6 +841,10 @@ class GlobalState(object):
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
 
+        # Close the pubsub clients to avoid leaking file descriptors.
+        for subscribe_client in subscribe_clients:
+            subscribe_client.close()
+
         return dict(total_available_resources)
 
     def _error_messages(self, job_id):
