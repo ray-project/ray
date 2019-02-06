@@ -142,17 +142,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("B", B)
 
         def f(cpus, gpus, queue_trials):
-            return run_experiments(
-                {
-                    "foo": {
-                        "run": "B",
-                        "config": {
-                            "cpu": cpus,
-                            "gpu": gpus,
-                        },
-                    }
-                },
-                queue_trials=queue_trials)[0]
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            },
+                                   queue_trials=queue_trials)[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
@@ -420,16 +419,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("f1", train)
 
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
-            },
-            raise_on_failed_trial=False)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        },
+                                  raise_on_failed_trial=False)
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testReportInfinity(self):
@@ -1867,7 +1865,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testIterationCounter(self):
         def train(config, reporter, steps):
             for i in range(config["iterations"]):
-                reporter(itr=i, done=i == config["iterations"]-1)
+                reporter(itr=i, done=i == config["iterations"] - 1)
 
         ray.init()
         register_trainable("exp", train)
