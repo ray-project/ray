@@ -415,6 +415,62 @@ TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewal) {
   Run(sleep_time);
 }
 
+TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
+  // Create 3 tasks, each dependent on the previous. The first task has no
+  // arguments.
+  int num_tasks = 3;
+  auto tasks = MakeTaskChain(num_tasks, {}, 1);
+  // No objects should be remote or canceled since each task depends on a
+  // locally queued task.
+  EXPECT_CALL(object_manager_mock_, Pull(_)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_)).Times(0);
+  EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
+  for (const auto &task : tasks) {
+    // Subscribe to each of the tasks' arguments.
+    const auto &arguments = task.GetDependencies();
+    task_dependency_manager_.SubscribeDependencies(task.GetTaskSpecification().TaskId(),
+                                                   arguments);
+    // Mark each task as pending. A lease entry should be added to the GCS for
+    // each task.
+    EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
+    task_dependency_manager_.TaskPending(task);
+  }
+
+  // Simulate executing the first task. This should make the second task
+  // runnable.
+  auto task = tasks.front();
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  auto return_id = task.GetTaskSpecification().ReturnId(0);
+  task_dependency_manager_.UnsubscribeDependencies(task_id);
+  // Simulate the object notifications for the task's return values.
+  auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+  // The second task should be ready to run.
+  ASSERT_EQ(ready_tasks.size(), 1);
+  // Simulate the task finishing execution.
+  task_dependency_manager_.TaskCanceled(task_id);
+
+  // Remove all tasks from the manager except the first task, which already
+  // finished executing.
+  std::unordered_set<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.insert(task.GetTaskSpecification().TaskId());
+  }
+  task_ids.erase(task_id);
+  task_dependency_manager_.RemoveTasksAndRelatedObjects(task_ids);
+  // Simulate evicting the return value of the first task. Make sure that this
+  // does not return the second task, which should have been removed.
+  auto waiting_tasks = task_dependency_manager_.HandleObjectMissing(return_id);
+  ASSERT_TRUE(waiting_tasks.empty());
+
+  // Simulate the object notifications for the second task's return values.
+  // Make sure that this does not return the third task, which should have been
+  // removed.
+  return_id = tasks[1].GetTaskSpecification().ReturnId(0);
+  ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+  ASSERT_TRUE(ready_tasks.empty());
+}
+
 }  // namespace raylet
 
 }  // namespace ray
