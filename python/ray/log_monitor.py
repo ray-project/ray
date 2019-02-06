@@ -88,14 +88,7 @@ class LogMonitor(object):
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
-        try:
-            log_filenames = os.listdir(self.logs_dir)
-        except (IOError, OSError) as e:
-            if e.errno == errno.EMFILE:
-                self.close_all_files()
-                log_filenames = os.listdir(self.logs_dir)
-            else:
-                raise
+        log_filenames = os.listdir(self.logs_dir)
 
         for log_filename in log_filenames:
             full_path = os.path.join(self.logs_dir, log_filename)
@@ -121,6 +114,11 @@ class LogMonitor(object):
 
         files_with_no_updates = []
         while len(self.closed_file_infos) > 0:
+            if (len(self.open_file_infos) >=
+                    ray_constants.LOG_MONITOR_MAX_OPEN_FILES):
+                self.can_open_more_files = False
+                break
+
             file_info = self.closed_file_infos.pop(0)
             assert file_info.file_handle is None
             # Get the file size to see if it has gotten bigger since we last
@@ -142,11 +140,7 @@ class LogMonitor(object):
                 try:
                     f = open(file_info.filename, "r")
                 except (IOError, OSError) as e:
-                    if e.errno == errno.EMFILE:
-                        self.can_open_more_files = False
-                        self.closed_file_infos.insert(0, file_info)
-                        break
-                    elif e.errno == errno.ENOENT:
+                    if e.errno == errno.ENOENT:
                         logger.warning("Warning: The file {} was not "
                                        "found.".format(file_info.filename))
                         self.log_filenames.remove(file_info.filename)
