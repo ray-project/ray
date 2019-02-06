@@ -428,6 +428,7 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
 
   Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseDataT> &data,
              const WriteCallback &done) override {
+    RAY_LOG(DEBUG) << "Adding task lease " << id << " for " << data->timeout;
     RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
     // since the lease entry itself contains the expiration period. In the
