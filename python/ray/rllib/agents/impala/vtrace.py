@@ -13,10 +13,13 @@
 # limitations under the License.
 
 """Functions to compute V-trace off-policy actor critic targets.
+
 For details and theory see:
+
 "IMPALA: Scalable Distributed Deep-RL with
 Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
+
 See https://arxiv.org/abs/1802.01561 for the full paper.
 """
 
@@ -43,16 +46,21 @@ def from_logits(behaviour_policy, target_policy, actions,
                 clip_rho_threshold=1.0, clip_pg_rho_threshold=1.0,
                 name='vtrace_from_logits'):
     r"""V-trace for softmax policies.
+
     Calculates V-trace actor critic targets for softmax polices as described in
+
     "IMPALA: Scalable Distributed Deep-RL with
     Importance Weighted Actor-Learner Architectures"
     by Espeholt, Soyer, Munos et al.
+
     Target policy refers to the policy we are interested in improving and
     behaviour policy refers to the policy that generated the given
     rewards and actions.
+
     In the notation used throughout documentation and comments, T refers to the
     time dimension ranging from 0 to T-1. B refers to the batch size and
     NUM_ACTIONS refers to the number of actions.
+
     Args:
       behaviour_policy: A float32 tensor of shape [T, B, NUM_ACTIONS] with
         un-normalized log-probabilities parametrizing the softmax behaviour
@@ -77,6 +85,7 @@ def from_logits(behaviour_policy, target_policy, actions,
         threshold on rho_s in
         \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
       name: The name scope that all V-trace operations will be created in.
+
     Returns:
       A `VTraceFromLogitsReturns` namedtuple with the following fields:
         vs: A float32 tensor of shape [T, B]. Can be used as target to train a
@@ -133,13 +142,16 @@ def from_logits(behaviour_policy, target_policy, actions,
 def select_policy_values_using_actions(policy_logits, actions):
     """
     Computes action log-probs from policy logits and actions.
+
     In the notation used throughout documentation and comments, T refers to the
     time dimension ranging from 0 to T-1. B refers to the batch size and
     NUM_ACTIONS refers to the number of actions.
+
     Args:
       policy_logits: A float32 tensor of shape [T, B, NUM_ACTIONS] with
         un-normalized log-probabilities parameterizing a softmax policy.
       actions: An int32 tensor of shape [T, B] with actions.
+
     Returns:
       A float32 tensor of shape [T, B] corresponding to the sampling log
       probability of the chosen action w.r.t. the policy.
@@ -168,15 +180,19 @@ def _from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
                              clip_rho_threshold=1.0, clip_pg_rho_threshold=1.0,
                              name='vtrace_from_importance_weights'):
     r"""V-trace from log importance weights.
+
     Calculates V-trace actor critic targets as described in
+
     "IMPALA: Scalable Distributed Deep-RL with
     Importance Weighted Actor-Learner Architectures"
     by Espeholt, Soyer, Munos et al.
+
     In the notation used throughout documentation and comments, T refers to the
     time dimension ranging from 0 to T-1. B refers to the batch size and
     NUM_ACTIONS refers to the number of actions. This code also supports the
     case where all tensors have the same number of additional dimensions, e.g.,
     `rewards` is [T, B, C], `values` is [T, B, C], `bootstrap_value` is [B, C].
+
     Args:
       rhos: A float32 tensor of shape [T, B, NUM_ACTIONS] representing the
         importance sampling weights,
@@ -196,6 +212,7 @@ def _from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
         threshold on rho_s in \rho_s \delta log \pi(a|x)
         (r + \gamma v_{s+1} - V(x_s)). If None, no clipping is applied.
       name: The name scope that all V-trace operations will be created in.
+
     Returns:
       A VTraceReturns namedtuple (vs, pg_advantages) where:
         vs: A float32 tensor of shape [T, B]. Can be used as target to
