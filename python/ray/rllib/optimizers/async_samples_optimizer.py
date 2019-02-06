@@ -50,7 +50,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_sgd_iter=1,
               minibatch_buffer_size=1,
               _fake_gpus=False):
-        self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
@@ -85,7 +84,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.timers = {k: TimerStat() for k in ["train", "sample"]}
         self.num_weight_syncs = 0
         self.num_replayed = 0
-        self.learning_started = False
+        self._stats_start_time = time.time()
+        self._last_stats_time = {}
+        self._last_stats_val = {}
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
@@ -108,19 +109,24 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
 
+    def add_mean_stat(self, key, val):
+        new_time = time.time()
+        old_time = self._last_stats_time[key] \
+            if key in self._last_stats_time \
+            else self._stats_start_time
+        self._last_stats_val[key] = round(val / (new_time - old_time), 3)
+        self._last_stats_time[key] = new_time
+
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
-        start = time.time()
         sample_timesteps, train_timesteps = self._step()
-        time_delta = time.time() - start
-        self.timers["sample"].push(time_delta)
-        self.timers["sample"].push_units_processed(sample_timesteps)
+
+        if sample_timesteps > 0:
+            self.add_mean_stat("sample_throughput", sample_timesteps)
         if train_timesteps > 0:
-            self.learning_started = True
-        if self.learning_started:
-            self.timers["train"].push(time_delta)
-            self.timers["train"].push_units_processed(train_timesteps)
+            self.add_mean_stat("train_throughput", train_timesteps)
+
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
 
@@ -143,14 +149,13 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(self.timers["sample"].mean_throughput,
-                                       3),
-            "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
+            **self._last_stats_val,
         }
+        self._last_stats_val.clear()
         if self.learner.stats:
             stats["learner"] = self.learner.stats
         return dict(PolicyOptimizer.stats(self), **stats)
