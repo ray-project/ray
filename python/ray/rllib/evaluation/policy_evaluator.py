@@ -196,6 +196,8 @@ class PolicyEvaluator(EvaluatorInterface):
                 for saving generated experiences.
             remote_worker_envs (bool): Whether environments should be remote,
                 in another process, and executed in parallel
+            entangled_worker_envs (bool): Whether environments are entangled,
+                physicallky one, logically many
         """
 
         if log_level:
@@ -256,9 +258,9 @@ class PolicyEvaluator(EvaluatorInterface):
             return wrap(
                 env_creator(
                     env_context.align(
-                        vector_index=None if entangled_worker_envs else input,
+                        vector_index=0 if entangled_worker_envs else input,
                         entangled_envs_num=input if entangled_worker_envs
-                        else None,
+                        else 0,
                         remote=remote_worker_envs)))
 
         self.tf_sess = None

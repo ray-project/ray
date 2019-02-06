@@ -66,11 +66,12 @@ class BaseEnv(object):
     """
 
     @staticmethod
-    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False, entangled_envs=False):
+    def to_base_env(env, make_env=None, num_envs=1, remote_envs=False,
+                    entangled_envs=False):
         """Wraps any env type as needed to expose the async interface."""
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
-                # NOTE: Probably should handle remote_envs in
+                # NOTE: Probably should handle remote / entangled envs in
                 #       _MultiAgentEnvToAsync as well
                 env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[], num_envs=num_envs)

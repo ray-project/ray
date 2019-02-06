@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import gym
 from ray.rllib.utils.annotations import PublicAPI
 
@@ -29,14 +33,11 @@ class EntangledEnv(gym.Env):
 
         Accepts an action and returns a dict
         env_i -> tuples (observation, reward, done, info).
-
         Args:
             actions (dict env_i -> object):
             list of actions provided by the environment
-
         Returns:
             dict env_i -> tuples (observation, reward, done, info).
-
             observation (object): agent's observation
                 of the current environment
             reward (float) : amount of reward returned after previous action

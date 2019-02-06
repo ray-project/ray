@@ -484,6 +484,12 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
+
+
+<< << << < HEAD
+== == == =
+
+>>>>>> > env-changes
         return [self._make_evaluator(
             cls,
             env_creator,
@@ -558,7 +564,8 @@ class Agent(Trainable):
                 "`input_evaluation` should not be set when input=sampler")
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config, remote_worker_envs=False, entangled_worker_envs=False):
+                        config, remote_worker_envs=False,
+                        entangled_worker_envs=False):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

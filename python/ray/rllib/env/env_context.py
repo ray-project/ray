@@ -20,6 +20,9 @@ class EnvContext(dict):
             uniquely identifies the worker the env is created in.
         vector_index (int): When there are multiple envs per worker, this
             uniquely identifies the env index within the worker.
+        remote (bool): Whether environment should be remote or not.
+        entangled_envs_num (int): If environment is entangled,
+            how much logical environments does it have
     """
 
     def __init__(self, env_config, worker_index, vector_index=0, remote=False,
