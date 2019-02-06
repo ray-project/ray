@@ -9,8 +9,12 @@
 
 namespace {
 
-const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr) {
+const std::vector<std::string> GenerateEnumNames(int32_t enum_min,
+                                                 const char *const *enum_names_ptr) {
   std::vector<std::string> enum_names;
+  for (int i = 0; i < enum_min; i++) {
+    enum_names.push_back("");
+  }
   size_t i = 0;
   while (true) {
     const char *name = enum_names_ptr[i];
@@ -24,9 +28,11 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
 }
 
 static const std::vector<std::string> node_manager_message_enum =
-    GenerateEnumNames(ray::protocol::EnumNamesMessageType());
-static const std::vector<std::string> object_manager_message_enum =
-    GenerateEnumNames(ray::object_manager::protocol::EnumNamesMessageType());
+    GenerateEnumNames(static_cast<int32_t>(ray::protocol::MessageType::MIN),
+                      ray::protocol::EnumNamesMessageType());
+static const std::vector<std::string> object_manager_message_enum = GenerateEnumNames(
+    static_cast<int32_t>(ray::object_manager::protocol::MessageType::MIN),
+    ray::object_manager::protocol::EnumNamesMessageType());
 }
 
 namespace ray {
