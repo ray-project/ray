@@ -14,18 +14,18 @@
 #  - PLASMA_STATIC_LIB
 #  - PLASMA_SHARED_LIB
 
-set(arrow_URL https://github.com/pcmoritz/arrow.git)
-# This commit is based on https://github.com/apache/arrow/pull/3490. We
+set(arrow_URL https://github.com/ray-project/arrow.git)
+# This commit is based on https://github.com/apache/arrow/pull/3524. We
 # include the link here to make it easier to find the right commit because
 # Arrow often rewrites git history and invalidates certain commits.
 # It has been patched to fix an upstream symbol clash with TensorFlow,
 # the patch is available at
-# https://github.com/ray-project/arrow/commit/bbf91d7f8c9ac971929ea67250b5d4c9d8c42a53
+# https://github.com/ray-project/arrow/commit/5a868cceb67d6ebd4ce5fbdf7a7d70b872b92079
 # See the discussion in https://github.com/apache/arrow/pull/3177
 # WARNING: If the arrow version is updated, you need to also update the
 # SETUPTOOLS_SCM_PRETEND_VERSION version string in the ThirdpartyToolchain.cmake
 # file
-set(arrow_TAG bd7a68954bd8d5da0f324b97fe94d3de4331e247)
+set(arrow_TAG 5a868cceb67d6ebd4ce5fbdf7a7d70b872b92079)
 
 set(ARROW_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external/arrow-install)
 set(ARROW_HOME ${ARROW_INSTALL_PREFIX})
@@ -47,8 +47,11 @@ message(STATUS "PYTHON_EXECUTABLE for arrow: ${PYTHON_EXECUTABLE}")
 set(ARROW_CMAKE_ARGS
   -DCMAKE_BUILD_TYPE:STRING=Release
   -DCMAKE_INSTALL_PREFIX=${ARROW_INSTALL_PREFIX}
+  -DCMAKE_C_FLAGS=-g -O3 ${EP_C_FLAGS}
+  -DCMAKE_CXX_FLAGS=-g -O3 ${EP_CXX_FLAGS}
   -DARROW_BUILD_TESTS=off
   -DARROW_HDFS=on
+  -DARROW_BOOST_USE_SHARED=off
   -DPYTHON_EXECUTABLE:FILEPATH=${PYTHON_EXECUTABLE}
   -DARROW_PYTHON=on
   -DARROW_PLASMA=on
