@@ -33,7 +33,7 @@ def register_trainable(name, trainable):
 
     from ray.tune.trainable import Trainable, wrap_function
 
-    if isinstance(trainable, Trainable):
+    if issubclass(trainable, Trainable):
         logger.debug("Detected class for trainable.")
     elif isinstance(trainable, FunctionType):
         logger.debug("Detected function for trainable.")
