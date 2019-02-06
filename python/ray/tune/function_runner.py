@@ -8,7 +8,7 @@ import threading
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,12 @@ class StatusReporter(object):
                            "last result. To avoid this, include done=True "
                            "upon the last reporter call.")
             self._last_result.update(done=True)
+            self._last_result.setdefault(TRAINING_ITERATION, self._iteration)
             return self._last_result
         with self._lock:
             res = self._latest_result
             self._latest_result = None
-            res["training_iteration"] = self._iteration
+            res.setdefault(TRAINING_ITERATION, self._iteration)
             return res
 
     def _stop(self):
