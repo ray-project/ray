@@ -324,8 +324,15 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
   for (const auto &object_id : required_objects) {
     TaskID creating_task_id = ComputeTaskId(object_id);
     required_tasks_.erase(creating_task_id);
-    RAY_CHECK(!CheckObjectRequired(object_id));
     HandleRemoteDependencyCanceled(object_id);
+  }
+
+  // Make sure that the tasks in task_ids no longer have tasks dependent on
+  // them.
+  for (const auto &task_id : task_ids) {
+    RAY_CHECK(required_tasks_.find(task_id) == required_tasks_.end())
+        << "RemoveTasksAndRelatedObjects was called on" << task_id
+        << ", but another task depends on it that was not included in the argument";
   }
 }
 
