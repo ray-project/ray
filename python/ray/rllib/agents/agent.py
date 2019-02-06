@@ -180,6 +180,8 @@ COMMON_CONFIG = {
 
     # Whether environments are in remote process or not
     "remote_worker_envs": False,
+    # Whether environments are entangled or not
+    "entangled_worker_envs": False,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -467,7 +469,8 @@ class Agent(Trainable):
                         config["local_evaluator_tf_session_args"]
                     }),
                 extra_config or {}),
-            remote_worker_envs=False
+            remote_worker_envs=False,
+            entangled_worker_envs=self.config["entangled_worker_envs"]
         )
 
     @DeveloperAPI
@@ -487,7 +490,8 @@ class Agent(Trainable):
             policy_graph,
             i + 1,
             self.config,
-            remote_worker_envs=self.config["remote_worker_envs"])
+            remote_worker_envs=self.config["remote_worker_envs"],
+            entangled_worker_envs=self.config["entangled_worker_envs"])
             for i in range(count)]
 
     @DeveloperAPI
@@ -554,7 +558,7 @@ class Agent(Trainable):
                 "`input_evaluation` should not be set when input=sampler")
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config, remote_worker_envs=False):
+                        config, remote_worker_envs=False, entangled_worker_envs=False):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -615,7 +619,8 @@ class Agent(Trainable):
             input_creator=input_creator,
             input_evaluation_method=config["input_evaluation"],
             output_creator=output_creator,
-            remote_worker_envs=remote_worker_envs)
+            remote_worker_envs=remote_worker_envs,
+            entangled_worker_envs=entangled_worker_envs)
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

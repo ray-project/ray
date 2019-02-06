@@ -22,17 +22,21 @@ class EnvContext(dict):
             uniquely identifies the env index within the worker.
     """
 
-    def __init__(self, env_config, worker_index, vector_index=0, remote=False):
+    def __init__(self, env_config, worker_index, vector_index=0, remote=False,
+                 entangled_envs_num=0):
         dict.__init__(self, env_config)
         self.worker_index = worker_index
         self.vector_index = vector_index
         self.remote = remote
+        self.entangled_envs_num = entangled_envs_num
 
     def align(self, env_config=None, worker_index=None, vector_index=None,
-              remote=None):
+              remote=None, entangled_envs_num=None):
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,
             vector_index if vector_index is not None else self.vector_index,
             remote if remote is not None else self.remote,
+            entangled_envs_num if entangled_envs_num is not None
+            else self.entangled_envs_num,
         )
