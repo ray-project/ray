@@ -1948,10 +1948,11 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           if (!lineage_cache_.RemoveWaitingTask(task_id)) {
             RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
                              << " cache. This is most likely due to reconstruction.";
+          } else {
+            // Mark as forwarded so that the task and its lineage is not
+            // re-forwarded in the future to the receiving node.
+            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
           }
-          // Mark as forwarded so that the task and its lineage is not re-forwarded
-          // in the future to the receiving node.
-          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
