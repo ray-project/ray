@@ -87,6 +87,7 @@ pushd "$ROOT_DIR"
     run_test test_many_tasks_and_transfers
     run_test test_dead_actors
     run_test test_shuffle
+    run_test test_actor_event_loop
     # Blocked on #3958.
     #run_failure_test test_shuffle
 popd
