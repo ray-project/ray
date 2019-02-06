@@ -38,7 +38,9 @@ class HyperOptSearch(SuggestionAlgorithm):
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm
             make better suggestions for future parameters. Needs to be
-            a list of dict of hyperopt-named variables (see example)
+            a list of dict of hyperopt-named variables.
+            Choice variables should be indicated by their index in the
+            list (see example)
 
     Example:
         >>> space = {
@@ -49,20 +51,20 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>> current_best_params = [{
         >>>     'width': 10,
         >>>     'height': 0,
-        >>>     'activation': "relu",
+        >>>     'activation': 0, # The index of "relu"
         >>> }]
         >>> config = {
         >>>     "my_exp": {
         >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "points_to_evaluate": current_best_params
+        >>>         "num_samples": 10 if args.smoke_test else 1000
         >>>         "stop": {
         >>>             "training_iteration": 100
         >>>         },
         >>>     }
         >>> }
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss",
+        >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
