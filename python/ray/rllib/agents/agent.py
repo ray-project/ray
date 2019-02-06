@@ -485,11 +485,6 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
 
-
-<< << << < HEAD
-== == == =
-
->>>>>> > env-changes
         return [self._make_evaluator(
             cls,
             env_creator,
