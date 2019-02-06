@@ -50,7 +50,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_sgd_iter=1,
               minibatch_buffer_size=1,
               _fake_gpus=False):
-        self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
@@ -87,7 +86,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.timers = {k: TimerStat() for k in ["train", "sample"]}
         self.num_weight_syncs = 0
         self.num_replayed = 0
-        self.learning_started = False
+        self._stats_start_time = time.time()
+        self._last_stats_time = {}
+        self._last_stats_val = {}
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
@@ -121,13 +122,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
-        start = time.time()
         sample_timesteps, train_timesteps = self._step()
-        time_delta = time.time() - start
 
         if sample_timesteps > 0:
             self.add_mean_stat("sample_throughput", sample_timesteps)
-
         if train_timesteps > 0:
             self.add_mean_stat("train_throughput", train_timesteps)
 
