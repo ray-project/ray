@@ -696,15 +696,18 @@ class FunctionActorManager(object):
                     method_returns = method(*args)
                 else:
                     method_returns = method(actor, *args)
-            except Exception:
+            except Exception as e:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown.
                 if isinstance(actor, ray.actor.Checkpointable):
                     self._save_and_log_checkpoint(actor, method_name)
-                raise
+                raise e
             else:
                 # Handle any checkpointing operations before storing the
                 # method's return values.
+                # NOTE(swang): If method_returns is a pointer to the actor's
+                # state and the checkpointing operations can modify the return
+                # values if they mutate the actor's state. Is this okay?
                 if isinstance(actor, ray.actor.Checkpointable):
                     # If this is the first task to execute on the actor, try to
                     # resume from a checkpoint.
@@ -737,7 +740,7 @@ class FunctionActorManager(object):
         if should_checkpoint:
             try:
                 self._worker._save_actor_checkpoint()
-            except Exception as e:
+            except Exception:
                 # Checkpoint save or reload failed. Notify the driver.
                 traceback_str = ray.utils.format_error_message(
                     traceback.format_exc())
@@ -754,7 +757,7 @@ class FunctionActorManager(object):
     def _restore_and_log_checkpoint(self, actor, method_name):
         try:
             self._worker._restore_actor_checkpoint()
-        except Exception as e:
+        except Exception:
             # Checkpoint save or reload failed. Notify the driver.
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc())

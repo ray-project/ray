@@ -2551,8 +2551,8 @@ def test_deleting_actor_checkpoint(ray_start_regular):
             del self.checkpoint_ids[0]
 
     actor = CheckpointableActor.remote()
-    for i in range(20):
-        assert len(ray.get(actor.get_checkpoint_ids.remote())) == i
+    for i in range(19):
+        assert len(ray.get(actor.get_checkpoint_ids.remote())) == i + 1
     for _ in range(20):
         assert len(ray.get(actor.get_checkpoint_ids.remote())) == 20
 
