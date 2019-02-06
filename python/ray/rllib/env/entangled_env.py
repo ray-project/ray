@@ -33,9 +33,11 @@ class EntangledEnv(gym.Env):
 
         Accepts an action and returns a dict
         env_i -> tuples (observation, reward, done, info).
+
         Args:
             actions (dict env_i -> object):
             list of actions provided by the environment
+
         Returns:
             dict env_i -> tuples (observation, reward, done, info).
             observation (object): agent's observation
