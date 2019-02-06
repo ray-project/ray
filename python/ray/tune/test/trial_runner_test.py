@@ -557,6 +557,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testIterationCounter(self):
+        def train(config, reporter):
+            for i in range(config["iterations"]):
+                reporter(itr=i, done=i == config["iterations"] - 1)
+
+        register_trainable("exp", train)
+        config = {
+            "my_exp": {
+                "run": "exp",
+                "config": {
+                    "iterations": 100,
+                },
+                "stop": {
+                    "timesteps_total": 100
+                },
+            }
+        }
+        [trial] = run_experiments(config)
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
+
 
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
@@ -1861,29 +1882,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner2.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
-
-    def testIterationCounter(self):
-        def train(config, reporter, steps):
-            for i in range(config["iterations"]):
-                reporter(itr=i, done=i == config["iterations"] - 1)
-
-        ray.init()
-        register_trainable("exp", train)
-        config = {
-            "my_exp": {
-                "run": "exp",
-                "config": {
-                    "iterations": 100,
-                },
-                "stop": {
-                    "timesteps_total": 100
-                },
-            }
-        }
-        [trial] = run_experiments(config)
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
