@@ -13,10 +13,13 @@
 # limitations under the License.
 
 """Functions to compute V-trace off-policy actor critic targets.
+
 For details and theory see:
+
 "IMPALA: Scalable Distributed Deep-RL with
 Importance Weighted Actor-Learner Architectures"
 by Espeholt, Soyer, Munos et al.
+
 See https://arxiv.org/abs/1802.01561 for the full paper.
 """
 
@@ -82,6 +85,7 @@ def from_logits(behaviour_policy, target_policy, actions,
         threshold on rho_s in
         \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
       name: The name scope that all V-trace operations will be created in.
+
     Returns:
       A `VTraceFromLogitsReturns` namedtuple with the following fields:
         vs: A float32 tensor of shape [T, B]. Can be used as target to train a
@@ -147,6 +151,7 @@ def select_policy_values_using_actions(policy_logits, actions):
       policy_logits: A float32 tensor of shape [T, B, NUM_ACTIONS] with
         un-normalized log-probabilities parameterizing a softmax policy.
       actions: An int32 tensor of shape [T, B] with actions.
+
     Returns:
       A float32 tensor of shape [T, B] corresponding to the sampling log
       probability of the chosen action w.r.t. the policy.
@@ -187,6 +192,7 @@ def _from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
     NUM_ACTIONS refers to the number of actions. This code also supports the
     case where all tensors have the same number of additional dimensions, e.g.,
     `rewards` is [T, B, C], `values` is [T, B, C], `bootstrap_value` is [B, C].
+
     Args:
       rhos: A float32 tensor of shape [T, B, NUM_ACTIONS] representing the
         importance sampling weights,
@@ -206,6 +212,7 @@ def _from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
         threshold on rho_s in \rho_s \delta log \pi(a|x)
         (r + \gamma v_{s+1} - V(x_s)). If None, no clipping is applied.
       name: The name scope that all V-trace operations will be created in.
+
     Returns:
       A VTraceReturns namedtuple (vs, pg_advantages) where:
         vs: A float32 tensor of shape [T, B]. Can be used as target to
