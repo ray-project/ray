@@ -22,6 +22,7 @@ import ray
 import ray.ray_constants as ray_constants
 
 from ray.tempfile_services import (
+    get_gdb_init_path,
     get_ipython_notebook_path,
     get_logs_dir_path,
     get_temp_root,
@@ -294,15 +295,18 @@ def start_ray_process(command,
     if os.environ.get(tmux_env_var) == "1":
         logger.info("Detected environment variable '%s'.", tmux_env_var)
         use_tmux = True
+    gdb_env_var = "RAY_{}_GDB".format(process_type.upper())
+    if os.environ.get(gdb_env_var) == "1":
+        logger.info("Detected environment variable '%s'.", gdb_env_var)
+        use_gdb = True
 
-    if use_gdb:
-        raise NotImplementedError
-    if use_tmux:
-        raise NotImplementedError
-    if sum([use_valgrind, use_valgrind_profiler, use_perftools_profiler]) > 1:
+    if sum(
+        [use_gdb, use_valgrind, use_valgrind_profiler, use_perftools_profiler
+         ]) > 1:
         raise ValueError(
-            "At most one of the 'use_valgrind', 'use_valgrind_profiler', and "
-            "'use_perftools_profiler' flags can be used at a time.")
+            "At most one of the 'use_gdb', 'use_valgrind', "
+            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
+            "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -310,6 +314,18 @@ def start_ray_process(command,
 
     modified_env = os.environ.copy()
     modified_env.update(env_updates)
+
+    if use_gdb:
+        if not use_tmux:
+            raise ValueError(
+                "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
+        gdb_init_path = get_gdb_init_path(process_type)
+        ray_process_path = command[0]
+        ray_process_args = command[1:]
+        run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
+        with open(gdb_init_path, "w") as gdb_init_file:
+            gdb_init_file.write("run {}".format(run_args))
+        command = ["gdb", ray_process_path, "-x", gdb_init_path]
 
     if use_valgrind:
         command = [
@@ -324,6 +340,12 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_tmux:
+        # The command has to be created exactly as below to ensure that it
+        # works on all versions of tmux. (Tested with tmux 1.8-5, travis'
+        # version, and tmux 2.1)
+        command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
     process = subprocess.Popen(
         command,
@@ -1205,8 +1227,8 @@ def determine_plasma_store_config(object_store_memory=None,
                     "up space by deleting files in /dev/shm or terminating "
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
-                    "argument with the flag '--shm-size' to 'docker run'."
-                    .format(shm_avail))
+                    "argument with the flag '--shm-size' to 'docker run'.".
+                    format(shm_avail))
         else:
             plasma_directory = "/tmp"
 
@@ -1221,8 +1243,9 @@ def determine_plasma_store_config(object_store_memory=None,
                        "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise Exception("The file {} does not exist or is not a directory."
-                        .format(plasma_directory))
+        raise Exception(
+            "The file {} does not exist or is not a directory.".format(
+                plasma_directory))
 
     return object_store_memory, plasma_directory
 
