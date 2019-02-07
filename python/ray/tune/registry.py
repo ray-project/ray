@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import six
 from types import FunctionType
 
 import ray
@@ -33,19 +34,18 @@ def register_trainable(name, trainable):
 
     from ray.tune.trainable import Trainable, wrap_function
 
-    if issubclass(trainable, Trainable):
-        logger.debug("Detected class for trainable.")
-    elif isinstance(trainable, FunctionType):
-        logger.debug("Detected function for trainable.")
-        trainable = wrap_function(trainable)
+    if isinstance(trainable, six.class_types) and issubclass(trainable, Trainable):
+        logger.debug(
+            "Detected `Trainable` subclass for trainable. Using the class API")
     elif callable(trainable):
-        logger.warning(
-            "Detected unknown callable for trainable. Converting to class.")
+        logger.debug("Detected callable for trainable. Using the function API.")
         trainable = wrap_function(trainable)
-
-    if not issubclass(trainable, Trainable):
-        raise TypeError("Second argument must be convertable to Trainable",
+    else:
+        raise TypeError(("Second argument `trainable` could not be converted to a"
+                         "`tune.Trainable`. Only `tune.Trainable` subclasses and "
+                         "callables are supported."),
                         trainable)
+        
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
