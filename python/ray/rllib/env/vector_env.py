@@ -121,7 +121,7 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
                                    action_space, observation_space)
 
         for env in self.envs:
-            assert isinstance(b, ray.actor.ActorHandle), \
+            assert isinstance(env, ray.actor.ActorHandle), \
                 "Your environment needs to be ray remote environment"
 
     @override(_VectorizedGymEnv)
