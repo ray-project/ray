@@ -1747,7 +1747,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
                "allocation via "
             << "ray.init(redis_max_memory=<max_memory_bytes>).";
         // Use a copy of the cached task spec to re-execute the task.
-        const Task task = lineage_cache_.GetTask(task_id);
+        const Task task = lineage_cache_.GetTaskOrDie(task_id);
         ResubmitTask(task);
 
       }));
@@ -1903,9 +1903,17 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto task_id = spec.TaskId();
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
-  Task &lineage_cache_entry_task =
-      uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+  Lineage uncommitted_lineage;
+  if (lineage_cache_.ContainsTask(task_id)) {
+    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
+  } else {
+    // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
+    // This is a bug but is not fatal to the application.
+    RAY_DCHECK(false) << "No lineage cache entry found for task " << task_id;
+    uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
+  }
+  auto entry = uncommitted_lineage.GetEntryMutable(task_id);
+  Task &lineage_cache_entry_task = entry->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.IncrementNumForwards();
@@ -1940,10 +1948,11 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           if (!lineage_cache_.RemoveWaitingTask(task_id)) {
             RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
                              << " cache. This is most likely due to reconstruction.";
+          } else {
+            // Mark as forwarded so that the task and its lineage is not
+            // re-forwarded in the future to the receiving node.
+            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
           }
-          // Mark as forwarded so that the task and its lineage is not re-forwarded
-          // in the future to the receiving node.
-          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.

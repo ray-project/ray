@@ -263,11 +263,13 @@ class LineageCache {
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
-  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param task_id The ID of the task to get the uncommitted lineage for. It is
+  ///                a fatal error if the task is not found.
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
+  Lineage GetUncommittedLineageOrDie(const TaskID &task_id,
+                                     const ClientID &node_id) const;
 
   /// Handle the commit of a task entry in the GCS. This attempts to evict the
   /// task if possible.
@@ -279,7 +281,7 @@ class LineageCache {
   ///
   /// \param task_id The ID of the task to get.
   /// \return A const reference to the task data.
-  const Task &GetTask(const TaskID &task_id) const;
+  const Task &GetTaskOrDie(const TaskID &task_id) const;
 
   /// Get whether the lineage cache contains the task.
   ///
