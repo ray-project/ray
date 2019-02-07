@@ -37,9 +37,20 @@ Debugging
 
 Starting processes in a debugger
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When processes are crashing, it is often useful to start them in a debugger
-(``gdb`` on Linux or ``lldb`` on MacOS). See the latest discussion about how to
-do this `here`_.
+When processes are crashing, it is often useful to start them in a debugger.
+Ray current has support for the following debuggers:
+* Valgrind
+* Valgrind Profiler
+* Perftools Profiler
+* gdb
+* tmux
+
+To use any of the debuggers, please make sure that you have it installed on
+your machine first (GDB and Valgrind on Mac OSX is known to have issues). Then,
+you can launch a subset of ray processes by adding the environment variable
+``RAY_{PROCESS_NAME}_{DEBUGGER}=1``. For instance, if you wanted to start
+``raylet`` with ``valgrind``, then you simply need to include set the
+environment variable ``RAY_RAYLET_VALGRIND=1``.
 
 You can also get a core dump of the ``raylet`` process, which is especially
 useful when filing `issues`_. The process to obtain a core dump is OS-specific,
@@ -137,5 +148,4 @@ Linting
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
-.. _`here`: https://github.com/ray-project/ray/issues/108
 .. _`Temporary Files`: http://ray.readthedocs.io/en/latest/tempfile.html
