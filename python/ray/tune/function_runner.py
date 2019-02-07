@@ -62,7 +62,8 @@ class StatusReporter(object):
         with self._lock:
             res = self._latest_result
             self._latest_result = None
-            res.setdefault(TRAINING_ITERATION, self._iteration)
+            if res:
+                res.setdefault(TRAINING_ITERATION, self._iteration)
             return res
 
     def _stop(self):

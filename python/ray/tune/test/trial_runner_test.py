@@ -561,8 +561,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testIterationCounter(self):
         def train(config, reporter):
-            for i in range(config["iterations"]):
-                reporter(itr=i, done=i == config["iterations"] - 1)
+            for i in range(100):
+                reporter(itr=i, done=i == 99)
 
         register_trainable("exp", train)
         config = {
@@ -579,6 +579,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments(config)
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
+        self.assertEqual(trial.last_result["itr"], 99)
 
 
 class RunExperimentTest(unittest.TestCase):
