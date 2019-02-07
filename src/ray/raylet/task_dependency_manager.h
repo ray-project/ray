@@ -106,10 +106,12 @@ class TaskDependencyManager {
   /// \return Return a vector of TaskIDs for tasks registered as pending.
   std::vector<TaskID> GetPendingTasks() const;
 
-  /// Remove all of the tasks specified, and all the objects created by
-  /// these tasks from task dependency manager.
+  /// Remove all of the tasks specified. These tasks will no longer be
+  /// considered pending and the objects they depend on will no longer be
+  /// required.
   ///
-  /// \param task_ids The collection of task IDs.
+  /// \param task_ids The collection of task IDs. For a given task in this set,
+  /// all tasks that depend on the task must also be included in the set.
   void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
 
   /// Returns debug string for class.
