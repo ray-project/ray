@@ -42,9 +42,11 @@ namespace raylet {
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         plasma::PlasmaClient &store_client)
     : io_service_(io_service),
       object_manager_(object_manager),
+      store_client_(store_client),
       gcs_client_(std::move(gcs_client)),
       object_directory_(std::move(object_directory)),
       heartbeat_timer_(io_service),
@@ -89,8 +91,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
-
-  RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -1190,10 +1190,16 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
         object_id,
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool has_been_created) {
+            const std::unordered_set<ray::ClientID> &clients, bool inline_object_flag,
+            const std::vector<uint8_t> &inline_object_data,
+            const std::string &inline_object_metadata, bool has_been_created) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
+            if (inline_object_flag) {
+              // If object is inlined, we already have its data and metadata, so return.
+              return;
+            }
             if (clients.empty() && has_been_created) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to
@@ -1747,7 +1753,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
                "allocation via "
             << "ray.init(redis_max_memory=<max_memory_bytes>).";
         // Use a copy of the cached task spec to re-execute the task.
-        const Task task = lineage_cache_.GetTask(task_id);
+        const Task task = lineage_cache_.GetTaskOrDie(task_id);
         ResubmitTask(task);
 
       }));
@@ -1800,7 +1806,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
-                 << " on " << gcs_client_->client_table().GetLocalClientId()
+                 << "on " << gcs_client_->client_table().GetLocalClientId()
                  << ready_task_ids.size() << " tasks ready";
   // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (ready_task_ids.size() > 0) {
@@ -1903,9 +1909,17 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto task_id = spec.TaskId();
 
   // Get and serialize the task's unforwarded, uncommitted lineage.
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
-  Task &lineage_cache_entry_task =
-      uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+  Lineage uncommitted_lineage;
+  if (lineage_cache_.ContainsTask(task_id)) {
+    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
+  } else {
+    // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
+    // This is a bug but is not fatal to the application.
+    RAY_DCHECK(false) << "No lineage cache entry found for task " << task_id;
+    uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
+  }
+  auto entry = uncommitted_lineage.GetEntryMutable(task_id);
+  Task &lineage_cache_entry_task = entry->TaskDataMutable();
 
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.IncrementNumForwards();
@@ -1940,10 +1954,11 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
           if (!lineage_cache_.RemoveWaitingTask(task_id)) {
             RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
                              << " cache. This is most likely due to reconstruction.";
+          } else {
+            // Mark as forwarded so that the task and its lineage is not
+            // re-forwarded in the future to the receiving node.
+            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
           }
-          // Mark as forwarded so that the task and its lineage is not re-forwarded
-          // in the future to the receiving node.
-          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
