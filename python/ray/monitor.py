@@ -19,6 +19,7 @@ import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
 from ray.utils import (binary_to_hex, binary_to_object_id, hex_to_binary,
                        setup_logger)
+from ray.autoscaler.commands import teardown_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,10 @@ class Monitor(object):
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)
+            self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
+            self.autoscaling_config = None
 
         # Experimental feature: GCS flushing.
         self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
@@ -325,10 +328,38 @@ class Monitor(object):
             # messages.
             time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
 
-        # TODO(rkn): This infinite loop should be inside of a try/except block,
-        # and if an exception is thrown we should push an error message to all
-        # drivers.
+    def destroy_autoscaler_workers(self):
+        """Cleanup the autoscaler, in case of an exception in the run() method.
 
+        We kill the worker nodes, but retain the head node in order to keep
+        logs around, keeping costs minimal. This monitor process runs on the
+        head node anyway, so this is more reliable."""
+
+        if self.autoscaler is None:
+            return  # Nothing to clean up.
+
+        if self.autoscaling_config is None:
+            # This is a logic error in the program. Can't do anything.
+            logger.error("Monitor: Cleanup failed due to lack of autoscaler config.")
+            return
+
+        logger.info("Monitor: Exception caught. Taking down workers...")
+        clean = False
+        while not clean:
+            try:
+                teardown_cluster(
+                    config_file=self.autoscaling_config,
+                    yes=True,  # Non-interactive.
+                    workers_only=True,  # Retain head node for logs.
+                    override_cluster_name=None,
+                )
+                clean = True
+                logger.info("Monitor: Workers taken down.")
+            except:
+                logger.error("Monitor: Cleanup exception. Trying again...")
+                time.sleep(2)
+
+        return
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -383,6 +414,9 @@ if __name__ == "__main__":
     try:
         monitor.run()
     except Exception as e:
+        # Take down autoscaler workers if necessary.
+        monitor.destroy_autoscaler_workers()
+
         # Something went wrong, so push an error to all drivers.
         redis_client = redis.StrictRedis(
             host=redis_ip_address,
