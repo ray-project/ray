@@ -81,7 +81,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         assert len(self.remote_evaluators) > 0
 
         # Stats
-        self.timers = {k: TimerStat() for k in ["train", "sample"]}
+        self._optimizer_step_timer = TimerStat()
         self.num_weight_syncs = 0
         self.num_replayed = 0
         self._stats_start_time = time.time()
@@ -120,7 +120,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
-        sample_timesteps, train_timesteps = self._step()
+        with self._optimizer_step_timer:
+            sample_timesteps, train_timesteps = self._step()
 
         if sample_timesteps > 0:
             self.add_mean_stat("sample_throughput", sample_timesteps)
@@ -136,18 +137,17 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def stats(self):
+        def timer_to_ms(timer):
+            return round(1000 * timer.mean, 3)
+
         timing = {
-            "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
-            for k in self.timers
+            "optimizer_step_time_ms": timer_to_ms(self._optimizer_step_timer),
+            "learner_grad_time_ms": timer_to_ms(self.learner.grad_timer),
+            "learner_load_time_ms": timer_to_ms(self.learner.load_timer),
+            "learner_load_wait_time_ms": timer_to_ms(
+                self.learner.load_wait_timer),
+            "learner_dequeue_time_ms": timer_to_ms(self.learner.queue_timer),
         }
-        timing["learner_grad_time_ms"] = round(
-            1000 * self.learner.grad_timer.mean, 3)
-        timing["learner_load_time_ms"] = round(
-            1000 * self.learner.load_timer.mean, 3)
-        timing["learner_load_wait_time_ms"] = round(
-            1000 * self.learner.load_wait_timer.mean, 3)
-        timing["learner_dequeue_time_ms"] = round(
-            1000 * self.learner.queue_timer.mean, 3)
         stats = {
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
