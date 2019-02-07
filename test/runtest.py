@@ -260,6 +260,47 @@ def test_ray_recursive_objects(ray_start):
             ray.put(obj)
 
 
+def test_serialize_dataclasses(ray_start):
+
+    from dataclasses import dataclass
+
+    # Serializing dataclass types
+
+    @dataclass
+    class DataClass0:
+        number: int
+
+    assert ray.get(ray.put(DataClass0)).__name__ == "DataClass0"
+
+    # Serializing dataclass values
+
+    val = DataClass0(number=3)
+    assert ray.get(ray.put(val)).number == 3
+
+    # Serializing dataclasses with custom pickling
+
+    class CustomClass(object):
+        def __init__(self, value):
+            self.value = value
+
+    @dataclass
+    class DataClass1:
+        custom: CustomClass
+
+        @classmethod
+        def from_custom(cls, data):
+            custom =  CustomClass(data)
+            return cls(custom)
+
+        def __reduce__(self):
+            return (self.from_custom, (custom.value,))
+
+
+    data = DataClass1(custom=CustomClass(43))
+    x = ray.put(data)
+    assert ray.get(x).custom.value == 43
+
+
 def test_passing_arguments_by_value_out_of_the_box(ray_start):
     @ray.remote
     def f(x):
