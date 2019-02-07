@@ -169,7 +169,8 @@ setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,

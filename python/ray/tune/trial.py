@@ -520,8 +520,6 @@ class Trial(object):
 
         state["runner"] = None
         state["result_logger"] = None
-        if self.status == Trial.RUNNING:
-            state["status"] = Trial.PENDING
         if self.result_logger:
             self.result_logger.flush()
             state["__logger_started__"] = True
@@ -532,6 +530,8 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
+        if state["status"] == Trial.RUNNING:
+            state["status"] = Trial.PENDING
         for key in [
                 "_checkpoint", "config", "custom_loggers", "sync_function",
                 "last_result"
