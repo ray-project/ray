@@ -70,7 +70,7 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 
 # Ray version string.
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
