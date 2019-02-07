@@ -104,7 +104,7 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
     :noindex:
 
 Scikit-Optimize Search
--------------
+----------------------
 
 The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io/>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
 
