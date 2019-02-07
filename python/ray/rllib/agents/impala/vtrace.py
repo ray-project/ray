@@ -167,8 +167,13 @@ def from_logits(behaviour_policy,
             **vtrace_returns._asdict())
 
 
-def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
-                            clip_rho_threshold=1.0, clip_pg_rho_threshold=1.0,
+def from_importance_weights(rhos,
+                            discounts,
+                            rewards,
+                            values,
+                            bootstrap_value,
+                            clip_rho_threshold=1.0,
+                            clip_pg_rho_threshold=1.0,
                             name='vtrace_from_importance_weights'):
     r"""V-trace from log importance weights.
 
@@ -224,7 +229,7 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
             clip_pg_rho_threshold, dtype=tf.float32)
 
     # Make sure tensor ranks are consistent.
-    rho_rank = rhos.shape.ndims
+    rho_rank = rhos.shape.ndims  # Usually 2.
     values.shape.assert_has_rank(rho_rank)
     bootstrap_value.shape.assert_has_rank(rho_rank - 1)
     discounts.shape.assert_has_rank(rho_rank)
@@ -283,8 +288,7 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
             back_prop=False,
             name='scan')
         # Reverse the results back to original order.
-        vs_minus_v_xs = tf.reverse(
-            vs_minus_v_xs, [0], name='vs_minus_v_xs')
+        vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0], name='vs_minus_v_xs')
 
         # Add V(x_s) to get v_s.
         vs = tf.add(vs_minus_v_xs, values, name='vs')
