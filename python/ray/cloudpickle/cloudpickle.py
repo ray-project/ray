@@ -79,25 +79,6 @@ else:
     PY3 = True
 
 
-# Backward compatibility for cloudpickle from 0.5.4 to 0.6.1, in which
-# functions from the same dynamic module would share the same globals in their
-# depickling environment.
-# Container for the global namespace to ensure consistent unpickling of
-# functions defined in dynamic modules (modules not registed in sys.modules).
-_dynamic_modules_globals = weakref.WeakValueDictionary()
-
-
-class _DynamicModuleFuncGlobals(dict):
-    """Global variables referenced by a function defined in a dynamic module
-
-    To avoid leaking references we store such context in a WeakValueDictionary
-    instance.  However instances of python builtin types such as dict cannot
-    be used directly as values in such a construct, hence the need for a
-    derived class.
-    """
-    pass
-
-
 def _make_cell_set_template_code():
     """Get the Python compiler to emit LOAD_FAST(arg); STORE_DEREF
 
@@ -676,11 +657,11 @@ class CloudPickler(Pickler):
         # base_globals represents the future global namespace of func at
         # unpickling time. Looking it up and storing it in globals_ref allow
         # functions sharing the same globals at pickling time to also
-        # share them at unpickling time, at one condition: since globals_ref is
-        # an attribute of a Cloudpickler instance, and that a new Pickler is
+        # share them once unpickled, at one condition: since globals_ref is
+        # an attribute of a Cloudpickler instance, and that a new CloudPickler is
         # created each time pickle.dump or pickle.dumps is called, functions
         # also need to be saved within the same invokation of
-        # pickle.dump/pickle.dumps (for example: pickle.dumps([f1, f2])). There
+        # cloudpickle.dump/cloudpickle.dumps (for example: cloudpickle.dumps([f1, f2])). There
         # is no such limitation when using Cloudpickler.dump, as long as the
         # multiple invokations are bound to the same Cloudpickler.
         base_globals = self.globals_ref.setdefault(id(func.__globals__), {})
@@ -1102,12 +1083,12 @@ def _fill_function(*args):
     # - At pickling time, any dynamic global variable used by func is
     #   serialized by value (in state['globals']).
     # - At unpickling time, func's __globals__ attribute is initialized by
-    #   first retrieving the globals namespace from func's module by looking up
-    #   its __module__ attribute and then updated with state['globals'].
-
-    # That means that if any collision happens, the serialized global variables
-    # shipped with func will always override the globals already existing in
-    # func's new environment.
+    #   first retrieving an empty isolated namespace that will be shared
+    #   with other functions pickled from the same original module
+    #   by the same CloudPickler instance and then updated with the
+    #   content of state['globals'] to populate the shared isolated
+    #   namespace with all the global variables that are specifically
+    #   referenced for this function.
     func.__globals__.update(state['globals'])
 
     func.__defaults__ = state['defaults']
@@ -1146,24 +1127,11 @@ def _make_skel_func(code, cell_count, base_globals=None):
         code and the correct number of cells in func_closure.  All other
         func attributes (e.g. func_globals) are empty.
     """
-    if base_globals is None:
+    # This is backward-compatibility code: for cloudpickle versions between
+    # 0.5.4 and 0.7, base_globals could be a string or None. base_globals
+    # should now always be a dictionary.
+    if base_globals is None or isinstance(base_globals, str):
         base_globals = {}
-    elif isinstance(base_globals, str):
-        # Backward compatibility for cloudpickle from 0.5.4 to 0.6.1, in which
-        # the globals of a depickled function were retrieved (if possible) by
-        # using the globals of the module with name base_globals
-        base_globals_name = base_globals
-        try:
-            # First try to reuse the globals from the module containing the
-            # function. If it is not possible to retrieve it, fallback to an
-            # empty dictionary.
-            base_globals = vars(importlib.import_module(base_globals))
-        except ImportError:
-            base_globals = _dynamic_modules_globals.get(
-                    base_globals_name, None)
-            if base_globals is None:
-                base_globals = _DynamicModuleFuncGlobals()
-            _dynamic_modules_globals[base_globals_name] = base_globals
 
     base_globals['__builtins__'] = __builtins__
 
