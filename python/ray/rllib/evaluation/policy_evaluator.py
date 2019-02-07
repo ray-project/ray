@@ -118,8 +118,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation_method=None,
                  output_creator=lambda ioctx: NoopOutput(),
-                 remote_worker_envs=False,
-                 entangled_worker_envs=False):
+                 remote_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -196,8 +195,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 for saving generated experiences.
             remote_worker_envs (bool): Whether environments should be remote,
                 in another process, and executed in parallel
-            entangled_worker_envs (bool): Whether environments are entangled,
-                physicallky one, logically many
         """
 
         if log_level:
@@ -254,13 +251,11 @@ class PolicyEvaluator(EvaluatorInterface):
 
         self.env = wrap(self.env)
 
-        def make_env(input):
+        def make_env(vector_index):
             return wrap(
                 env_creator(
-                    env_context.align(
-                        vector_index=0 if entangled_worker_envs else input,
-                        entangled_envs_num=input if entangled_worker_envs
-                        else 0,
+                    env_context.copy_with_overrides(
+                        vector_index=vector_index,
                         remote=remote_worker_envs)))
 
         self.tf_sess = None
@@ -305,8 +300,7 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
             self.env, make_env=make_env, num_envs=num_envs,
-            remote_envs=remote_worker_envs,
-            entangled_envs=entangled_worker_envs)
+            remote_envs=remote_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
