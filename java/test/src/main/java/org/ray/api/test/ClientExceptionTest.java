@@ -1,27 +1,21 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayException;
+import org.ray.api.id.UniqueId;
+import org.ray.runtime.RayObjectImpl;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import org.ray.api.id.UniqueId;
-import java.util.concurrent.TimeUnit;
-import org.ray.runtime.RayObjectImpl;
 
 public class ClientExceptionTest extends BaseTest {
 
   @Test
-  public void testGet() {
-    System.out.println("1");
+  public void testWaitAndCrash() {
     UniqueId randomId = UniqueId.randomId();
-    RayObject<String> none_existent = new RayObjectImpl(randomId);
-    System.out.println("2");
+    RayObject<String> notExisting = new RayObjectImpl(randomId);
 
     Thread thread = new Thread(() -> {
       try {
@@ -32,16 +26,17 @@ public class ClientExceptionTest extends BaseTest {
         throw new RuntimeException("Got InterruptedException when sleeping.", e);
       }
     });
-    System.out.println("3");
     thread.start();
-    System.out.println("4");
     try {
-      none_existent.get();
-      WaitResult<String> res = Ray.wait(ImmutableList.of(none_existent), 1, 2000);
+      Ray.wait(ImmutableList.of(notExisting), 1, 2000);
       Assert.fail("Should not reach here");
     } catch (RayException e) {
       System.out.println(String.format("Expected runtime exception: {}", e));
     }
-    System.out.println("5");
+    try {
+      thread.join();
+    } catch (Exception e) {
+      System.out.println(e);
+    }
   }
 }
