@@ -9,7 +9,7 @@ See https://github.com/ray-project/ray/issues/3721.
 from ray.includes.common cimport (
     CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
     CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    ComputePutId, ComputeSignalId, ComputeTaskId)
+    ComputePutId, ComputeTaskId)
 
 from ray.utils import decode
 

@@ -38,15 +38,10 @@ def _get_task_id(source):
         return ray._raylet.compute_task_id(
             source._ray_actor_creation_dummy_object_id)
     else:
-        # When called from send() via _get_signa_id() source is a task id.
         if type(source) is ray.TaskID:
             return source
         else:
             return ray._raylet.compute_task_id(source)
-
-
-def _get_signal_id(source, counter):
-    return ray._raylet.compute_signal_id(_get_task_id(source), counter)
 
 
 def send(signal, source_id=None):
@@ -101,18 +96,19 @@ def receive(sources, timeout=10**12):
 
     # Construct the redis query.
     query = "XREAD BLOCK "
+    # Multiply by 1000x since timeout is in sec and redis expects ms.
     query += str(1000 * timeout)
     query += " STREAMS "
     query += " ".join([_get_task_id(source).hex() for source in sources])
     query += " "
     query += " ".join(
        [ray.utils.decode(signal_counters[_get_task_id(source)]) for source in sources])
-    print("query", query)
 
     answers = ray.worker.global_worker.redis_client.execute_command(query)
     if not answers:
         return []
-    # There will be one answer per source
+    # There will be one answer per source. If there is no signal for a given
+    # source, redis will return an empty list for that source.
     assert len(answers) == len(sources)
 
     results = []
@@ -142,8 +138,10 @@ def forget(sources):
     Args:
         sources: list of sources whose past signals are forgotten.
     """
+    # Just read all signals sent by all sources so far.
+    # This will results in ignoring these signals.
     receive(sources, timeout=0)
-
+    
 
 def reset():
     """

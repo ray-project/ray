@@ -835,10 +835,6 @@ class Worker(object):
                         key = task.actor_creation_id()
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
-                if (task.actor_id().is_nil()
-                        and task.actor_creation_id().is_nil()):
-                    # Send signal that the task has completed.
-                    ray_signal.send(ray_signal.DoneSignal())
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.

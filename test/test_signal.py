@@ -32,9 +32,7 @@ def test_task_to_driver(ray_start):
     object_id = task_send_signal.remote(signal_value)
     ray.get(object_id)
     result_list = signal.receive([object_id], timeout=10)
-    assert len(result_list) == 2
-    assert type(result_list[1][1]) == signal.DoneSignal
-
+    assert len(result_list) == 1
 
 def test_send_signal_from_actor_to_driver(ray_start):
     # Send several signals from an actor, and receive them in the driver.
@@ -85,30 +83,6 @@ def test_send_signals_from_actor_to_driver(ray_start):
     assert True
 
 
-def test_task_done(ray_start):
-    @ray.remote
-    def test_function():
-        return 1
-
-    object_id = test_function.remote()
-    ray.get(object_id)
-    result_list = signal.receive([object_id], timeout=5)
-    assert len(result_list) == 1
-    assert type(result_list[0][1]) == signal.DoneSignal
-
-
-def test_task_done2(ray_start):
-    @ray.remote(num_return_vals=2)
-    def test_function():
-        return 1, 2
-
-    object_id1, object_id2 = test_function.remote()
-    ray.get(object_id1)
-    result_list = signal.receive([object_id1, object_id2], timeout=5)
-    assert len(result_list) == 2
-    assert type(result_list[0][1]) == signal.DoneSignal
-
-
 def test_task_crash(ray_start):
     # Get an error when ray.get() is called on the return of a failed task.
 
@@ -134,6 +108,7 @@ def test_task_crash_without_get(ray_start):
     def crashing_function():
         raise Exception("exception message")
 
+    time.sleep(2)
     object_id = crashing_function.remote()
     result_list = signal.receive([object_id], timeout=5)
     assert len(result_list) == 1
