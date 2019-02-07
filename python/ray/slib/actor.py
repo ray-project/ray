@@ -1,7 +1,11 @@
+import sys
 import threading
+import time
 import ray
 
 from ray.slib.communication import  *
+
+NORMAL_EXIT_STATUS = 0
 
 ###
 ###   Each Ray actor corresponds to an operator instance in the physical dataflow
@@ -9,14 +13,28 @@ from ray.slib.communication import  *
 ###   Currently, batched queues are based on Eric's implementation (see: batched_queue.py)
 ###
 
-# TODO (john): Source actor
-@ray.remote
-class Source(object):
-    def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
+class Actor(object):
+    def __init__(self, instance_id, input_gate, output_gate):
         self.instance_id = instance_id
-        self.filepath = operator_metadata.other[0]
         self.input = input_gate
         self.output = output_gate
+        # Enable writes
+        for c in self.output.fb_channels:
+            c.queue.enable_writes()
+        for cs in self.output.shuffle_channels:
+            for c in cs: c.queue.enable_writes()
+        # TODO (john): Add more channel types here
+
+    # Starts the actor
+    def start(self):
+        pass
+
+# TODO (john): Source actor
+@ray.remote
+class Source(Actor):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
+        super().__init__(instance_id, input_gate, output_gate)
+        self.filepath = operator_metadata.other[0]
 
     # Starts the source
     def start(self):
@@ -25,86 +43,79 @@ class Source(object):
 
 # TODO (john): This should also be an actor
 # Reads text file line by line
-class ReadTextFile(object):
+class ReadTextFile(Actor):
     def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
-        self.instance_id = instance_id
+        super().__init__(instance_id, input_gate, output_gate)
         self.filepath = operator_metadata.other_args
-        self.input = input_gate
-        self.output = output_gate
         self.reader = open(self.filepath,"r")   # TODO (john): Handle possible exception here
 
     # Read input file line by line
-    def read(self):
+    def start(self):
         while True:
             record = self.reader.readline()
-            if not record:  # Flush any remaining records to the object store and close the file
-                self.output.push(record)    # Propagate 'None'
-                for c in self.output.output_channels:
-                    c.queue._flush_writes()
+            if not record:  # Flush any remaining records to plasma and close the file
+                self.output._flush(close=True)
                 self.reader.close()
-                break
-            self.output.push(record[:-1])
+                return NORMAL_EXIT_STATUS
+            self.output._push(record[:-1])  # Push after removing newline characters
 
 # Flatmap actor
 @ray.remote
-class FlatMap(object):
+class FlatMap(Actor):
     def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
-        self.instance_id = instance_id
+        super().__init__(instance_id, input_gate, output_gate)
         self.flatmap_fn = operator_metadata.logic
-        self.input = input_gate
-        self.output = output_gate
 
     # Applies the splitter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def flatmap(self):
+    def start(self):
         while True:
-            record = self.input.pull();
-            self.output.push_all(self.flatmap_fn(record))
-            if not record:
-                break
+            record = self.input._pull();
+            if record == None:
+                self.output._flush(close=True)
+                return NORMAL_EXIT_STATUS
+            self.output._push_all(self.flatmap_fn(record))
 
 # Filter actor
 @ray.remote
-class Filter(object):
+class Filter(Actor):
     def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
-        self.instance_id = instance_id
+        super().__init__(instance_id, input_gate, output_gate)
         self.filter_fn = operator_metadata.logic
-        self.input = input_gate
-        self.output = output_gate
 
     # Applies the filter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def filter(self):
+    def start(self):
         while True:
-            record = self.input.pull();
-            if not record:  # Propagate 'None' and return
-                self.output.push(res)
-                break
-            res = self.filter_fn(record)
-            if res == True: self.output.push(res)
+            record = self.input._pull();
+            if record == None:  # Close channel and return
+                self.output._flush(close=True)
+                return NORMAL_EXIT_STATUS
+            if self.filter_fn(record): self.output._push(record)
 
 # Inspect actor
 @ray.remote
-class Inspect(object):
+class Inspect(Actor):
     def __init__(self, instance_id, operator_metadata, input_gate, output_gate):
-        self.instance_id = instance_id
+        super().__init__(instance_id, input_gate, output_gate)
         self.inspect_fn = operator_metadata.logic
-        self.input = input_gate
-        self.output = output_gate
 
     # Applies the inspect logic to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def inspect(self):
+    def start(self):
         while True:
-            record = self.input.pull();
+            record = self.input._pull();
+            if record == None:
+                self.output._flush(close=True)
+                return NORMAL_EXIT_STATUS
+            self.output._push(record)
             self.inspect_fn(record)
-            self.output.push(record)
-            if not record: break
 
 # TODO(john): Time window actor (uses system time)
 @ray.remote
-class TimeWindow(object):
+class TimeWindow(Actor):
     def __init__(self, queue, width):
+        super().__init__(instance_id, input_gate, output_gate)
         self.queue = queue
         self.width = width     # In milliseconds
 

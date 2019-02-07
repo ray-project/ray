@@ -1,6 +1,6 @@
 import sys
 
-from ray.slib.streaming_operator import PStrategy
+from ray.slib.operator import PStrategy
 from ray.slib.batched_queue import BatchedQueue
 
 # A data channel is a batched queue between two operator instances in a streaming environment
@@ -30,37 +30,49 @@ class DataInput(object):
         self.input_channels = channels
         self.channel_index = 0
         self.max_index = len(channels)
+        self.closed = [False] * len(self.input_channels)  # Tracks the channels that have been closed
+        self.all_closed = False
 
     # Fetches records from input channels in a round-robin fashion
     # TODO (john): Make sure the instance is not blocked on any of its input channels
-    # TODO (john): In case of input skew, it might be better to prefer pulling from the largest queue more often
-    def pull(self):
-        c = self.input_channels[self.channel_index] # Channel to pull from
-        self.channel_index += 1
-        if self.channel_index == self.max_index: self.channel_index = 0
-        res =  c.queue.read_next()
-        print("[reader] Pulled record '{}'".format(res))
-        return res
+    # TODO (john): In case of input skew, it might be better to pull from the largest queue more often
+    def _pull(self):
+        while True:
+            c = self.input_channels[self.channel_index] # Channel to pull from
+            self.channel_index += 1
+            if self.channel_index == self.max_index: self.channel_index = 0
+            if self.closed[self.channel_index-1]: continue      # Channel has been closed
+            record = c.queue.read_next()
+            # print("Actor ({},{}) pulled '{}'.".format(c.src_operator_id,c.src_instance_id,record))
+            if record == None:  # Close channel and pull from the next open one
+                self.closed[self.channel_index-1] = True
+                self.all_closed = True
+                for s in self.closed:
+                    if not s:
+                        self.all_closed = False
+                        break
+                if not self.all_closed: continue
+            # Returns 'None' iff all input channels are closed
+            return record
 
 # Selects output channel(s) and pushes data
 class DataOutput(object):
     def __init__(self, channels, partitioning_schemes):
         self.partitioning_schemes = partitioning_schemes
-        self.output_channels = channels
         self.total_records_written = 0
         # Collect forward and broadcast channels
         self.fb_channels = []
-        for c in self.output_channels:
+        for c in channels:
             s = self.partitioning_schemes[c.dst_operator_id].strategy
             if s == PStrategy.Forward or s == PStrategy.Broadcast:
                 self.fb_channels.append(c)
         # Collect shuffle channels
         slots = sum(1 for n in self.partitioning_schemes.values() if n.strategy==PStrategy.Shuffle)
-        self.shuffle_exists = slots > 0
+        self.shuffle_exists = slots > 0     # Flag used to avoid hashing when there is shuffling
         self.shuffle_channels = [[]] * slots
         destinations = {}   # Distinct shuffle destinations
         index = 0;
-        for c in self.output_channels:
+        for c in channels:
             s = self.partitioning_schemes[c.dst_operator_id].strategy
             if s == PStrategy.Shuffle:
                 slot = destinations.setdefault(c.dst_operator_id,index)
@@ -70,40 +82,52 @@ class DataOutput(object):
                 # TODO (john): Add support for other partitioting strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
 
+    # Flushes any remaining records in the output channels
+    # 'close' indicates whether we should also 'close' the channel (True) by propagating 'None'
+    # or just flush the remaining records to plasma (False)
+    def _flush(self,close=False):
+        for c in self.fb_channels:
+            if close == True: c.queue.put_next(None)
+            c.queue._flush_writes()
+        for cs in self.shuffle_channels:
+            for c in cs:
+                if close == True: c.queue.put_next(None)
+                c.queue._flush_writes()
+
+    # Returns all destination actor ids
+    def _destination_actor_ids(self):
+        destinations = []
+        for c in self.fb_channels:
+            destinations.append((c.dst_operator_id,c.dst_instance_id))
+        for cs in self.shuffle_channels:
+            for c in cs: destinations.append((c.dst_operator_id,c.dst_instance_id))
+        # TODO (john): Add more channel types
+        return destinations
+
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically based on 'batch_max_size' and 'batch_max_time'
-    def push(self, record):
-        if not record:  # Flush remaining records to object store
-            for c in self.output_channels:
-                c.queue.put_next(record)    # Propagate 'None'
-                c.queue._flush_writes()
-            return
+    def _push(self, record):
         # Forward record
         for c in self.fb_channels:
-            print("[writer] Push record '{}' to channel {}".format(record,c))
+            # print("[writer] Push record '{}' to channel {}".format(record,c))
             c.queue.put_next(record)
+
         # Hash-based shuffling per destination
         if self.shuffle_exists:
             h = hash(record)    # TODO (john): Should be able to shuffle by a key
             for cs in self.shuffle_channels:
                 l = len(cs)     # Number of downstream instances
                 c = cs[h % l]
-                print("[writer] Push record '{}' to channel {}".format(record,c))
+                # print("[writer] Push record '{}' to channel {}".format(record,c))
                 c.queue.put_next(record)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically based on 'batch_max_size' and 'batch_max_time'
-    def push_all(self, records):
-        for r in records: print("[writer] Push record '{}'".format(r))
-        if not records: # Flush remaining records to object store
-            for c in self.output_channels:
-                c.queue.put_next(None)  # Propagate 'None'
-                c.queue._flush_writes()
-            return
+    def _push_all(self, records):
         # Forward records
         for r in records:
             for c in self.fb_channels:
-                print("[writer] Push record '{}' to channel {}".format(r,c))
+                # print("[writer] Push record '{}' to channel {}".format(r,c))
                 c.queue.put_next(r)
         # Hash-based shuffling per destination
         if self.shuffle_exists:
@@ -112,7 +136,7 @@ class DataOutput(object):
                 for cs in self.shuffle_channels:
                     l = len(cs)     # Number of downstream instances
                     c = cs[h % l]
-                    print("[writer] Push record '{}' to channel {}".format(r,c))
+                    # print("[writer] Push record '{}' to channel {}".format(r,c))
                     c.queue.put_next(r)
 
 # Batched queue configuration

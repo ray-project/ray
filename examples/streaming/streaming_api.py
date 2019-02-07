@@ -2,9 +2,6 @@ import time
 import logging
 
 from ray.slib.streaming import *
-from ray.slib.streaming_operator import OpType, PStrategy, PScheme
-from ray.slib.actor import FlatMap
-from ray.slib.communication import DataChannel
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -15,7 +12,7 @@ def splitter(line):
 
 def filter_fn(word):
      if "f" in word: return True
-     else: return False
+     return False
 
 
 if __name__ == '__main__':
@@ -78,7 +75,10 @@ if __name__ == '__main__':
     end = time.time()
     print("Assembled logical dataflow in {} secs\n".format(end-start))
     env.print_logical_graph()
+    start = time.time()
     env.execute()
-    env.print_physical_graph()
+    end = time.time()
+    print("Elapsed time: {} secs".format(end-start))
+    #env.print_physical_graph()
 
-    time.sleep(20)
+    #time.sleep(20)

@@ -2,8 +2,7 @@ import sys
 import uuid
 import networkx as nx
 
-from ray.slib.streaming_operator import *
-from ray.slib.communication import *
+from ray.slib.operator import *
 from ray.slib.actor import *
 from ray.slib.batched_queue import BatchedQueue
 
@@ -25,6 +24,7 @@ class Environment(object):
         self.operators = {}                 # operator id --> operator object
         self.config = config                # Environment's configuration
         self.topo_cleaned = False           # True if logical dataflow graph is ready for execution, false otherwise
+        self.actor_handles = []             # Handles to all actors in the physical dataflow
 
     # Generates all required data channels between an operator and its downstream operators
     def __generate_channels(self, operator):
@@ -55,15 +55,15 @@ class Environment(object):
         # Select actor to construct
         if operator.type == OpType.Source:
             s = Source.remote(actor_id,operator,input,output)
-            s.start.remote()
+            return s.start.remote()
         elif operator.type == OpType.Map:
             pass
         elif operator.type == OpType.FlatMap:
             fm = FlatMap.remote(actor_id,operator,input,output)
-            fm.flatmap.remote()
+            return fm.start.remote()
         elif operator.type == OpType.Filter:
             f = Filter.remote(actor_id,operator,input,output)
-            f.filter.remote()
+            return f.start.remote()
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
@@ -72,10 +72,11 @@ class Environment(object):
             pass
         elif operator.type == OpType.Inspect:
             i = Inspect.remote(actor_id,operator,input,output)
-            i.inspect.remote()
+            return i.start.remote()
         elif operator.type == OpType.ReadTextFile:  # TODO (john): Colocate the source with the input file
             i = ReadTextFile(actor_id,operator,input,output)
-            i.read()
+            i.start()
+            return None
         else: # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(operator.type))
 
@@ -84,14 +85,17 @@ class Environment(object):
         num_instances = operator.num_instances
         print("Generating {} actors of type {}...".format(num_instances,operator.type))
         in_channels = upstream_channels.pop(operator.id) if upstream_channels else []
+        handles = []
         for i in range(num_instances):
             # Collect input and output channels for the particular instance
             ip = [c for c in in_channels if c.dst_instance_id == i] if in_channels else []
             op = [c for clist in downstream_channels.values() for c in clist if c.src_instance_id == i]
-            print("Constructed {} input and {} output channels for the {}-th instance of the {} operator.".format(len(ip),len(op),i,operator.type))
+            #print("Constructed {} input and {} output channels for the {}-th instance of the {} operator.".format(len(ip),len(op),i,operator.type))
             inpt = DataInput(ip)
             otpt = DataOutput(op,operator.partitioning_strategies)
-            self.__generate_actor(i,operator,inpt,otpt)
+            handle =  self.__generate_actor(i,operator,inpt,otpt)
+            if handle: handles.append(handle)
+        return handles
 
     # An edge denotes a flow of data between logical operators
     # and may correspond to multiple data channels in the physical dataflow
@@ -100,8 +104,7 @@ class Environment(object):
 
     # Adds a channel/edge to the physical dataflow graph
     def __add_channel(self,actor_id,input,output):
-        for c in output.output_channels:
-            dest_actor_id = (c.dst_operator_id,c.dst_instance_id)
+        for dest_actor_id in output._destination_actor_ids():
             self.physical_topo.add_edge(actor_id,dest_actor_id)
 
     # Sets the level of parallelism for a registered operator
@@ -142,8 +145,16 @@ class Environment(object):
             # Generate downstream data channels
             downstream_channels = self.__generate_channels(operator)
             # Instantiate Ray actors
-            self.__generate_actors(operator,upstream_channels,downstream_channels)
+            handles = self.__generate_actors(operator,upstream_channels,downstream_channels)
+            if handles:
+                self.actor_handles.extend(handles)
             upstream_channels.update(downstream_channels)
+        self.print_physical_graph()
+        # Wait until everybody returns
+        print("Running...".format(len(self.actor_handles)))
+        start = time.time()
+        ray.get(self.actor_handles)
+        print("Done.")
 
     # Cleans the logical dataflow graph to construct and deploy the physical dataflow
     def collect_garbage(self):

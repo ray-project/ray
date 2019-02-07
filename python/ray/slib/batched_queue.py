@@ -84,7 +84,6 @@ class BatchedQueue(object):
         self.flush_lock = threading.RLock()
         self.flush_thread = FlushThread(self.max_batch_time,
                                     self._flush_writes)
-
     def __getstate__(self):
         state = dict(self.__dict__)
         del state["flush_lock"]
@@ -94,6 +93,14 @@ class BatchedQueue(object):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
+
+    # This is to enable writing functionality in case the queue is not created by the writer
+    # The reason is that python locks cannot be serialized
+    def enable_writes(self):
+        self.write_buffer = []
+        self.flush_lock = threading.RLock()
+        self.flush_thread = FlushThread(self.max_batch_time,
+                                    self._flush_writes)
 
     # Batch ids consist of a unique queue id used as prefix along with
     # two numbers generated using the batch offset in the queue
@@ -214,6 +221,8 @@ class Reader(object):
         return self.out_queue
 
     def read_write_forever(self):
+        if self.out_queue:
+            self.enable_writes()
         expected_value = 0
         while True:
             start = time.time()
@@ -224,7 +233,8 @@ class Reader(object):
                     assert x == expected_value, (x, expected_value)
                     expected_value += 1
                     self.num_reads += 1
-                    self.out_queue.put_next(x)
+                    if self.out_queue:
+                        self.out_queue.put_next(x)
                     self.num_writes += 1
                     while (self.num_reads / (time.time() - self.start) >
                            self.max_reads_per_second):
@@ -252,15 +262,15 @@ def test_max_throughput():
                 prefetch_depth=10,
                 background_flush=False)
 
-    reader = Reader.remote(queue, queue2,max_reads_per_second=float("inf"))
-    reader.read_forever.remote()
+    # reader = Reader.remote(queue, queue2,max_reads_per_second=float("inf"))
+    # reader.read_forever.remote()
 
-    # # FIXME (john): the following blocks
-    # reader1 = Reader.remote(queue, queue2,max_reads_per_second=float("inf"))
-    # reader1.read_write_forever.remote()
-    # reader2 = Reader.remote(queue2, None, max_reads_per_second=float("inf"))
-    # reader2.read_write_forever.remote()
-    
+    # FIXME (john): the following blocks
+    reader1 = Reader.remote(queue, queue2,max_reads_per_second=float("inf"))
+    reader1.read_write_forever.remote()
+    reader2 = Reader.remote(queue2, None, max_reads_per_second=float("inf"))
+    reader2.read_write_forever.remote()
+
     value = 0
     for _ in range(10):
         N = 100000
