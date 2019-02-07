@@ -190,7 +190,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             if isinstance(tensor, list):
                 return [make_time_major(t, drop_last) for t in tensor]
 
-            if self.config["model"]["use_lstm"]:
+            if self.config["model"]["use_lstm"] or self.config["model"]["custom_lstm"]:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
