@@ -41,8 +41,7 @@ VTraceReturns = collections.namedtuple('VTraceReturns', 'vs pg_advantages')
 
 
 def select_policy_values_using_actions(policy_logits, actions):
-    """
-  Computes action log-probs from policy logits and actions.
+    """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
   time dimension ranging from 0 to T-1. B refers to the batch size and
@@ -67,7 +66,8 @@ def select_policy_values_using_actions(policy_logits, actions):
 
 
 def from_logits(behaviour_policy,
-                target_policy, actions,
+                target_policy,
+                actions,
                 discounts,
                 rewards,
                 values,
@@ -170,7 +170,7 @@ def from_logits(behaviour_policy,
 def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
                             clip_rho_threshold=1.0, clip_pg_rho_threshold=1.0,
                             name='vtrace_from_importance_weights'):
-  r"""V-trace from log importance weights.
+    r"""V-trace from log importance weights.
 
   Calculates V-trace actor critic targets as described in
 
@@ -215,14 +215,13 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
     rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
     rewards = tf.cast(rewards, dtype=tf.float32)
     values = tf.convert_to_tensor(values, dtype=tf.float32)
-    bootstrap_value = tf.convert_to_tensor(
-        bootstrap_value, dtype=tf.float32)
+    bootstrap_value = tf.convert_to_tensor(bootstrap_value, dtype=tf.float32)
     if clip_rho_threshold is not None:
-        clip_rho_threshold = tf.convert_to_tensor(clip_rho_threshold,
-                                                  dtype=tf.float32)
+        clip_rho_threshold = tf.convert_to_tensor(
+            clip_rho_threshold, dtype=tf.float32)
     if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold = tf.convert_to_tensor(clip_pg_rho_threshold,
-                                                     dtype=tf.float32)
+        clip_pg_rho_threshold = tf.convert_to_tensor(
+            clip_pg_rho_threshold, dtype=tf.float32)
 
     # Make sure tensor ranks are consistent.
     rho_rank = rhos.shape.ndims
@@ -235,8 +234,9 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
     if clip_pg_rho_threshold is not None:
         clip_pg_rho_threshold.shape.assert_has_rank(0)
 
-    with tf.name_scope(name, values=[rhos, discounts, rewards, values,
-                                     bootstrap_value]):
+    with tf.name_scope(
+            name,
+            values=[rhos, discounts, rewards, values, bootstrap_value]):
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(
                 clip_rho_threshold, rhos, name='clipped_rhos')
@@ -258,18 +258,17 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
         # Append bootstrapped value to get [v1, ..., v_t+1]
         values_t_plus_1 = tf.concat(
             [values[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
-        deltas = clipped_rhos * \
-            (rewards + discounts * values_t_plus_1 - values)
+        deltas = clipped_rhos * (
+            rewards + discounts * values_t_plus_1 - values)
 
-        # Note that all sequences are reversed, computation starts from the
-        # back.
+        # All sequences are reversed, computation starts from the back.
         sequences = (
             tf.reverse(discounts, axis=[0]),
             tf.reverse(cs, axis=[0]),
             tf.reverse(deltas, axis=[0]),
         )
 
-        # V-trace vs are calculated through a scan from the back to
+        # V-trace vs are calculated through a scan from the back to the
         # beginning of the given trajectory.
         def scanfunc(acc, sequence_item):
             discount_t, c_t, delta_t = sequence_item
@@ -291,19 +290,20 @@ def from_importance_weights(rhos, discounts, rewards, values, bootstrap_value,
         vs = tf.add(vs_minus_v_xs, values, name='vs')
 
         # Advantage for policy gradient.
-        vs_t_plus_1 = tf.concat([
-            vs[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
+        vs_t_plus_1 = tf.concat(
+            [vs[1:], tf.expand_dims(bootstrap_value, 0)], axis=0)
         if clip_pg_rho_threshold is not None:
-            clipped_pg_rhos = tf.minimum(clip_pg_rho_threshold, rhos,
-                                         name='clipped_pg_rhos')
+            clipped_pg_rhos = tf.minimum(
+                clip_pg_rho_threshold, rhos, name='clipped_pg_rhos')
         else:
             clipped_pg_rhos = rhos
         pg_advantages = (
             clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values))
 
         # Make sure no gradients backpropagated through the returned values.
-        return VTraceReturns(vs=tf.stop_gradient(vs),
-                             pg_advantages=tf.stop_gradient(pg_advantages))
+        return VTraceReturns(
+            vs=tf.stop_gradient(vs),
+            pg_advantages=tf.stop_gradient(pg_advantages))
 
 
 def get_rhos(behaviour_action_log_probs, target_action_log_probs):
