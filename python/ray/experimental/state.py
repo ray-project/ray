@@ -152,7 +152,7 @@ class GlobalState(object):
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if (num_redis_shards < 1):
+            if num_redis_shards < 1:
                 raise Exception("Expected at least one Redis shard, found "
                                 "{}.".format(num_redis_shards))
 
@@ -775,7 +775,7 @@ class GlobalState(object):
 
             num_tasks += self.redis_client.zcount(
                 event_log_set, min=0, max=time.time())
-        if num_tasks is 0:
+        if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 

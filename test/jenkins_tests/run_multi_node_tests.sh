@@ -351,7 +351,15 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --smoke-test
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/bayesopt_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/hyperopt_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} -e SIGOPT_KEY $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/sigopt_example.py \
     --smoke-test
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \

@@ -202,6 +202,9 @@ script:
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py
 
+  # ray debug tools tests
+  - python -m pytest -v --durations=10 test/debug_tools_test.py
+
   # modin test files
   - python python/ray/test/test_modin.py
 

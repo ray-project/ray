@@ -404,6 +404,7 @@ class TrialRunner(object):
                 # Checkpoint before ending the trial
                 # if checkpoint_at_end experiment option is set to True
                 self._checkpoint_trial_if_needed(trial)
+                self.trial_executor.export_trial_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             elif decision == TrialScheduler.NOOP:
                 return

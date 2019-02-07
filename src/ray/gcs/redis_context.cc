@@ -55,7 +55,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   case (REDIS_REPLY_STATUS): {
   } break;
   case (REDIS_REPLY_ERROR): {
-    RAY_LOG(ERROR) << "Redis error " << reply->str;
+    RAY_LOG(FATAL) << "Redis error: " << reply->str;
   } break;
   case (REDIS_REPLY_INTEGER): {
     data = std::to_string(reply->integer);
@@ -95,7 +95,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 
   } break;
   case (REDIS_REPLY_ERROR): {
-    RAY_LOG(ERROR) << "Redis error " << reply->str;
+    RAY_LOG(FATAL) << "Redis error: " << reply->str;
   } break;
   default:
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type << " and with string "
