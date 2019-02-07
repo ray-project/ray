@@ -150,7 +150,6 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         dist_class, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"],
             dist_type=self.config["dist_type"])
-
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
@@ -167,10 +166,11 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             seq_lens=existing_seq_lens)
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
+
         dist_inputs = self.model.outputs if self._is_discrete else \
             unpacked_outputs
-
         action_dist = dist_class(dist_inputs)
+
         values = self.model.value_function()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
@@ -244,6 +244,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"])
 
+        # KL divergence between worker and learner logits for debugging
         model_dist = MultiCategorical(unpacked_outputs)
         behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
 

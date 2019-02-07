@@ -254,8 +254,9 @@ class PolicyEvaluator(EvaluatorInterface):
         def make_env(vector_index):
             return wrap(
                 env_creator(
-                    env_context.align(vector_index=vector_index,
-                                      remote=remote_worker_envs)))
+                    env_context.copy_with_overrides(
+                        vector_index=vector_index,
+                        remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)

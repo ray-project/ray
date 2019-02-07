@@ -467,7 +467,7 @@ class Agent(Trainable):
                         config["local_evaluator_tf_session_args"]
                     }),
                 extra_config or {}),
-            remote_worker_envs=False
+            remote_worker_envs=False,
         )
 
     @DeveloperAPI
@@ -481,6 +481,7 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
+
         return [self._make_evaluator(
             cls,
             env_creator,

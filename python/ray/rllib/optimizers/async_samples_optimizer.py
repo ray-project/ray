@@ -50,7 +50,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               num_sgd_iter=1,
               minibatch_buffer_size=1,
               _fake_gpus=False):
-        self.learning_started = False
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
@@ -84,10 +83,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.learner.start()
 
         # Stats
-        self.timers = {k: TimerStat() for k in ["train", "sample"]}
+        self._optimizer_step_timer = TimerStat()
         self.num_weight_syncs = 0
         self.num_replayed = 0
-        self.learning_started = False
+        self._stats_start_time = time.time()
+        self._last_stats_time = {}
+        self._last_stats_val = {}
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
@@ -121,13 +122,11 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
-        start = time.time()
-        sample_timesteps, train_timesteps = self._step()
-        time_delta = time.time() - start
+        with self._optimizer_step_timer:
+            sample_timesteps, train_timesteps = self._step()
 
         if sample_timesteps > 0:
             self.add_mean_stat("sample_throughput", sample_timesteps)
-
         if train_timesteps > 0:
             self.add_mean_stat("train_throughput", train_timesteps)
 
@@ -140,18 +139,17 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def stats(self):
+        def timer_to_ms(timer):
+            return round(1000 * timer.mean, 3)
+
         timing = {
-            "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
-            for k in self.timers
+            "optimizer_step_time_ms": timer_to_ms(self._optimizer_step_timer),
+            "learner_grad_time_ms": timer_to_ms(self.learner.grad_timer),
+            "learner_load_time_ms": timer_to_ms(self.learner.load_timer),
+            "learner_load_wait_time_ms": timer_to_ms(
+                self.learner.load_wait_timer),
+            "learner_dequeue_time_ms": timer_to_ms(self.learner.queue_timer),
         }
-        timing["learner_grad_time_ms"] = round(
-            1000 * self.learner.grad_timer.mean, 3)
-        timing["learner_load_time_ms"] = round(
-            1000 * self.learner.load_timer.mean, 3)
-        timing["learner_load_wait_time_ms"] = round(
-            1000 * self.learner.load_wait_timer.mean, 3)
-        timing["learner_dequeue_time_ms"] = round(
-            1000 * self.learner.queue_timer.mean, 3)
         stats = {
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,

@@ -19,10 +19,10 @@ class VectorEnv(object):
     """
 
     @staticmethod
-    def wrap(make_env=None, num_envs=1, remote_envs=False, action_space=None,
-             observation_space=None):
+    def wrap(make_env=None, num_envs=1, remote_envs=False,
+             action_space=None, observation_space=None):
         if remote_envs:
-            return _RemoteVectorizedGymEnv(make_env, [], num_envs,
+            return _RemoteVectorizedGymEnv(make_env, num_envs,
                                            action_space, observation_space)
         return _VectorizedGymEnv(make_env, [], num_envs,
                                  action_space, observation_space)
@@ -114,6 +114,15 @@ class _VectorizedGymEnv(VectorEnv):
 class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
     """Internal wrapper for gym envs to implement VectorEnv as remote workers.
     """
+
+    def __init__(self, make_env, num_envs,
+                 action_space=None, observation_space=None):
+        _VectorizedGymEnv.__init__(self, make_env, [], num_envs,
+                                   action_space, observation_space)
+
+        for env in self.envs:
+            assert isinstance(env, ray.actor.ActorHandle), \
+                "Your environment needs to be ray remote environment"
 
     @override(_VectorizedGymEnv)
     def vector_reset(self):

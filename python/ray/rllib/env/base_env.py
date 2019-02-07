@@ -70,8 +70,9 @@ class BaseEnv(object):
         """Wraps any env type as needed to expose the async interface."""
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
-                # NOTE: Probably should handle remote_envs in
-                #       _MultiAgentEnvToAsync as well
+                assert not remote_envs, 'Remote multiagent environments are ' \
+                    'not implemented currently'
+
                 env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[], num_envs=num_envs)
             elif isinstance(env, ExternalEnv):

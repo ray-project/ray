@@ -20,6 +20,7 @@ class EnvContext(dict):
             uniquely identifies the worker the env is created in.
         vector_index (int): When there are multiple envs per worker, this
             uniquely identifies the env index within the worker.
+        remote (bool): Whether environment should be remote or not.
     """
 
     def __init__(self, env_config, worker_index, vector_index=0, remote=False):
@@ -28,8 +29,8 @@ class EnvContext(dict):
         self.vector_index = vector_index
         self.remote = remote
 
-    def align(self, env_config=None, worker_index=None, vector_index=None,
-              remote=None):
+    def copy_with_overrides(self, env_config=None, worker_index=None,
+                            vector_index=None, remote=None):
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,
