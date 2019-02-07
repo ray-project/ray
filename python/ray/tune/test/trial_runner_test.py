@@ -23,7 +23,8 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial, Resources, ExportFormat
+from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
+                            json_to_resources)
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
@@ -736,6 +737,28 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
+    def testCustomResources(self):
+        ray.shutdown()
+        ray.init(resources={"hi": 3})
+
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "resources_per_trial": {
+                    "cpu": 1,
+                    "custom_resources": {
+                        "hi": 2
+                    }
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
     def testCustomLogger(self):
         class CustomLogger(Logger):
             def on_result(self, result):
@@ -1083,6 +1106,62 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
+    def testCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testExtraCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(
+                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertTrue(sum(t.status == Trial.RUNNING for t in trials) < 2)
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources2(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource1))
+        resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource2))
+        resource3 = Resources(cpu=1, gpu=0, custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource3))
+        resource4 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource4))
+
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner(BasicVariantGenerator())
@@ -1292,6 +1371,7 @@ class TrialRunnerTest(unittest.TestCase):
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
+
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
@@ -1876,6 +1956,62 @@ class SearchAlgorithmTest(unittest.TestCase):
         trial = alg.next_trials()[0]
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
+
+
+class ResourcesTest(unittest.TestCase):
+    def testSubtraction(self):
+        resource_1 = Resources(
+            1,
+            0,
+            0,
+            1,
+            custom_resources={
+                "a": 1,
+                "b": 2
+            },
+            extra_custom_resources={
+                "a": 1,
+                "b": 1
+            })
+        resource_2 = Resources(
+            1,
+            0,
+            0,
+            1,
+            custom_resources={
+                "a": 1,
+                "b": 2
+            },
+            extra_custom_resources={
+                "a": 1,
+                "b": 1
+            })
+        new_res = Resources.subtract(resource_1, resource_2)
+        self.assertTrue(new_res.cpu == 0)
+        self.assertTrue(new_res.gpu == 0)
+        self.assertTrue(new_res.extra_cpu == 0)
+        self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+        self.assertTrue(
+            all(k == 0 for k in new_res.extra_custom_resources.values()))
+
+    def testDifferentResources(self):
+        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "c": 2})
+        new_res = Resources.subtract(resource_1, resource_2)
+        assert "c" in new_res.custom_resources
+        assert "b" in new_res.custom_resources
+        self.assertTrue(new_res.cpu == 0)
+        self.assertTrue(new_res.gpu == 0)
+        self.assertTrue(new_res.extra_cpu == 0)
+        self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(new_res.get("a") == 0)
+
+    def testSerialization(self):
+        original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        jsoned = resources_to_json(original)
+        new_resource = json_to_resources(jsoned)
+        self.assertEquals(original, new_resource)
 
 
 if __name__ == "__main__":
