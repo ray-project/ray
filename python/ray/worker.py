@@ -1789,6 +1789,9 @@ def connect(info,
 
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
+    # The Redis client can safely be shared between threads. However, that is
+    # not true of Redis pubsub clients. See the documentation at
+    # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=redis_password)
 
