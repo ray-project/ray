@@ -159,7 +159,7 @@ def run_experiments(experiments,
             metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
             server_port=server_port,
-            verbose=int(verbose > 1),
+            verbose=bool(verbose > 1),
             queue_trials=queue_trials,
             trial_executor=trial_executor)
 
