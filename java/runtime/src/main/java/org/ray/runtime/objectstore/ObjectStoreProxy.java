@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
 import org.apache.arrow.plasma.PlasmaClient;
+import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.UniqueId;
@@ -12,12 +13,16 @@ import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.util.Serializer;
 import org.ray.runtime.util.UniqueIdUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Object store proxy, which handles serialization and deserialization, and utilize a {@code
  * org.ray.spi.ObjectStoreLink} to actually store data.
  */
 public class ObjectStoreProxy {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ObjectStoreProxy.class);
 
   private static final int GET_TIMEOUT_MS = 1000;
 
@@ -82,11 +87,19 @@ public class ObjectStoreProxy {
   }
 
   public void put(UniqueId id, Object obj, Object metadata) {
-    objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
+    try {
+      objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
+    } catch (DuplicateObjectException e) {
+      LOGGER.warn(e.getMessage());
+    }
   }
 
   public void putSerialized(UniqueId id, byte[] obj, byte[] metadata) {
-    objectStore.get().put(id.getBytes(), obj, metadata);
+    try {
+      objectStore.get().put(id.getBytes(), obj, metadata);
+    } catch (DuplicateObjectException e) {
+      LOGGER.warn(e.getMessage());
+    }
   }
 
   public enum GetStatus {
