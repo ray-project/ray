@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.env.entangled_env import EntangledEnv
 
 
 @PublicAPI
@@ -21,13 +20,10 @@ class VectorEnv(object):
 
     @staticmethod
     def wrap(make_env=None, num_envs=1, remote_envs=False,
-             entangled_envs=False, action_space=None, observation_space=None):
+             action_space=None, observation_space=None):
         if remote_envs:
             return _RemoteVectorizedGymEnv(make_env, num_envs,
                                            action_space, observation_space)
-        if entangled_envs:
-            return _EntangledVectorizedGymEnv(make_env, num_envs,
-                                              action_space, observation_space)
         return _VectorizedGymEnv(make_env, [], num_envs,
                                  action_space, observation_space)
 
@@ -124,8 +120,8 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
         _VectorizedGymEnv.__init__(self, make_env, [], num_envs,
                                    action_space, observation_space)
 
-        for env in range(self.envs):
-            assert isinstance(env, ray.actor.ActorClass), \
+        for env in self.envs:
+            assert isinstance(b, ray.actor.ActorHandle), \
                 "Your environment needs to be ray remote environment"
 
     @override(_VectorizedGymEnv)
@@ -148,46 +144,3 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
             done_batch.append(done)
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch
-
-
-class _EntangledVectorizedGymEnv(_VectorizedGymEnv):
-    """Internal wrapper for gym env to implement VectorEnv as entangled env
-    (logically different envs that share the same physical env)."""
-
-    def __init__(self, make_env, num_envs,
-                 action_space=None, observation_space=None):
-        self.make_env = make_env
-        self.num_envs = num_envs
-        self.env = self.make_env(num_envs)
-        assert isinstance(self.env, EntangledEnv), \
-            "Your environment needs to inherit EntangledEnv"
-
-        self.action_space = action_space or self.env.action_space
-        self.observation_space = observation_space or \
-            self.env.observation_space
-
-    @override(_VectorizedGymEnv)
-    def vector_reset(self):
-        return [self.env.reset(env_i) for env_i in range(self.num_envs)]
-
-    @override(_VectorizedGymEnv)
-    def reset_at(self, env_i):
-        return self.env.reset(env_i)
-
-    @override(_VectorizedGymEnv)
-    def vector_step(self, actions):
-        step_results = self.env.step(
-            {i: act for i, act in enumerate(actions)})
-
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
-        for env_i in range(self.num_envs):
-            obs, rew, done, info = step_results[env_i]
-            obs_batch.append(obs)
-            rew_batch.append(rew)
-            done_batch.append(done)
-            info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, info_batch
-
-    @override(_VectorizedGymEnv)
-    def get_unwrapped(self):
-        return [self.env] * self.num_envs
