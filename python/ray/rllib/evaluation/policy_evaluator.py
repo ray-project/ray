@@ -255,8 +255,7 @@ class PolicyEvaluator(EvaluatorInterface):
             return wrap(
                 env_creator(
                     env_context.copy_with_overrides(
-                        vector_index=vector_index,
-                        remote=remote_worker_envs)))
+                        vector_index=vector_index, remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -267,7 +266,7 @@ class PolicyEvaluator(EvaluatorInterface):
                     and not ray.get_gpu_ids()):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
-                    " on CPU (please ignore any CUDA init errors)")
+                            " on CPU (please ignore any CUDA init errors)")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -299,7 +298,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
-            self.env, make_env=make_env, num_envs=num_envs,
+            self.env,
+            make_env=make_env,
+            num_envs=num_envs,
             remote_envs=remote_worker_envs)
         self.num_envs = num_envs
 

@@ -29,8 +29,11 @@ class EnvContext(dict):
         self.vector_index = vector_index
         self.remote = remote
 
-    def copy_with_overrides(self, env_config=None, worker_index=None,
-                            vector_index=None, remote=None):
+    def copy_with_overrides(self,
+                            env_config=None,
+                            worker_index=None,
+                            vector_index=None,
+                            remote=None):
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,
