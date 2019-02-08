@@ -69,8 +69,8 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.from_logits(
-                behaviour_policy=behaviour_logits,
-                target_policy=target_logits,
+                behaviour_policy_logits=behaviour_logits,
+                target_policy_logits=target_logits,
                 actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
