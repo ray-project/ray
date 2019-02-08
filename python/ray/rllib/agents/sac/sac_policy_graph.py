@@ -33,12 +33,10 @@ class SACPolicyGraph(TFPolicyGraph):
         self.action_space = action_space
         self.observation_space = observation_space
 
-        # create global step for counting the number of update operations
-        # self.session = self.sess = tf.keras.backend.get_session()
         self.session = self.sess = tf.get_default_session()
-        self.session._graph = tf.get_default_graph()
         tf.keras.backend.set_session(self.session)
 
+        # create global step for counting the number of update operations
         # self.global_step = tf.train.get_or_create_global_step()
 
         self._init_placeholders(observation_space, action_space)
@@ -129,7 +127,8 @@ class SACPolicyGraph(TFPolicyGraph):
 
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
-        self.policy_loss = tf.reduce_mean(policy_kl_losses)
+        policy_loss_weight = self.config['optimization']['policy_loss_weight']
+        self.policy_loss = policy_loss_weight * tf.reduce_mean(policy_kl_losses)
 
     def _get_Q_target(self):
         next_actions = self.policy.actions([self._next_observations_ph])
@@ -155,7 +154,8 @@ class SACPolicyGraph(TFPolicyGraph):
         assert Q_targets.shape.as_list() == [None, 1]
 
         Q_values = self.Q([self._observations_ph, self._actions_ph])
-        self.Q_loss = tf.losses.mean_squared_error(
+        Q_loss_weight = self.config['optimization']['Q_loss_weight']
+        self.Q_loss = Q_loss_weight * tf.losses.mean_squared_error(
             labels=Q_targets, predictions=Q_values, weights=0.5)
 
     def _init_entropy_loss(self):
@@ -169,7 +169,8 @@ class SACPolicyGraph(TFPolicyGraph):
         actions = self.policy.actions([self._observations_ph])
         log_pis = self.policy.log_pis([self._observations_ph], actions)
 
-        self.entropy_loss = -tf.reduce_mean(
+        entropy_loss_weight = self.config['optimization']['entropy_loss_weight']
+        self.entropy_loss = -1.0 * entropy_loss_weight * tf.reduce_mean(
             self.log_alpha * tf.stop_gradient(log_pis + target_entropy))
 
     def _init_losses(self):
@@ -177,12 +178,10 @@ class SACPolicyGraph(TFPolicyGraph):
         self._init_critic_loss()
         self._init_entropy_loss()
 
-        config = self.config['optimization']
-
         self.total_loss = (
-            config['policy_loss_weight'] * self.policy_loss
-            + config['Q_loss_weight'] * self.Q_loss
-            + config['entropy_loss_weight'] * self.entropy_loss)
+            self.policy_loss
+            + self.Q_loss
+            + self.entropy_loss)
 
     @override(TFPolicyGraph)
     def optimizer(self):
