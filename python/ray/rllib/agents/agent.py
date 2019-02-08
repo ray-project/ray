@@ -71,8 +71,6 @@ COMMON_CONFIG = {
     "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
-    # Whether environments are in remote process or not
-    "remote_worker_envs": False,
 
     # === Resources ===
     # Number of actors used for parallelism
@@ -131,6 +129,10 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+    # If using num_envs_per_worker > 1, whether to create those new envs in
+    # remote processes instead of in the same worker. This adds overheads, but
+    # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
+    "remote_worker_envs": False,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__

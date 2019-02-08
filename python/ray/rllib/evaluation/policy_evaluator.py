@@ -193,8 +193,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
-            remote_worker_envs (bool): Whether environments should be remote,
-                in another process, and executed in parallel
+            remote_worker_envs (bool): If using num_envs > 1, whether to create
+                those new envs in remote processes instead of in the current
+                process. This adds overheads, but can make sense if your envs
+                are very CPU intensive (e.g., for StarCraft).
         """
 
         if log_level:
