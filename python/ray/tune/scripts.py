@@ -34,7 +34,25 @@ def cli():
     pass
 
 
-def _list_trials(experiment_path):
+DEFAULT_EXPERIMENT_INFO_KEYS = (
+    "trial_name",
+    "trial_id",
+    "status",
+    "num_failures",
+    "logdir"
+)
+
+DEFAULT_PROJECT_INFO_KEYS = (
+    "name",
+    "timestamp",
+    "total_trials",
+    "running_trials",
+    "terminated_trials",
+    "error_trials",
+)
+
+
+def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     experiment_path = os.path.expanduser(experiment_path)
     globs = glob.glob(os.path.join(experiment_path, "experiment_state*.json"))
     filename = max(list(globs))
@@ -48,7 +66,7 @@ def _list_trials(experiment_path):
     checkpoints['logdir'] = checkpoints['logdir'].str.replace(
         experiment_path, '')
 
-    print(checkpoints.to_string())
+    print(checkpoints[list(info_keys)].to_string())
 
 
 @cli.command()
@@ -57,7 +75,7 @@ def list_trials(experiment_path):
     _list_trials(experiment_path)
 
 
-def _list_experiments(project_path):
+def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
     base, experiment_paths, _ = list(os.walk(project_path))[0]  # clean this
 
     experiment_data_collection = []
@@ -92,7 +110,7 @@ def _list_experiments(project_path):
         experiment_data_collection.append(experiment_data)
 
     info_dataframe = pd.DataFrame(experiment_data_collection)
-    print(info_dataframe.to_string())
+    print(info_dataframe[list(info_keys)].to_string())
 
 
 @cli.command()
