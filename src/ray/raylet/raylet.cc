@@ -7,6 +7,28 @@
 
 #include "ray/status.h"
 
+namespace {
+
+const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr) {
+  std::vector<std::string> enum_names;
+  size_t i = 0;
+  while (true) {
+    const char *name = enum_names_ptr[i];
+    if (name == nullptr) {
+      break;
+    }
+    enum_names.push_back(name);
+    i++;
+  }
+  return enum_names;
+}
+
+static const std::vector<std::string> node_manager_message_enum =
+    GenerateEnumNames(ray::protocol::EnumNamesMessageType());
+static const std::vector<std::string> object_manager_message_enum =
+    GenerateEnumNames(ray::object_manager::protocol::EnumNamesMessageType());
+}
+
 namespace ray {
 
 namespace raylet {
@@ -19,9 +41,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-      object_manager_(main_service, object_manager_config, object_directory_),
+      object_manager_(main_service, object_manager_config, object_directory_,
+                      store_client_),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
-                    object_directory_),
+                    object_directory_, store_client_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
@@ -34,6 +57,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                boost::asio::ip::tcp::v4(),
                                                node_manager_config.node_manager_port)),
       node_manager_socket_(main_service) {
+  RAY_ARROW_CHECK_OK(
+      store_client_.Connect(node_manager_config.store_socket_name.c_str()));
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
@@ -75,8 +100,9 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
     client_info.resources_total_capacity.push_back(resource_pair.second);
   }
 
-  RAY_LOG(DEBUG) << "Node manager listening on: IP " << client_info.node_manager_address
-                 << " port " << client_info.node_manager_port;
+  RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
+                 << " started on " << client_info.node_manager_address << ":"
+                 << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
@@ -102,6 +128,7 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
     // Accept a new TCP client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(node_manager_socket_), "node manager",
+        node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.
@@ -125,7 +152,7 @@ void Raylet::HandleAcceptObjectManager(const boost::system::error_code &error) {
   // Accept a new TCP client and dispatch it to the node manager.
   auto new_connection = TcpClientConnection::Create(
       client_handler, message_handler, std::move(object_manager_socket_),
-      "object manager",
+      "object manager", object_manager_message_enum,
       static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
   DoAcceptObjectManager();
 }
@@ -148,6 +175,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = LocalClientConnection::Create(
         client_handler, message_handler, std::move(socket_), "worker",
+        node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.

@@ -4,6 +4,8 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.ArrayList;
+import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Sha1Digestor;
@@ -29,6 +31,14 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
    */
   private int numForks;
 
+  /**
+   * The new actor handles that were created from this handle
+   * since the last task on this handle was submitted. This is
+   * used to garbage-collect dummy objects that are no longer
+   * necessary in the backend.
+   */
+  private List<UniqueId> newActorHandles;
+
   public RayActorImpl() {
     this(UniqueId.NIL, UniqueId.NIL);
   }
@@ -42,6 +52,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.handleId = handleId;
     this.taskCounter = 0;
     this.taskCursor = null;
+    this.newActorHandles = new ArrayList<>();
     numForks = 0;
   }
 
@@ -59,6 +70,14 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     this.taskCursor = taskCursor;
   }
 
+  public List<UniqueId> getNewActorHandles() {
+    return this.newActorHandles;
+  }
+
+  public void clearNewActorHandles() {
+    this.newActorHandles.clear();
+  }
+
   public UniqueId getTaskCursor() {
     return taskCursor;
   }
@@ -74,6 +93,7 @@ public final class RayActorImpl<T> implements RayActor<T>, Externalizable {
     ret.numForks = 0;
     ret.taskCursor = this.taskCursor;
     ret.handleId = this.computeNextActorHandleId();
+    newActorHandles.add(ret.handleId);
     return ret;
   }
 

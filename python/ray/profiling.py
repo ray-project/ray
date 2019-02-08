@@ -97,6 +97,10 @@ class Profiler(object):
                 time.sleep(1)
                 self.flush_profile_data()
         except AttributeError:
+            # TODO(suquark): It is a bad idea to ignore "AttributeError".
+            # It has caused some very unexpected behaviors when implementing
+            # new features (related to AttributeError).
+
             # This is to suppress errors that occur at shutdown.
             pass
 
@@ -107,7 +111,7 @@ class Profiler(object):
         timeline until after the task has completed. For very long-running
         tasks, we may want profiling information to appear more quickly.
         In such cases, this function can be called. Note that as an
-        aalternative, we could start thread in the background on workers that
+        alternative, we could start a thread in the background on workers that
         calls this automatically.
         """
         with self.lock:
@@ -120,7 +124,7 @@ class Profiler(object):
             component_type = "driver"
 
         self.worker.raylet_client.push_profile_events(
-            component_type, ray.ObjectID(self.worker.worker_id),
+            component_type, ray.UniqueID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 
     def add_event(self, event):
@@ -133,7 +137,7 @@ class RayLogSpanRaylet(object):
 
     Attributes:
         event_type (str): The type of the event being logged.
-        contents: Additional information to log.
+        extra_data: Additional information to log.
     """
 
     def __init__(self, profiler, event_type, extra_data=None):

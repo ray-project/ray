@@ -2,13 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import time
 
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+
+logger = logging.getLogger(__name__)
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -40,6 +44,15 @@ DEFAULT_CONFIG = with_common_config({
     "hiddens": [256],
     # N-step Q learning
     "n_step": 1,
+
+    # === Evaluation ===
+    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
+    # The evaluation stats will be reported under the "evaluation" metric key.
+    # Note that evaluation is currently not parallelized, and that for Ape-X
+    # metrics are already only reported for the lowest epsilon workers.
+    "evaluation_interval": None,
+    # Number of episodes to run per evaluation period.
+    "evaluation_num_episodes": 10,
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -145,6 +158,16 @@ class DQNAgent(Agent):
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
 
+        if self.config["evaluation_interval"]:
+            self.evaluation_ev = self.make_local_evaluator(
+                self.env_creator,
+                self._policy_graph,
+                extra_config={
+                    "batch_mode": "complete_episodes",
+                    "batch_steps": 1,
+                })
+            self.evaluation_metrics = self._evaluate()
+
         def create_remote_evaluators():
             return self.make_remote_evaluators(self.env_creator,
                                                self._policy_graph,
@@ -206,6 +229,12 @@ class DQNAgent(Agent):
                 "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+
+        if self.config["evaluation_interval"]:
+            if self.iteration % self.config["evaluation_interval"] == 0:
+                self.evaluation_metrics = self._evaluate()
+            result.update(self.evaluation_metrics)
+
         return result
 
     def update_target_if_needed(self):
@@ -219,6 +248,16 @@ class DQNAgent(Agent):
     @property
     def global_timestep(self):
         return self.optimizer.num_steps_sampled
+
+    def _evaluate(self):
+        logger.info("Evaluating current policy for {} episodes".format(
+            self.config["evaluation_num_episodes"]))
+        self.evaluation_ev.restore(self.local_evaluator.save())
+        self.evaluation_ev.foreach_policy(lambda p, _: p.set_epsilon(0))
+        for _ in range(self.config["evaluation_num_episodes"]):
+            self.evaluation_ev.sample()
+        metrics = collect_metrics(self.evaluation_ev)
+        return {"evaluation": metrics}
 
     def _make_exploration_schedule(self, worker_index):
         # Use either a different `eps` per worker, or a linear schedule.

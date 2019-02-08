@@ -78,9 +78,9 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 
-# Default logger format: only contains the message.
-LOGGER_FORMAT = "%(message)s"
-LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
+LOGGER_FORMAT = (
+    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
+LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
@@ -90,3 +90,13 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 NO_RECONSTRUCTION = 0
 # A constant indicating that an actor should be reconstructed infinite times.
 INFINITE_RECONSTRUCTION = 2**30
+
+# Constants used to define the different process types.
+PROCESS_TYPE_MONITOR = "monitor"
+PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
+PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+PROCESS_TYPE_WORKER = "worker"
+PROCESS_TYPE_RAYLET = "raylet"
+PROCESS_TYPE_PLASMA_STORE = "plasma_store"
+PROCESS_TYPE_REDIS_SERVER = "redis_server"
+PROCESS_TYPE_WEB_UI = "web_ui"

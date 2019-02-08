@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 import os
+import logging
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
@@ -20,6 +20,7 @@ def dockerize_if_needed(config):
     if not docker_image:
         if cname:
             logger.warning(
+                "dockerize_if_needed: "
                 "Container name given but no Docker image - continuing...")
         return config
     else:

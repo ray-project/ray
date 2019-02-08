@@ -25,7 +25,7 @@ def parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray.ObjectID.nil_id().id()
+    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
     message = redis_client.execute_command("RAY.TABLE_LOOKUP",
                                            ray.gcs_utils.TablePrefix.CLIENT,
                                            "", NIL_CLIENT_ID)
@@ -152,7 +152,7 @@ class GlobalState(object):
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if (num_redis_shards < 1):
+            if num_redis_shards < 1:
                 raise Exception("Expected at least one Redis shard, found "
                                 "{}.".format(num_redis_shards))
 
@@ -216,8 +216,7 @@ class GlobalState(object):
         """Fetch and parse the object table information for a single object ID.
 
         Args:
-            object_id_binary: A string of bytes with the object ID to get
-                information about.
+            object_id: An object ID to get information about.
 
         Returns:
             A dictionary with information about the object ID in question.
@@ -229,7 +228,9 @@ class GlobalState(object):
         # Return information about a single object ID.
         message = self._execute_command(object_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.OBJECT, "",
-                                        object_id.id())
+                                        object_id.binary())
+        if message is None:
+            return {}
         gcs_entry = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -284,15 +285,17 @@ class GlobalState(object):
         """Fetch and parse the task table information for a single task ID.
 
         Args:
-            task_id_binary: A string of bytes with the task ID to get
-                information about.
+            task_id: A task ID to get information about.
 
         Returns:
             A dictionary with information about the task ID in question.
         """
+        assert isinstance(task_id, ray.TaskID)
         message = self._execute_command(task_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.RAYLET_TASK,
-                                        "", task_id.id())
+                                        "", task_id.binary())
+        if message is None:
+            return {}
         gcs_entries = ray.gcs_utils.GcsTableEntry.GetRootAsGcsTableEntry(
             message, 0)
 
@@ -303,23 +306,23 @@ class GlobalState(object):
 
         execution_spec = task_table_message.TaskExecutionSpec()
         task_spec = task_table_message.TaskSpecification()
-        task_spec = ray.raylet.task_from_string(task_spec)
-        function_descriptor_list = task_spec.function_descriptor_list()
+        task = ray._raylet.Task.from_string(task_spec)
+        function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
         task_spec_info = {
-            "DriverID": task_spec.driver_id().hex(),
-            "TaskID": task_spec.task_id().hex(),
-            "ParentTaskID": task_spec.parent_task_id().hex(),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": (task_spec.actor_id().hex()),
-            "ActorCreationID": task_spec.actor_creation_id().hex(),
+            "DriverID": task.driver_id().hex(),
+            "TaskID": task.task_id().hex(),
+            "ParentTaskID": task.parent_task_id().hex(),
+            "ParentCounter": task.parent_counter(),
+            "ActorID": (task.actor_id().hex()),
+            "ActorCreationID": task.actor_creation_id().hex(),
             "ActorCreationDummyObjectID": (
-                task_spec.actor_creation_dummy_object_id().hex()),
-            "ActorCounter": task_spec.actor_counter(),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources(),
+                task.actor_creation_dummy_object_id().hex()),
+            "ActorCounter": task.actor_counter(),
+            "Args": task.arguments(),
+            "ReturnObjectIDs": task.returns(),
+            "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
             "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,
@@ -351,7 +354,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.ObjectID(hex_to_binary(task_id))
+            task_id = ray.TaskID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(
@@ -364,7 +367,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.ObjectID(task_id_binary))
+                    ray.TaskID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
@@ -439,7 +442,7 @@ class GlobalState(object):
         # events and should also support returning a window of events.
         message = self._execute_command(batch_id, "RAY.TABLE_LOOKUP",
                                         ray.gcs_utils.TablePrefix.PROFILE, "",
-                                        batch_id.id())
+                                        batch_id.binary())
 
         if message is None:
             return []
@@ -772,7 +775,7 @@ class GlobalState(object):
 
             num_tasks += self.redis_client.zcount(
                 event_log_set, min=0, max=time.time())
-        if num_tasks is 0:
+        if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 
@@ -877,9 +880,10 @@ class GlobalState(object):
         Returns:
             A list of the error messages for this job.
         """
+        assert isinstance(job_id, ray.DriverID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.ERROR_INFO, "",
-            job_id.id())
+            job_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -891,7 +895,7 @@ class GlobalState(object):
         for i in range(gcs_entries.EntriesLength()):
             error_data = ray.gcs_utils.ErrorTableData.GetRootAsErrorTableData(
                 gcs_entries.Entries(i), 0)
-            assert job_id.id() == error_data.JobId()
+            assert job_id.binary() == error_data.JobId()
             error_message = {
                 "type": decode(error_data.Type()),
                 "message": decode(error_data.ErrorMessage()),
@@ -912,6 +916,7 @@ class GlobalState(object):
                 that job.
         """
         if job_id is not None:
+            assert isinstance(job_id, ray.DriverID)
             return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
@@ -922,6 +927,6 @@ class GlobalState(object):
         ]
 
         return {
-            binary_to_hex(job_id): self._error_messages(ray.ObjectID(job_id))
+            binary_to_hex(job_id): self._error_messages(ray.DriverID(job_id))
             for job_id in job_ids
         }

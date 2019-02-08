@@ -142,6 +142,11 @@ public class RayletClientImpl implements RayletClient {
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
+
+    // Deserialize new actor handles
+    UniqueId[] newActorHandles = UniqueIdUtil.getUniqueIdsFromByteBuffer(
+      info.newActorHandlesAsByteBuffer());
+
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
@@ -175,7 +180,7 @@ public class RayletClientImpl implements RayletClient {
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
     return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
-        maxActorReconstructions, actorId, actorHandleId, actorCounter,
+        maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
         args, returnIds, resources, functionDescriptor);
   }
 

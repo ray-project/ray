@@ -95,7 +95,6 @@ public class Worker {
         currentActorId = returnId;
       }
     } finally {
-      runtime.getWorkerContext().setCurrentTask(null, null);
       Thread.currentThread().setContextClassLoader(oldLoader);
     }
   }

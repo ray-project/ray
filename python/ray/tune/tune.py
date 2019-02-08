@@ -57,7 +57,7 @@ def run_experiments(experiments,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
-                    verbose=True,
+                    verbose=2,
                     resume=False,
                     queue_trials=False,
                     trial_executor=None,
@@ -75,7 +75,8 @@ def run_experiments(experiments,
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
-        verbose (bool): How much output should be printed for each trial.
+        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
+            1 = only status updates, 2 = status and trial results.
         resume (bool|"prompt"): If checkpoint exists, the experiment will
             resume from there. If resume is "prompt", Tune will prompt if
             checkpoint detected.
@@ -158,20 +159,23 @@ def run_experiments(experiments,
             metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
             server_port=server_port,
-            verbose=verbose,
+            verbose=bool(verbose > 1),
             queue_trials=queue_trials,
             trial_executor=trial_executor)
 
-    print(runner.debug_string(max_debug=99999))
+    if verbose:
+        print(runner.debug_string(max_debug=99999))
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            print(runner.debug_string())
+            if verbose:
+                print(runner.debug_string())
             last_debug = time.time()
 
-    print(runner.debug_string(max_debug=99999))
+    if verbose:
+        print(runner.debug_string(max_debug=99999))
 
     wait_for_log_sync()
 

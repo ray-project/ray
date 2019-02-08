@@ -23,7 +23,8 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
+                            json_to_resources)
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
@@ -261,8 +262,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "f1",
                 "local_dir": "/tmp/logdir",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40),
                 },
             }
         })
@@ -679,6 +680,47 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                path = export_dir + "/exported"
+                with open(path, "w") as f:
+                    f.write("OK")
+                return {export_formats[0]: path}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "export_formats": ["format"]
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(
+                os.path.exists(os.path.join(trial.logdir, "exported")))
+
+    def testInvalidExportFormats(self):
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _export_model(self, export_formats, export_dir):
+                ExportFormat.validate(export_formats)
+                return {}
+
+        def fail_trial():
+            run_experiments({
+                "foo": {
+                    "run": train,
+                    "export_formats": ["format"]
+                }
+            })
+
+        self.assertRaises(TuneError, fail_trial)
+
     def testDeprecatedResources(self):
         class train(Trainable):
             def _train(self):
@@ -689,6 +731,28 @@ class RunExperimentTest(unittest.TestCase):
                 "run": train,
                 "trial_resources": {
                     "cpu": 1
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+
+    def testCustomResources(self):
+        ray.shutdown()
+        ray.init(resources={"hi": 3})
+
+        class train(Trainable):
+            def _train(self):
+                return {"timesteps_this_iter": 1, "done": True}
+
+        trials = run_experiments({
+            "foo": {
+                "run": train,
+                "resources_per_trial": {
+                    "cpu": 1,
+                    "custom_resources": {
+                        "hi": 2
+                    }
                 }
             }
         })
@@ -848,7 +912,7 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = self.generate_trials({
             "run": "PPO",
             "config": {
-                "qux": lambda spec: 2 + 2,
+                "qux": tune.sample_from(lambda spec: 2 + 2),
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
             },
@@ -863,8 +927,8 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": 1,
-                "y": lambda spec: spec.config.x + 1,
-                "z": lambda spec: spec.config.y + 1,
+                "y": tune.sample_from(lambda spec: spec.config.x + 1),
+                "z": tune.sample_from(lambda spec: spec.config.y + 1),
             },
         }, "condition_resolution")
         trials = list(trials)
@@ -876,7 +940,7 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
-                "y": lambda spec: spec.config.x * 100,
+                "y": tune.sample_from(lambda spec: spec.config.x * 100),
             },
         }, "dependent_lambda")
         trials = list(trials)
@@ -889,10 +953,10 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x": grid_search([
-                    lambda spec: spec.config.y * 100,
-                    lambda spec: spec.config.y * 200
+                    tune.sample_from(lambda spec: spec.config.y * 100),
+                    tune.sample_from(lambda spec: spec.config.y * 200)
                 ]),
-                "y": lambda spec: 1,
+                "y": tune.sample_from(lambda spec: 1),
             },
         }, "dependent_grid_search")
         trials = list(trials)
@@ -920,7 +984,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 self.generate_trials({
                     "run": "PPO",
                     "config": {
-                        "foo": lambda spec: spec.config.foo,
+                        "foo": tune.sample_from(lambda spec: spec.config.foo),
                     },
                 }, "recursive_dep"))
         except RecursiveDependencyError as e:
@@ -1007,8 +1071,8 @@ class TrialRunnerTest(unittest.TestCase):
             "foo": {
                 "run": "f1",
                 "config": {
-                    "a" * 50: lambda spec: 5.0 / 7,
-                    "b" * 50: lambda spec: "long" * 40
+                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40)
                 },
             }
         }
@@ -1041,6 +1105,62 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testExtraCustomResources(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 1
+            },
+            "resources": Resources(
+                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+        }
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertTrue(sum(t.status == Trial.RUNNING for t in trials) < 2)
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+    def testCustomResources2(self):
+        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+        runner = TrialRunner(BasicVariantGenerator())
+        resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource1))
+        resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
+        self.assertTrue(runner.has_resources(resource2))
+        resource3 = Resources(cpu=1, gpu=0, custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource3))
+        resource4 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 3})
+        self.assertFalse(runner.has_resources(resource4))
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -1251,6 +1371,7 @@ class TrialRunnerTest(unittest.TestCase):
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
+
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
@@ -1835,6 +1956,62 @@ class SearchAlgorithmTest(unittest.TestCase):
         trial = alg.next_trials()[0]
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
+
+
+class ResourcesTest(unittest.TestCase):
+    def testSubtraction(self):
+        resource_1 = Resources(
+            1,
+            0,
+            0,
+            1,
+            custom_resources={
+                "a": 1,
+                "b": 2
+            },
+            extra_custom_resources={
+                "a": 1,
+                "b": 1
+            })
+        resource_2 = Resources(
+            1,
+            0,
+            0,
+            1,
+            custom_resources={
+                "a": 1,
+                "b": 2
+            },
+            extra_custom_resources={
+                "a": 1,
+                "b": 1
+            })
+        new_res = Resources.subtract(resource_1, resource_2)
+        self.assertTrue(new_res.cpu == 0)
+        self.assertTrue(new_res.gpu == 0)
+        self.assertTrue(new_res.extra_cpu == 0)
+        self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
+        self.assertTrue(
+            all(k == 0 for k in new_res.extra_custom_resources.values()))
+
+    def testDifferentResources(self):
+        resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        resource_2 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "c": 2})
+        new_res = Resources.subtract(resource_1, resource_2)
+        assert "c" in new_res.custom_resources
+        assert "b" in new_res.custom_resources
+        self.assertTrue(new_res.cpu == 0)
+        self.assertTrue(new_res.gpu == 0)
+        self.assertTrue(new_res.extra_cpu == 0)
+        self.assertTrue(new_res.extra_gpu == 0)
+        self.assertTrue(new_res.get("a") == 0)
+
+    def testSerialization(self):
+        original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
+        jsoned = resources_to_json(original)
+        new_resource = json_to_resources(jsoned)
+        self.assertEquals(original, new_resource)
 
 
 if __name__ == "__main__":

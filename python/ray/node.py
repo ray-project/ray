@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import collections
 import json
 import os
 import logging
@@ -12,23 +11,13 @@ import threading
 import time
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.tempfile_services import (
     get_logs_dir_path, get_object_store_socket_name, get_raylet_socket_name,
     new_log_monitor_log_file, new_monitor_log_file,
     new_raylet_monitor_log_file, new_plasma_store_log_file,
-    new_raylet_log_file, new_webui_log_file, set_temp_root)
-
-ProcessInfo = collections.namedtuple(
-    "ProcessInfo", ["process", "use_valgrind", "use_profiler"])
-
-PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
-PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-PROCESS_TYPE_WORKER = "worker"
-PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_PLASMA_STORE = "plasma_store"
-PROCESS_TYPE_REDIS_SERVER = "redis_server"
-PROCESS_TYPE_WEB_UI = "web_ui"
+    new_raylet_log_file, new_webui_log_file, set_temp_root,
+    try_to_create_directory)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -73,6 +62,11 @@ class Node(object):
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+        else:
+            redis_client = ray.services.create_redis_client(
+                ray_params.redis_address, ray_params.redis_password)
+            ray_params.include_java = (
+                ray.services.include_java_from_redis(redis_client))
 
         self._ray_params = ray_params
         self._config = (json.loads(ray_params._internal_config)
@@ -114,11 +108,28 @@ class Node(object):
         """Get the node's raylet socket name."""
         return self._raylet_socket_name
 
+    def prepare_socket_file(self, socket_path):
+        """Prepare the socket file for raylet and plasma.
+
+        This method helps to prepare a socket file.
+        1. Make the directory if the directory does not exist.
+        2. If the socket file exists, raise exception.
+
+        Args:
+            socket_path (string): the socket file to prepare.
+        """
+        if not os.path.exists(socket_path):
+            path = os.path.dirname(socket_path)
+            if not os.path.isdir(path):
+                try_to_create_directory(path)
+        else:
+            raise Exception("Socket file {} exists!".format(socket_path))
+
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
         (self._redis_address, redis_shards,
-         processes) = ray.services.start_redis(
+         process_infos) = ray.services.start_redis(
              self._node_ip_address,
              port=self._ray_params.redis_port,
              redis_shard_ports=self._ray_params.redis_shard_ports,
@@ -128,40 +139,36 @@ class Node(object):
              redirect_worker_output=self._ray_params.redirect_worker_output,
              password=self._ray_params.redis_password,
              redis_max_memory=self._ray_params.redis_max_memory)
-        assert PROCESS_TYPE_REDIS_SERVER not in self.all_processes
-        self.all_processes[PROCESS_TYPE_REDIS_SERVER] = []
-        for process in processes:
-            process_info = ProcessInfo(
-                process=process, use_valgrind=False, use_profiler=False)
-            self.all_processes[PROCESS_TYPE_REDIS_SERVER].append(process_info)
+        assert (
+            ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
+            process_infos)
 
     def start_log_monitor(self):
         """Start the log monitor."""
         stdout_file, stderr_file = new_log_monitor_log_file()
-        process = ray.services.start_log_monitor(
+        process_info = ray.services.start_log_monitor(
             self.redis_address,
             self._node_ip_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password)
-        assert PROCESS_TYPE_LOG_MONITOR not in self.all_processes
-        self.all_processes[PROCESS_TYPE_LOG_MONITOR] = [
-            ProcessInfo(
-                process=process, use_valgrind=False, use_profiler=False)
+        assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
+            process_info
         ]
 
     def start_ui(self):
         """Start the web UI."""
         stdout_file, stderr_file = new_webui_log_file()
-        self._webui_url, process = ray.services.start_ui(
+        self._webui_url, process_info = ray.services.start_ui(
             self._redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file)
-        assert PROCESS_TYPE_WEB_UI not in self.all_processes
-        if process is not None:
-            self.all_processes[PROCESS_TYPE_WEB_UI] = [
-                ProcessInfo(
-                    process=process, use_valgrind=False, use_profiler=False)
+        assert ray_constants.PROCESS_TYPE_WEB_UI not in self.all_processes
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_WEB_UI] = [
+                process_info
             ]
 
     def start_plasma_store(self):
@@ -171,9 +178,10 @@ class Node(object):
         self._plasma_store_socket_name = (
             self._ray_params.plasma_store_socket_name
             or get_object_store_socket_name())
+        self.prepare_socket_file(self._plasma_store_socket_name)
         stdout_file, stderr_file = (new_plasma_store_log_file(
             self._ray_params.redirect_output))
-        process = ray.services.start_plasma_store(
+        process_info = ray.services.start_plasma_store(
             self._node_ip_address,
             self._redis_address,
             stdout_file=stdout_file,
@@ -183,10 +191,10 @@ class Node(object):
             huge_pages=self._ray_params.huge_pages,
             plasma_store_socket_name=self._plasma_store_socket_name,
             redis_password=self._ray_params.redis_password)
-        assert PROCESS_TYPE_PLASMA_STORE not in self.all_processes
-        self.all_processes[PROCESS_TYPE_PLASMA_STORE] = [
-            ProcessInfo(
-                process=process, use_valgrind=False, use_profiler=False)
+        assert (
+            ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
+            process_info
         ]
 
     def start_raylet(self, use_valgrind=False, use_profiler=False):
@@ -202,9 +210,10 @@ class Node(object):
         # If the user specified a socket name, use it.
         self._raylet_socket_name = (self._ray_params.raylet_socket_name
                                     or get_raylet_socket_name())
+        self.prepare_socket_file(self._raylet_socket_name)
         stdout_file, stderr_file = new_raylet_log_file(
             redirect_output=self._ray_params.redirect_worker_output)
-        process = ray.services.start_raylet(
+        process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
             self._raylet_socket_name,
@@ -220,14 +229,12 @@ class Node(object):
             use_profiler=use_profiler,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            config=self._config)
-        assert PROCESS_TYPE_RAYLET not in self.all_processes
-        self.all_processes[PROCESS_TYPE_RAYLET] = [
-            ProcessInfo(
-                process=process,
-                use_valgrind=use_valgrind,
-                use_profiler=use_profiler)
-        ]
+            config=self._config,
+            include_java=self._ray_params.include_java,
+            java_worker_options=self._ray_params.java_worker_options,
+        )
+        assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
     def start_worker(self):
         """Start a worker process."""
@@ -237,33 +244,30 @@ class Node(object):
         """Start the monitor."""
         stdout_file, stderr_file = new_monitor_log_file(
             self._ray_params.redirect_output)
-        process = ray.services.start_monitor(
+        process_info = ray.services.start_monitor(
             self._redis_address,
             self._node_ip_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password)
-        assert PROCESS_TYPE_MONITOR not in self.all_processes
-        self.all_processes[PROCESS_TYPE_MONITOR] = [
-            ProcessInfo(
-                process=process, use_valgrind=False, use_profiler=False)
-        ]
+        assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
     def start_raylet_monitor(self):
         """Start the raylet monitor."""
         stdout_file, stderr_file = new_raylet_monitor_log_file(
             self._ray_params.redirect_output)
-        process = ray.services.start_raylet_monitor(
+        process_info = ray.services.start_raylet_monitor(
             self._redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config)
-        assert PROCESS_TYPE_RAYLET_MONITOR not in self.all_processes
-        self.all_processes[PROCESS_TYPE_RAYLET_MONITOR] = [
-            ProcessInfo(
-                process=process, use_valgrind=False, use_profiler=False)
+        assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
+                self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
+            process_info
         ]
 
     def start_ray_processes(self):
@@ -317,7 +321,7 @@ class Node(object):
                    exit code.
         """
         process_infos = self.all_processes[process_type]
-        if process_type != PROCESS_TYPE_REDIS_SERVER:
+        if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
         for process_info in process_infos:
             process = process_info.process
@@ -334,10 +338,19 @@ class Node(object):
                 process.terminate()
                 process.wait()
                 if process.returncode != 0:
-                    raise Exception("Valgrind detected some errors.")
+                    message = ("Valgrind detected some errors in process of "
+                               "type {}. Error code {}.".format(
+                                   process_type, process.returncode))
+                    if process_info.stdout_file is not None:
+                        with open(process_info.stdout_file, "r") as f:
+                            message += "\nPROCESS STDOUT:\n" + f.read()
+                    if process_info.stderr_file is not None:
+                        with open(process_info.stderr_file, "r") as f:
+                            message += "\nPROCESS STDERR:\n" + f.read()
+                    raise Exception(message)
                 continue
 
-            if process_info.use_profiler:
+            if process_info.use_valgrind_profiler:
                 # Give process signal to write profiler data.
                 os.kill(process.pid, signal.SIGINT)
                 # Wait for profiling data to be written.
@@ -374,7 +387,7 @@ class Node(object):
                 were already dead.
         """
         self._kill_process_type(
-            PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
 
     def kill_plasma_store(self, check_alive=True):
         """Kill the plasma store.
@@ -384,7 +397,7 @@ class Node(object):
                 dead.
         """
         self._kill_process_type(
-            PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.
@@ -393,7 +406,8 @@ class Node(object):
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(PROCESS_TYPE_RAYLET, check_alive=check_alive)
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive)
 
     def kill_log_monitor(self, check_alive=True):
         """Kill the log monitor.
@@ -403,7 +417,7 @@ class Node(object):
                 dead.
         """
         self._kill_process_type(
-            PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive)
 
     def kill_monitor(self, check_alive=True):
         """Kill the monitor.
@@ -412,7 +426,8 @@ class Node(object):
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(PROCESS_TYPE_MONITOR, check_alive=check_alive)
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_MONITOR, check_alive=check_alive)
 
     def kill_raylet_monitor(self, check_alive=True):
         """Kill the raylet monitor.
@@ -422,7 +437,7 @@ class Node(object):
                 dead.
         """
         self._kill_process_type(
-            PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
+            ray_constants.PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
 
     def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
@@ -439,9 +454,9 @@ class Node(object):
         # clean up its child worker processes. If we were to kill the plasma
         # store (or Redis) first, that could cause the raylet to exit
         # ungracefully, leading to more verbose output from the workers.
-        if PROCESS_TYPE_RAYLET in self.all_processes:
+        if ray_constants.PROCESS_TYPE_RAYLET in self.all_processes:
             self._kill_process_type(
-                PROCESS_TYPE_RAYLET,
+                ray_constants.PROCESS_TYPE_RAYLET,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful)
 

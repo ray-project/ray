@@ -112,7 +112,7 @@ class ImportThread(object):
 
         if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.id()):
+                and driver_id != self.worker.task_driver_id.binary()):
             return
 
         try:
@@ -125,11 +125,8 @@ class ImportThread(object):
             # the traceback and notify the scheduler of the failure.
             traceback_str = traceback.format_exc()
             # Log the error message.
-            name = function.__name__ if ("function" in locals() and hasattr(
-                function, "__name__")) else ""
             utils.push_error_to_driver(
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.ObjectID(driver_id),
-                data={"name": name})
+                driver_id=ray.DriverID(driver_id))

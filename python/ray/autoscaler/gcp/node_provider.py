@@ -4,24 +4,25 @@ from __future__ import print_function
 
 from uuid import uuid4
 import time
-
 import logging
+
 from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 
+logger = logging.getLogger(__name__)
+
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
-
-logger = logging.getLogger(__name__)
 
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """Poll for compute zone operation until finished."""
-    logger.info("Waiting for operation {} to finish...".format(
-        operation["name"]))
+    logger.info("wait_for_compute_zone_operation: "
+                "Waiting for operation {} to finish...".format(
+                    operation["name"]))
 
     for _ in range(MAX_POLLS):
         result = compute.zoneOperations().get(
@@ -31,7 +32,8 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            logger.info("Done.")
+            logger.info("wait_for_compute_zone_operation: "
+                        "Operation {} finished.".format(operation["name"]))
             break
 
         time.sleep(POLL_INTERVAL)
@@ -48,10 +50,6 @@ class GCPNodeProvider(NodeProvider):
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
-
-        # Cache of ip lookups. We assume IPs never change once assigned.
-        self.internal_ip_cache = {}
-        self.external_ip_cache = {}
 
     def nodes(self, tag_filters):
         if tag_filters:
@@ -95,15 +93,15 @@ class GCPNodeProvider(NodeProvider):
         return [i["name"] for i in instances]
 
     def is_running(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         return node["status"] == "RUNNING"
 
     def is_terminated(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         return node["status"] not in {"PROVISIONING", "STAGING", "RUNNING"}
 
     def node_tags(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         labels = node.get("labels", {})
         return labels
 
@@ -112,7 +110,7 @@ class GCPNodeProvider(NodeProvider):
         project_id = self.provider_config["project_id"]
         availability_zone = self.provider_config["availability_zone"]
 
-        node = self._node(node_id)
+        node = self._get_node(node_id)
         operation = self.compute.instances().setLabels(
             project=project_id,
             zone=availability_zone,
@@ -128,23 +126,30 @@ class GCPNodeProvider(NodeProvider):
         return result
 
     def external_ip(self, node_id):
-        if node_id in self.external_ip_cache:
-            return self.external_ip_cache[node_id]
-        node = self._node(node_id)
-        # TODO: Is there a better and more reliable way to do this?
-        ip = (node.get("networkInterfaces", [{}])[0].get(
-            "accessConfigs", [{}])[0].get("natIP", None))
-        if ip:
-            self.external_ip_cache[node_id] = ip
+        node = self._get_cached_node(node_id)
+
+        def get_external_ip(node):
+            return node.get("networkInterfaces", [{}])[0].get(
+                "accessConfigs", [{}])[0].get("natIP", None)
+
+        ip = get_external_ip(node)
+        if ip is None:
+            node = self._get_node(node_id)
+            ip = get_external_ip(node)
+
         return ip
 
     def internal_ip(self, node_id):
-        if node_id in self.internal_ip_cache:
-            return self.internal_ip_cache[node_id]
-        node = self._node(node_id)
-        ip = node.get("networkInterfaces", [{}])[0].get("networkIP")
-        if ip:
-            self.internal_ip_cache[node_id] = ip
+        node = self._get_cached_node(node_id)
+
+        def get_internal_ip(node):
+            return node.get("networkInterfaces", [{}])[0].get("networkIP")
+
+        ip = get_internal_ip(node)
+        if ip is None:
+            node = self._get_node(node_id)
+            ip = get_internal_ip(node)
+
         return ip
 
     def create_node(self, base_config, tags, count):
@@ -204,14 +209,16 @@ class GCPNodeProvider(NodeProvider):
 
         return result
 
-    def _node(self, node_id):
+    def _get_node(self, node_id):
+        self.nodes({})  # Side effect: fetches and caches the node.
+
+        assert node_id in self.cached_nodes, "Invalid instance id {}".format(
+            node_id)
+
+        return self.cached_nodes[node_id]
+
+    def _get_cached_node(self, node_id):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
 
-        instance = self.compute.instances().get(
-            project=self.provider_config["project_id"],
-            zone=self.provider_config["availability_zone"],
-            instance=node_id,
-        ).execute()
-
-        return instance
+        return self._get_node(node_id)

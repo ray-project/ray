@@ -86,12 +86,6 @@ macro(set_raylet_library LANG)
   install(TARGETS ${RAYLET_LIBRARY_LANG} DESTINATION ${CMAKE_SOURCE_DIR}/raylet)
 endmacro()
 
-if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-  set_raylet_library("python")
-  include_directories("${PYTHON_INCLUDE_DIRS}")
-  include_directories("${NUMPY_INCLUDE_DIR}")
-endif()
-
 if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
   add_compile_options("-I$ENV{JAVA_HOME}/include/")
   if(WIN32)

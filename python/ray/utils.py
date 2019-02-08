@@ -6,6 +6,7 @@ import binascii
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
 import subprocess
@@ -15,7 +16,6 @@ import time
 import uuid
 
 import ray.gcs_utils
-import ray.raylet
 import ray.ray_constants as ray_constants
 
 
@@ -49,11 +49,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker,
-                         error_type,
-                         message,
-                         driver_id=None,
-                         data=None):
+def push_error_to_driver(worker, error_type, message, driver_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -63,12 +59,9 @@ def push_error_to_driver(worker,
             on the driver.
         driver_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.ObjectID.nil_id()
-    data = {} if data is None else data
+        driver_id = ray.DriverID.nil()
     worker.raylet_client.push_error(driver_id, error_type, message,
                                     time.time())
 
@@ -76,8 +69,7 @@ def push_error_to_driver(worker,
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None,
-                                       data=None):
+                                       driver_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -92,12 +84,9 @@ def push_error_to_driver_through_redis(redis_client,
             on the driver.
         driver_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = ray.ObjectID.nil_id()
-    data = {} if data is None else data
+        driver_id = ray.DriverID.nil()
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
@@ -105,7 +94,7 @@ def push_error_to_driver_through_redis(redis_client,
     redis_client.execute_command("RAY.TABLE_APPEND",
                                  ray.gcs_utils.TablePrefix.ERROR_INFO,
                                  ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.id(), error_data)
+                                 driver_id.binary(), error_data)
 
 
 def is_cython(obj):
@@ -132,7 +121,7 @@ def is_function_or_method(obj):
     Returns:
         True if the object is an function or method.
     """
-    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
 
 
 def is_class_method(f):
@@ -277,6 +266,33 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     return resources
 
 
+_default_handler = None
+
+
+def setup_logger(logging_level, logging_format):
+    """Setup default logging for ray."""
+    logger = logging.getLogger("ray")
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(logging_level)
+    global _default_handler
+    _default_handler = logging.StreamHandler()
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    logger.addHandler(_default_handler)
+    logger.propagate = False
+
+
+def try_update_handler(new_stream):
+    global _default_handler
+    logger = logging.getLogger("ray")
+    if _default_handler:
+        new_handler = logging.StreamHandler(stream=new_stream)
+        new_handler.setFormatter(_default_handler.formatter)
+        _default_handler.close()
+        _default_handler = new_handler
+        logger.addHandler(_default_handler)
+
+
 # This function is copied and modified from
 # https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
 def vmstat(stat):
@@ -340,7 +356,6 @@ def get_system_memory():
     except ImportError:
         pass
 
-    memory_in_bytes = None
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
     elif sys.platform == "linux" or sys.platform == "linux2":

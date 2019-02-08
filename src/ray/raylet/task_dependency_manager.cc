@@ -74,7 +74,6 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
     const ray::ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second);
@@ -305,28 +304,35 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
 
 void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     const std::unordered_set<TaskID> &task_ids) {
-  if (task_ids.empty()) {
-    return;
-  }
-
+  // Collect a list of all the unique objects that these tasks were subscribed
+  // to.
+  std::unordered_set<ObjectID> required_objects;
   for (auto it = task_ids.begin(); it != task_ids.end(); it++) {
+    auto task_it = task_dependencies_.find(*it);
+    if (task_it != task_dependencies_.end()) {
+      // Add the objects that this task was subscribed to.
+      required_objects.insert(task_it->second.object_dependencies.begin(),
+                              task_it->second.object_dependencies.end());
+    }
+    // The task no longer depends on anything.
     task_dependencies_.erase(*it);
-    required_tasks_.erase(*it);
+    // The task is no longer pending execution.
     pending_tasks_.erase(*it);
   }
 
-  // TODO: the size of required_objects_ could be large, consider to add
-  // an index if this turns out to be a perf problem.
-  for (auto it = required_objects_.begin(); it != required_objects_.end();) {
-    const auto object_id = *it;
+  // Cancel all of the objects that were required by the removed tasks.
+  for (const auto &object_id : required_objects) {
     TaskID creating_task_id = ComputeTaskId(object_id);
-    if (task_ids.find(creating_task_id) != task_ids.end()) {
-      object_manager_.CancelPull(object_id);
-      reconstruction_policy_.Cancel(object_id);
-      it = required_objects_.erase(it);
-    } else {
-      it++;
-    }
+    required_tasks_.erase(creating_task_id);
+    HandleRemoteDependencyCanceled(object_id);
+  }
+
+  // Make sure that the tasks in task_ids no longer have tasks dependent on
+  // them.
+  for (const auto &task_id : task_ids) {
+    RAY_CHECK(required_tasks_.find(task_id) == required_tasks_.end())
+        << "RemoveTasksAndRelatedObjects was called on" << task_id
+        << ", but another task depends on it that was not included in the argument";
   }
 }
 
