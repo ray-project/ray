@@ -54,6 +54,10 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.broadcast_interval = broadcast_interval
 
+        self._stats_start_time = time.time()
+        self._last_stats_time = {}
+        self._last_stats_sum = {}
+
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
                 "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
@@ -77,8 +81,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             self.learner = LearnerThread(self.local_evaluator,
                                          minibatch_buffer_size, num_sgd_iter)
         self.learner.start()
-
-        assert len(self.remote_evaluators) > 0
 
         # Stats
         self._optimizer_step_timer = TimerStat()
@@ -109,13 +111,25 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self.replay_buffer_num_slots = replay_buffer_num_slots
         self.replay_batches = []
 
-    def add_mean_stat(self, key, val):
-        new_time = time.time()
-        old_time = self._last_stats_time[key] \
-            if key in self._last_stats_time \
-            else self._stats_start_time
-        self._last_stats_val[key] = round(val / (new_time - old_time), 3)
-        self._last_stats_time[key] = new_time
+    def add_stat_val(self, key, val):
+        if key not in self._last_stats_sum:
+            self._last_stats_sum[key] = 0
+            self._last_stats_time[key] = self._stats_start_time
+        self._last_stats_sum[key] += val
+    
+
+    def get_mean_stats_and_reset(self):
+        now = time.time()
+        mean_stats = {
+            key: round(val / (now - self._last_stats_time[key]), 3)
+            for key, val in self._last_stats_sum.items()
+        }
+
+        for key in self._last_stats_sum.keys():
+            self._last_stats_sum[key] = 0
+            self._last_stats_time[key] = time.time()
+        
+        return mean_stats
 
     @override(PolicyOptimizer)
     def step(self):
@@ -124,9 +138,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             sample_timesteps, train_timesteps = self._step()
 
         if sample_timesteps > 0:
-            self.add_mean_stat("sample_throughput", sample_timesteps)
+            self.add_stat_val("sample_throughput", sample_timesteps)
         if train_timesteps > 0:
-            self.add_mean_stat("train_throughput", train_timesteps)
+            self.add_stat_val("train_throughput", train_timesteps)
 
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
@@ -148,12 +162,13 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.learner.load_wait_timer),
             "learner_dequeue_time_ms": timer_to_ms(self.learner.queue_timer),
         }
-        stats = dict({
+        stats = {
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
-        }, **self._last_stats_val)
+            **self.get_mean_stats_and_reset(),
+        }
         self._last_stats_val.clear()
         if self.learner.stats:
             stats["learner"] = self.learner.stats
