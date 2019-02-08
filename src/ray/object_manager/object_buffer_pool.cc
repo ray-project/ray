@@ -9,7 +9,7 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size)
     : default_chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
 }
 
 ObjectBufferPool::~ObjectBufferPool() {

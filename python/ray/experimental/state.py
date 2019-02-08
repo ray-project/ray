@@ -401,34 +401,6 @@ class GlobalState(object):
 
         return parse_client_table(self.redis_client)
 
-    def log_files(self):
-        """Fetch and return a dictionary of log file names to outputs.
-
-        Returns:
-            IP address to log file name to log file contents mappings.
-        """
-        relevant_files = self.redis_client.keys("LOGFILE*")
-
-        ip_filename_file = {}
-
-        for filename in relevant_files:
-            filename = decode(filename)
-            filename_components = filename.split(":")
-            ip_addr = filename_components[1]
-
-            file = self.redis_client.lrange(filename, 0, -1)
-            file_str = []
-            for x in file:
-                y = decode(x)
-                file_str.append(y)
-
-            if ip_addr not in ip_filename_file:
-                ip_filename_file[ip_addr] = {}
-
-            ip_filename_file[ip_addr][filename] = file_str
-
-        return ip_filename_file
-
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
 
@@ -868,6 +840,10 @@ class GlobalState(object):
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
+
+        # Close the pubsub clients to avoid leaking file descriptors.
+        for subscribe_client in subscribe_clients:
+            subscribe_client.close()
 
         return dict(total_available_resources)
 
