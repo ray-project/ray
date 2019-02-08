@@ -112,7 +112,7 @@ class TrialRunner(object):
         self._stop_queue = []
         self._metadata_checkpoint_dir = metadata_checkpoint_dir
 
-        self._start_time = self.datetime.today()
+        self._start_time = datetime.today()
         self._session = self._start_time.strftime("%Y-%m-%d_%H-%M-%S")
 
     @classmethod
