@@ -108,7 +108,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
-        self._is_discrete = False
+        self._is_multidiscrete = False
         self.grads = None
 
         output_hidden_shape = None
@@ -122,10 +122,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             existing_seq_lens = existing_inputs[-1]
         else:
             if isinstance(action_space, gym.spaces.Discrete):
-                self._is_discrete = True
                 output_hidden_shape = [action_space.n]
             elif isinstance(action_space,
                             gym.spaces.multi_discrete.MultiDiscrete):
+                self._is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
                 output_hidden_shape = action_space.nvec
             else:
@@ -167,8 +167,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = self.model.outputs if self._is_discrete else \
-            unpacked_outputs
+        dist_inputs = unpacked_outputs if self._is_multidiscrete else \
+            self.model.outputs
         action_dist = dist_class(dist_inputs)
 
         values = self.model.value_function()
@@ -218,10 +218,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.ones_like(rewards, dtype=tf.bool)
 
         # Prepare actions for loss
-        loss_actions = tf.expand_dims(
-            actions, axis=1) if self._is_discrete else actions
-        logp_action = actions if self._is_discrete else tf.unstack(
-            actions, axis=1)
+        loss_actions = actions if self._is_multidiscrete else tf.expand_dims(
+            actions, axis=1)  
+        logp_action = tf.unstack(
+            actions, axis=1) if self._is_multidiscrete else actions
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
