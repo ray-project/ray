@@ -469,6 +469,7 @@ def start_redis(node_ip_address,
     Args:
         node_ip_address: The IP address of the current node. This is only used
             for recording the log filenames in Redis.
+        redirect_files: The list of (stdout, stderr) file pairs.
         port (int): If provided, the primary Redis shard will be started on
             this port.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
@@ -1036,6 +1037,7 @@ def start_raylet(redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
+            os.path.join(temp_dir, "sockets"),
         )
     else:
         java_worker_command = ""
@@ -1099,6 +1101,7 @@ def build_java_worker_command(
         plasma_store_name,
         raylet_name,
         redis_password,
+        temp_dir,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1109,6 +1112,7 @@ def build_java_worker_command(
            to.
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
+        temp_dir (str): The path of the temporary directory Ray will use.
     Returns:
         The command string for starting Java worker.
     """
@@ -1129,7 +1133,8 @@ def build_java_worker_command(
         command += ("-Dray.redis-password=%s", redis_password)
 
     command += "-Dray.home={} ".format(RAY_HOME)
-    command += "-Dray.log-dir={} ".format(get_logs_dir_path())
+    # TODO(suquark): We should use temp_dir as the input of a java worker.
+    command += "-Dray.log-dir={} ".format(os.path.join(temp_dir, "sockets"))
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
