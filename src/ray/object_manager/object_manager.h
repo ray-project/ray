@@ -76,9 +76,12 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
+  /// \param store_client Reference to Plasma store. This is used to get and put
+  /// inlined objects in the local object store.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         plasma::PlasmaClient &store_client);
 
   ~ObjectManager();
 
@@ -351,6 +354,12 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
+  /// Add inline object to object store. Called when reading the object entry
+  /// from GCS or upon receiving a notification about an inline object.
+  void PutInlineObject(const ObjectID &object_id,
+                       const std::vector<uint8_t> &inline_object_data,
+                       const std::string &inline_object_metadata);
+
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -380,12 +389,22 @@ class ObjectManager : public ObjectManagerInterface {
   /// all incoming object transfers.
   std::vector<std::thread> receive_threads_;
 
+  /// Reference to Plasma Store. This is used to get and put inlined objects in
+  /// the local object store.
+  plasma::PlasmaClient &store_client_;
+
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
   std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
+
+  /// Set of objects created from inlined data whose locations and/or evictions
+  /// should not be reported to the GCS. This includes objects that were
+  /// created from data retrieved from the GCS, since a GCS entry with the
+  /// inlined data already exists.
+  std::unordered_set<ObjectID> local_inlined_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
