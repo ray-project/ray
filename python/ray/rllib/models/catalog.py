@@ -48,6 +48,8 @@ MODEL_DEFAULTS = {
     "lstm_cell_size": 256,
     # Whether to feed a_{t-1}, r_{t-1} to LSTM
     "lstm_use_prev_action_reward": False,
+    # Whether to use custom LSTM processing instead of the ray one
+    "custom_lstm": True,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
