@@ -53,6 +53,7 @@ PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
+LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -100,3 +101,5 @@ PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
+
+LOG_MONITOR_MAX_OPEN_FILES = 200

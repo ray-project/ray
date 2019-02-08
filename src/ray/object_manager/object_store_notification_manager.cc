@@ -20,7 +20,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       num_adds_processed_(0),
       num_removes_processed_(0),
       socket_(io_service) {
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
   RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
