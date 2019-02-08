@@ -218,7 +218,6 @@ def from_importance_weights(rhos,
     rhos = tf.convert_to_tensor(rhos, dtype=tf.float32)
     discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
     rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
-    rewards = tf.cast(rewards, dtype=tf.float32)
     values = tf.convert_to_tensor(values, dtype=tf.float32)
     bootstrap_value = tf.convert_to_tensor(bootstrap_value, dtype=tf.float32)
     if clip_rho_threshold is not None:
@@ -251,12 +250,8 @@ def from_importance_weights(rhos,
         tf.summary.histogram('clipped_rhos_1000', tf.minimum(1000.0, rhos))
         tf.summary.scalar(
             'num_of_clipped_rhos',
-            tf.reduce_sum(
-                tf.cast(
-                    tf.equal(
-                        clipped_rhos,
-                        clip_rho_threshold),
-                    tf.int32)))
+            tf.reduce_sum(tf.cast(tf.equal(clipped_rhos, clip_rho_threshold), tf.int32))
+        )
         tf.summary.scalar('size_of_clipped_rhos', tf.size(clipped_rhos))
 
         cs = tf.minimum(1.0, rhos, name='cs')
