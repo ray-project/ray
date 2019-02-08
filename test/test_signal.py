@@ -20,8 +20,7 @@ def ray_start():
 
 
 def test_task_to_driver(ray_start):
-    # Send a signal from a task and another signal on behalf of the task
-    # from the driver. The driver gets both signals.
+    # Send a signal from a task to the driver.
 
     @ray.remote
     def task_send_signal(value):
@@ -33,6 +32,7 @@ def test_task_to_driver(ray_start):
     ray.get(object_id)
     result_list = signal.receive([object_id], timeout=10)
     assert len(result_list) == 1
+
 
 def test_send_signal_from_actor_to_driver(ray_start):
     # Send several signals from an actor, and receive them in the driver.
@@ -58,7 +58,7 @@ def test_send_signal_from_actor_to_driver(ray_start):
 
 
 def test_send_signals_from_actor_to_driver(ray_start):
-    # Send "count" signal at intervals of 100ms from an actor and get
+    # Send "count" signal at intervals from an actor and get
     # these signals in the driver.
 
     @ray.remote
@@ -117,7 +117,7 @@ def test_task_crash_without_get(ray_start):
 
 def test_actor_crash(ray_start):
     # Get an error when ray.get() is called on a return parameter
-    # of a method that filed.
+    # of a method that failed.
 
     @ray.remote
     class Actor(object):
@@ -149,7 +149,7 @@ def test_actor_crash_init(ray_start):
         def m(self):
             return 1
 
-    # Using try and catch won't catch the exception in the __init__.
+    # Do not catch the exception in the __init__.
     a = ActorCrashInit.remote()
     time.sleep(2)
     result_list = signal.receive([a], timeout=5)
@@ -176,8 +176,6 @@ def test_actor_crash_init2(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        # TODO: this needs to be removed
-        time.sleep(5)
         result_list = signal.receive([a], timeout=5)
         assert len(result_list) == 2
         assert type(result_list[0][1]) == signal.ErrorSignal

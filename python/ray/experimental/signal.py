@@ -5,19 +5,17 @@ from __future__ import print_function
 from collections import defaultdict
 
 import ray
-import cloudpickle
+import ray.cloudpickle as cloudpickle
 
 
 class Signal(object):
-    """Signal object"""
-    pass
-
-
-class DoneSignal(Signal):
+    """Base class for Ray signals."""
     pass
 
 
 class ErrorSignal(Signal):
+    """Signal raised if an exception happens in a task or actor method."""
+
     def __init__(self, error):
         self.error = error
 
@@ -101,8 +99,10 @@ def receive(sources, timeout=10**12):
     query += " STREAMS "
     query += " ".join([_get_task_id(source).hex() for source in sources])
     query += " "
-    query += " ".join(
-       [ray.utils.decode(signal_counters[_get_task_id(source)]) for source in sources])
+    query += " ".join([
+        ray.utils.decode(signal_counters[_get_task_id(source)])
+        for source in sources
+    ])
 
     answers = ray.worker.global_worker.redis_client.execute_command(query)
     if not answers:
@@ -141,7 +141,7 @@ def forget(sources):
     # Just read all signals sent by all sources so far.
     # This will results in ignoring these signals.
     receive(sources, timeout=0)
-    
+
 
 def reset():
     """

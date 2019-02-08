@@ -79,6 +79,7 @@ def compute_put_id(TaskID task_id, int64_t put_index):
 def compute_task_id(ObjectID object_id):
     return TaskID.from_native(ComputeTaskId(object_id.data))
 
+
 cdef c_bool is_simple_value(value, int *num_elements_contained):
     num_elements_contained[0] += 1
 
