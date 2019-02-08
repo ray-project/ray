@@ -6,8 +6,10 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValue;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
@@ -50,6 +52,7 @@ public class RayConfig {
   public final Long objectStoreSize;
 
   public final String rayletSocketName;
+  public final List<String> rayletConfigParameters;
 
   public final String redisServerExecutablePath;
   public final String redisModulePath;
@@ -161,6 +164,14 @@ public class RayConfig {
 
     // raylet socket name
     rayletSocketName = config.getString("ray.raylet.socket-name");
+
+    // raylet parameters
+    rayletConfigParameters = new ArrayList<String>();
+    Config rayletConfig = config.getConfig("ray.raylet.config");
+    for (java.util.Map.Entry<java.lang.String,ConfigValue> entry : rayletConfig.entrySet()) {
+      String parameter = entry.getKey() + "," + String.valueOf(entry.getValue().unwrapped());
+      rayletConfigParameters.add(parameter);
+    }
 
     // library path
     this.libraryPath = new ImmutableList.Builder<String>().add(

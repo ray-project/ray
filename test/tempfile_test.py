@@ -73,8 +73,9 @@ def test_raylet_tempfiles():
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
         "monitor.err", "raylet_monitor.out", "raylet_monitor.err",
-        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err"
-    }  # without raylet logs
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
+    }  # with raylet logs
     socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
