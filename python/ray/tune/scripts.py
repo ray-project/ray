@@ -30,6 +30,7 @@ def _flatten_dict(dt):
 @click.group()
 def cli():
     pass
+    pass
 
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
