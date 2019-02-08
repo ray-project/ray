@@ -6,6 +6,7 @@ import time
 
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.dqn import DQNAgent
 from ray.rllib.agents.sac.sac_policy_graph import SACPolicyGraph
 from ray.rllib.utils.annotations import override
 
@@ -38,11 +39,35 @@ DEFAULT_CONFIG = with_common_config({
         }
     },
 
+    # === Evaluation ===
+    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
+    # The evaluation stats will be reported under the "evaluation" metric key.
+    # Note that evaluation is currently not parallelized, and that for Ape-X
+    # metrics are already only reported for the lowest epsilon workers.
+    "evaluation_interval": None,
+    # Number of episodes to run per evaluation period.
+    "evaluation_num_episodes": 1,
+
+    # === Exploration ===
+    # Max num timesteps for annealing schedules. Exploration is annealed from
+    # 1.0 to exploration_fraction over this number of timesteps scaled by
+    # exploration_fraction
+    "schedule_max_timesteps": 100000,
+    # Number of env steps to optimize for before returning
+    "timesteps_per_iteration": 1000,
+    # Fraction of entire training period over which the exploration rate is
+    # annealed
+    "exploration_fraction": 0.0,
+    # Final value of random action probability
+    "exploration_final_eps": 0.00,
+    # Whether to use a distribution of epsilons across workers for exploration.
+    "per_worker_exploration": False,
+
     # Number of env steps to optimize for before returning
     # Epochs in softlearning code
     "timesteps_per_iteration": 1000,
-    # Update the target network every `target_update_interval` steps.
-    "target_update_interval": 1,
+    # Update the target network every `target_network_update_freq` steps.
+    "target_network_update_freq": 1,
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 5e-3,
 
@@ -117,89 +142,12 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class SACAgent(Agent):
+class SACAgent(DQNAgent):
     """Soft Actor-Critic implementation in TensorFlow."""
     _agent_name = "SAC"
     _default_config = DEFAULT_CONFIG
     _policy_graph = SACPolicyGraph
     _optimizer_shared_configs = OPTIMIZER_SHARED_CONFIGS
-
-    @override(Agent)
-    def _init(self):
-        # Update effective batch size to include n-step
-        adjusted_batch_size = max(self.config["sample_batch_size"],
-                                  self.config.get("n_step", 1))
-        self.config["sample_batch_size"] = adjusted_batch_size
-
-        self.config["optimizer"].update({
-            key: self.config[key]
-            for key in self._optimizer_shared_configs
-            if key not in self.config["optimizer"]
-        })
-
-        self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, self._policy_graph)
-
-        def create_remote_evaluators():
-            return self.make_remote_evaluators(self.env_creator,
-                                               self._policy_graph,
-                                               self.config["num_workers"])
-
-        optimizer_class = self.config["optimizer_class"]
-        if optimizer_class != "AsyncReplayOptimizer":
-            self.remote_evaluators = create_remote_evaluators()
-        else:
-            raise NotImplementedError("TODO(hartikainen): Check this.")
-            # Hack to workaround https://github.com/ray-project/ray/issues/2541
-            self.remote_evaluators = None
-
-        self.optimizer = getattr(optimizers, optimizer_class)(
-            self.local_evaluator, self.remote_evaluators,
-            self.config["optimizer"])
-
-        # Create the remote evaluators *after* the replay actors
-        # TODO(hartikainen): Why?
-        if self.remote_evaluators is None:
-            self.remote_evaluators = create_remote_evaluators()
-            self.optimizer._set_evaluators(self.remote_evaluators)
-
-        self.last_target_update_ts = 0
-        self.num_target_updates = 0
-
-    @override(Agent)
-    def _train(self):
-        start_timestep = self.global_timestep
-
-        # Do optimization steps
-        start = time.time()
-        while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]
-               ) or time.time() - start < self.config["min_iter_time_s"]:
-            self.optimizer.step()
-            self.update_Q_target_if_needed()
-
-        result = self.optimizer.collect_metrics(
-            timeout_seconds=self.config["collect_metrics_timeout"])
-
-        result.update(
-            timesteps_this_iter=self.global_timestep - start_timestep,
-            info=dict({
-                "num_target_updates": self.num_target_updates,
-            }, **self.optimizer.stats()))
-
-        return result
-
-    def update_Q_target_if_needed(self):
-        if (self.global_timestep - self.last_target_update_ts
-            > self.config["target_update_interval"]):
-            self.local_evaluator.foreach_trainable_policy(
-                lambda p, _: p.update_target())
-            self.last_target_update_ts = self.global_timestep
-            self.num_target_updates += 1
-
-    @property
-    def global_timestep(self):
-        return self.optimizer.num_steps_sampled
 
     def __getstate__(self):
         raise NotImplementedError("TODO(hartikainen): Check this.")

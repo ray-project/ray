@@ -210,6 +210,9 @@ class SACPolicyGraph(TFPolicyGraph):
 
         return grads_and_vars
 
+    def set_epsilon(self, epsilon):
+        return
+
     def update_target(self, tau=None):
         tau = tau or self.config["tau"]
 

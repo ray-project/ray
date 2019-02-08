@@ -238,8 +238,9 @@ class DQNAgent(Agent):
         return result
 
     def update_target_if_needed(self):
-        if self.global_timestep - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
+        time_since_last_update = (
+            self.global_timestep - self.last_target_update_ts)
+        if time_since_last_update > self.config["target_network_update_freq"]:
             self.local_evaluator.foreach_trainable_policy(
                 lambda p, _: p.update_target())
             self.last_target_update_ts = self.global_timestep
@@ -262,8 +263,8 @@ class DQNAgent(Agent):
     def _make_exploration_schedule(self, worker_index):
         # Use either a different `eps` per worker, or a linear schedule.
         if self.config["per_worker_exploration"]:
-            assert self.config["num_workers"] > 1, \
-                "This requires multiple workers"
+            assert self.config["num_workers"] > 1, (
+                "This requires multiple workers")
             if worker_index >= 0:
                 exponent = (
                     1 +
