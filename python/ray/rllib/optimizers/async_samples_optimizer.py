@@ -82,6 +82,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                                          minibatch_buffer_size, num_sgd_iter)
         self.learner.start()
 
+        assert len(self.remote_evaluators) > 0
+
         # Stats
         self._optimizer_step_timer = TimerStat()
         self.num_weight_syncs = 0
@@ -116,7 +118,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             self._last_stats_sum[key] = 0
             self._last_stats_time[key] = self._stats_start_time
         self._last_stats_sum[key] += val
-    
 
     def get_mean_stats_and_reset(self):
         now = time.time()
@@ -128,7 +129,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         for key in self._last_stats_sum.keys():
             self._last_stats_sum[key] = 0
             self._last_stats_time[key] = time.time()
-        
+
         return mean_stats
 
     @override(PolicyOptimizer)
