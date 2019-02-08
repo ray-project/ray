@@ -103,6 +103,31 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
     :show-inheritance:
     :noindex:
 
+Nevergrad Search
+-------------
+
+The ``NevergradSearch`` is a SearchAlgorithm that is backed by `Nevergrad <https://github.com/facebookresearch/nevergrad>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using NevergradSearch.
+
+In order to use this search algorithm, you will need to install Nevergrad via the following command.:
+
+.. code-block:: bash
+
+    $ pip install nevergrad
+
+Keep in mind that nevergrad is a Python 3.6+ library.
+
+This algorithm requires using an optimizer provided by Nevergrad, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad>`__ section. You can use NevergradSearch like follows:
+
+.. code-block:: python
+
+    run_experiments(experiment_config, search_alg=NevergradSearch(optimizer, parameter_names, ... ))
+
+An example of this can be found in `nevergrad_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.NevergradSearch
+    :show-inheritance:
+    :noindex:
+
 Contributing a New Algorithm
 ----------------------------
 
