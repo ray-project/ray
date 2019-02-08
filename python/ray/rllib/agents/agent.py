@@ -71,6 +71,8 @@ COMMON_CONFIG = {
     "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
+    # Whether environments are in remote process or not
+    "remote_worker_envs": False,
 
     # === Resources ===
     # Number of actors used for parallelism
@@ -177,9 +179,6 @@ COMMON_CONFIG = {
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
     },
-
-    # Whether environments are in remote process or not
-    "remote_worker_envs": False,
 }
 # __sphinx_doc_end__
 # yapf: enable
