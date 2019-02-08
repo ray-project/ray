@@ -783,7 +783,7 @@ class Checkpointable(six.with_metaclass(ABCMeta)):
 
         Args:
             checkpoint_context: A namedtuple that contains info about last
-            checkpoint.
+                checkpoint.
 
         Returns:
             A boolean value that indicates whether this actor needs to be
@@ -818,14 +818,15 @@ class Checkpointable(six.with_metaclass(ABCMeta)):
         If the actor needs to restore from previous checkpoint, this function
         should restore actor's state and return the checkpoint ID. Otherwise,
         it should do nothing and return None.
+        Note, this method must return one of the checkpoint IDs in the
+        `available_checkpoints` list, or None. Otherwise, an exception will be
+        raised.
 
         Args:
             actor_id: Actor’s ID.
             available_checkpoints: A list of `Checkpoint` namedtuples that
-            contains all available checkpoint IDs and their timestamps, sorted
-            by timestamp in descending order. Note, this method must return the
-            ID of one checkpoint in this list, or None. Otherwise, an exception
-            will be raised.
+                contains all available checkpoint IDs and their timestamps,
+                sorted by timestamp in descending order.
         Returns:
             The ID of the checkpoint from which the actor was resumed, or None
             if the actor should restart from the beginning.

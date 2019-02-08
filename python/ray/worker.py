@@ -991,7 +991,7 @@ class Worker(object):
             if checkpoint_id is not None:
                 # Check that the returned checkpoint id is in the
                 # `available_checkpoints` list.
-                msg = ("`load_checkpoint must return a checkpoint id that " +
+                msg = ("`load_checkpoint` must return a checkpoint id that " +
                        "exists in the `available_checkpoints` list, or eone.")
                 assert any(checkpoint_id == checkpoint.checkpoint_id
                            for checkpoint in checkpoints), msg
