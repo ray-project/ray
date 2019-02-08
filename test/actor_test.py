@@ -2313,15 +2313,15 @@ def test_multiple_actor_reconstruction(head_node_cluster):
         assert ray.get(result_id_list) == results
 
 
+def kill_actor(actor):
+    """A helper function that kills an actor process."""
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    time.sleep(1)
+
+
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
-
-    def kill_actor(actor):
-        """Kill actor process."""
-        pid = ray.get(actor.get_pid.remote())
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
-
     actor = ray.remote(
         max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
     # Call increase 3 times.
@@ -2352,12 +2352,6 @@ def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
 
 def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test checkpointing of a remote actor through method invocation."""
-
-    def kill_actor(actor):
-        """Kill actor process."""
-        pid = ray.get(actor.get_pid.remote())
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
 
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -2422,13 +2416,6 @@ def test_checkpointing_on_node_failure(two_node_cluster,
 def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
-
-    def kill_actor(actor):
-        """Kill actor process."""
-        pid = ray.get(actor.get_pid.remote())
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
-
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
@@ -2470,13 +2457,6 @@ def test_checkpointing_save_exception(ray_start_regular,
 def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
-
-    def kill_actor(actor):
-        """Kill actor process."""
-        pid = ray.get(actor.get_pid.remote())
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
-
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
