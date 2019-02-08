@@ -35,9 +35,6 @@ inline void ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status,
                                      const std::string &message) {
   if (!status.ok()) {
     jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
-    if (exception_class == 0) {
-      exception_class = env->FindClass("java/lang/RuntimeException");
-    }
     env->ThrowNew(exception_class, message.c_str());
   }
 }
