@@ -3,14 +3,22 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+from six import queue
 import time
 import threading
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.result import TIMESTEPS_TOTAL, TIME_THIS_ITER_S
 
 logger = logging.getLogger(__name__)
+
+# how many secondes between check does the FunctionRunner wait when fetching
+# new results after signalling the reporter to continue
+RESULT_FETCH_TIMEOUT = 0.2
+
+ERROR_REPORT_TIMEOUT = 10
+MAX_THREAD_STOP_WAIT_TIME = 5
 
 
 class StatusReporter(object):
@@ -22,12 +30,11 @@ class StatusReporter(object):
         >>>     reporter(timesteps_total=1)
     """
 
-    def __init__(self):
-        self._latest_result = None
-        self._last_result = None
-        self._lock = threading.Lock()
-        self._error = None
-        self._done = False
+    def __init__(self, result_queue, stop_event, continue_semaphore):
+        self._queue = result_queue
+        self._last_report_time = None
+        self._stop_event = stop_event
+        self._continue_semaphore = continue_semaphore
 
     def __call__(self, **kwargs):
         """Report updated training status.
@@ -42,76 +49,107 @@ class StatusReporter(object):
             >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
         """
 
-        with self._lock:
-            self._latest_result = self._last_result = kwargs.copy()
+        assert self._last_report_time is not None, (
+                "StatusReporter._start() must be called before the first "
+                "report __call__ is made to ensure correct runtime metrics."
+                )
 
-    def _get_and_clear_status(self):
-        if self._error:
-            raise TuneError("Error running trial: " + str(self._error))
-        if self._done and not self._latest_result:
-            if not self._last_result:
-                raise TuneError("Trial finished without reporting result!")
-            logger.warning("Trial detected as completed; re-reporting "
-                           "last result. To avoid this, include done=True "
-                           "upon the last reporter call.")
-            self._last_result.update(done=True)
-            return self._last_result
-        with self._lock:
-            res = self._latest_result
-            self._latest_result = None
-            return res
+        # time per iteration is recorded directly in the reporter to ensure
+        # any delays in logging results aren't counted
+        report_time = time.time()
+        if TIME_THIS_ITER_S not in kwargs:
+            kwargs[TIME_THIS_ITER_S] = self._last_report_time - report_time
+        self._last_report_time = report_time
 
-    def _stop(self):
-        self._error = "Agent stopped"
+        # add results to a thread-safe queue
+        self._queue.put(kwargs, block=True)
+
+        # don't wait if the thread should stop
+        if self.should_stop():
+            raise StopIteration()
+
+        # this ensures the FunctionRunner's _train method was called and that
+        # the next results are requested
+        self._continue_semaphore.acquire()
+
+        # check if the stop signal was sent during the semaphore wait
+        if self.should_stop():
+            raise StopIteration()
 
 
-DEFAULT_CONFIG = {
-    # batch results to at least this granularity
-    "script_min_iter_time_s": 1,
-}
+    def should_stop(self):
+        return self._stop_event.is_set()
 
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
 
-    def __init__(self, entrypoint, config, status_reporter):
-        self._entrypoint = entrypoint
-        self._entrypoint_args = [config, status_reporter]
-        self._status_reporter = status_reporter
+    def __init__(self, entrypoint, error_queue):
         threading.Thread.__init__(self)
+        self._entrypoint = entrypoint
+        self._error_queue = error_queue
         self.daemon = True
 
     def run(self):
         try:
-            self._entrypoint(*self._entrypoint_args)
+            self._entrypoint()
+        except StopIteration:
+            logger.debug((
+                    "Thread runner raised StopIteration. Interperting it as a "
+                    "signal to terminate the thread without error."))
+            pass
         except Exception as e:
-            self._status_reporter._error = e
             logger.exception("Runner Thread raised error.")
+            try:
+                # report the error but avoid indefinite blocking which would
+                # prevent the exception from being propagated in the unlikely
+                # case that something went terribly wrong
+                self._error_queue.put(e,
+                                      block=True,
+                                      timeout=ERROR_REPORT_TIMEOUT)
+            except queue.Full:
+                logger.critical((
+                        "Runner Thread was unable to report error to main "
+                        "function runner thread. This means a previous error "
+                        "was not processed. This should never happen."))
             raise e
-        finally:
-            self._status_reporter._done = True
 
 
-class FunctionRunner(Trainable):
-    """Trainable that runs a user function returning training results.
+class ReportedFunctionRunner(Trainable):
+    """Trainable that runs a user function reporting results.
 
     This mode of execution does not support checkpoint/restore."""
 
     _name = "func"
-    _default_config = DEFAULT_CONFIG
 
     def _setup(self, config):
-        entrypoint = self._trainable_func()
-        self._status_reporter = StatusReporter()
-        scrubbed_config = config.copy()
-        for k in self._default_config:
-            if k in scrubbed_config:
-                del scrubbed_config[k]
-        self._runner = _RunnerThread(entrypoint, scrubbed_config,
-                                     self._status_reporter)
-        self._start_time = time.time()
-        self._last_reported_timestep = 0
-        self._runner.start()
+        # a thread-safe event to notify the status reporter to stop
+        self._stop_event = threading.Event()
+
+        # Semaphore for notifying the reporter to continue with the computation
+        # and to generate the next result.
+        self._continue_semaphore = threading.Semaphore(0)
+
+        # Queue for passing results between threads
+        self._results_queue = queue.Queue(1)
+
+        # Queue for passing errors back from the thread runner. The error queue
+        # has a max size of one to prevent stacking error and force error
+        # reporting to block until finished.
+        self._error_queue = queue.Queue(1)
+
+        self._status_reporter = StatusReporter(self._result_queue,
+                                               self._stop_event,
+                                               self._continue_semaphore)
+
+        def entrypoint():
+            return self._trainable_func(config, self._status_reported)
+
+        config = config.copy()
+
+        # the runner thread is not started until the first call to _train
+        self._runner = _RunnerThread(entrypoint, self._error_queue)
+        self._started = False
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -119,22 +157,75 @@ class FunctionRunner(Trainable):
         raise NotImplementedError
 
     def _train(self):
-        time.sleep(
-            self.config.get("script_min_iter_time_s",
-                            self._default_config["script_min_iter_time_s"]))
-        result = self._status_reporter._get_and_clear_status()
-        while result is None:
-            time.sleep(1)
-            result = self._status_reporter._get_and_clear_status()
+        if not self._started:
+            # if not started, start
+            self._runner.start()
+            self._started = True
+        else:
+            # if started and alive, inform the reporter to continue and
+            # generate the next result
+            self._continue_semaphore.release()
 
-        curr_ts_total = result.get(TIMESTEPS_TOTAL)
-        if curr_ts_total is not None:
-            result.update(
-                timesteps_this_iter=(
-                    curr_ts_total - self._last_reported_timestep))
-            self._last_reported_timestep = curr_ts_total
+        result = None
+        while result is None and self._runner.is_alive():
+            # fetch the next produced result
+            try:
+                result = self._results_queue.get(block=True,
+                                                 RESULT_FETCH_TIMEOUT)
+            except queue.Empty:
+                pass
+
+        # if no result were found, then the runner must no longer be alive
+        if result is None:
+            # Try one last time to fetch results in case results were reported
+            # in between the time of the last check and the termination of the
+            # thread runner.
+            result = self._results_queue.get(block=False)
+
+        # check if error occured inside the thread runner
+        if result is None:
+            # only raise an error from the runner if all results are consumed
+            self._report_thread_runner_error()
+
+            # If no results were found at this point and no errors were
+            # reported, the thread runner should be stopped and we can report
+            # done.
+            result = {TIME_THIS_ITER_S: 0,
+                      "done": True}
+        else:
+            if not self._error_queue.empty():
+                logger.warning((
+                        "Runner error waiting to be raised in main thread. "
+                        "Logging all available results first."
+                        ))
 
         return result
 
     def _stop(self):
-        self._status_reporter._stop()
+        # notify the status reporter to stop if still running
+        self._stop_event.set()
+
+        # Allow the reporter to proceed, this should cause a StopIteration
+        # exception if the reporter was waiting for this signal.
+        self._continue_semaphore.release()
+
+        # Give some time for the runner to stop.
+        self._runner.join(timeout=MAX_THREAD_STOP_WAIT_TIME)
+        if self._runner.is_alive():
+            logger.warning("Thread runner still running after stop event.")
+
+        # If everything stayed in synch properly, this should never happen.
+        if not self._status_reporter.empty():
+            logger.warning((
+                    "Some results were added after the trial stop condition. "
+                    "These results won't be logged."))
+
+        # Check for any errors that might have been missed.
+        self._report_thread_runner_error()
+
+    def _report_thread_runner_error(self):
+        try:
+            error = self._error_queue.get(block=False)
+            raise TuneError("Error running trial: " + str(error.msg))
+        except queue.Empty:
+            pass
