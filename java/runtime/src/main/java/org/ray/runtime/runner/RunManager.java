@@ -13,6 +13,8 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.google.common.collect.Lists;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
@@ -169,12 +171,7 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    String passwordCommand = "";
-    if (!StringUtil.isNullOrEmpty(password)) {
-      passwordCommand = "--requirepass " + password;
-    }
-
-    List<String> command = ImmutableList.of(
+    List<String> command = Lists.newArrayList(
         rayConfig.redisServerExecutablePath,
         "--protected-mode",
         "no",
@@ -183,9 +180,14 @@ public class RunManager {
         "--loglevel",
         "warning",
         "--loadmodule",
-        rayConfig.redisModulePath,
-        passwordCommand
+        rayConfig.redisModulePath
     );
+
+    if (!StringUtil.isNullOrEmpty(password)) {
+      command.add("--requirepass ");
+      command.add(password);
+    }
+
     String name = shard == null ? "redis" : "redis-" + shard;
     startProcess(command, null, name);
 
