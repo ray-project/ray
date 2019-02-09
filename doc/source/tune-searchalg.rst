@@ -106,7 +106,7 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
 Scikit-Optimize Search
 ----------------------
 
-The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io/>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
+The ``SkOptSearch`` is a SearchAlgorithm that is backed by `Scikit-Optimize <https://scikit-optimize.github.io>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using SkOptSearch.
 
 In order to use this search algorithm, you will need to install Scikit-Optimize via the following command:
 
@@ -117,11 +117,11 @@ In order to use this search algorithm, you will need to install Scikit-Optimize 
 This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/notebooks/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
 
 .. code-block:: python
-	
-	optimizer = Optimizer(dimension, ...)
+
+    optimizer = Optimizer(dimension, ...)
     run_experiments(experiment_config, search_alg=SkOptSearch(optimizer, parameter_names, ... ))
 
-An example of this can be found in `skopt_example.py <>https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py`__.
+An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.SkOptSearch
     :show-inheritance:
