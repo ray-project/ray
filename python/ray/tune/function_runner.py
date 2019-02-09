@@ -3,9 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-from six import queue
+import sys
 import time
 import threading
+from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
@@ -76,6 +77,8 @@ class StatusReporter(object):
         if self.should_stop():
             raise StopIteration()
 
+    def _start(self):
+        self._last_report_time = time.time()
 
     def should_stop(self):
         return self._stop_event.is_set()
@@ -104,7 +107,7 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
-                self._error_queue.put(e,
+                self._error_queue.put(sys.exc_info(),
                                       block=True,
                                       timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
@@ -115,7 +118,7 @@ class _RunnerThread(threading.Thread):
             raise e
 
 
-class ReportedFunctionRunner(Trainable):
+class FunctionRunner(Trainable):
     """Trainable that runs a user function reporting results.
 
     This mode of execution does not support checkpoint/restore."""
@@ -138,12 +141,12 @@ class ReportedFunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = StatusReporter(self._result_queue,
+        self._status_reporter = StatusReporter(self._results_queue,
                                                self._stop_event,
                                                self._continue_semaphore)
 
         def entrypoint():
-            return self._trainable_func(config, self._status_reported)
+            return self._trainable_func(config, self._status_reporter)
 
         config = config.copy()
 
@@ -159,6 +162,7 @@ class ReportedFunctionRunner(Trainable):
     def _train(self):
         if not self._started:
             # if not started, start
+            self._status_reporter._start()
             self._runner.start()
             self._started = True
         else:
@@ -180,7 +184,10 @@ class ReportedFunctionRunner(Trainable):
             # Try one last time to fetch results in case results were reported
             # in between the time of the last check and the termination of the
             # thread runner.
-            result = self._results_queue.get(block=False)
+            try:
+                result = self._results_queue.get(block=False)
+            except queue.Empty:
+                pass
 
         # check if error occured inside the thread runner
         if result is None:
@@ -225,7 +232,7 @@ class ReportedFunctionRunner(Trainable):
 
     def _report_thread_runner_error(self):
         try:
-            error = self._error_queue.get(block=False)
-            raise TuneError("Error running trial: " + str(error.msg))
+            err_type, err_value, err_tb = self._error_queue.get(block=False)
+            raise TuneError("Trial raised a {} error with value: {}\nWith traceback:\n{}".format(err_type, err_value, err_tb))
         except queue.Empty:
             pass
