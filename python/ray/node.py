@@ -171,8 +171,8 @@ class Node(object):
             directory_name (str) : The base directory of the temp file.
 
         Returns:
-            A string of file name. If there existing a file having the same name,
-            the returned name will look like
+            A string of file name. If there existing a file having
+            the same name, the returned name will look like
             "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         directory_name = os.path.expanduser(directory_name)
@@ -199,16 +199,17 @@ class Node(object):
 
         Args:
             name (str): descriptive string for this log file.
-            redirect_output (bool): True if files should be generated for logging
-                stdout and stderr and false if stdout and stderr should not be
-                redirected. If it is None, it will use the "redirect_output"
-                Ray parameter.
+            redirect_output (bool): True if files should be generated for
+                logging stdout and stderr and false if stdout and stderr
+                should not be redirected.
+                If it is None, it will use the "redirect_output" Ray parameter.
 
         Returns:
             If redirect_output is true, this will return a tuple of two
-                file handles. The first is for redirecting stdout and the second is
-                for redirecting stderr. If redirect_output is false, this will
-                return a tuple of two None objects.
+                file handles. The first is for redirecting stdout and the
+                second is for redirecting stderr.
+                If redirect_output is false, this will return a tuple
+                of two None objects.
         """
         if redirect_output is None:
             redirect_output = self._ray_params.redirect_output
