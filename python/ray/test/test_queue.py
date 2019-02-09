@@ -10,9 +10,13 @@ import ray
 from ray.experimental.queue import Queue, Empty, Full
 
 
-def setup_module():
-    if not ray.worker.global_worker.connected:
-        ray.init()
+@pytest.fixture
+def ray_start():
+    # Start the Ray process.
+    ray.init()
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 @ray.remote
@@ -27,7 +31,7 @@ def put_async(queue, item, block, timeout, sleep):
     queue.put(item, block, timeout)
 
 
-def test_simple_use():
+def test_simple_use(ray_start):
     q = Queue()
 
     items = list(range(10))
@@ -39,7 +43,7 @@ def test_simple_use():
         assert item == q.get()
 
 
-def test_async():
+def test_async(ray_start):
     q = Queue()
 
     items = set(range(10))
@@ -53,7 +57,7 @@ def test_async():
     assert items == result
 
 
-def test_put():
+def test_put(ray_start):
     q = Queue(1)
 
     item = 0
@@ -83,7 +87,7 @@ def test_put():
     assert ray.get(get_id) == 1
 
 
-def test_get():
+def test_get(ray_start):
     q = Queue()
 
     item = 0
@@ -108,7 +112,7 @@ def test_get():
     assert q.get() == item
 
 
-def test_qsize():
+def test_qsize(ray_start):
     q = Queue()
 
     items = list(range(10))
