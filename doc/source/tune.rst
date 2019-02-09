@@ -25,7 +25,7 @@ Features
 
    -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
 
-*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_.
+*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
 
 *  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
 
@@ -109,3 +109,4 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
 
 
 .. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py
+.. _Nevergrad with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py
