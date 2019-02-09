@@ -1862,8 +1862,7 @@ def connect(info,
             redirect_worker_output = 0
         if redirect_worker_output:
             log_stdout_file, log_stderr_file = (
-                _global_node.new_worker_redirected_log_file(
-                    worker.worker_id))
+                _global_node.new_worker_redirected_log_file(worker.worker_id))
             # Redirect stdout/stderr at the file descriptor level. If we simply
             # set sys.stdout and sys.stderr, then logging from C++ can fail to
             # be redirected.

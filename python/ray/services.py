@@ -286,8 +286,8 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = "/tmp/ray/gdb_init_{}_{}".format(process_type,
-                                                         time.time())
+        gdb_init_path = "/tmp/ray/gdb_init_{}_{}".format(
+            process_type, time.time())
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -810,8 +810,8 @@ def start_log_monitor(redis_address,
         os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
     command = [
         sys.executable, "-u", log_monitor_filepath,
-        "--redis-address={}".format(redis_address), "--logs-dir={}".format(
-            logs_dir)
+        "--redis-address={}".format(redis_address),
+        "--logs-dir={}".format(logs_dir)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1367,8 +1367,7 @@ def start_worker(node_ip_address,
         "--node-ip-address=" + node_ip_address,
         "--object-store-name=" + object_store_name,
         "--raylet-name=" + raylet_name,
-        "--redis-address=" + str(redis_address),
-        "--temp-dir=" + temp_dir
+        "--redis-address=" + str(redis_address), "--temp-dir=" + temp_dir
     ]
     process_info = start_ray_process(
         command,

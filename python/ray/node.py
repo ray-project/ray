@@ -36,7 +36,10 @@ class Node(object):
             server list, which has multiple.
     """
 
-    def __init__(self, ray_params, head=False, shutdown_at_exit=True,
+    def __init__(self,
+                 ray_params,
+                 head=False,
+                 shutdown_at_exit=True,
                  connect_only=False):
         """Start a node.
 
@@ -83,9 +86,8 @@ class Node(object):
             # TODO(suquark): Replace _webui_url_helper in worker.py in
             # another PR.
             _webui_url = redis_client.hmget("webui", "url")[0]
-            self._webui_url = (
-                ray.utils.decode(_webui_url)
-                if _webui_url is not None else None)
+            self._webui_url = (ray.utils.decode(_webui_url)
+                               if _webui_url is not None else None)
             ray_params.include_java = (
                 ray.services.include_java_from_redis(redis_client))
 
@@ -148,6 +150,18 @@ class Node(object):
         return ray.services.create_redis_client(
             self._redis_address, self._ray_params.redis_password)
 
+    def get_temp_dir_path(self):
+        """Get the path of the temporary directory."""
+        return self._temp_dir
+
+    def get_logs_dir_path(self):
+        """Get the path of the log files directory."""
+        return self._logs_dir
+
+    def get_sockets_dir_path(self):
+        """Get the path of the sockets directory."""
+        return self._sockets_dir
+
     def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
         """Return a incremental temporary file name. The file is not created.
 
@@ -174,8 +188,7 @@ class Node(object):
             index += 1
             if not os.path.exists(filename):
                 # Save the index.
-                self._incremental_dict[suffix, prefix,
-                                       directory_name] = index
+                self._incremental_dict[suffix, prefix, directory_name] = index
                 return filename
 
         raise FileExistsError(errno.EEXIST,
@@ -227,8 +240,8 @@ class Node(object):
             socket_dir = os.path.dirname(socket_path)
             try_to_create_directory(socket_dir)
             return socket_path
-        return self._make_inc_temp(prefix=default_prefix,
-                                   directory_name=self._sockets_dir)
+        return self._make_inc_temp(
+            prefix=default_prefix, directory_name=self._sockets_dir)
 
     def start_redis(self):
         """Start the Redis servers."""
@@ -316,8 +329,7 @@ class Node(object):
         assert self._raylet_socket_name is None
         # If the user specified a socket name, use it.
         self._raylet_socket_name = self._prepare_socket_file(
-            self._ray_params.plasma_store_socket_name,
-            default_prefix="raylet")
+            self._ray_params.raylet_socket_name, default_prefix="raylet")
         stdout_file, stderr_file = self.new_log_files("raylet")
         process_info = ray.services.start_raylet(
             self._redis_address,

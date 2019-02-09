@@ -79,8 +79,8 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir)
 
-    node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False,
-                         connect_only=True)
+    node = ray.node.Node(
+        ray_params, head=False, shutdown_at_exit=False, connect_only=True)
     ray.worker._global_node = node
 
     # TODO(suquark): Use "node" as the input of "connect".
