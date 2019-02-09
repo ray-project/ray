@@ -184,6 +184,18 @@ class ClientConnection : public ServerConnection<T> {
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
+  /// Check if the protocol version in a received message is correct. Note, if the version
+  /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
+  /// endpoint is unknown, this method will only print a warning.
+  ///
+  /// \return If the protocal version is correct.
+  bool CheckProtocolVersion();
+  /// Return information about IP and port for the remote endpoint. For local connection
+  /// this returns an empty string.
+  ///
+  /// \return Information of remote endpoint.
+  std::string RemoteEndpointInfo();
+
 
   /// The ClientID of the remote client.
   ClientID client_id_;

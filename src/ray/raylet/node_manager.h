@@ -397,6 +397,17 @@ class NodeManager {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// connect to a remote node manager.
+  ///
+  /// \param client_id The client ID for the remote node manager.
+  /// \param client_address The IP address for the remote node manager.
+  /// \param client_port The listening port for the remote node manager.
+  /// \return True if the connect succeeds.
+  ray::Status ConnectRemoteNodeManager(const ClientID &client_id, const std::string &client_address,
+                                       int32_t client_port);
+
+  // GCS client ID for this node.
+  ClientID client_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new

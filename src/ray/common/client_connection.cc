@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <boost/bind.hpp>
+#include <sstream>
 
 #include "ray/ray_config.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -202,6 +203,7 @@ ClientConnection<T>::ClientConnection(
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
+      client_id_(ClientID::nil()),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
@@ -242,7 +244,11 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   }
 
   // If there was no error, make sure the protocol version matches.
-  RAY_CHECK(read_version_ == RayConfig::instance().ray_protocol_version());
+  if (!CheckProtocolVersion()) {
+    ServerConnection<T>::Close();
+    return;
+  }
+
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
   ServerConnection<T>::bytes_read_ += read_length_;
@@ -251,6 +257,50 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
       ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
       boost::bind(&ClientConnection<T>::ProcessMessage,
                   shared_ClientConnection_from_this(), boost::asio::placeholders::error));
+}
+
+template <class T>
+bool ClientConnection<T>::CheckProtocolVersion() {
+  if (read_version_ == RayConfig::instance().ray_protocol_version()) {
+    return true;
+  }
+
+  // Version is not matched.
+  // Only assert if the message is coming from a known remote endpoint,
+  // which is indicated by a non-nil client ID. This is to protect raylet
+  // against miscellaneous connections. We did see cases where bad data
+  // is received from local unknown program which crashes raylet.
+  std::ostringstream ss;
+  ss << " Protocol version mismatch for received message. "
+     << "received version: " << read_version_
+     << ", debug label: " << debug_label_
+     << ", remote client ID: " << client_id_;
+  auto remote_endpoint_info = RemoteEndpointInfo();
+  if (!remote_endpoint_info.empty()) {
+    ss << ", remote endpoint info: " << remote_endpoint_info;
+  }
+
+  if (!client_id_.is_nil()) {
+    // This is from a known client, which indicates a bug.
+    RAY_LOG(FATAL) << ss.str();
+  } else {
+    // It's not from a known client, log this message, and stop processing the connection.
+    RAY_LOG(WARNING) << ss.str();
+  }
+  return false;
+}
+
+template <class T>
+std::string ClientConnection<T>::RemoteEndpointInfo() {
+  return std::string();
+}
+
+template <>
+std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
+  const auto &remote_endpoint =
+    ServerConnection<boost::asio::ip::tcp>::socket_.remote_endpoint();
+  return remote_endpoint.address().to_string() + ":" +
+      std::to_string(remote_endpoint.port());
 }
 
 template <class T>

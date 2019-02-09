@@ -44,7 +44,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          plasma::PlasmaClient &store_client)
-    : io_service_(io_service),
+    : client_id_(gcs_client->client_table().GetLocalClientId()),
+      io_service_(io_service),
       object_manager_(object_manager),
       store_client_(store_client),
       gcs_client_(std::move(gcs_client)),
@@ -338,13 +339,8 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   }
 
   // Establish a new NodeManager connection to this GCS client.
-  RAY_LOG(DEBUG) << "[ClientAdded] Trying to connect to client " << client_id << " at "
-                 << client_data.node_manager_address << ":"
-                 << client_data.node_manager_port;
-
-  boost::asio::ip::tcp::socket socket(io_service_);
-  auto status =
-      TcpConnect(socket, client_data.node_manager_address, client_data.node_manager_port);
+  auto status = ConnectRemoteNodeManager(client_id, client_data.node_manager_address,
+                                         client_data.node_manager_port);
   // A disconnected client has 2 entries in the client table (one for being
   // inserted and one for being removed). When a new raylet starts, ClientAdded
   // will be called with the disconnected client's first entry, which will cause
@@ -357,13 +353,43 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
     return;
   }
 
-  // The client is connected.
-  auto server_conn = TcpServerConnection::Create(std::move(socket));
-  remote_server_connections_.emplace(client_id, std::move(server_conn));
-
   ResourceSet resources_total(client_data.resources_total_label,
                               client_data.resources_total_capacity);
   cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
+}
+
+ray::Status NodeManager::ConnectRemoteNodeManager(const ClientID &client_id,
+                                                  const std::string &client_address,
+                                                  int32_t client_port) {
+  // Establish a new NodeManager connection to this GCS client.
+  RAY_LOG(INFO) << "[ConnectClient] Trying to connect to client " << client_id << " at "
+                << client_address << ":" << client_port;
+
+  boost::asio::ip::tcp::socket socket(io_service_);
+  auto status = TcpConnect(socket, client_address, client_port);
+  if (!status.ok()) {
+    return status;
+  }
+
+  // The client is connected, now send a connect message to remote node manager.
+  auto server_conn = TcpServerConnection::Create(std::move(socket));
+
+  // Prepare client connection info buffer
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateConnectClient(fbb, to_flatbuf(fbb, client_id_));
+  fbb.Finish(message);
+  // Send synchronously.
+  // TODO(swang): Make this a WriteMessageAsync.
+  status = server_conn->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::ConnectClient), fbb.GetSize(),
+      fbb.GetBufferPointer());
+  if (!status.ok()) {
+    RAY_LOG(WARNING) << "Failed to send connect message to client " << client_id;
+    return status;
+  }
+
+  remote_server_connections_.emplace(client_id, std::move(server_conn));
+  return ray::Status::OK();
 }
 
 void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
@@ -1007,6 +1033,11 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from node manager";
   switch (message_type_value) {
+  case protocol::MessageType::ConnectClient: {
+    auto message = flatbuffers::GetRoot<protocol::ConnectClient>(message_data);
+    auto client_id = from_flatbuf(*message->client_id());
+    node_manager_client.SetClientID(client_id);
+  } break;
   case protocol::MessageType::ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
