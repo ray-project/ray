@@ -19,6 +19,10 @@ class NevergradSearch(SuggestionAlgorithm):
     """A wrapper around Nevergrad to provide trial suggestions.
 
     Requires Nevergrad to be installed.
+    Nevergrad is an open source tool from Facebook for derivative free 
+    optimization of parameters and/or hyperparameters. It features a wide
+    range of optimizers in a standard ask and tell interface. More information 
+    can be found at https://github.com/facebookresearch/nevergrad.
 
     Parameters:
         optimizer (nevergrad.optimization.Optimizer): Optimizer provided
