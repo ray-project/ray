@@ -59,7 +59,7 @@ class StatusReporter(object):
         # any delays in logging results aren't counted
         report_time = time.time()
         if TIME_THIS_ITER_S not in kwargs:
-            kwargs[TIME_THIS_ITER_S] = self._last_report_time - report_time
+            kwargs[TIME_THIS_ITER_S] = report_time - self._last_report_time
         self._last_report_time = report_time
 
         # add results to a thread-safe queue
@@ -107,6 +107,8 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
+                # TODO(gehring): ensure this does not cause cyclical references
+                #     when passing down the traceback
                 self._error_queue.put(sys.exc_info(),
                                       block=True,
                                       timeout=ERROR_REPORT_TIMEOUT)
@@ -145,10 +147,10 @@ class FunctionRunner(Trainable):
                                                self._stop_event,
                                                self._continue_semaphore)
 
+        config = config.copy()
+
         def entrypoint():
             return self._trainable_func(config, self._status_reporter)
-
-        config = config.copy()
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -165,7 +167,7 @@ class FunctionRunner(Trainable):
             self._status_reporter._start()
             self._runner.start()
             self._started = True
-        else:
+        elif self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
             # generate the next result
             self._continue_semaphore.release()
