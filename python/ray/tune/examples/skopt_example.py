@@ -35,7 +35,6 @@ if __name__ == '__main__':
 
     register_trainable("exp", easy_objective)
 
-
     config = {
         "skopt_exp": {
             "run": "exp",
@@ -48,7 +47,7 @@ if __name__ == '__main__':
             },
         }
     }
-    optimizer = Optimizer([(0,20),(-100,100)], "ET", acq_optimizer="sampling")
+    optimizer = Optimizer([(0, 20), (-100, 100)])
     algo = SkOptSearch(
         optimizer, ["width", "height"],
         max_concurrent=4, reward_attr="neg_mean_loss")

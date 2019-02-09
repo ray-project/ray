@@ -2,17 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import copy
-import logging
-
 try:
     import skopt
 except Exception:
     skopt = None
 
-from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
 
 class SkOptSearch(SuggestionAlgorithm):
     """A wrapper around skopt to provide trial suggestions.
@@ -31,7 +27,7 @@ class SkOptSearch(SuggestionAlgorithm):
 
     Example:
         >>> from skopt import Optimizer
-        >>> optimizer = Optimizer([(0,20),(-100,100)], "ET", acq_optimizer="sampling")
+        >>> optimizer = Optimizer([(0,20),(-100,100)])
         >>> config = {
         >>>     "my_exp": {
         >>>         "run": "exp",
@@ -41,7 +37,8 @@ class SkOptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     }
         >>> }
-        >>> algo = SkOptSearch(optimizer, ["width", "height"], max_concurrent=4,
+        >>> algo = SkOptSearch(optimizer,
+        >>>     ["width", "height"], max_concurrent=4,
         >>>     reward_attr="neg_mean_loss")
     """
 
@@ -51,8 +48,9 @@ class SkOptSearch(SuggestionAlgorithm):
                  max_concurrent=10,
                  reward_attr="episode_reward_mean",
                  **kwargs):
-        assert skopt is not None, """skopt must be installed! 
-            You can install Skopt with the command: `pip install scikit-optimize`."""
+        assert skopt is not None, """skopt must be installed!
+            You can install Skopt with the command:
+            `pip install scikit-optimize`."""
         assert type(max_concurrent) is int and max_concurrent > 0
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
@@ -77,7 +75,7 @@ class SkOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to skopt unless early terminated or errored.
-        
+
         The result is internally negated when interacting with Skopt
         so that Skopt Optimizers can "maximize" this value,
         as it minimizes on default.
