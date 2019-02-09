@@ -163,13 +163,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.learner.load_wait_timer),
             "learner_dequeue_time_ms": timer_to_ms(self.learner.queue_timer),
         }
-        stats = {
+        stats = dict({
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
-            **self.get_mean_stats_and_reset(),
-        }
+        }, **self.get_mean_stats_and_reset())
         self._last_stats_val.clear()
         if self.learner.stats:
             stats["learner"] = self.learner.stats
