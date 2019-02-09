@@ -171,7 +171,7 @@ class ReportedFunctionRunner(Trainable):
             # fetch the next produced result
             try:
                 result = self._results_queue.get(block=True,
-                                                 RESULT_FETCH_TIMEOUT)
+                                                 timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
