@@ -130,6 +130,11 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000);
 /// chunks exceeds the number of available sending threads.
 RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000);
 
+/// Maximum size of an inline object (bytes).
+/// Inline objects are objects whose data and metadata are inlined in the
+/// GCS object table entry, which normally only specifies the object locations.
+RAY_CONFIG(int64_t, inline_object_max_size_bytes, 512);
+
 /// Number of workers per process
 RAY_CONFIG(int, num_workers_per_process, 1);
 
