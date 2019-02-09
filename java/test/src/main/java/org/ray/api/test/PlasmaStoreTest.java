@@ -3,14 +3,11 @@ package org.ray.api.test;
 import org.apache.arrow.plasma.PlasmaClient;
 import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
 
-import org.junit.Assert;
-import org.junit.Assume;
-import org.junit.Before;
-import org.junit.Test;
 import org.ray.api.Ray;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.config.RunMode;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class PlasmaStoreTest extends BaseTest {
 
