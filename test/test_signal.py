@@ -108,9 +108,8 @@ def test_task_crash_without_get(ray_start):
     def crashing_function():
         raise Exception("exception message")
 
-    time.sleep(2)
     object_id = crashing_function.remote()
-    result_list = signal.receive([object_id], timeout=5)
+    result_list = signal.receive([object_id], timeout=10)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -151,8 +150,7 @@ def test_actor_crash_init(ray_start):
 
     # Do not catch the exception in the __init__.
     a = ActorCrashInit.remote()
-    time.sleep(2)
-    result_list = signal.receive([a], timeout=5)
+    result_list = signal.receive([a], timeout=10)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -195,7 +193,6 @@ def test_actor_crash_init3(ray_start):
 
     a = ActorCrashInit.remote()
     a.method.remote()
-    time.sleep(2)
     result_list = signal.receive([a], timeout=10)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
