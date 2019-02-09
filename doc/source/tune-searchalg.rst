@@ -104,7 +104,7 @@ An example of this can be found in `sigopt_example.py <https://github.com/ray-pr
     :noindex:
 
 Nevergrad Search
--------------
+----------------
 
 The ``NevergradSearch`` is a SearchAlgorithm that is backed by `Nevergrad <https://github.com/facebookresearch/nevergrad>`__ to perform sequential model-based hyperparameter optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using NevergradSearch.
 
