@@ -2,16 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import copy
-import logging
-
 try:
     import nevergrad
 except Exception:
     nevergrad = None
 
-from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 
@@ -19,9 +14,9 @@ class NevergradSearch(SuggestionAlgorithm):
     """A wrapper around Nevergrad to provide trial suggestions.
 
     Requires Nevergrad to be installed.
-    Nevergrad is an open source tool from Facebook for derivative free 
+    Nevergrad is an open source tool from Facebook for derivative free
     optimization of parameters and/or hyperparameters. It features a wide
-    range of optimizers in a standard ask and tell interface. More information 
+    range of optimizers in a standard ask and tell interface. More information
     can be found at https://github.com/facebookresearch/nevergrad.
 
     Parameters:
@@ -88,7 +83,7 @@ class NevergradSearch(SuggestionAlgorithm):
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._nevergrad_opt.tell(ng_trial_info , -result[self._reward_attr])
+            self._nevergrad_opt.tell(ng_trial_info, -result[self._reward_attr])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

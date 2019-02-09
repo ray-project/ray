@@ -35,7 +35,6 @@ if __name__ == '__main__':
 
     register_trainable("exp", easy_objective)
 
-
     config = {
         "nevergrad": {
             "run": "exp",
