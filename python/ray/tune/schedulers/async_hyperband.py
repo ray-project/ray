@@ -36,6 +36,9 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             is simply a unit-less scalar.
         brackets (int): Number of brackets. Each bracket has a different
             halving rate, specified by the reduction factor.
+        allow_resource_growth (bool): Experimental feature. Enables this
+            scheduler to adjust resource allocations for each trial
+            to better prioritize trials.
     """
 
     def __init__(self,
@@ -44,7 +47,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                  max_t=100,
                  grace_period=10,
                  reduction_factor=3,
-                 brackets=3):
+                 brackets=3,
+                 allow_resource_growth=False):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
@@ -81,6 +85,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             bracket = self._trial_info[trial.trial_id]
             action = bracket.on_result(trial, result[self._time_attr],
                                        result[self._reward_attr])
+            if action == TrialScheduler.CONTINUE:
+                action = self.allocator.adjust_resources(trial_runner, trial)
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
@@ -98,6 +104,12 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
+
+
+class Allocator():
+
+    def adjust_resources(self, trial_runner, trial):
+        pass
 
 
 class _Bracket():
