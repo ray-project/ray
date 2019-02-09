@@ -495,6 +495,16 @@ class PolicyEvaluator(EvaluatorInterface):
             return grad_fetch
 
     @DeveloperAPI
+    def foreach_env(self, func):
+        """Apply the given function to each underlying env instance."""
+
+        envs = self.async_env.get_unwrapped()
+        if not envs:
+            return [func(self.async_env)]
+        else:
+            return [func(e) for e in envs]
+
+    @DeveloperAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
         """Return policy graph for the specified id, or None.
 
