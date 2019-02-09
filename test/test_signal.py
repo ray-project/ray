@@ -29,8 +29,8 @@ def test_task_to_driver(ray_start):
 
     signal_value = "simple signal"
     object_id = task_send_signal.remote(signal_value)
-    ray.get(object_id)
     result_list = signal.receive([object_id], timeout=10)
+    print(result_list[0][1])
     assert len(result_list) == 1
 
 
@@ -176,7 +176,7 @@ def test_actor_crash_init2(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([a], timeout=5)
+        result_list = signal.receive([a], timeout=10)
         assert len(result_list) == 2
         assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -196,7 +196,7 @@ def test_actor_crash_init3(ray_start):
     a = ActorCrashInit.remote()
     a.method.remote()
     time.sleep(2)
-    result_list = signal.receive([a], timeout=5)
+    result_list = signal.receive([a], timeout=10)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
