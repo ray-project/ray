@@ -49,7 +49,9 @@ if __name__ == '__main__':
     }
     optimizer = optimizerlib.OnePlusOne(dimension=2)
     algo = NevergradSearch(
-        optimizer, ["height", "width"],
-        max_concurrent=4, reward_attr="neg_mean_loss")
+        optimizer,
+        ["height", "width"],
+        max_concurrent=4,
+        reward_attr="neg_mean_loss")
     scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
     run_experiments(config, search_alg=algo, scheduler=scheduler)
