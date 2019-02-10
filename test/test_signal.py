@@ -19,6 +19,19 @@ def ray_start():
     ray.shutdown()
 
 
+def receive_all_signals(sources, timeout):
+    # Get all signals from sources, until there is no signal for a time
+    # period of timeout.
+
+    results = []
+    while True:
+        r = signal.receive(sources, timeout=timeout)
+        if len(r) == 0:
+            return results
+        else:
+            results.extend(r)
+
+
 def test_task_to_driver(ray_start):
     # Send a signal from a task to the driver.
 
@@ -51,7 +64,7 @@ def test_send_signal_from_actor_to_driver(ray_start):
     for i in range(count):
         ray.get(a.send_signal.remote(signal_value + str(i)))
 
-    result_list = signal.receive([a], timeout=10)
+    result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count
     for i in range(count):
         assert signal_value + str(i) == result_list[i][1].value
@@ -76,7 +89,7 @@ def test_send_signals_from_actor_to_driver(ray_start):
     a.send_signals.remote(signal_value, count)
     received_count = 0
     while True:
-        result_list = signal.receive([a], timeout=1)
+        result_list = signal.receive([a], timeout=5)
         received_count += len(result_list)
         if (received_count == count):
             break
@@ -96,7 +109,7 @@ def test_task_crash(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([object_id], timeout=10)
+        result_list = signal.receive([object_id], timeout=5)
         assert len(result_list) == 1
         assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -109,7 +122,7 @@ def test_task_crash_without_get(ray_start):
         raise Exception("exception message")
 
     object_id = crashing_function.remote()
-    result_list = signal.receive([object_id], timeout=10)
+    result_list = signal.receive([object_id], timeout=5)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -132,7 +145,7 @@ def test_actor_crash(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([a], timeout=10)
+        result_list = signal.receive([a], timeout=5)
         assert len(result_list) == 1
         assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -150,7 +163,7 @@ def test_actor_crash_init(ray_start):
 
     # Do not catch the exception in the __init__.
     a = ActorCrashInit.remote()
-    result_list = signal.receive([a], timeout=10)
+    result_list = signal.receive([a], timeout=5)
     assert len(result_list) == 1
     assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -174,7 +187,7 @@ def test_actor_crash_init2(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([a], timeout=10)
+        result_list = receive_all_signals([a], timeout=5)
         assert len(result_list) == 2
         assert type(result_list[0][1]) == signal.ErrorSignal
 
@@ -220,7 +233,7 @@ def test_send_signals_from_actor_to_actor(ray_start):
             self.this_actor = handle
 
         def get_signals(self, source_ids, count):
-            new_signals = signal.receive(source_ids, timeout=10)
+            new_signals = receive_all_signals(source_ids, timeout=5)
             for s in new_signals:
                 self.received_signals.append(s)
             if len(self.received_signals) < count:
@@ -265,5 +278,5 @@ def test_forget(ray_start):
     ray.get(a.send_signals.remote(signal_value, count))
     signal.forget([a])
     ray.get(a.send_signals.remote(signal_value, count))
-    result_list = signal.receive([a], timeout=10)
+    result_list = receive_all_signals([a], timeout=5)
     assert len(result_list) == count

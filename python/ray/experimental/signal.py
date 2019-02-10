@@ -17,8 +17,6 @@ class ErrorSignal(Signal):
     """Signal raised if an exception happens in a task or actor method."""
     def __init__(self, error):
         self.error = error
-    def get_error(self):
-        return self.error
 
 
 def _get_task_id(source):
