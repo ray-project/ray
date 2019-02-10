@@ -96,7 +96,7 @@ def test_task_crash(ray_start):
     except Exception as e:
         assert type(e) == ray.worker.RayTaskError
     finally:
-        result_list = signal.receive([object_id], timeout=5)
+        result_list = signal.receive([object_id], timeout=10)
         assert len(result_list) == 1
         assert type(result_list[0][1]) == signal.ErrorSignal
 
