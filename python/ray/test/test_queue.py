@@ -19,6 +19,11 @@ def ray_start():
     ray.shutdown()
 
 
+def teardown_module():
+    if ray.worker.global_worker.connected:
+        ray.shutdown()
+
+
 @ray.remote
 def get_async(queue, block, timeout, sleep):
     time.sleep(sleep)
