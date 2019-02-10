@@ -108,11 +108,6 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
 
-    - >-
-      sudo apt-get update
-      && sudo apt-get install -y
-      psmisc
-
     # Install Anaconda.
     - >-
       wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh -O ~/anaconda3.sh
