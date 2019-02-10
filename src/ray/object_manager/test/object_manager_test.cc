@@ -342,27 +342,27 @@ class TestObjectManager : public TestObjectManagerBase {
     case 0: {
       // Ensure timeout_ms = 0 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, /*timeout_ms=*/0, false, false);
+      TestWait(600, 5, 3, /*timeout_ms=*/0, false, false);
     } break;
     case 1: {
       // Ensure timeout_ms = 1000 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, /*timeout_ms=*/1000, false, false);
+      TestWait(600, 5, 3, /*timeout_ms=*/1000, false, false);
     } break;
     case 2: {
       // Generate objects locally to ensure local object code-path works properly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, 2000, false, /*test_local=*/true);
+      TestWait(600, 5, 3, 1000, false, /*test_local=*/true);
     } break;
     case 3: {
       // Wait on an object that's never registered with GCS to ensure timeout works
       // properly.
-      TestWait(100, /*num_objects=*/5, /*required_objects=*/6, 1000,
+      TestWait(600, /*num_objects=*/5, /*required_objects=*/6, 1000,
                /*include_nonexistent=*/true, false);
     } break;
     case 4: {
       // Ensure infinite time code-path works properly.
-      TestWait(100, 5, 5, /*timeout_ms=*/-1, false, false);
+      TestWait(600, 5, 5, /*timeout_ms=*/-1, false, false);
     } break;
     }
   }
@@ -391,9 +391,9 @@ class TestObjectManager : public TestObjectManagerBase {
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
-          RAY_LOG(INFO) << "elapsed " << elapsed;
-          RAY_LOG(INFO) << "found " << found.size();
-          RAY_LOG(INFO) << "remaining " << remaining.size();
+          RAY_LOG(DEBUG) << "elapsed " << elapsed;
+          RAY_LOG(DEBUG) << "found " << found.size();
+          RAY_LOG(DEBUG) << "remaining " << remaining.size();
 
           // Ensure object order is preserved for all invocations.
           uint j = 0;
