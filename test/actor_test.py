@@ -1186,7 +1186,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
     @ray.remote(num_gpus=1)
     def f():
-        time.sleep(4)
+        time.sleep(5)
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         return gpu_ids[0]
