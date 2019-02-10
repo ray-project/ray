@@ -19,17 +19,15 @@ class ClientConnectionTest : public ::testing::Test {
   }
 
   ray::Status WriteBadMessage(std::shared_ptr<ray::LocalClientConnection> conn,
-                              int64_t type, int64_t length,
-                              const uint8_t *message) {
+                              int64_t type, int64_t length, const uint8_t *message) {
     std::vector<boost::asio::const_buffer> message_buffers;
-    auto write_cookie = 123456; // incorrect version.
+    auto write_cookie = 123456;  // incorrect version.
     message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
     message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
     message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
     message_buffers.push_back(boost::asio::buffer(message, length));
     return conn->WriteBuffer(message_buffers);
   }
-
 
  protected:
   boost::asio::io_service io_service_;
@@ -177,8 +175,9 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   auto writer = LocalClientConnection::Create(
       client_handler, message_handler, std::move(in_), "writer", {}, error_message_type_);
 
-  auto reader = LocalClientConnection::Create(
-      client_handler, message_handler, std::move(out_), "reader", {}, error_message_type_);
+  auto reader =
+      LocalClientConnection::Create(client_handler, message_handler, std::move(out_),
+                                    "reader", {}, error_message_type_);
 
   // If client ID is set, bad message would crash the test.
   // reader->SetClientID(UniqueID::from_random());

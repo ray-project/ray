@@ -196,7 +196,6 @@ class ClientConnection : public ServerConnection<T> {
   /// \return Information of remote endpoint.
   std::string RemoteEndpointInfo();
 
-
   /// The ClientID of the remote client.
   ClientID client_id_;
   /// The handler for a message from the client.

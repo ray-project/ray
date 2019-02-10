@@ -272,8 +272,7 @@ bool ClientConnection<T>::CheckRayCookie() {
   // is received from local unknown program which crashes raylet.
   std::ostringstream ss;
   ss << " ray cookie mismatch for received message. "
-     << "received cookie: " << read_cookie_
-     << ", debug label: " << debug_label_
+     << "received cookie: " << read_cookie_ << ", debug label: " << debug_label_
      << ", remote client ID: " << client_id_;
   auto remote_endpoint_info = RemoteEndpointInfo();
   if (!remote_endpoint_info.empty()) {
@@ -298,9 +297,9 @@ std::string ClientConnection<T>::RemoteEndpointInfo() {
 template <>
 std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
   const auto &remote_endpoint =
-    ServerConnection<boost::asio::ip::tcp>::socket_.remote_endpoint();
+      ServerConnection<boost::asio::ip::tcp>::socket_.remote_endpoint();
   return remote_endpoint.address().to_string() + ":" +
-      std::to_string(remote_endpoint.port());
+         std::to_string(remote_endpoint.port());
 }
 
 template <class T>

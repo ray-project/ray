@@ -403,7 +403,8 @@ class NodeManager {
   /// \param client_address The IP address for the remote node manager.
   /// \param client_port The listening port for the remote node manager.
   /// \return True if the connect succeeds.
-  ray::Status ConnectRemoteNodeManager(const ClientID &client_id, const std::string &client_address,
+  ray::Status ConnectRemoteNodeManager(const ClientID &client_id,
+                                       const std::string &client_address,
                                        int32_t client_port);
 
   // GCS client ID for this node.
