@@ -419,17 +419,23 @@ class TestObjectManager : public TestObjectManagerBase {
           case 0: {
             // Ensure timeout_ms = 0 returns expected number of found and remaining
             // objects.
+            RAY_LOG(INFO) << "found.size()=" << found.size()
+                          << ", required_objects=" << required_objects;
             ASSERT_TRUE(found.size() <= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 1: {
             // Ensure lookup succeeds as expected when timeout_ms = 1000.
+            RAY_LOG(INFO) << "found.size()=" << found.size()
+                          << ", required_objects=" << required_objects;
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 2: {
+            RAY_LOG(INFO) << "found.size()=" << found.size()
+                          << ", required_objects=" << required_objects;
             // Ensure lookup succeeds as expected when objects are local.
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
