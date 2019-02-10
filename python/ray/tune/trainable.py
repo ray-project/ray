@@ -5,6 +5,7 @@ from __future__ import print_function
 from datetime import datetime
 
 import copy
+import functools
 import gzip
 import io
 import logging
@@ -444,9 +445,15 @@ class Trainable(object):
 def wrap_function(train_func):
     from ray.tune.function_runner import FunctionRunner
 
+    @functools.wraps(train_func)
+    def run_train_func(self, config, reporter):
+        output = train_func(config, reporter)
+        reporter(done=True)
+        return output
+
     class WrappedFunc(FunctionRunner):
         @property
         def _trainable_func(self):
-            return train_func
+            return run_train_func
 
     return WrappedFunc
