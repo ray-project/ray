@@ -49,7 +49,8 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 setup_cmds,
+                 startup_commands,
+                 setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
@@ -66,7 +67,8 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.setup_cmds = setup_cmds
+        self.startup_commands = startup_commands
+        self.setup_commands = setup_commands
         self.runtime_hash = runtime_hash
 
     def get_caller(self, check_error):
@@ -215,9 +217,14 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
 
+        m = "{}: Startup commands completed".format(self.node_id)
+        with LogTimer("NodeUpdater: {}".format(m)):
+            for cmd in self.startup_commands:
+                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
+
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.setup_cmds:
+            for cmd in self.setup_commands:
                 self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
 
     def rsync_up(self, source, target, redirect=None, check_error=True):

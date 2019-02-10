@@ -104,6 +104,9 @@ CLUSTER_CONFIG_SCHEMA = {
     "file_mounts": (dict, OPTIONAL),
 
     # List of common shell commands to run to initialize nodes.
+    "startup_commands": (list, OPTIONAL),
+
+    # List of common shell commands to run to setup nodes.
     "setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.

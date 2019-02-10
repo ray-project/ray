@@ -131,9 +131,16 @@ def kill_node(config_file, yes, override_cluster_name):
     node = random.choice(nodes)
     logger.info("kill_node: Terminating worker {}".format(node))
 
-    updater = NodeUpdaterThread(node, config["provider"], provider,
-                                config["auth"], config["cluster_name"],
-                                config["file_mounts"], [], "")
+    updater = NodeUpdaterThread(
+        node_id=node,
+        provider_config=config["provider"],
+        provider=provider,
+        auth_config=config["auth"],
+        cluster_name=config["cluster_name"],
+        file_mounts=config["file_mounts"],
+        startup_commands=[],
+        setup_commands=[],
+        runtime_hash="")
 
     _exec(updater, "ray stop", False, False)
 
@@ -216,21 +223,24 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             init_commands = config["head_start_ray_commands"]
         elif no_restart:
             init_commands = (
-                config["setup_commands"] + config["head_setup_commands"])
+                config["setup_commands"] +
+                config["head_setup_commands"])
         else:
             init_commands = (
-                config["setup_commands"] + config["head_setup_commands"] +
+                config["setup_commands"] +
+                config["head_setup_commands"] +
                 config["head_start_ray_commands"])
 
         updater = NodeUpdaterThread(
-            head_node,
-            config["provider"],
-            provider,
-            config["auth"],
-            config["cluster_name"],
-            config["file_mounts"],
-            init_commands,
-            runtime_hash,
+            node_id=head_node,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            startup_commands=config["startup_commands"],
+            setup_commands=init_commands,
+            runtime_hash=runtime_hash,
         )
         updater.start()
         updater.join()
@@ -315,20 +325,22 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
+
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
-            head_node,
-            config["provider"],
-            provider,
-            config["auth"],
-            config["cluster_name"],
-            config["file_mounts"],
-            [],
-            "",
+            node_id=head_node,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            startup_commands=config["startup_commands"],
+            setup_commands=[],
+            runtime_hash="",
         )
 
         def wrap_docker(command):
@@ -414,14 +426,15 @@ def rsync(config_file, source, target, override_cluster_name, down):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
-            head_node,
-            config["provider"],
-            provider,
-            config["auth"],
-            config["cluster_name"],
-            config["file_mounts"],
-            [],
-            "",
+            node_id=head_node,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            startup_commands=[],
+            setup_commands=[],
+            runtime_hash="",
         )
         if down:
             rsync = updater.rsync_down
