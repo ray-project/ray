@@ -102,8 +102,8 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   bytes_written_ += length;
 
   std::vector<boost::asio::const_buffer> message_buffers;
-  auto write_version = RayConfig::instance().ray_protocol_version();
-  message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
+  auto write_cookie = RayConfig::instance().ray_cookie();
+  message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
   message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
   message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
   message_buffers.push_back(boost::asio::buffer(message, length));
@@ -118,7 +118,7 @@ void ServerConnection<T>::WriteMessageAsync(
   bytes_written_ += length;
 
   auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
-  write_buffer->write_version = RayConfig::instance().ray_protocol_version();
+  write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
   write_buffer->write_message.resize(length);
@@ -148,8 +148,8 @@ void ServerConnection<T>::DoAsyncWrites() {
   std::vector<boost::asio::const_buffer> message_buffers;
   int num_messages = 0;
   for (const auto &write_buffer : async_write_queue_) {
-    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_version,
-                                                  sizeof(write_buffer->write_version)));
+    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_cookie,
+                                                  sizeof(write_buffer->write_cookie)));
     message_buffers.push_back(
         boost::asio::buffer(&write_buffer->write_type, sizeof(write_buffer->write_type)));
     message_buffers.push_back(boost::asio::buffer(&write_buffer->write_length,
@@ -224,7 +224,7 @@ void ClientConnection<T>::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
   std::vector<boost::asio::mutable_buffer> header;
-  header.push_back(boost::asio::buffer(&read_version_, sizeof(read_version_)));
+  header.push_back(boost::asio::buffer(&read_cookie_, sizeof(read_cookie_)));
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
   boost::asio::async_read(
@@ -243,8 +243,8 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
     return;
   }
 
-  // If there was no error, make sure the protocol version matches.
-  if (!CheckProtocolVersion()) {
+  // If there was no error, make sure the ray cookie matches.
+  if (!CheckRayCookie()) {
     ServerConnection<T>::Close();
     return;
   }
@@ -260,19 +260,19 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
 }
 
 template <class T>
-bool ClientConnection<T>::CheckProtocolVersion() {
-  if (read_version_ == RayConfig::instance().ray_protocol_version()) {
+bool ClientConnection<T>::CheckRayCookie() {
+  if (read_cookie_ == RayConfig::instance().ray_cookie()) {
     return true;
   }
 
-  // Version is not matched.
+  // Cookie is not matched.
   // Only assert if the message is coming from a known remote endpoint,
   // which is indicated by a non-nil client ID. This is to protect raylet
   // against miscellaneous connections. We did see cases where bad data
   // is received from local unknown program which crashes raylet.
   std::ostringstream ss;
-  ss << " Protocol version mismatch for received message. "
-     << "received version: " << read_version_
+  ss << " ray cookie mismatch for received message. "
+     << "received cookie: " << read_cookie_
      << ", debug label: " << debug_label_
      << ", remote client ID: " << client_id_;
   auto remote_endpoint_info = RemoteEndpointInfo();

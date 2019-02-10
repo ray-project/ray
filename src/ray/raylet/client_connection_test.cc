@@ -22,8 +22,8 @@ class ClientConnectionTest : public ::testing::Test {
                               int64_t type, int64_t length,
                               const uint8_t *message) {
     std::vector<boost::asio::const_buffer> message_buffers;
-    auto write_version = 123456; // incorrect version.
-    message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
+    auto write_cookie = 123456; // incorrect version.
+    message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
     message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
     message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
     message_buffers.push_back(boost::asio::buffer(message, length));
@@ -160,7 +160,7 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   io_service_.run();
 }
 
-TEST_F(ClientConnectionTest, processbadmessage) {
+TEST_F(ClientConnectionTest, ProcessBadMessage) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
@@ -183,7 +183,7 @@ TEST_F(ClientConnectionTest, processbadmessage) {
   // If client ID is set, bad message would crash the test.
   // reader->SetClientID(UniqueID::from_random());
 
-  // Intentionally write a message with incorrect protocol version.
+  // Intentionally write a message with incorrect cookie.
   // Verify it won't crash as long as client ID is not set.
   RAY_CHECK_OK(WriteBadMessage(writer, 0, 5, arr));
   reader->ProcessMessages();

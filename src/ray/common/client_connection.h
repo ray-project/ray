@@ -83,7 +83,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
-    int64_t write_version;
+    int64_t write_cookie;
     int64_t write_type;
     uint64_t write_length;
     std::vector<uint8_t> write_message;
@@ -184,12 +184,12 @@ class ClientConnection : public ServerConnection<T> {
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
-  /// Check if the protocol version in a received message is correct. Note, if the version
+  /// Check if the ray cookie in a received message is correct. Note, if the cookie
   /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
   /// endpoint is unknown, this method will only print a warning.
   ///
-  /// \return If the protocal version is correct.
-  bool CheckProtocolVersion();
+  /// \return If the cookie is correct.
+  bool CheckRayCookie();
   /// Return information about IP and port for the remote endpoint. For local connection
   /// this returns an empty string.
   ///
@@ -209,7 +209,7 @@ class ClientConnection : public ServerConnection<T> {
   /// The value for disconnect client message.
   int64_t error_message_type_;
   /// Buffers for the current message being read from the client.
-  int64_t read_version_;
+  int64_t read_cookie_;
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;

@@ -2,8 +2,8 @@ from ray.includes.ray_config cimport RayConfig
 
 cdef class Config:
     @staticmethod
-    def ray_protocol_version():
-        return RayConfig.instance().ray_protocol_version()
+    def ray_cookie():
+        return RayConfig.instance().ray_cookie()
 
     @staticmethod
     def handler_warning_timeout_ms():

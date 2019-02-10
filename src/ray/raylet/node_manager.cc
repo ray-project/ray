@@ -366,10 +366,7 @@ ray::Status NodeManager::ConnectRemoteNodeManager(const ClientID &client_id,
                 << client_address << ":" << client_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
-  auto status = TcpConnect(socket, client_address, client_port);
-  if (!status.ok()) {
-    return status;
-  }
+  RAY_RETURN_NOT_OK(TcpConnect(socket, client_address, client_port));
 
   // The client is connected, now send a connect message to remote node manager.
   auto server_conn = TcpServerConnection::Create(std::move(socket));
@@ -380,13 +377,9 @@ ray::Status NodeManager::ConnectRemoteNodeManager(const ClientID &client_id,
   fbb.Finish(message);
   // Send synchronously.
   // TODO(swang): Make this a WriteMessageAsync.
-  status = server_conn->WriteMessage(
+  RAY_RETURN_NOT_OK(server_conn->WriteMessage(
       static_cast<int64_t>(protocol::MessageType::ConnectClient), fbb.GetSize(),
-      fbb.GetBufferPointer());
-  if (!status.ok()) {
-    RAY_LOG(WARNING) << "Failed to send connect message to client " << client_id;
-    return status;
-  }
+      fbb.GetBufferPointer()));
 
   remote_server_connections_.emplace(client_id, std::move(server_conn));
   return ray::Status::OK();
