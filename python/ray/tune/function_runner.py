@@ -10,7 +10,7 @@ from six.moves import queue
 
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIMESTEPS_TOTAL, TIME_THIS_ITER_S
+from ray.tune.result import TIME_THIS_ITER_S
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +107,9 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
-                # TODO(gehring): ensure this does not cause cyclical references
-                #     when passing down the traceback
-                self._error_queue.put(sys.exc_info(),
+                err_type, err_value, err_tb = sys.exc_info()
+                err_tb = err_tb.format_exc()
+                self._error_queue.put((err_type, err_value, err_tb),
                                       block=True,
                                       timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
@@ -235,6 +235,11 @@ class FunctionRunner(Trainable):
     def _report_thread_runner_error(self):
         try:
             err_type, err_value, err_tb = self._error_queue.get(block=False)
-            raise TuneError("Trial raised a {} error with value: {}\nWith traceback:\n{}".format(err_type, err_value, err_tb))
+            raise TuneError((
+                    "Trial raised a {err_type} exception with value: "
+                    "{err_value}\nWith traceback:\n{err_tb}"
+                    ).format(err_type=err_type,
+                             err_value=err_value,
+                             err_tb=err_tb))
         except queue.Empty:
             pass

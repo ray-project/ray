@@ -446,7 +446,7 @@ def wrap_function(train_func):
     from ray.tune.function_runner import FunctionRunner
 
     @functools.wraps(train_func)
-    def run_train_func(self, config, reporter):
+    def run_train_func(config, reporter):
         output = train_func(config, reporter)
         reporter(done=True)
         return output
