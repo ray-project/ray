@@ -148,8 +148,28 @@ class PolicyGraph(object):
         return sample_batch
 
     @DeveloperAPI
+    def learn_on_batch(self, samples):
+        """Fused compute gradients and apply gradients call.
+
+        Either this or the combination of compute/apply grads must be
+        implemented by subclasses.
+
+        Returns:
+            grad_info: dictionary of extra metadata from compute_gradients().
+            apply_info: dictionary of extra metadata from apply_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.learn_on_batch(samples)
+        """
+
+        return self.compute_apply(samples)
+
+    @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
         """Computes gradients against a batch of experiences.
+
+        Either this or learn_on_batch() must be implemented by subclasses.
 
         Returns:
             grads (list): List of gradient output values
@@ -161,6 +181,8 @@ class PolicyGraph(object):
     def apply_gradients(self, gradients):
         """Applies previously computed gradients.
 
+        Either this or learn_on_batch() must be implemented by subclasses.
+
         Returns:
             info (dict): Extra policy-specific values
         """
@@ -168,16 +190,7 @@ class PolicyGraph(object):
 
     @DeveloperAPI
     def compute_apply(self, samples):
-        """Fused compute gradients and apply gradients call.
-
-        Returns:
-            grad_info: dictionary of extra metadata from compute_gradients().
-            apply_info: dictionary of extra metadata from apply_gradients().
-
-        Examples:
-            >>> batch = ev.sample()
-            >>> ev.compute_apply(samples)
-        """
+        """Deprecated: override learn_on_batch instead."""
 
         grads, grad_info = self.compute_gradients(samples)
         apply_info = self.apply_gradients(grads)
