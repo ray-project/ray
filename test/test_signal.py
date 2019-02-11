@@ -1,5 +1,4 @@
 import pytest
-import time
 
 import ray
 import ray.experimental.signal as signal
