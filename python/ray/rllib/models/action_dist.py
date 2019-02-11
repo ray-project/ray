@@ -162,12 +162,12 @@ class Deterministic(ActionDistribution):
     """
 
     @override(ActionDistribution)
-    def sample(self):
-        return self.inputs
-
-    @override(ActionDistribution)
     def sampled_action_prob(self):
         return 1.0
+
+    @override(ActionDistribution)
+    def _build_sample_op(self):
+        return self.inputs
 
 
 class MultiActionDistribution(ActionDistribution):
