@@ -278,7 +278,7 @@ class LearnerThread(threading.Thread):
             batch, _ = self.minibatch_buffer.get()
 
         with self.grad_timer:
-            fetches = self.local_evaluator.compute_apply(batch)
+            fetches = self.local_evaluator.learn_on_batch(batch)
             self.weights_updated = True
             self.stats = fetches.get("stats", {})
 
