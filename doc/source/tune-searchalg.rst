@@ -9,11 +9,13 @@ You can utilize these search algorithms as follows:
 
     run_experiments(experiments, search_alg=SearchAlgorithm(...))
 
-Currently, Tune offers the following search algorithms:
+Currently, Tune offers the following search algorithms (and library integrations):
 
 - `Grid Search and Random Search <tune-searchalg.html#variant-generation-grid-search-random-search>`__
+- `BayesOpt <tune-searchalg.html#bayesopt-search>`__
 - `HyperOpt <tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators>`__
 - `SigOpt <tune-searchalg.html#sigopt-search>`__
+- `Nevergrad <tune-searchalg.html#nevergrad-search>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -114,9 +116,9 @@ In order to use this search algorithm, you will need to install Nevergrad via th
 
     $ pip install nevergrad
 
-Keep in mind that nevergrad is a Python 3.6+ library.
+Keep in mind that ``nevergrad`` is a Python 3.6+ library.
 
-This algorithm requires using an optimizer provided by Nevergrad, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad>`__ section. You can use NevergradSearch like follows:
+This algorithm requires using an optimizer provided by ``nevergrad``, of which there are many options. A good rundown can be found on their README's `Optimization <https://github.com/facebookresearch/nevergrad>`__ section. You can use ``NevergradSearch`` like follows:
 
 .. code-block:: python
 
