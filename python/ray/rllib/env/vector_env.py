@@ -2,8 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
 import ray
 from ray.rllib.utils.annotations import override, PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -19,13 +23,16 @@ class VectorEnv(object):
     """
 
     @staticmethod
-    def wrap(make_env=None, num_envs=1, remote_envs=False,
-             action_space=None, observation_space=None):
+    def wrap(make_env=None,
+             num_envs=1,
+             remote_envs=False,
+             action_space=None,
+             observation_space=None):
         if remote_envs:
-            return _RemoteVectorizedGymEnv(make_env, num_envs,
-                                           action_space, observation_space)
-        return _VectorizedGymEnv(make_env, [], num_envs,
-                                 action_space, observation_space)
+            return _RemoteVectorizedGymEnv(make_env, num_envs, action_space,
+                                           observation_space)
+        return _VectorizedGymEnv(make_env, [], num_envs, action_space,
+                                 observation_space)
 
     @PublicAPI
     def vector_reset(self):
@@ -76,8 +83,12 @@ class _VectorizedGymEnv(VectorEnv):
         num_envs (int): Desired num gym envs to keep total.
     """
 
-    def __init__(self, make_env, existing_envs, num_envs,
-                 action_space=None, observation_space=None):
+    def __init__(self,
+                 make_env,
+                 existing_envs,
+                 num_envs,
+                 action_space=None,
+                 observation_space=None):
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -111,21 +122,59 @@ class _VectorizedGymEnv(VectorEnv):
         return self.envs
 
 
+@ray.remote(num_cpus=0)
+class _RemoteEnv(object):
+    """Wrapper class for making a gym env a remote actor."""
+
+    def __init__(self, make_env, i):
+        self.env = make_env(i)
+
+    def reset(self):
+        return self.env.reset()
+
+    def step(self, action):
+        return self.env.step(action)
+
+
 class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
     """Internal wrapper for gym envs to implement VectorEnv as remote workers.
     """
 
-    def __init__(self, make_env, num_envs,
-                 action_space=None, observation_space=None):
-        _VectorizedGymEnv.__init__(self, make_env, [], num_envs,
-                                   action_space, observation_space)
+    def __init__(self,
+                 make_env,
+                 num_envs,
+                 action_space=None,
+                 observation_space=None):
+        self.make_local_env = make_env
+        self.num_envs = num_envs
+        self.initialized = False
+        logger.warning(
+            "Creating throwaway env to get action and obs space. To avoid "
+            "resource overheads, your env should defer any expensive "
+            "initialization to reset().")
+        dummy = make_env(0)
+        self.action_space = dummy.action_space
+        self.observation_space = dummy.observation_space
+
+    def _initialize_if_needed(self):
+        if self.initialized:
+            return
+
+        self.initialized = True
+
+        def make_remote_env(i):
+            logger.info("Launching env {} in remote actor".format(i))
+            return _RemoteEnv.remote(self.make_local_env, i)
+
+        _VectorizedGymEnv.__init__(self, make_remote_env, [], self.num_envs,
+                                   self.action_space, self.observation_space)
 
         for env in self.envs:
-            assert isinstance(env, ray.actor.ActorHandle), \
-                "Your environment needs to be ray remote environment"
+            assert isinstance(env, ray.actor.ActorHandle), env
 
     @override(_VectorizedGymEnv)
     def vector_reset(self):
+        self._initialize_if_needed()
         return ray.get([env.reset.remote() for env in self.envs])
 
     @override(_VectorizedGymEnv)
@@ -134,8 +183,8 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
 
     @override(_VectorizedGymEnv)
     def vector_step(self, actions):
-        step_outs = ray.get([env.step.remote(act)
-                             for env, act in zip(self.envs, actions)])
+        step_outs = ray.get(
+            [env.step.remote(act) for env, act in zip(self.envs, actions)])
 
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for obs, rew, done, info in step_outs:

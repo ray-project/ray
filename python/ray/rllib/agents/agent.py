@@ -129,6 +129,10 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+    # If using num_envs_per_worker > 1, whether to create those new envs in
+    # remote processes instead of in the same worker. This adds overheads, but
+    # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
+    "remote_worker_envs": False,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__
@@ -177,9 +181,6 @@ COMMON_CONFIG = {
         # Optional whitelist of policies to train, or None for all policies.
         "policies_to_train": None,
     },
-
-    # Whether environments are in remote process or not
-    "remote_worker_envs": False,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -482,14 +483,16 @@ class Agent(Trainable):
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
 
-        return [self._make_evaluator(
-            cls,
-            env_creator,
-            policy_graph,
-            i + 1,
-            self.config,
-            remote_worker_envs=self.config["remote_worker_envs"])
-            for i in range(count)]
+        return [
+            self._make_evaluator(
+                cls,
+                env_creator,
+                policy_graph,
+                i + 1,
+                self.config,
+                remote_worker_envs=self.config["remote_worker_envs"])
+            for i in range(count)
+        ]
 
     @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
@@ -554,8 +557,13 @@ class Agent(Trainable):
             raise ValueError(
                 "`input_evaluation` should not be set when input=sampler")
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config, remote_worker_envs=False):
+    def _make_evaluator(self,
+                        cls,
+                        env_creator,
+                        policy_graph,
+                        worker_index,
+                        config,
+                        remote_worker_envs=False):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

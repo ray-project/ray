@@ -68,10 +68,15 @@ class BaseEnv(object):
     @staticmethod
     def to_base_env(env, make_env=None, num_envs=1, remote_envs=False):
         """Wraps any env type as needed to expose the async interface."""
+        if remote_envs and num_envs == 1:
+            raise ValueError(
+                "Remote envs only make sense to use if num_envs > 1 "
+                "(i.e. vectorization is enabled).")
         if not isinstance(env, BaseEnv):
             if isinstance(env, MultiAgentEnv):
-                assert not remote_envs, 'Remote multiagent environments are ' \
-                    'not implemented currently'
+                if remote_envs:
+                    raise NotImplementedError(
+                        "Remote multiagent environments are not implemented")
 
                 env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[], num_envs=num_envs)
