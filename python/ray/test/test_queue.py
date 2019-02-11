@@ -11,12 +11,9 @@ from ray.experimental.queue import Queue, Empty, Full
 
 
 @pytest.fixture
-def ray_start():
+def startup_module():
     # Start the Ray process.
-    ray.init()
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+    ray.init(num_cpus=1)
 
 
 def teardown_module():
