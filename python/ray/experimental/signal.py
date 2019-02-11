@@ -15,6 +15,7 @@ class Signal(object):
 
 class ErrorSignal(Signal):
     """Signal raised if an exception happens in a task or actor method."""
+
     def __init__(self, error):
         self.error = error
 
