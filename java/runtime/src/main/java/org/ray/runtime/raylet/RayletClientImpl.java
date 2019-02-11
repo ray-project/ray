@@ -106,11 +106,8 @@ public class RayletClientImpl implements RayletClient {
       LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
           UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
     }
-    int ret = nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+    nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
         fetchOnly, currentTaskId.getBytes());
-    if (ret != 0) {
-      throw new RayException("Connection closed by Raylet");
-    }
   }
 
   @Override
@@ -302,27 +299,28 @@ public class RayletClientImpl implements RayletClient {
       boolean isWorker, byte[] driverTaskId);
 
   private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize);
+      int pos, int taskSize) throws RayException;
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] nativeGetTask(long client);
+  private static native byte[] nativeGetTask(long client) throws RayException;
 
-  private static native void nativeDestroy(long client);
+  private static native void nativeDestroy(long client) throws RayException;
 
-  private static native int nativeFetchOrReconstruct(long client, byte[][] objectIds,
-      boolean fetchOnly, byte[] currentTaskId);
+  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
+      boolean fetchOnly, byte[] currentTaskId) throws RayException;
 
-  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId);
+  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId)
+      throws RayException;
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId);
+      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
 
   private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
       int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
-      boolean localOnly);
+      boolean localOnly) throws RayException;
 
 }

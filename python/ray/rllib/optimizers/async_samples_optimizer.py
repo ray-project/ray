@@ -24,7 +24,6 @@ from ray.rllib.utils.window_stat import WindowStat
 
 logger = logging.getLogger(__name__)
 
-LEARNER_QUEUE_MAX_SIZE = 16
 NUM_DATA_LOAD_THREADS = 16
 
 
@@ -49,6 +48,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
               broadcast_interval=1,
               num_sgd_iter=1,
               minibatch_buffer_size=1,
+              learner_queue_size=16,
               _fake_gpus=False):
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
@@ -76,10 +76,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 num_data_loader_buffers=num_data_loader_buffers,
                 minibatch_buffer_size=minibatch_buffer_size,
                 num_sgd_iter=num_sgd_iter,
+                learner_queue_size=learner_queue_size,
                 _fake_gpus=_fake_gpus)
         else:
             self.learner = LearnerThread(self.local_evaluator,
-                                         minibatch_buffer_size, num_sgd_iter)
+                                         minibatch_buffer_size, num_sgd_iter,
+                                         learner_queue_size)
         self.learner.start()
 
         # Stats
@@ -116,7 +118,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             self._last_stats_sum[key] = 0
             self._last_stats_time[key] = self._stats_start_time
         self._last_stats_sum[key] += val
-    
 
     def get_mean_stats_and_reset(self):
         now = time.time()
@@ -128,7 +129,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         for key in self._last_stats_sum.keys():
             self._last_stats_sum[key] = 0
             self._last_stats_time[key] = time.time()
-        
         return mean_stats
 
     @override(PolicyOptimizer)
@@ -162,13 +162,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 self.learner.load_wait_timer),
             "learner_dequeue_time_ms": timer_to_ms(self.learner.queue_timer),
         }
-        stats = {
+        stats = dict({
             "num_weight_syncs": self.num_weight_syncs,
             "num_steps_replayed": self.num_replayed,
             "timing_breakdown": timing,
             "learner_queue": self.learner.learner_queue_size.stats(),
-            **self.get_mean_stats_and_reset(),
-        }
+        }, **self.get_mean_stats_and_reset())
         self._last_stats_val.clear()
         if self.learner.stats:
             stats["learner"] = self.learner.stats
@@ -249,11 +248,12 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter):
+    def __init__(self, local_evaluator, minibatch_buffer_size, num_sgd_iter,
+                 learner_queue_size):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_evaluator = local_evaluator
-        self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
+        self.inqueue = queue.Queue(maxsize=learner_queue_size)
         self.outqueue = queue.Queue()
         self.minibatch_buffer = MinibatchBuffer(
             self.inqueue, minibatch_buffer_size, num_sgd_iter)
@@ -294,12 +294,13 @@ class TFMultiGPULearner(LearnerThread):
                  num_data_loader_buffers=1,
                  minibatch_buffer_size=1,
                  num_sgd_iter=1,
+                 learner_queue_size=16,
                  _fake_gpus=False):
         # Multi-GPU requires TensorFlow to function.
         import tensorflow as tf
 
         LearnerThread.__init__(self, local_evaluator, minibatch_buffer_size,
-                               num_sgd_iter)
+                               num_sgd_iter, learner_queue_size)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
