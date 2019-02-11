@@ -102,7 +102,6 @@ def save_and_log_checkpoint(worker, actor):
     Args:
         worker: The worker to use to log errors.
         actor: The actor to checkpoint.
-        checkpoint_index: The number of tasks that have executed so far.
     """
     try:
         actor.__ray_checkpoint__()
@@ -113,11 +112,7 @@ def save_and_log_checkpoint(worker, actor):
             worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
-            driver_id=worker.task_driver_id,
-            data={
-                "actor_class": actor.__class__.__name__,
-                "function_name": actor.__ray_checkpoint__.__name__
-            })
+            driver_id=worker.task_driver_id)
 
 
 def restore_and_log_checkpoint(worker, actor):
@@ -137,11 +132,7 @@ def restore_and_log_checkpoint(worker, actor):
             worker,
             ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
-            driver_id=worker.task_driver_id,
-            data={
-                "actor_class": actor.__class__.__name__,
-                "function_name": actor.__ray_checkpoint_restore__.__name__
-            })
+            driver_id=worker.task_driver_id)
     return checkpoint_resumed
 
 
@@ -550,11 +541,7 @@ class ActorHandle(object):
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
-            dependency: The object ID that this method is dependent on.
-                Defaults to None, for no dependencies. Most tasks should
-                pass in the dummy object returned by the preceding task.
-                Some tasks, such as checkpoint and terminate methods, have
-                no dependencies.
+            num_return_vals (int): The number of return values for the method.
 
         Returns:
             object_ids: A list of object IDs returned by the remote actor

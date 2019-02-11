@@ -2,7 +2,10 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
+
+COPTS = ["-DRAY_USE_GLOG"]
 
 cc_binary(
     name = "raylet",
@@ -11,6 +14,7 @@ cc_binary(
         ":ray_util",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -24,6 +28,7 @@ cc_binary(
         ":gcs",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -49,6 +54,7 @@ cc_library(
         "@plasma//:plasma_client",
         "@com_google_googletest//:gtest",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -59,6 +65,7 @@ cc_test(
         ":node_manager_fbs",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -70,6 +77,7 @@ cc_test(
         ":object_manager",
         ":raylet_lib"
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -79,6 +87,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -88,6 +97,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -97,6 +107,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib"
     ],
+    copts = COPTS,
 )
 
 cc_test(
@@ -106,6 +117,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         ":raylet_lib",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -127,6 +139,7 @@ cc_library(
         "@boost//:asio",
         "@plasma//:plasma_client"
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -137,6 +150,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":object_manager",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -147,6 +161,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":object_manager",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -167,8 +182,10 @@ cc_library(
     ],
     deps = [
       "@plasma//:plasma_client",
+      "@com_github_google_glog//:glog",
       ":sha256"
-    ]
+    ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -190,6 +207,7 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
     ],
+    copts = COPTS,
 )
 
 cc_library(
@@ -247,6 +265,7 @@ cc_library(
         ":hiredis",
         "@boost//:asio",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -257,6 +276,7 @@ cc_binary(
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
+    copts = COPTS,
 )
 
 cc_binary(
@@ -268,6 +288,7 @@ cc_binary(
         "@com_google_googletest//:gtest_main",
         ":ray_util",
     ],
+    copts = COPTS,
 )
 
 FLATC_ARGS = [
@@ -315,4 +336,190 @@ pyx_library(
         "python/ray/includes/*.pxi"
     ]),
     deps = ["//:raylet_lib"]
+)
+
+cc_binary(
+    name = "raylet_library_java.so",
+    srcs = [
+        "@bazel_tools//tools/jdk:current_java_runtime",
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
+        "src/ray/id.h",
+        "src/ray/raylet/raylet_client.h",
+        "src/ray/util/logging.h"
+        ],
+    includes = [
+        "src",
+        "external/local_jdk/include"] + select({
+            "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
+            "//conditions:default": ["external/local_jdk/include/linux"]
+        }),
+    linkshared = 1,
+    linkstatic = 1,
+    deps = ["@plasma//:plasma_client",
+            "//:raylet_lib"],
+)
+
+genrule(
+    name = "raylet-jni-darwin-compat",
+    srcs = [":raylet_library_java.so"],
+    outs = ["raylet_library_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "raylet_library_java",
+    visibility = ["//visibility:public"],
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":raylet_library_java.dylib"],
+        "//conditions:default": [":raylet_library_java.so"],
+    })
+)
+
+flatbuffer_py_library(
+    name = "python_gcs_fbs",
+    srcs = [
+        "src/ray/gcs/format/gcs.fbs"
+    ],
+    outs = [
+        "ActorState.py",
+        "ActorTableData.py",
+        "Arg.py",
+        "ClassTableData.py",
+        "ClientTableData.py",
+        "ConfigTableData.py",
+        "CustomSerializerData.py",
+        "DriverTableData.py",
+        "ErrorTableData.py",
+        "FunctionTableData.py",
+        "GcsTableEntry.py",
+        "HeartbeatBatchTableData.py",
+        "HeartbeatTableData.py",
+        "Language.py",
+        "ObjectTableData.py",
+        "ProfileEvent.py",
+        "ProfileTableData.py",
+        "RayResource.py",
+        "ResourcePair.py",
+        "SchedulingState.py",
+        "TablePrefix.py",
+        "TablePubsub.py",
+        "TaskInfo.py",
+        "TaskLeaseData.py",
+        "TaskReconstructionData.py",
+        "TaskTableData.py",
+        "TaskTableTestAndUpdate.py",
+    ],
+    out_prefix = "python/ray/core/generated/",
+)
+
+flatbuffer_py_library(
+    name = "python_node_manager_fbs",
+    srcs = [
+        "src/ray/raylet/format/node_manager.fbs"
+    ],
+    outs = [
+        "ray/protocol/DisconnectClient.py",
+        "ray/protocol/FetchOrReconstruct.py",
+        "ray/protocol/ForwardTaskRequest.py",
+        "ray/protocol/FreeObjectsRequest.py",
+        "ray/protocol/GetTaskReply.py",
+        "ray/protocol/MessageType.py",
+        "ray/protocol/NotifyUnblocked.py",
+        "ray/protocol/PushErrorRequest.py",
+        "ray/protocol/RegisterClientReply.py",
+        "ray/protocol/RegisterClientRequest.py",
+        "ray/protocol/RegisterNodeManagerRequest.py",
+        "ray/protocol/ResourceIdSetInfo.py",
+        "ray/protocol/SubmitTaskRequest.py",
+        "ray/protocol/Task.py",
+        "ray/protocol/TaskExecutionSpecification.py",
+        "ray/protocol/WaitReply.py",
+        "ray/protocol/WaitRequest.py"
+    ],
+    out_prefix = "python/ray/core/generated/",
+    include_paths = [
+        "src/ray/gcs/format/"
+    ],
+    includes = ["src/ray/gcs/format/gcs.fbs"]
+)
+
+filegroup(
+    name = "python_sources",
+    srcs = glob([
+        "python/ray/*.py",
+        "python/ray/autoscaler/*.py",
+        "python/ray/cloudpickle/*.py",
+        "python/ray/core/__init__.py",
+        "python/ray/core/generated/__init__.py",
+        "python/ray/core/generated/ray/__init__.py",
+        "python/ray/core/generated/ray/protocol/__init__.py",
+        "python/ray/experimental/*.py",
+        "python/ray/internal/*.py",
+        "python/ray/WebUI.ipynb",
+        "python/ray/workers/default_worker.py"
+    ])
+)
+
+genrule(
+    name = "redis",
+    cmd = """
+        set -x &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        make &&
+        mv ./src/redis-server $(location redis-server)
+    """,
+    outs = ["redis-server"]
+)
+
+cc_library(
+    name = "ray_redis_module",
+    hdrs = [
+        "src/ray/gcs/redis_module/redismodule.h",
+        "src/ray/gcs/redis_module/redis_string.h"
+    ],
+    srcs = [
+        "src/ray/gcs/redis_module/ray_redis_module.cc",
+        "src/ray/util/logging.cc"
+    ],
+    deps = [
+      ":ray_common"
+    ]
+)
+
+genrule(
+    name = "ray_pkg",
+    srcs = [
+        "python/ray/_raylet.so",
+        "//:python_sources",
+        "//:python_gcs_fbs",
+        "//:python_node_manager_fbs",
+        "//:redis-server",
+        "//:ray_redis_module",
+        "//:raylet",
+        "//:raylet_monitor",
+        "@plasma//:plasma_store_server",
+        "@plasma//:plasma_client_java",
+        "//:raylet_library_java",
+    ],
+    outs = ["ray_pkg"],
+    cmd = """
+        set -x &&
+        mkdir -p python/ray &&
+        cp $(location python/ray/_raylet.so) python/ray &&
+        mkdir -p python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp $(location //:redis-server) python/ray/core/src/ray/thirdparty/redis/src/ &&
+        mkdir -p python/ray/core/src/ray/gcs/redis_module/ &&
+        for f in $(locations //:ray_redis_module); do cp $$f python/ray/core/src/ray/gcs/redis_module/; done &&
+        mkdir -p python/ray/core/src/ray/raylet/ &&
+        cp $(location //:raylet_monitor) python/ray/core/src/ray/raylet/ &&
+        mkdir -p python/ray/core/src/plasma &&
+        cp $(location @plasma//:plasma_store_server) python/ray/core/src/plasma/ &&
+        cp $(location //:raylet) python/ray/core/src/ray/raylet/ &&
+        mv python $(location ray_pkg) &&
+        mkdir -p $(location ray_pkg)/java_lib &&
+        cp $(location @plasma//:plasma_client_java) $(location ray_pkg)/java_lib &&
+        cp $(location //:raylet_library_java) $(location ray_pkg)/java_lib
+        """
 )

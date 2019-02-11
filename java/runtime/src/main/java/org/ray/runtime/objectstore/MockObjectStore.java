@@ -1,11 +1,13 @@
 package org.ray.runtime.objectstore;
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.apache.arrow.plasma.ObjectStoreLink.ObjectStoreData;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.raylet.MockRayletClient;
@@ -57,12 +59,18 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    ArrayList<byte[]> rets = new ArrayList<>();
+  public List<ObjectStoreData> get(byte[][] objectIds, int timeoutMs) {
+    ArrayList<ObjectStoreData> rets = new ArrayList<>();
+    // TODO(yuhguo): make ObjectStoreData's constructor public.
     for (byte[] objId : objectIds) {
-      //tod test
-      if (data.containsKey(new UniqueId(objId))) {
-        rets.add(objId);
+      UniqueId uniqueId = new UniqueId(objId);
+      try {
+        Constructor<ObjectStoreData> constructor = ObjectStoreData.class.getConstructor(
+            byte[].class, byte[].class);
+        constructor.setAccessible(true);
+        rets.add(constructor.newInstance(metadata.get(uniqueId), data.get(uniqueId)));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
     }
     return rets;
@@ -71,11 +79,6 @@ public class MockObjectStore implements ObjectStoreLink {
   @Override
   public byte[] hash(byte[] objectId) {
     return null;
-  }
-
-  @Override
-  public void fetch(byte[][] objectIds) {
-
   }
 
   @Override
@@ -89,8 +92,12 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public boolean contains(byte[] objectId) {
+  public void delete(byte[] objectId) {
+    return;
+  }
 
+  @Override
+  public boolean contains(byte[] objectId) {
     return data.containsKey(new UniqueId(objectId));
   }
 

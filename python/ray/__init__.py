@@ -51,7 +51,7 @@ sys.path.append(modin_path)
 
 from ray._raylet import (UniqueID, ObjectID, DriverID, ClientID, ActorID,
                          ActorHandleID, FunctionID, ActorClassID, TaskID,
-                         Config as _Config)  # noqa: E402
+                         _ID_TYPES, Config as _Config)  # noqa: E402
 
 _config = _Config()
 
@@ -70,14 +70,15 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 
 # Ray version string.
-__version__ = "0.6.2"
+__version__ = "0.7.0dev"
 
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
     "remote", "profile", "actor", "method", "get_gpu_ids", "get_resource_ids",
     "get_webui_url", "register_custom_serializer", "shutdown",
     "is_initialized", "SCRIPT_MODE", "WORKER_MODE", "LOCAL_MODE",
-    "PYTHON_MODE", "global_state", "_config", "__version__", "internal"
+    "PYTHON_MODE", "global_state", "_config", "__version__", "internal",
+    "_ID_TYPES"
 ]
 
 __all__ += [

@@ -202,7 +202,7 @@ class Trainable(object):
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
 
-        self._result_logger.on_result(result)
+        self._log_result(result)
 
         return result
 
@@ -331,6 +331,23 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def export_model(self, export_formats, export_dir=None):
+        """Exports model based on export_formats.
+
+        Subclasses should override _export_model() to actually
+        export model to local directory.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Optional dir to place the exported model.
+                Defaults to self.logdir.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        export_dir = export_dir or self.logdir
+        return self._export_model(export_formats, export_dir)
+
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
@@ -398,9 +415,30 @@ class Trainable(object):
         """
         pass
 
+    def _log_result(self, result):
+        """Subclasses can optionally override this to customize logging.
+
+        Args:
+            result (dict): Training result returned by _train().
+        """
+
+        self._result_logger.on_result(result)
+
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
+
+    def _export_model(self, export_formats, export_dir):
+        """Subclasses should override this to export model.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Directory to place exported models.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        return {}
 
 
 def wrap_function(train_func):

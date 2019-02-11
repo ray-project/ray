@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <boost/bind.hpp>
+#include <sstream>
 
 #include "ray/ray_config.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -101,8 +102,8 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   bytes_written_ += length;
 
   std::vector<boost::asio::const_buffer> message_buffers;
-  auto write_version = RayConfig::instance().ray_protocol_version();
-  message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
+  auto write_cookie = RayConfig::instance().ray_cookie();
+  message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
   message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
   message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
   message_buffers.push_back(boost::asio::buffer(message, length));
@@ -117,7 +118,7 @@ void ServerConnection<T>::WriteMessageAsync(
   bytes_written_ += length;
 
   auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
-  write_buffer->write_version = RayConfig::instance().ray_protocol_version();
+  write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
   write_buffer->write_message.resize(length);
@@ -147,8 +148,8 @@ void ServerConnection<T>::DoAsyncWrites() {
   std::vector<boost::asio::const_buffer> message_buffers;
   int num_messages = 0;
   for (const auto &write_buffer : async_write_queue_) {
-    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_version,
-                                                  sizeof(write_buffer->write_version)));
+    message_buffers.push_back(boost::asio::buffer(&write_buffer->write_cookie,
+                                                  sizeof(write_buffer->write_cookie)));
     message_buffers.push_back(
         boost::asio::buffer(&write_buffer->write_type, sizeof(write_buffer->write_type)));
     message_buffers.push_back(boost::asio::buffer(&write_buffer->write_length,
@@ -187,22 +188,25 @@ template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
     boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
-    int64_t error_message_type) {
-  std::shared_ptr<ClientConnection<T>> self(new ClientConnection(
-      message_handler, std::move(socket), debug_label, error_message_type));
+    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type) {
+  std::shared_ptr<ClientConnection<T>> self(
+      new ClientConnection(message_handler, std::move(socket), debug_label,
+                           message_type_enum_names, error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
 }
 
 template <class T>
-ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
-                                      boost::asio::basic_stream_socket<T> &&socket,
-                                      const std::string &debug_label,
-                                      int64_t error_message_type)
+ClientConnection<T>::ClientConnection(
+    MessageHandler<T> &message_handler, boost::asio::basic_stream_socket<T> &&socket,
+    const std::string &debug_label,
+    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
+      client_id_(ClientID::nil()),
       message_handler_(message_handler),
       debug_label_(debug_label),
+      message_type_enum_names_(message_type_enum_names),
       error_message_type_(error_message_type) {}
 
 template <class T>
@@ -220,7 +224,7 @@ void ClientConnection<T>::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
   std::vector<boost::asio::mutable_buffer> header;
-  header.push_back(boost::asio::buffer(&read_version_, sizeof(read_version_)));
+  header.push_back(boost::asio::buffer(&read_cookie_, sizeof(read_cookie_)));
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
   boost::asio::async_read(
@@ -239,8 +243,12 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
     return;
   }
 
-  // If there was no error, make sure the protocol version matches.
-  RAY_CHECK(read_version_ == RayConfig::instance().ray_protocol_version());
+  // If there was no error, make sure the ray cookie matches.
+  if (!CheckRayCookie()) {
+    ServerConnection<T>::Close();
+    return;
+  }
+
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
   ServerConnection<T>::bytes_read_ += read_length_;
@@ -249,6 +257,49 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
       ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
       boost::bind(&ClientConnection<T>::ProcessMessage,
                   shared_ClientConnection_from_this(), boost::asio::placeholders::error));
+}
+
+template <class T>
+bool ClientConnection<T>::CheckRayCookie() {
+  if (read_cookie_ == RayConfig::instance().ray_cookie()) {
+    return true;
+  }
+
+  // Cookie is not matched.
+  // Only assert if the message is coming from a known remote endpoint,
+  // which is indicated by a non-nil client ID. This is to protect raylet
+  // against miscellaneous connections. We did see cases where bad data
+  // is received from local unknown program which crashes raylet.
+  std::ostringstream ss;
+  ss << " ray cookie mismatch for received message. "
+     << "received cookie: " << read_cookie_ << ", debug label: " << debug_label_
+     << ", remote client ID: " << client_id_;
+  auto remote_endpoint_info = RemoteEndpointInfo();
+  if (!remote_endpoint_info.empty()) {
+    ss << ", remote endpoint info: " << remote_endpoint_info;
+  }
+
+  if (!client_id_.is_nil()) {
+    // This is from a known client, which indicates a bug.
+    RAY_LOG(FATAL) << ss.str();
+  } else {
+    // It's not from a known client, log this message, and stop processing the connection.
+    RAY_LOG(WARNING) << ss.str();
+  }
+  return false;
+}
+
+template <class T>
+std::string ClientConnection<T>::RemoteEndpointInfo() {
+  return std::string();
+}
+
+template <>
+std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
+  const auto &remote_endpoint =
+      ServerConnection<boost::asio::ip::tcp>::socket_.remote_endpoint();
+  return remote_endpoint.address().to_string() + ":" +
+         std::to_string(remote_endpoint.port());
 }
 
 template <class T>
@@ -261,8 +312,14 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
-    RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type " << read_type_
-                     << " took " << interval << " ms.";
+    std::string message_type;
+    if (message_type_enum_names_.empty()) {
+      message_type = std::to_string(read_type_);
+    } else {
+      message_type = message_type_enum_names_[read_type_];
+    }
+    RAY_LOG(WARNING) << "[" << debug_label_ << "]ProcessMessage with type "
+                     << message_type << " took " << interval << " ms.";
   }
 }
 

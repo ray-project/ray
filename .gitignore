@@ -149,3 +149,7 @@ java/**/.project
 
 # python virtual env
 venv
+
+# Vim
+.*.swp
+*.swp
