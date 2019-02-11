@@ -9,8 +9,12 @@
 //     1. You must update the file "ray/python/ray/includes/ray_config.pxd".
 //     2. You must update the file "ray/python/ray/includes/ray_config.pxi".
 
-/// In theory, this is used to detect Ray version mismatches.
-RAY_CONFIG(int64_t, ray_protocol_version, 0x0000000000000000);
+/// In theory, this is used to detect Ray cookie mismatches.
+/// This magic number (hex for "RAY") is used instead of zero, rationale is
+/// that it could still be possible that some random program sends an int64_t
+/// which is zero, but it's much less likely that a program sends this
+/// particular magic number.
+RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000);
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
@@ -129,6 +133,11 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000);
 /// data than what is specified by the chunk size unless the number of object
 /// chunks exceeds the number of available sending threads.
 RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000);
+
+/// Maximum size of an inline object (bytes).
+/// Inline objects are objects whose data and metadata are inlined in the
+/// GCS object table entry, which normally only specifies the object locations.
+RAY_CONFIG(int64_t, inline_object_max_size_bytes, 512);
 
 /// Number of workers per process
 RAY_CONFIG(int, num_workers_per_process, 1);

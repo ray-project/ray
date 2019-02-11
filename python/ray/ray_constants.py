@@ -53,6 +53,7 @@ PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
+LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -78,9 +79,9 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 
-# Default logger format: only contains the message.
-LOGGER_FORMAT = "%(message)s"
-LOGGER_FORMAT_HELP = "The logging format. default='%(message)s'"
+LOGGER_FORMAT = (
+    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
+LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ['debug', 'info', 'warning', 'error', 'critical']
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
@@ -100,3 +101,5 @@ PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
+
+LOG_MONITOR_MAX_OPEN_FILES = 200

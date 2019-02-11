@@ -139,12 +139,12 @@ ray::Status RayletConnection::Disconnect() {
 
 ray::Status RayletConnection::ReadMessage(MessageType type,
                                           std::unique_ptr<uint8_t[]> &message) {
-  int64_t version;
+  int64_t cookie;
   int64_t type_field;
   int64_t length;
-  int closed = read_bytes(conn_, (uint8_t *)&version, sizeof(version));
+  int closed = read_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
   if (closed) goto disconnected;
-  RAY_CHECK(version == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(cookie == RayConfig::instance().ray_cookie());
   closed = read_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) goto disconnected;
   closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
@@ -175,13 +175,13 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
 ray::Status RayletConnection::WriteMessage(MessageType type,
                                            flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
-  int64_t version = RayConfig::instance().ray_protocol_version();
+  int64_t cookie = RayConfig::instance().ray_cookie();
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
   int64_t type_field = static_cast<int64_t>(type);
   auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
-  closed = write_bytes(conn_, (uint8_t *)&version, sizeof(version));
+  closed = write_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
   if (closed) return io_error;
   closed = write_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
   if (closed) return io_error;

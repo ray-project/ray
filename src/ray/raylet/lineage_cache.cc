@@ -222,7 +222,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 
 bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add waiting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Add waiting task " << task_id << " on " << client_id_;
 
   // Merge the uncommitted lineage into the lineage cache. Collect the IDs of
   // tasks that we should subscribe to. These are all of the tasks that were
@@ -253,7 +253,7 @@ bool LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 
 bool LineageCache::AddReadyTask(const Task &task) {
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "add ready task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Add ready task " << task_id << " on " << client_id_;
 
   // Set the task to READY.
   if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED_READY)) {
@@ -268,7 +268,7 @@ bool LineageCache::AddReadyTask(const Task &task) {
 }
 
 bool LineageCache::RemoveWaitingTask(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "remove waiting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Remove waiting task " << task_id << " on " << client_id_;
   auto entry = lineage_.GetEntryMutable(task_id);
   if (!entry) {
     // The task was already evicted.
@@ -324,8 +324,8 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   }
 }
 
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
-                                            const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
+                                                 const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -417,7 +417,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   }
 
   // Evict the task.
-  RAY_LOG(DEBUG) << "evicting task " << task_id << " on " << client_id_;
+  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << client_id_;
   lineage_.PopEntry(task_id);
   committed_tasks_.erase(commit_it);
   // Try to evict the children of the evict task. These are the tasks that have
@@ -431,7 +431,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
 }
 
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "task committed: " << task_id;
+  RAY_LOG(DEBUG) << "Task committed: " << task_id;
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
     // The task has already been evicted due to a previous commit notification.
@@ -445,7 +445,7 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   UnsubscribeTask(task_id);
 }
 
-const Task &LineageCache::GetTask(const TaskID &task_id) const {
+const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
   const auto &entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   RAY_CHECK(it != entries.end());

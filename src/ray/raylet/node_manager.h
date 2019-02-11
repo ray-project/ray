@@ -56,10 +56,12 @@ class NodeManager {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
+  /// \param reference to the local object store.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              plasma::PlasmaClient &store_client);
 
   /// Process a new client connection.
   ///
@@ -395,12 +397,24 @@ class NodeManager {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// connect to a remote node manager.
+  ///
+  /// \param client_id The client ID for the remote node manager.
+  /// \param client_address The IP address for the remote node manager.
+  /// \param client_port The listening port for the remote node manager.
+  /// \return True if the connect succeeds.
+  ray::Status ConnectRemoteNodeManager(const ClientID &client_id,
+                                       const std::string &client_address,
+                                       int32_t client_port);
+
+  // GCS client ID for this node.
+  ClientID client_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
   /// objects in the object store (e.g., for actor tasks that can't be run
   /// because the actor died).
-  plasma::PlasmaClient store_client_;
+  plasma::PlasmaClient &store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.

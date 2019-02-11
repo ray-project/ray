@@ -83,7 +83,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
-    int64_t write_version;
+    int64_t write_cookie;
     int64_t write_type;
     uint64_t write_length;
     std::vector<uint8_t> write_message;
@@ -145,10 +145,15 @@ class ClientConnection : public ServerConnection<T> {
   /// \param new_client_handler A reference to the client handler.
   /// \param message_handler A reference to the message handler.
   /// \param socket The client socket.
+  /// \param debug_label Label that is printed in debug messages, to identify
+  /// the type of client.
+  /// \param message_type_enum_names A table of printable enum names for the
+  /// message types received from this client, used for debug messages.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
       ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
       boost::asio::basic_stream_socket<T> &&socket, const std::string &debug_label,
+      const std::vector<std::string> &message_type_enum_names,
       int64_t error_message_type);
 
   std::shared_ptr<ClientConnection<T>> shared_ClientConnection_from_this() {
@@ -170,13 +175,26 @@ class ClientConnection : public ServerConnection<T> {
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket,
-                   const std::string &debug_label, int64_t error_message_type);
+                   const std::string &debug_label,
+                   const std::vector<std::string> &message_type_enum_names,
+                   int64_t error_message_type);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
+  /// Check if the ray cookie in a received message is correct. Note, if the cookie
+  /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
+  /// endpoint is unknown, this method will only print a warning.
+  ///
+  /// \return If the cookie is correct.
+  bool CheckRayCookie();
+  /// Return information about IP and port for the remote endpoint. For local connection
+  /// this returns an empty string.
+  ///
+  /// \return Information of remote endpoint.
+  std::string RemoteEndpointInfo();
 
   /// The ClientID of the remote client.
   ClientID client_id_;
@@ -184,10 +202,13 @@ class ClientConnection : public ServerConnection<T> {
   MessageHandler<T> message_handler_;
   /// A label used for debug messages.
   const std::string debug_label_;
+  /// A table of printable enum names for the message types, used for debug
+  /// messages.
+  const std::vector<std::string> message_type_enum_names_;
   /// The value for disconnect client message.
   int64_t error_message_type_;
   /// Buffers for the current message being read from the client.
-  int64_t read_version_;
+  int64_t read_cookie_;
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;

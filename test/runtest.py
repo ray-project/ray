@@ -9,6 +9,7 @@ import random
 import re
 import setproctitle
 import shutil
+import socket
 import string
 import subprocess
 import sys
@@ -1059,8 +1060,14 @@ def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
     num_nodes = 3
+    # Set the inline object size to 0 to force all objects to be written to
+    # plasma.
+    config = json.dumps({"inline_object_max_size_bytes": 0})
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+        cluster.add_node(
+            resources={str(i): 1},
+            object_store_memory=10**9,
+            _internal_config=config)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -2291,9 +2298,6 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
         ray.global_state.function_table()
 
-    with pytest.raises(Exception):
-        ray.global_state.log_files()
-
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
@@ -2382,38 +2386,90 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-def test_log_file_api(shutdown_only):
-    ray.init(num_cpus=1, redirect_worker_output=True)
+# TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
+# should use those, but they seem to conflict with Ray's use of faulthandler.
+class CaptureOutputAndError(object):
+    """Capture stdout and stderr of some span.
 
-    message = "unique message"
+    This can be used as follows.
+
+        captured = {}
+        with CaptureOutputAndError(captured):
+            # Do stuff.
+        # Access captured["out"] and captured["err"].
+    """
+
+    def __init__(self, captured_output_and_error):
+        if sys.version_info >= (3, 0):
+            import io
+            self.output_buffer = io.StringIO()
+            self.error_buffer = io.StringIO()
+        else:
+            import cStringIO
+            self.output_buffer = cStringIO.StringIO()
+            self.error_buffer = cStringIO.StringIO()
+        self.captured_output_and_error = captured_output_and_error
+
+    def __enter__(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        self.old_stdout = sys.stdout
+        self.old_stderr = sys.stderr
+        sys.stdout = self.output_buffer
+        sys.stderr = self.error_buffer
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.stdout = self.old_stdout
+        sys.stderr = self.old_stderr
+        self.captured_output_and_error["out"] = self.output_buffer.getvalue()
+        self.captured_output_and_error["err"] = self.error_buffer.getvalue()
+
+
+def test_logging_to_driver(shutdown_only):
+    ray.init(num_cpus=1, log_to_driver=True)
 
     @ray.remote
     def f():
-        logger.info(message)
-        # The call to sys.stdout.flush() seems to be necessary when using
-        # the system Python 2.7 on Ubuntu.
-        sys.stdout.flush()
+        for i in range(100):
+            print(i)
+            print(100 + i, file=sys.stderr)
+            sys.stdout.flush()
+            sys.stderr.flush()
 
-    ray.get(f.remote())
+    captured = {}
+    with CaptureOutputAndError(captured):
+        ray.get(f.remote())
+        time.sleep(1)
 
-    # Make sure that the message appears in the log files.
-    start_time = time.time()
-    found_message = False
-    while time.time() - start_time < 10:
-        log_files = ray.global_state.log_files()
-        for ip, innerdict in log_files.items():
-            for filename, contents in innerdict.items():
-                contents_str = "".join(contents)
-                if message in contents_str:
-                    found_message = True
-        if found_message:
-            break
-        time.sleep(0.1)
+    output_lines = captured["out"]
+    assert len(output_lines) == 0
+    error_lines = captured["err"]
+    for i in range(200):
+        assert str(i) in error_lines
 
-    assert found_message is True
+
+def test_not_logging_to_driver(shutdown_only):
+    ray.init(num_cpus=1, log_to_driver=False)
+
+    @ray.remote
+    def f():
+        for i in range(100):
+            print(i)
+            print(100 + i, file=sys.stderr)
+            sys.stdout.flush()
+            sys.stderr.flush()
+
+    captured = {}
+    with CaptureOutputAndError(captured):
+        ray.get(f.remote())
+        time.sleep(1)
+
+    output_lines = captured["out"]
+    assert len(output_lines) == 0
+    error_lines = captured["err"]
+    assert len(error_lines) == 0
 
 
 @pytest.mark.skipif(
@@ -2511,6 +2567,56 @@ def test_wait_reconstruction(shutdown_only):
     assert len(ready_ids) == 1
 
 
+def test_inline_objects(shutdown_only):
+    config = json.dumps({"initial_reconstruction_timeout_milliseconds": 200})
+    ray.init(num_cpus=1, object_store_memory=10**7, _internal_config=config)
+
+    @ray.remote
+    class Actor(object):
+        def create_inline_object(self):
+            return "inline"
+
+        def create_non_inline_object(self):
+            return 10000 * [1]
+
+        def get(self):
+            return
+
+    a = Actor.remote()
+    # Count the number of objects that were successfully inlined.
+    inlined = 0
+    for _ in range(100):
+        inline_object = a.create_inline_object.remote()
+        ray.get(inline_object)
+        plasma_id = ray.pyarrow.plasma.ObjectID(inline_object.binary())
+        ray.worker.global_worker.plasma_client.delete([plasma_id])
+        # Make sure we can still get an inlined object created by an actor even
+        # after it has been evicted.
+        try:
+            value = ray.get(inline_object)
+            assert value == "inline"
+            inlined += 1
+        except ray.worker.RayTaskError:
+            pass
+    # Make sure some objects were inlined. Some of them may not get inlined
+    # because we evict the object soon after creating it.
+    assert inlined > 0
+
+    # Non-inlined objects are not able to be recreated after eviction.
+    for _ in range(10):
+        non_inline_object = a.create_non_inline_object.remote()
+        ray.get(non_inline_object)
+        plasma_id = ray.pyarrow.plasma.ObjectID(non_inline_object.binary())
+        # This while loop is necessary because sometimes the object is still
+        # there immediately after plasma_client.delete.
+        while ray.worker.global_worker.plasma_client.contains(plasma_id):
+            ray.worker.global_worker.plasma_client.delete([plasma_id])
+        # Objects created by an actor that were evicted and larger than the
+        # maximum inline object size cannot be retrieved or reconstructed.
+        with pytest.raises(ray.worker.RayTaskError):
+            ray.get(non_inline_object) == 10000 * [1]
+
+
 def test_ray_setproctitle(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -2594,9 +2700,45 @@ def test_pandas_parquet_serialization():
     pytest.importorskip("pandas")
 
     import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
     tempdir = tempfile.mkdtemp()
     filename = os.path.join(tempdir, "parquet-test")
     pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
+    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
+        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
+        pq.write_table(table, f, compression="lz4")
     # Clean up
     shutil.rmtree(tempdir)
+
+
+def test_socket_dir_not_existing(shutdown_only):
+    random_name = ray.ObjectID(_random_string()).hex()
+    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                           "raylet_socket")
+    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+
+
+def test_raylet_is_robust_to_random_messages(shutdown_only):
+
+    ray.init(num_cpus=1)
+    node_manager_address = None
+    node_manager_port = None
+    for client in ray.global_state.client_table():
+        if "NodeManagerAddress" in client:
+            node_manager_address = client["NodeManagerAddress"]
+            node_manager_port = client["NodeManagerPort"]
+    assert node_manager_address
+    assert node_manager_port
+    # Try to bring down the node manager:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((node_manager_address, node_manager_port))
+    s.send(1000 * b'asdf')
+
+    @ray.remote
+    def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1

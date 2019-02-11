@@ -30,13 +30,16 @@ class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+             const std::string &store_name)
       : object_manager_acceptor_(
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        store_client_) {
+    RAY_ARROW_CHECK_OK(store_client_.Connect(store_name.c_str()));
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -78,7 +81,7 @@ class MockServer {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_),
-        "object manager",
+        "object manager", {},
         static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
     DoAcceptObjectManager();
   }
@@ -88,6 +91,7 @@ class MockServer {
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  plasma::PlasmaClient store_client_;
   ObjectManager object_manager_;
 };
 
@@ -142,7 +146,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_receives = max_receives_a;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
-    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1, store_id_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
@@ -154,7 +158,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_receives = max_receives_b;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
-    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2, store_id_2));
 
     // connect to stores.
     RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));

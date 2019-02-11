@@ -4,7 +4,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.function.RayFunc2;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayActorImpl;
 import org.testng.Assert;

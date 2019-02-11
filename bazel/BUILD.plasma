@@ -60,6 +60,41 @@ cc_library(
     strip_include_prefix = "cpp/src",
 )
 
+cc_binary(
+    name = "plasma_client_java.so",
+    srcs = [
+        "@bazel_tools//tools/jdk:current_java_runtime",
+        "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc",
+        "cpp/src/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h"
+        ],
+    includes = [
+        "cpp/src",
+        "../../external/local_jdk/include"] + select({
+            "@bazel_tools//src/conditions:darwin": ["../../external/local_jdk/include/darwin"],
+            "//conditions:default": ["../../external/local_jdk/include/linux"]
+        }),
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [":plasma_client"],
+)
+
+genrule(
+    name = "plasma-jni-darwin-compat",
+    srcs = [":plasma_client_java.so"],
+    outs = ["plasma_client_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "plasma_client_java",
+    visibility = ["//visibility:public"],
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":plasma_client_java.dylib"],
+        "//conditions:default": [":plasma_client_java.so"],
+    })
+)
+
 cc_library(
     name = "plasma_lib",
     hdrs = [
@@ -86,7 +121,7 @@ cc_library(
 
 
 cc_binary(
-    name = "plasma_server",
+    name = "plasma_store_server",
     visibility = ["//visibility:public"],
     srcs = glob([
       "cpp/src/plasma/store.cc",

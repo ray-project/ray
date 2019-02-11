@@ -193,6 +193,7 @@ script:
   - python -m pytest -v --durations=10 test/cython_test.py
   - python -m pytest -v --durations=10 test/credis_test.py
   - python -m pytest -v --durations=10 test/node_manager_test.py
+  - python -m pytest -v --durations=10 test/test_signal.py
   # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
   # better be put in Jenkins. However, it fails frequently in Jenkins, but
   # works well in Travis. We should consider moving it back to Jenkins once
@@ -201,6 +202,9 @@ script:
 
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py
+
+  # ray debug tools tests
+  - python -m pytest -v --durations=10 test/debug_tools_test.py
 
   # modin test files
   - python python/ray/test/test_modin.py

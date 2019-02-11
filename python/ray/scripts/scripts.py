@@ -57,8 +57,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     help=ray_constants.LOGGER_FORMAT_HELP)
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    logging.basicConfig(level=level, format=logging_format)
-    logger.setLevel(level)
+    ray.utils.setup_logger(level, logging_format)
 
 
 @cli.command()
@@ -203,6 +202,17 @@ def cli(logging_level, logging_format):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
+    "--include-java",
+    is_flag=True,
+    default=None,
+    help="Enable Java worker support.")
+@click.option(
+    "--java-worker-options",
+    required=False,
+    default=None,
+    type=str,
+    help="Overwrite the options to start Java workers.")
+@click.option(
     "--internal-config",
     default=None,
     type=str,
@@ -213,8 +223,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_memory, num_workers, num_cpus, num_gpus, resources, head,
           no_ui, block, plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          internal_config):
+          plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
+          java_worker_options, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -246,6 +256,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        include_java=include_java,
+        java_worker_options=java_worker_options,
         _internal_config=internal_config)
 
     if head:
@@ -281,7 +293,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
-            autoscaling_config=autoscaling_config)
+            autoscaling_config=autoscaling_config,
+            include_java=False,
+        )
 
         node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
         redis_address = node.redis_address
@@ -323,6 +337,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if no_ui:
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")
+        if include_java is not None:
+            raise ValueError("--include-java should only be set for the head "
+                             "node.")
+
         redis_ip_address, redis_port = redis_address.split(":")
 
         # Wait for the Redis server to be started. And throw an exception if we
@@ -349,7 +367,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
-
         node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
@@ -606,21 +623,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
-    if tmux or screen:
-        attach_command_parts = ["ray attach", cluster_config_file]
-        if cluster_name is not None:
-            attach_command_parts.append(
-                "--cluster-name={}".format(cluster_name))
-        if tmux:
-            attach_command_parts.append("--tmux")
-        elif screen:
-            attach_command_parts.append("--screen")
-
-        attach_command = " ".join(attach_command_parts)
-        attach_info = "Use `{}` to check on command status.".format(
-            attach_command)
-        logger.info(attach_info)
-
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
@@ -652,25 +654,8 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     "--port-forward", required=False, type=int, help="Port to forward.")
 def exec_cmd(cluster_config_file, cmd, screen, tmux, stop, start, cluster_name,
              port_forward):
-    assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
-
     exec_cluster(cluster_config_file, cmd, screen, tmux, stop, start,
                  cluster_name, port_forward)
-
-    if tmux or screen:
-        attach_command_parts = ["ray attach", cluster_config_file]
-        if cluster_name is not None:
-            attach_command_parts.append(
-                "--cluster-name={}".format(cluster_name))
-        if tmux:
-            attach_command_parts.append("--tmux")
-        elif screen:
-            attach_command_parts.append("--screen")
-
-        attach_command = " ".join(attach_command_parts)
-        attach_info = "Use `{}` to check on command status.".format(
-            attach_command)
-        logger.info(attach_info)
 
 
 @cli.command()
