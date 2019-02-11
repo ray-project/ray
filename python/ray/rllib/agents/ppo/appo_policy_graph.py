@@ -15,7 +15,7 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
-from ray.rllib.models.action_dist import Categorical
+from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
@@ -168,7 +168,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.grads = None
 
-        is_discrete = False
+        is_multidiscrete = False
         output_hidden_shape = None
         actions_shape = [None]
 
@@ -191,16 +191,15 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_seq_lens = existing_inputs[-1]
         else:
             if isinstance(action_space, gym.spaces.Discrete):
-                is_discrete = True
                 output_hidden_shape = [action_space.n]
             elif isinstance(action_space,
                             gym.spaces.multi_discrete.MultiDiscrete):
+                is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
                 output_hidden_shape = action_space.nvec
             elif self.config["vtrace"]:
                 raise UnsupportedSpaceException(
-                    "Action space {} is not supported for IMPALA.".format(
-                        action_space))
+                    "Action space {} is not supported for APPO with VTrace.".format(action_space))
 
             actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
@@ -244,10 +243,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = self.model.outputs if is_discrete else \
-            unpacked_outputs
-        prev_dist_inputs = behaviour_logits if is_discrete else \
-            unpacked_behaviour_logits
+        dist_inputs = unpacked_outputs if is_multidiscrete else \
+            self.model.outputs
+        prev_dist_inputs = unpacked_behaviour_logits if is_multidiscrete else \
+            behaviour_logits
 
         action_dist = dist_class(dist_inputs)
         prev_action_dist = dist_class(prev_dist_inputs)
@@ -304,10 +303,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             logger.info("Using V-Trace surrogate loss (vtrace=True)")
 
             # Prepare actions for loss
-            loss_actions = tf.expand_dims(
-                actions, axis=1) if is_discrete else actions
-            logp_actions = actions if is_discrete else tf.unstack(
+            loss_actions = actions if is_multidiscrete else tf.expand_dims(
                 actions, axis=1)
+            logp_actions = tf.unstack(
+                actions, axis=1) if is_multidiscrete else actions
 
             self.loss = VTraceSurrogateLoss(
                 actions=make_time_major(loss_actions, drop_last=True),
@@ -353,8 +352,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 clip_param=self.config["clip_param"])
 
         # KL divergence between worker and learner logits for debugging
-        model_dist = Categorical(self.model.outputs)
-        behaviour_dist = Categorical(behaviour_logits)
+        model_dist = MultiCategorical(unpacked_outputs)
+        behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
         self.KLs = model_dist.kl(behaviour_dist)
         self.mean_KL = tf.reduce_mean(self.KLs)
         self.max_KL = tf.reduce_max(self.KLs)
