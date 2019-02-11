@@ -23,6 +23,7 @@ import traceback
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+import ray.experimental.signal as ray_signal
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -879,6 +880,8 @@ class Worker(object):
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
+        # Send signal with the error.
+        ray_signal.send(ray_signal.ErrorSignal(error))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -895,6 +898,7 @@ class Worker(object):
         if not task.actor_creation_id().is_nil():
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
+            self.actor_creation_task_id = task.task_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
 
