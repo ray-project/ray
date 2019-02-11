@@ -488,6 +488,11 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     default=False,
     help="Only destroy the workers.")
 @click.option(
+    "--keep-min-workers",
+    is_flag=True,
+    default=False,
+    help="Retain the minimal amount of workers specified in the config.")
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -499,9 +504,9 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def teardown(cluster_config_file, yes, workers_only, cluster_name):
+def teardown(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
     """Tear down the Ray cluster."""
-    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name)
+    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers)
 
 
 @cli.command()

@@ -352,6 +352,7 @@ class Monitor(object):
                     yes=True,  # Non-interactive.
                     workers_only=True,  # Retain head node for logs.
                     override_cluster_name=None,
+                    keep_min_workers=True,  # Retain minimal amount of workers.
                 )
                 clean = True
                 logger.info("Monitor: Workers taken down.")
