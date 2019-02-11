@@ -408,10 +408,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-        if self.config["vtrace"]:
-            values_batched = make_time_major(values, drop_last=True)
-        else:
-            values_batched = make_time_major(values)
+        values_batched = make_time_major(values, drop_last=self.config["vtrace"])
         self.stats_fetches = {"stats": {
             "model_loss": self.model.loss(),
             "cur_lr": tf.cast(self.cur_lr, tf.float64),
