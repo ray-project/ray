@@ -105,7 +105,7 @@ class RND(object):
                         }
                        }
 
-    def __init__(self, obs, model=DEFAULT_CONV_MODEL, rnd_predictor_update_proportion=1.0):
+    def __init__(self, obs, model=DEFAULT_FC_MODEL, rnd_predictor_update_proportion=1.0):
         self._rnd_predictor_update_proportion = rnd_predictor_update_proportion
         self._model = model
    

@@ -306,6 +306,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
             # add rnd bonus
             bonus = self.sess.run(self.rnd_bonus, feed_dict={self.rnd_norm_obs: self.rnd_obs_filter(sample_batch["obs"], update=False)})
+            sample_batch["rewards"] = sample_batch["rewards"] * 1.0
             sample_batch["rewards"] += np.squeeze(self.rnd_bonus_filter(bonus))
         return sample_batch
 

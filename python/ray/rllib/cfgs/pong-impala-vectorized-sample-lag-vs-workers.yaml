@@ -1,0 +1,11 @@
+pong-impala-vectorized-sample-lag-vs-workers:
+    env: PongNoFrameskip-v4
+    run: IMPALA
+    stop: 
+        episode_reward_mean: 18
+    config:
+        sample_batch_size: 500  # 50 * num_envs_per_worker
+        train_batch_size: 500
+        num_workers: 
+            grid_search: [23, 16, 8]
+        num_envs_per_worker: 10

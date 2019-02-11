@@ -1,0 +1,15 @@
+montezuma-rnd-testing:
+    env: MontezumaRevenge-v0
+    run: IMPALA
+    stop: 
+        episode_reward_mean: 8152
+    config:
+        sample_batch_size: 50  # 10 * num_envs_per_worker
+        train_batch_size: 500
+        num_workers: 11 
+        num_envs_per_worker: 5
+        rnd: 
+            grid_search: [1]
+    trial_resources: 
+        cpu: 12
+        gpu: 0.5
