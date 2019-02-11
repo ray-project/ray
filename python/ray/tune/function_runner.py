@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 RESULT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
+ERROR_FETCH_TIMEOUT = 1
 MAX_THREAD_STOP_WAIT_TIME = 5
 
 
@@ -48,6 +49,10 @@ class StatusReporter(object):
         Example:
             >>> reporter(mean_accuracy=1, training_iteration=4)
             >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
+
+        Raises:
+            StopIteration: A StopIteration exception is raised if the trial has
+                been signaled to stop.
         """
 
         assert self._last_report_time is not None, (
@@ -81,6 +86,10 @@ class StatusReporter(object):
         self._last_report_time = time.time()
 
     def should_stop(self):
+        """ Returns True if the trial should stop running.
+
+        This method is safe to use within the training function.
+        """
         return self._stop_event.is_set()
 
 
@@ -194,13 +203,18 @@ class FunctionRunner(Trainable):
         # check if error occured inside the thread runner
         if result is None:
             # only raise an error from the runner if all results are consumed
-            self._report_thread_runner_error()
+            self._report_thread_runner_error(block=True)
 
-            # If no results were found at this point and no errors were
-            # reported, the thread runner should be stopped and we can report
-            # done.
-            result = {TIME_THIS_ITER_S: 0,
-                      "done": True}
+            # Under normal conditions, this code should never be reached since
+            # this branch should only be visited if the runner thread raised
+            # an exception. If no exception were raised, it means that the
+            # runner thread never reported any results which should not be
+            # possible when wrapping functions with
+            # `tune.trainable.wrap_function`.
+            raise TuneError((
+                    "Wrapped function ran until completion without reporting "
+                    "results or raising an exception."))
+
         else:
             if not self._error_queue.empty():
                 logger.warning((
@@ -224,7 +238,7 @@ class FunctionRunner(Trainable):
             logger.warning("Thread runner still running after stop event.")
 
         # If everything stayed in synch properly, this should never happen.
-        if not self._status_reporter.empty():
+        if not self._results_queue.empty():
             logger.warning((
                     "Some results were added after the trial stop condition. "
                     "These results won't be logged."))
@@ -232,9 +246,10 @@ class FunctionRunner(Trainable):
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
 
-    def _report_thread_runner_error(self):
+    def _report_thread_runner_error(self, block=False):
         try:
-            err_type, err_value, err_tb = self._error_queue.get(block=False)
+            err_type, err_value, err_tb = self._error_queue.get(
+                    block=block, timeout=ERROR_FETCH_TIMEOUT)
             raise TuneError((
                     "Trial raised a {err_type} exception with value: "
                     "{err_value}\nWith traceback:\n{err_tb}"
