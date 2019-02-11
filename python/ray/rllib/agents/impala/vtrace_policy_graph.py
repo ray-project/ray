@@ -6,19 +6,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import gym
-
 import ray
+import tensorflow as tf
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
     LearningRateSchedule
+from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.models.action_dist import MultiCategorical
 
 
 class VTraceLoss(object):
@@ -68,8 +67,8 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.from_logits(
-                behaviour_policy=behaviour_logits,
-                target_policy=target_logits,
+                behaviour_policy_logits=behaviour_logits,
+                target_policy_logits=target_logits,
                 actions=tf.unstack(tf.cast(actions, tf.int32), axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
@@ -108,9 +107,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "Must use `truncate_episodes` batch mode with V-trace."
         self.config = config
         self.sess = tf.get_default_session()
-        self._is_multidiscrete = False
         self.grads = None
 
+        is_multidiscrete = False
         output_hidden_shape = None
         actions_shape = [None]
 
@@ -125,7 +124,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 output_hidden_shape = [action_space.n]
             elif isinstance(action_space,
                             gym.spaces.multi_discrete.MultiDiscrete):
-                self._is_multidiscrete = True
+                is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
                 output_hidden_shape = action_space.nvec
             else:
@@ -139,12 +138,14 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             behaviour_logits = tf.placeholder(tf.float32,
                                               [None, sum(output_hidden_shape)],
                                               name="behaviour_logits")
-            unpacked_behaviour_logits = tf.split(
-                behaviour_logits, output_hidden_shape, axis=1)
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
             existing_seq_lens = None
+
+        # Unpack behaviour logits
+        unpacked_behaviour_logits = tf.split(
+            behaviour_logits, output_hidden_shape, axis=1)
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -167,7 +168,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = unpacked_outputs if self._is_multidiscrete else \
+        dist_inputs = unpacked_outputs if is_multidiscrete else \
             self.model.outputs
         action_dist = dist_class(dist_inputs)
 
@@ -218,15 +219,15 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             mask = tf.ones_like(rewards, dtype=tf.bool)
 
         # Prepare actions for loss
-        loss_actions = actions if self._is_multidiscrete else tf.expand_dims(
+        loss_actions = actions if is_multidiscrete else tf.expand_dims(
             actions, axis=1)  
-        logp_action = tf.unstack(
-            actions, axis=1) if self._is_multidiscrete else actions
+        logp_actions = tf.unstack(
+            actions, axis=1) if is_multidiscrete else actions
 
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             actions=make_time_major(loss_actions, drop_last=True),
-            actions_logp=make_time_major(action_dist.logp(logp_action),
+            actions_logp=make_time_major(action_dist.logp(logp_actions),
                                          drop_last=True),
             actions_entropy=make_time_major(action_dist.entropy(),
                                             drop_last=True),
