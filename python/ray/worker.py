@@ -38,7 +38,7 @@ from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
-from ray.utils import (check_oversized_pickle, is_cython, random_string,
+from ray.utils import (check_oversized_pickle, is_cython, _random_string,
                        thread_safe_client, setup_logger)
 
 SCRIPT_MODE = 0
@@ -186,7 +186,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(random_string())
+                self._task_context.current_task_id = TaskID(_random_string())
                 if getattr(self, '_multithreading_warned', False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -1753,13 +1753,13 @@ def connect(info,
 
     # Initialize some fields.
     if mode is WORKER_MODE:
-        worker.worker_id = random_string()
+        worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID(random_string())
+            driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
             raise Exception("The type of given driver id must be DriverID.")
@@ -1911,7 +1911,7 @@ def connect(info,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(random_string()),  # parent_task_id.
+            TaskID(_random_string()),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -2164,7 +2164,7 @@ def register_custom_serializer(cls,
         else:
             # In this case, the class ID only needs to be meaningful on this
             # worker and not across workers.
-            class_id = random_string()
+            class_id = _random_string()
 
         # Make sure class_id is a string.
         class_id = ray.utils.binary_to_hex(class_id)
