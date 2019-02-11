@@ -21,21 +21,19 @@ if __name__ == '__main__':
     ray.register_custom_serializer(OpType, use_pickle=True)
     ray.register_custom_serializer(PStrategy, use_pickle=True)
 
-    # A streaming environment with the default configuration
-    conf = Config()
-    env = Environment(conf)
-
     start = time.time()
 
-    # TODO (john): We should support different types of sources, e.g. sources reading from Kafka, text files, etc.
-    source = env.read_text_file("test_input.txt")          # Source represents the input stream
+    # A Ray streaming environment with the default configuration
+    env = Environment()
 
     # Stream represents the ouput of the filter and can be forked into other dataflows
-    stream = source.shuffle().flat_map(splitter) \
+    stream = env.read_text_file("test_input.txt") \
+                    .shuffle() \
+                    .flat_map(splitter) \
                     .set_parallelism(4) \
                     .filter(filter_fn) \
                     .set_parallelism(2) \
-                    .inspect(print)
+                    .inspect(print)         # Prints the contents of the stream
                     # .key_by(0) \
                     # .set_parallelism(2) \
                     # .time_window(10**4) \

@@ -17,6 +17,7 @@ class PStrategy(enum.Enum):
     RoundRobin = 3
     Broadcast = 4
     Custom = 5
+    ShuffleByKey = 6
     # ...
 
 # Operator types
@@ -31,6 +32,8 @@ class OpType(enum.Enum):
     WindowJoin = 7
     Inspect = 8
     ReadTextFile = 9
+    Reduce = 10
+    Sum = 11
     # ...
 
 # A logical dataflow operator

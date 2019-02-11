@@ -12,13 +12,14 @@ def generate_uuid():
 
 # Environment configuration
 class Config(object):
-    def __init__(self):
+    def __init__(self,parallelism=1):
         self.queue_config = QueueConfig()
-    # ...
+        self.parallelism = parallelism
+        # ...
 
 # The execution environment for a streaming job
 class Environment(object):
-    def __init__(self, config=None):
+    def __init__(self, config=Config()):
         self.logical_topo = nx.DiGraph()    # DAG
         self.physical_topo = nx.DiGraph()   # DAG
         self.operators = {}                 # operator id --> operator object
@@ -37,7 +38,9 @@ class Environment(object):
                     id = i % num_dest_instances # ID of destination instance
                     channel = DataChannel(self,operator.id,dst,i,id)
                     entry.append(channel)
-            elif s.strategy == PStrategy.Shuffle or s.strategy == PStrategy.Broadcast:
+            elif s.strategy == PStrategy.Shuffle or \
+                 s.strategy == PStrategy.ShuffleByKey or \
+                 s.strategy == PStrategy.Broadcast:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
                         channel = DataChannel(self,operator.id,dst,i,j)
@@ -57,17 +60,25 @@ class Environment(object):
             s = Source.remote(actor_id,operator,input,output)
             return s.start.remote()
         elif operator.type == OpType.Map:
-            pass
+            m = Map.remote(actor_id,operator,input,output)
+            return m.start.remote()
         elif operator.type == OpType.FlatMap:
             fm = FlatMap.remote(actor_id,operator,input,output)
             return fm.start.remote()
         elif operator.type == OpType.Filter:
             f = Filter.remote(actor_id,operator,input,output)
             return f.start.remote()
+        elif operator.type == OpType.Reduce:
+            r = Reduce.remote(actor_id,operator,input,output)
+            return r.start.remote()
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
-            pass
+            kb = KeyBy.remote(actor_id,operator,input,output)
+            return kb.start.remote()
+        elif operator.type == OpType.Sum:
+            s = Reduce.remote(actor_id,operator,input,output)
+            return s.start.remote()
         elif operator.type == OpType.Sink:
             pass
         elif operator.type == OpType.Inspect:
@@ -108,19 +119,26 @@ class Environment(object):
             self.physical_topo.add_edge(actor_id,dest_actor_id)
 
     # Sets the level of parallelism for a registered operator
+    # Overwrites the environment parallelism (if set)
     def _set_parallelism(self, operator_id, level_of_parallelism):
         self.operators[operator_id].num_instances = level_of_parallelism
 
+    # Sets the same level of parallelism for all operators in the environment
+    def set_parallelism(self, parallelism):
+        self.config.parallelism = parallelism
+
     # Creates and registers a new data source
     # TODO (john): There should be different types of sources, e.g. sources reading from Kafka, text files, etc.
+    # TODO (john): Handle case where environment parallelism is set
     def new_source(self, _filepath):
         source_id = generate_uuid()
         source_stream = DataStream(self,source_id)
         self.operators[source_id] = Operator(source_id,OpType.Source,"Source")
         return source_stream
 
-    # Creates and registers a new data source
+    # Creates and registers a new data source that reads a text file line by line
     # TODO (john): There should be different types of sources, e.g. sources reading from Kafka, text files, etc.
+    # TODO (john): Handle case where environment parallelism is set
     def read_text_file(self, filepath):
         source_id = generate_uuid()
         source_stream = DataStream(self,source_id)
@@ -149,7 +167,7 @@ class Environment(object):
             if handles:
                 self.actor_handles.extend(handles)
             upstream_channels.update(downstream_channels)
-        self.print_physical_graph()
+        #self.print_physical_graph()
         # Wait until everybody returns
         print("Running...".format(len(self.actor_handles)))
         start = time.time()
@@ -189,6 +207,9 @@ class Environment(object):
             src_op_id,src_inst_id = src_actor_id
             dst_op_id,dst_inst_id = dst_actor_id
             print("({},{},{}) --> ({},{},{})".format(src_op_id,self.operators[src_op_id].name,src_inst_id,dst_op_id,self.operators[dst_op_id].name,dst_inst_id))
+
+# TODO (john): We also need KeyedDataStream and WindowedDataStream as subclasses of DataStream
+# to prevent ill-defined logical dataflows
 
 # A DataStream corresponds to an edge in the logical dataflow
 class DataStream(object):
@@ -233,7 +254,10 @@ class DataStream(object):
         if self.is_partitioned == True:
             s,d = src_operator._get_partition_strategy(self.id)
             src_operator._set_partition_strategy(generate_uuid(), s, operator.id)
-        else:   # No partitioning strategy has been defined - set default
+        elif src_operator.type == OpType.KeyBy: # Set the output partitioning strategy to shuffle by key
+            s = PScheme(PStrategy.ShuffleByKey)
+            src_operator._set_partition_strategy(generate_uuid(), s, operator.id)
+        else: # No partitioning strategy has been defined - set default
             s = PScheme(PStrategy.Forward)
             src_operator._set_partition_strategy(generate_uuid(), s, operator.id)
         return self.__expand()
@@ -274,36 +298,42 @@ class DataStream(object):
 
     # Registers flatmap operator to the environment
     def flat_map(self, flatmap_fn):
-        op = Operator(generate_uuid(),OpType.FlatMap,"FlatMap",flatmap_fn)
+        op = Operator(generate_uuid(),OpType.FlatMap,"FlatMap",flatmap_fn,num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers keyBy operator to the environment
     def key_by(self, attribute):
-        op = Operator(generate_uuid(),OpType.KeyBy,"KeyBy",other=attribute)
+        op = Operator(generate_uuid(),OpType.KeyBy,"KeyBy",other=attribute,num_instances=self.env.config.parallelism)
+        return self.__register(op)
+
+    # Registers Sum operator to the environment
+    def sum(self, attribute):
+        op_logic = lambda v_1,v_2: v_1 + v_2
+        op = Operator(generate_uuid(),OpType.Sum,"Sum",logic=op_logic,other=attribute,num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers window operator to the environment. This is a system time window
     def time_window(self, width):
-        op = Operator(generate_uuid(),OpType.TimeWindow,"TimeWindow",other=width)
+        op = Operator(generate_uuid(),OpType.TimeWindow,"TimeWindow",num_instances=self.env.config.parallelism,other=width)
         return self.__register(op)
 
     # Registers filter operator to the environment
     def filter(self, filter_fn):
-        op = Operator(generate_uuid(),OpType.Filter,"Filter",filter_fn)
+        op = Operator(generate_uuid(),OpType.Filter,"Filter",filter_fn,num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers window join operator to the environment
     def window_join(self, other_stream, join_attribute, window_width):
-        op = Operator(generate_uuid(),OpType.WindowJoin,"WindowJoin",flatmap_fn)
+        op = Operator(generate_uuid(),OpType.WindowJoin,"WindowJoin",flatmap_fn,num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers inspect operator to the environment
     def inspect(self,logic):
-        op = Operator(generate_uuid(),OpType.Inspect,"Inspect",logic=logic)
+        op = Operator(generate_uuid(),OpType.Inspect,"Inspect",logic=logic,num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers sink operator to the environment
     # TODO (john): A sink now just drops records but it should be able to export data to other systems
     def sink(self):
-        op = Operator(generate_uuid(),OpType.Sink,"Sink")
+        op = Operator(generate_uuid(),OpType.Sink,"Sink",num_instances=self.env.config.parallelism)
         return self.__register(op)
