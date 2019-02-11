@@ -301,7 +301,9 @@ Approach 1: Use the Agent API and update the environment between calls to ``trai
                 phase = 1
             else:
                 phase = 0
-            agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+            agent.optimizer.foreach_evaluator(
+                lambda ev: ev.foreach_env(
+                    lambda env: env.set_phase(phase)))
 
     ray.init()
     tune.run_experiments({
@@ -335,7 +337,9 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         else:
             phase = 0
         agent = info["agent"]
-        agent.optimizer.foreach_evaluator(lambda ev: ev.env.set_phase(phase))
+        agent.optimizer.foreach_evaluator(
+            lambda ev: ev.foreach_env(
+                lambda env: env.set_phase(phase)))
 
     ray.init()
     tune.run_experiments({
