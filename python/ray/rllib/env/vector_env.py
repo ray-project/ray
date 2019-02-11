@@ -148,13 +148,8 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
         self.make_local_env = make_env
         self.num_envs = num_envs
         self.initialized = False
-        logger.warning(
-            "Creating throwaway env to get action and obs space. To avoid "
-            "resource overheads, your env should defer any expensive "
-            "initialization to reset().")
-        dummy = make_env(0)
-        self.action_space = dummy.action_space
-        self.observation_space = dummy.observation_space
+        self.action_space = action_space
+        self.observation_space = observation_space
 
     def _initialize_if_needed(self):
         if self.initialized:
