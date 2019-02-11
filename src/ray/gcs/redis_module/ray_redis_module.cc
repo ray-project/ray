@@ -39,6 +39,9 @@ extern RedisChainModule module;
     }                                                            \
   }
 
+/// Map from pub sub channel to clients that are waiting on that channel.
+std::unordered_map<std::string, std::vector<std::string>> notification_map;
+
 /// Parse a Redis string into a TablePubsub channel.
 Status ParseTablePubsub(TablePubsub *out, const RedisModuleString *pubsub_channel_str) {
   long long pubsub_channel_long;
@@ -117,15 +120,12 @@ Status OpenPrefixedKey(RedisModuleKey **out, RedisModuleCtx *ctx,
 
 /// Open the key used to store the channels that should be published to when an
 /// update happens at the given keyname.
-Status OpenBroadcastKey(RedisModuleKey **out, RedisModuleCtx *ctx,
-                        RedisModuleString *pubsub_channel_str, RedisModuleString *keyname,
-                        int mode) {
+std::string GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
+                            RedisModuleString *keyname) {
   RedisModuleString *channel;
-  RAY_RETURN_NOT_OK(FormatPubsubChannel(&channel, ctx, pubsub_channel_str, keyname));
+  RAY_CHECK_OK(FormatPubsubChannel(&channel, ctx, pubsub_channel_str, keyname));
   RedisModuleString *prefixed_keyname = RedisString_Format(ctx, "BCAST:%S", channel);
-  *out = reinterpret_cast<RedisModuleKey *>(
-      RedisModule_OpenKey(ctx, prefixed_keyname, mode));
-  return Status::OK();
+  return RedisString_ToString(prefixed_keyname);
 }
 
 /**
@@ -171,25 +171,17 @@ int PublishTableAdd(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
     return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
   }
 
+  std::string notification_key = GetBroadcastKey(ctx, pubsub_channel_str, id);
   // Publish the data to any clients who requested notifications on this key.
-  RedisModuleKey *notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(OpenBroadcastKey(&notification_key, ctx, pubsub_channel_str,
-                                              id, REDISMODULE_READ | REDISMODULE_WRITE));
-  if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
-    // NOTE(swang): Sets are not implemented yet, so we use ZSETs instead.
-    REPLY_AND_RETURN_IF_FALSE(RedisModule_ZsetFirstInScoreRange(
-                                  notification_key, REDISMODULE_NEGATIVE_INFINITE,
-                                  REDISMODULE_POSITIVE_INFINITE, 1, 1) == REDISMODULE_OK,
-                              "Unable to initialize zset iterator");
-    for (; !RedisModule_ZsetRangeEndReached(notification_key);
-         RedisModule_ZsetRangeNext(notification_key)) {
-      RedisModuleString *client_channel =
-          RedisModule_ZsetRangeCurrentElement(notification_key, NULL);
-      RedisModuleCallReply *reply = RedisModule_Call(
-          ctx, "PUBLISH", "sb", client_channel, fbb.GetBufferPointer(), fbb.GetSize());
-      if (reply == NULL) {
-        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-      }
+  auto it = notification_map.find(notification_key);
+  if (it != notification_map.end()) {
+    for (const auto& client_channel : it->second) {
+        RedisModuleCallReply *reply = RedisModule_Call(
+            ctx, "PUBLISH", "bb", client_channel.data(), client_channel.size(),
+            fbb.GetBufferPointer(), fbb.GetSize());
+        if (reply == NULL) {
+          return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+        }
     }
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -509,12 +501,8 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
 
   // Add this client to the set of clients that should be notified when there
   // are changes to the key.
-  RedisModuleKey *notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(OpenBroadcastKey(&notification_key, ctx, pubsub_channel_str,
-                                              id, REDISMODULE_READ | REDISMODULE_WRITE));
-  REPLY_AND_RETURN_IF_FALSE(
-      RedisModule_ZsetAdd(notification_key, 0.0, client_channel, NULL) == REDISMODULE_OK,
-      "ZsetAdd failed.");
+  std::string notification_key = GetBroadcastKey(ctx, pubsub_channel_str, id);
+  notification_map[notification_key].push_back(RedisString_ToString(client_channel));
 
   // Lookup the current value at the key.
   RedisModuleKey *table_key;
@@ -564,17 +552,12 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
 
   // Remove this client from the set of clients that should be notified when
   // there are changes to the key.
-  RedisModuleKey *notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(OpenBroadcastKey(&notification_key, ctx, pubsub_channel_str,
-                                              id, REDISMODULE_READ | REDISMODULE_WRITE));
-  if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
-    REPLY_AND_RETURN_IF_FALSE(
-        RedisModule_ZsetRem(notification_key, client_channel, NULL) == REDISMODULE_OK,
-        "not opened for writing or wrong type.");
-    size_t size = RedisModule_ValueLength(notification_key);
-    if (size == 0) {
-      REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(notification_key) == REDISMODULE_OK,
-                                "Unable to delete zset key.");
+  std::string notification_key = GetBroadcastKey(ctx, pubsub_channel_str, id);
+  auto it = notification_map.find(notification_key);
+  if (it != notification_map.end()) {
+    std::remove(it->second.begin(), it->second.end(), RedisString_ToString(client_channel));
+    if (it->second.size() == 0) {
+      notification_map.erase(it);
     }
   }
 
