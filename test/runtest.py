@@ -9,6 +9,7 @@ import random
 import re
 import setproctitle
 import shutil
+import socket
 import string
 import subprocess
 import sys
@@ -2718,3 +2719,26 @@ def test_socket_dir_not_existing(shutdown_only):
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+
+
+def test_raylet_is_robust_to_random_messages(shutdown_only):
+
+    ray.init(num_cpus=1)
+    node_manager_address = None
+    node_manager_port = None
+    for client in ray.global_state.client_table():
+        if "NodeManagerAddress" in client:
+            node_manager_address = client["NodeManagerAddress"]
+            node_manager_port = client["NodeManagerPort"]
+    assert node_manager_address
+    assert node_manager_port
+    # Try to bring down the node manager:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((node_manager_address, node_manager_port))
+    s.send(1000 * b'asdf')
+
+    @ray.remote
+    def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1

@@ -8,7 +8,7 @@ cdef extern from "ray/ray_config.h" nogil:
         @staticmethod
         RayConfig &instance()
 
-        int64_t ray_protocol_version() const
+        int64_t ray_cookie() const
 
         int64_t handler_warning_timeout_ms() const
 

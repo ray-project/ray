@@ -478,8 +478,6 @@ class ActorHandle(object):
             return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
-        is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
-
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
         with self._ray_actor_lock:
@@ -489,7 +487,6 @@ class ActorHandle(object):
                 actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
-                is_actor_checkpoint_method=is_actor_checkpoint_method,
                 actor_creation_dummy_object_id=(
                     self._ray_actor_creation_dummy_object_id),
                 execution_dependencies=[self._ray_actor_cursor],

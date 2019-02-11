@@ -77,6 +77,8 @@ enum MessageType:int {
   PrepareActorCheckpointReply,
   // Notify raylet backend that an actor was resumed from a checkpoint.
   NotifyActorResumedFromCheckpoint,
+  // A node manager requests to connect to another node manager.
+  ConnectClient,
 }
 
 table TaskExecutionSpecification {
@@ -228,3 +230,7 @@ table NotifyActorResumedFromCheckpoint {
   checkpoint_id: string;
 }
 
+table ConnectClient {
+  // ID of the connecting client.
+  client_id: string;
+}

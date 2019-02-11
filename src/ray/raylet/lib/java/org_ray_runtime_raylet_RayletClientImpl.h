@@ -44,9 +44,9 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlo
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFetchOrReconstruct
- * Signature: (J[[BZ[B)I
+ * Signature: (J[[BZ[B)V
  */
-JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(JNIEnv *, jclass,
                                                                       jlong, jobjectArray,
                                                                       jboolean,

@@ -23,6 +23,7 @@ import traceback
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+import ray.experimental.signal as ray_signal
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -38,7 +39,7 @@ from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
 from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
 import ray.parameter
-from ray.utils import (check_oversized_pickle, is_cython, random_string,
+from ray.utils import (check_oversized_pickle, is_cython, _random_string,
                        thread_safe_client, setup_logger)
 
 SCRIPT_MODE = 0
@@ -207,7 +208,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID(random_string())
+                self._task_context.current_task_id = TaskID(_random_string())
                 if getattr(self, '_multithreading_warned', False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -536,7 +537,6 @@ class Worker(object):
                     actor_id=None,
                     actor_handle_id=None,
                     actor_counter=0,
-                    is_actor_checkpoint_method=False,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
@@ -559,8 +559,6 @@ class Worker(object):
                 be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
-            is_actor_checkpoint_method: True if this is an actor checkpoint
-                task and false otherwise.
             actor_creation_id: The ID of the actor to create, if this is an
                 actor creation task.
             actor_creation_dummy_object_id: If this task is an actor method,
@@ -900,6 +898,8 @@ class Worker(object):
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
+        # Send signal with the error.
+        ray_signal.send(ray_signal.ErrorSignal(error))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -916,6 +916,7 @@ class Worker(object):
         if not task.actor_creation_id().is_nil():
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
+            self.actor_creation_task_id = task.task_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
             self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
@@ -974,54 +975,6 @@ class Worker(object):
         if reached_max_executions:
             self.raylet_client.disconnect()
             sys.exit(0)
-
-    def _restore_actor_checkpoint(self):
-        """Restore an actor from a checkpoint.
-
-        This should only be called on workers that have just executed an actor
-        creation task.
-        """
-        actor_id = self.actor_id
-        actor = self.actors[actor_id]
-        checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
-        if len(checkpoints) > 0:
-            # If we found previously saved checkpoints for this actor,
-            # call the `load_checkpoint` callback.
-            checkpoint_id = actor.load_checkpoint(actor_id, checkpoints)
-            if checkpoint_id is not None:
-                # Check that the returned checkpoint id is in the
-                # `available_checkpoints` list.
-                msg = ("`load_checkpoint` must return a checkpoint id that " +
-                       "exists in the `available_checkpoints` list, or eone.")
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in checkpoints), msg
-                # Notify raylet that this actor has been resumed from
-                # a checkpoint.
-                self.raylet_client.notify_actor_resumed_from_checkpoint(
-                    actor_id, checkpoint_id)
-
-    def _save_actor_checkpoint(self):
-        """Save an actor checkpoint.
-
-        Returns:
-            The result of the actor's user-defined `save_checkpoint` method.
-        """
-        actor_id = self.actor_id
-        actor = self.actors[self.actor_id]
-        checkpoint_info = self.actor_checkpoint_info[actor_id]
-        now = int(1000 * time.time())
-        checkpoint_id = self.raylet_client.prepare_actor_checkpoint(actor_id)
-        checkpoint_info.checkpoint_ids.append(checkpoint_id)
-        return_value = actor.save_checkpoint(actor_id, checkpoint_id)
-        if (len(checkpoint_info.checkpoint_ids) >
-                ray._config.num_actor_checkpoints_to_keep()):
-            actor.checkpoint_expired(
-                actor_id,
-                checkpoint_info.checkpoint_ids.pop(0),
-            )
-        checkpoint_info.num_tasks_since_last_checkpoint = 0
-        checkpoint_info.last_checkpoint_timestamp = now
-        return return_value
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
@@ -1827,13 +1780,13 @@ def connect(info,
 
     # Initialize some fields.
     if mode is WORKER_MODE:
-        worker.worker_id = random_string()
+        worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if driver_id is None:
-            driver_id = DriverID(random_string())
+            driver_id = DriverID(_random_string())
 
         if not isinstance(driver_id, DriverID):
             raise Exception("The type of given driver id must be DriverID.")
@@ -1985,7 +1938,7 @@ def connect(info,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(random_string()),  # parent_task_id.
+            TaskID(_random_string()),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -2238,7 +2191,7 @@ def register_custom_serializer(cls,
         else:
             # In this case, the class ID only needs to be meaningful on this
             # worker and not across workers.
-            class_id = random_string()
+            class_id = _random_string()
 
         # Make sure class_id is a string.
         class_id = ray.utils.binary_to_hex(class_id)
