@@ -1091,12 +1091,13 @@ def start_raylet(redis_address,
     return process_info
 
 
-def build_java_worker_command(java_worker_options,
-                              redis_address,
-                              plasma_store_name,
-                              raylet_name,
-                              redis_password,
-                              ):
+def build_java_worker_command(
+        java_worker_options,
+        redis_address,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+):
     """This method assembles the command used to start a Java worker.
 
     Args:

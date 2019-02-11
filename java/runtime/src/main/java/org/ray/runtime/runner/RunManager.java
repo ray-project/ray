@@ -2,6 +2,7 @@ package org.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -13,8 +14,6 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import com.google.common.collect.Lists;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
