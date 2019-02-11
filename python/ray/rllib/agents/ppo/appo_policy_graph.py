@@ -354,10 +354,26 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         # KL divergence between worker and learner logits for debugging
         model_dist = MultiCategorical(unpacked_outputs)
         behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
-        self.KLs = model_dist.kl(behaviour_dist)
-        self.mean_KL = tf.reduce_mean(self.KLs)
-        self.max_KL = tf.reduce_max(self.KLs)
-        self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
+
+        kls = model_dist.kl(behaviour_dist)
+        if len(kls) > 1:
+            self.KL_stats = {}
+
+            for i, kl in enumerate(kls):
+                self.KL_stats.update({
+                    f"mean_KL_{i}": tf.reduce_mean(kl),
+                    f"max_KL_{i}": tf.reduce_max(kl),
+                    f"median_KL_{i}": tf.contrib.distributions.percentile(
+                        kl, 50.0),
+                })
+        else:
+            self.KL_stats = {
+                "mean_KL": tf.reduce_mean(kls[0]),
+                "max_KL": tf.reduce_max(kls[0]),
+                "median_KL": tf.contrib.distributions.percentile(
+                    kls[0], 50.0),
+            }
+
         # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
@@ -407,9 +423,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "vf_explained_var": explained_variance(
                 tf.reshape(self.loss.value_targets, [-1]),
                 tf.reshape(values_batched, [-1])),
-            "mean_KL": self.mean_KL,
-            "max_KL": self.max_KL,
-            "median_KL": self.median_KL,
+            **self.KL_stats,
         }, "kl": self.loss.mean_kl}
 
     def optimizer(self):
