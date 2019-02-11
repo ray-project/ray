@@ -227,7 +227,7 @@ public class RunManager {
         "0", // number of initial workers
         String.valueOf(maximumStartupConcurrency),
         ResourceUtil.getResourcesStringFromMap(rayConfig.resources),
-        String.join(",", rayConfig.rayletConfigParameters),  // The internal config list.
+        String.join(",", rayConfig.rayletConfigParameters), // The internal config list.
         buildPythonWorkerCommand(), // python worker command
         buildWorkerCommandRaylet(), // java worker command
         redisPasswordOption

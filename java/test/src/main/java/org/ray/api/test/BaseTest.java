@@ -3,9 +3,7 @@ package org.ray.api.test;
 import java.io.File;
 import org.ray.api.Ray;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeTest;
 
 public class BaseTest {
 
@@ -13,8 +11,6 @@ public class BaseTest {
   public void setUp() {
     System.setProperty("ray.home", "../..");
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.raylet.config.inline_object_max_size_bytes", "0");
-
     beforeInitRay();
     Ray.init();
   }
@@ -33,7 +29,6 @@ public class BaseTest {
     // unset system properties
     System.clearProperty("ray.home");
     System.clearProperty("ray.resources");
-    System.clearProperty("ray.raylet.config.inline_object_max_size_bytes");
   }
 
   protected void beforeInitRay() {
