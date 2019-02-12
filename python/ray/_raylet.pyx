@@ -192,11 +192,12 @@ cdef class RayletClient:
     def __cinit__(self, raylet_socket,
                   ClientID client_id,
                   c_bool is_worker,
-                  DriverID driver_id):
+                  DriverID driver_id,
+                  int worker_pid):
         # We know that we are using Python, so just skip the language parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(raylet_socket.encode("ascii"), client_id.data,
-                          is_worker, driver_id.data, LANGUAGE_PYTHON))
+                          is_worker, driver_id.data, LANGUAGE_PYTHON, worker_pid))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())

@@ -225,6 +225,7 @@ class Node(object):
             self._ray_params.redis_password,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
+            workers_use_tmux=self._ray_params.workers_use_tmux,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             config=self._config,

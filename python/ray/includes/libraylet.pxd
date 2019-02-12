@@ -39,7 +39,8 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayletClient(const c_string &raylet_socket,
                       const CClientID &client_id,
                       c_bool is_worker, const CDriverID &driver_id,
-                      const CLanguage &language)
+                      const CLanguage &language,
+                      int worker_pid)
         CRayStatus Disconnect()
         CRayStatus SubmitTask(const c_vector[CObjectID] &execution_dependencies,
                              const CTaskSpecification &task_spec)

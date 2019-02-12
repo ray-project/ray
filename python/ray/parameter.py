@@ -53,6 +53,8 @@ class RayParams(object):
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
+        workers_use_tmux (bool): True if the workers should be started in tmux
+            and false otherwise.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
@@ -100,6 +102,7 @@ class RayParams(object):
                  redis_password=None,
                  plasma_directory=None,
                  worker_path=None,
+                 workers_use_tmux=False,
                  huge_pages=False,
                  include_webui=None,
                  logging_level=logging.INFO,
@@ -134,6 +137,7 @@ class RayParams(object):
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
+        self.workers_use_tmux =workers_use_tmux
         self.huge_pages = huge_pages
         self.include_webui = include_webui
         self.plasma_store_socket_name = plasma_store_socket_name

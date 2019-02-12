@@ -134,7 +134,7 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   }
 }
 
-pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_args) {
+pid_t WorkerPool::StartProcess(std::vector<const char *> worker_command_args) {
   // Launch the process to create the worker.
   pid_t pid = fork();
 
@@ -142,9 +142,22 @@ pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_a
     return pid;
   }
 
+  // pid_t worker_pid = getpid();
+
+  worker_command_args.pop_back();
+  std::string pid_arg_string = "--pid=" + std::to_string(getpid());
+  worker_command_args.push_back(pid_arg_string.c_str());
+  worker_command_args.push_back(nullptr);
+
+  RAY_LOG(INFO) << "XXX " << pid_arg_string;
+
   // Child process case.
   // Reset the SIGCHLD handler for the worker.
   signal(SIGCHLD, SIG_DFL);
+
+  // extern char **environ;
+  // environ[0] = "RAY_WORKER_PID=" + std::to_string(worker_pid);
+  // environ[1] = NULL;
 
   // Try to execute the worker command.
   int rv = execvp(worker_command_args[0],

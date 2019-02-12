@@ -963,6 +963,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  use_valgrind=False,
                  use_profiler=False,
+                 workers_use_tmux=False,
                  stdout_file=None,
                  stderr_file=None,
                  config=None,
@@ -990,6 +991,8 @@ def start_raylet(redis_address,
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
+        workers_use_tmux (bool): True if the workers should be started in tmux
+            and false otherwise.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1050,6 +1053,9 @@ def start_raylet(redis_address,
                                 get_temp_root()))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
+
+    if workers_use_tmux:
+        start_worker_command = "tmux new-session -d " + start_worker_command
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.

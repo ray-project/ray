@@ -135,7 +135,7 @@ class WorkerPool {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
+  virtual pid_t StartProcess(std::vector<const char *> worker_command_args);
 
   /// An internal data structure that maintains the pool state per language.
   struct State {

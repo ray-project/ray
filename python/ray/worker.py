@@ -1227,6 +1227,7 @@ def init(redis_address=None,
          object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
+         workers_use_tmux=False,
          node_ip_address=None,
          object_id_seed=None,
          num_workers=None,
@@ -1291,6 +1292,8 @@ def init(redis_address=None,
             capped at 10GB but can be set higher.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
+        workers_use_tmux (bool): True if the workers should be started in tmux
+            and false otherwise.
         node_ip_address (str): The IP address of the node that we are on.
         object_id_seed (int): Used to seed the deterministic generation of
             object IDs. The same value can be used across multiple runs of the
@@ -1412,6 +1415,7 @@ def init(redis_address=None,
             redis_max_clients=redis_max_clients,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
+            workers_use_tmux=workers_use_tmux,
             huge_pages=huge_pages,
             include_webui=include_webui,
             object_store_memory=object_store_memory,
@@ -1724,6 +1728,7 @@ def connect(info,
             object_id_seed=None,
             mode=WORKER_MODE,
             log_to_driver=False,
+            worker_pid=None,
             worker=global_worker,
             driver_id=None):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
@@ -1940,11 +1945,14 @@ def connect(info,
         # driver task.
         worker.task_context.current_task_id = driver_task.task_id()
 
+    if worker_pid is None:
+        worker_pid = os.getpid()
     worker.raylet_client = ray._raylet.RayletClient(
         raylet_socket,
         ClientID(worker.worker_id),
         is_worker,
         DriverID(worker.current_task_id.binary()),
+        worker_pid,
     )
 
     # Start the import thread

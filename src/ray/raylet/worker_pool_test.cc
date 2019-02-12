@@ -23,7 +23,7 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
-  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+  pid_t StartProcess(std::vector<const char *> worker_command_args) override {
     return ++last_worker_pid_;
   }
 

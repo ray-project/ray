@@ -56,6 +56,14 @@ parser.add_argument(
     type=str,
     default=None,
     help="Specify the path of the temporary directory use by Ray process.")
+parser.add_argument(
+    "--pid",
+    required=False,
+    type=int,
+    default=None,
+    help="The PID of the worker process started by the raylet. This may "
+    "differ from the value returned by os.getpid() if the worker has been "
+    "started in tmux.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -74,7 +82,12 @@ if __name__ == "__main__":
     tempfile_services.set_temp_root(args.temp_dir)
 
     ray.worker.connect(
-        info, redis_password=args.redis_password, mode=ray.WORKER_MODE)
+        info, redis_password=args.redis_password, worker_pid=args.pid,
+        mode=ray.WORKER_MODE)
+
+    print("pid", args.pid)
+    import sys
+    sys.stdout.flush()
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
