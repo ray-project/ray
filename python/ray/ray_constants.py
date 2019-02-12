@@ -54,6 +54,7 @@ INFEASIBLE_TASK_ERROR = "infeasible_task"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
+REPORTER_DIED_ERROR = "reporter_died"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -96,6 +97,7 @@ INFINITE_RECONSTRUCTION = 2**30
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
