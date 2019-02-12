@@ -321,7 +321,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   if (index == RedisModule_ValueLength(key)) {
     // The requested index matches the current length of the log or no index
     // was requested. Perform the append.
-    RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data);
+    REPLY_AND_RETURN_IF_NOT_OK(RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data));
     return REDISMODULE_OK;
   } else {
     // The requested index did not match the current length of the log. Return
@@ -388,6 +388,15 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
 
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
+///
+/// \param ctx The Redis module context.
+/// \param table_key The Redis key whose entry should be read out. The key must
+/// be open when this function is called and may be closed in this function.
+/// The key's name format is <prefix_str><entry_id>.
+/// \param prefix_str The string prefix associated with the open Redis key.
+/// When parsed, this is expected to be a TablePrefix.
+/// \param entry_id The UniqueID associated with the open Redis key.
+/// \param fbb A flatbuffer builder used to build the GcsTableEntry.
 Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
                            RedisModuleString *prefix_str, RedisModuleString *entry_id,
                            flatbuffers::FlatBufferBuilder &fbb) {
@@ -404,7 +413,12 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
   } break;
   case REDISMODULE_KEYTYPE_LIST: {
     RedisModule_CloseKey(table_key);
+    // Close the key before executing the command. NOTE(swang): According to
+    // https://github.com/RedisLabs/RedisModulesSDK/blob/master/API.md, "While
+    // a key is open, it should only be accessed via the low level key API."
     RedisModuleString *table_key_str = PrefixedKeyString(ctx, prefix_str, entry_id);
+    // TODO(swang): This could potentially be replaced with the native redis
+    // server list iterator, once it is implemented for redis modules.
     RedisModuleCallReply *reply =
         RedisModule_Call(ctx, "LRANGE", "sll", table_key_str, 0, -1);
     // Build the flatbuffer from the set of log entries.
