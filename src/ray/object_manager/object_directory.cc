@@ -115,8 +115,7 @@ void ObjectDirectory::RegisterBackend() {
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
-    const std::vector<uint8_t> &inline_object_data,
-    const std::string &inline_object_metadata) {
+    const plasma::ObjectBuffer &plasma_buffer) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id << " inline? "
                  << inline_object_flag;
   // Append the addition entry to the object table.
@@ -128,9 +127,12 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->inline_object_flag = inline_object_flag;
   if (inline_object_flag) {
     // Add object's data to its GCS entry.
-    data->inline_object_data.assign(inline_object_data.begin(), inline_object_data.end());
-    data->inline_object_metadata.assign(inline_object_metadata.begin(),
-                                        inline_object_metadata.end());
+    data->inline_object_data.assign(
+        plasma_buffer.data->data(),
+        plasma_buffer.data->data() + plasma_buffer.data->size());
+    data->inline_object_metadata.assign(
+        plasma_buffer.metadata->data(),
+        plasma_buffer.metadata->data() + plasma_buffer.metadata->size());
   }
   ray::Status status =
       gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
