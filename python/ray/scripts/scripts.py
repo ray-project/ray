@@ -631,7 +631,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     "--docker",
     is_flag=True,
     default=False,
-    help="Runs command in container specified in cluster_config.")
+    help="Runs command in the docker container specified in cluster_config.")
 @click.option(
     "--stop",
     is_flag=True,

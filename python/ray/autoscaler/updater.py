@@ -217,7 +217,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
 
-        m = "{}: Startup commands completed".format(self.node_id)
+        m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.startup_commands:
                 self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))

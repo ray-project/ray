@@ -103,7 +103,8 @@ CLUSTER_CONFIG_SCHEMA = {
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
 
-    # List of common shell commands to run to initialize nodes.
+    # List of commands that will be run before `setup_commands`. If docker is enabled,
+    # these commands will run outside the container and before docker is setup.
     "startup_commands": (list, OPTIONAL),
 
     # List of common shell commands to run to setup nodes.
