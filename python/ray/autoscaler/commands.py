@@ -336,7 +336,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            initialization_commands=config["initialization_commands"],
+            initialization_commands=[],
             setup_commands=[],
             runtime_hash="",
         )
