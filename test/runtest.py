@@ -187,31 +187,28 @@ CUSTOM_OBJECTS = [
 ]
 
 if sys.version_info >= (3, 7):
-    from dataclasses import dataclass
+    from dataclasses import make_dataclass
 
-    @dataclass
-    class DataClass0:
-        number: int
+    DataClass0 = make_dataclass('DataClass0', [('number', int)])
 
     CUSTOM_OBJECTS.append(DataClass0(number=3))
 
     class CustomClass(object):
-    def __init__(self, value):
-        self.value = value
+        def __init__(self, value):
+            self.value = value
 
-    @dataclass
-    class DataClass1:
-        custom: CustomClass
+    DataClass1 = make_dataclass('DataClass1', [('custom', CustomClass)])
 
+    class DataClass2(DataClass1):
         @classmethod
         def from_custom(cls, data):
-            custom =  CustomClass(data)
+            custom = CustomClass(data)
             return cls(custom)
 
         def __reduce__(self):
             return (self.from_custom, (custom.value,))
 
-    CUSTOM_OBJECTS.append(DataClass1(custom=CustomClass(43)))
+    CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
 
 BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
 
