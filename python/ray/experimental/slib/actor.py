@@ -3,7 +3,7 @@ import threading
 import time
 import ray
 
-from ray.slib.communication import  *
+from ray.experimental.slib.communication import  *
 
 NORMAL_EXIT_STATUS = 0
 

@@ -1,7 +1,7 @@
 import sys
 
-from ray.slib.operator import PStrategy
-from ray.slib.batched_queue import BatchedQueue
+from ray.experimental.slib.operator import PStrategy
+from ray.experimental.slib.batched_queue import BatchedQueue
 
 # A data channel is a batched queue between two operator instances in a streaming environment
 class DataChannel(object):

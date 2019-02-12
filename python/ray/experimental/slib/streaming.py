@@ -2,9 +2,9 @@ import sys
 import uuid
 import networkx as nx
 
-from ray.slib.operator import *
-from ray.slib.actor import *
-from ray.slib.batched_queue import BatchedQueue
+from ray.experimental.slib.operator import *
+from ray.experimental.slib.actor import *
+from ray.experimental.slib.batched_queue import BatchedQueue
 
 # Generates UUIDs
 def generate_uuid():
