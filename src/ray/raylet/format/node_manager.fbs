@@ -71,6 +71,8 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
+  // A node manager requests to connect to another node manager.
+  ConnectClient,
 }
 
 table TaskExecutionSpecification {
@@ -203,4 +205,9 @@ table FreeObjectsRequest {
   local_only: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
+}
+
+table ConnectClient {
+  // ID of the connecting client.
+  client_id: string;
 }

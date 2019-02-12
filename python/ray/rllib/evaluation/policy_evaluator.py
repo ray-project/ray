@@ -470,16 +470,16 @@ class PolicyEvaluator(EvaluatorInterface):
             return self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @override(EvaluatorInterface)
-    def compute_apply(self, samples):
+    def learn_on_batch(self, samples):
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
             if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "compute_apply")
+                builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
                 for pid, batch in samples.policy_batches.items():
                     if pid not in self.policies_to_train:
                         continue
                     info_out[pid], _ = (
-                        self.policy_map[pid]._build_compute_apply(
+                        self.policy_map[pid]._build_learn_on_batch(
                             builder, batch))
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
@@ -487,12 +487,22 @@ class PolicyEvaluator(EvaluatorInterface):
                     if pid not in self.policies_to_train:
                         continue
                     info_out[pid], _ = (
-                        self.policy_map[pid].compute_apply(batch))
+                        self.policy_map[pid].learn_on_batch(batch))
             return info_out
         else:
             grad_fetch, apply_fetch = (
-                self.policy_map[DEFAULT_POLICY_ID].compute_apply(samples))
+                self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
             return grad_fetch
+
+    @DeveloperAPI
+    def foreach_env(self, func):
+        """Apply the given function to each underlying env instance."""
+
+        envs = self.async_env.get_unwrapped()
+        if not envs:
+            return [func(self.async_env)]
+        else:
+            return [func(e) for e in envs]
 
     @DeveloperAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
