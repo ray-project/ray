@@ -2,8 +2,8 @@
 
 Examples:
 
-- A simple example with stateless operators and different parallelism per stage: simple.py.
+- simple.py: A simple example with stateless operators and different parallelism per stage.
 
-- A streaming wordcount example with a stateful operator (rolling sum): wordcount.py
+- wordcount.py: A streaming wordcount example with a stateful operator (rolling sum). 
 
 Run ``PYTHONHASHSEED=0 python example_file.py --input-file toy.txt``
