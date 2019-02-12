@@ -25,7 +25,8 @@ class Actor(object):
         for c in self.output.fb_channels:
             c.queue.enable_writes()
         for cs in self.output.shuffle_channels:
-            for c in cs: c.queue.enable_writes()
+            for c in cs:
+                c.queue.enable_writes()
         for cs in self.output.shuffle_key_channels:
             for c in cs: c.queue.enable_writes()
         # TODO (john): Add more channel types here
