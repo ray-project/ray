@@ -700,7 +700,7 @@ class FunctionActorManager(object):
                 # Save the checkpoint before allowing the method exception
                 # to be thrown.
                 if isinstance(actor, ray.actor.Checkpointable):
-                    self._save_and_log_checkpoint(actor, method_name)
+                    self._save_and_log_checkpoint(actor)
                 raise e
             else:
                 # Handle any checkpointing operations before storing the
@@ -713,23 +713,20 @@ class FunctionActorManager(object):
                     # resume from a checkpoint.
                     if self._worker.actor_task_counter == 1:
                         if actor_imported:
-                            self._restore_and_log_checkpoint(
-                                actor, method_name)
+                            self._restore_and_log_checkpoint(actor)
                     else:
                         # Save the checkpoint before returning the method's
                         # return values.
-                        self._save_and_log_checkpoint(actor, method_name)
+                        self._save_and_log_checkpoint(actor)
                 return method_returns
 
         return actor_method_executor
 
-    def _save_and_log_checkpoint(self, actor, method_name):
+    def _save_and_log_checkpoint(self, actor):
         """Save an actor checkpoint if necessary and log any errors.
 
         Args:
             actor: The actor to checkpoint.
-            method_name: The method that was executed just before the
-                checkpoint.
 
         Returns:
             The result of the actor's user-defined `save_checkpoint` method.
@@ -746,9 +743,10 @@ class FunctionActorManager(object):
         if actor.should_checkpoint(checkpoint_context):
             try:
                 now = int(1000 * time.time())
-                checkpoint_id = self._worker.raylet_client.prepare_actor_checkpoint(actor_id)
+                checkpoint_id = (self._worker.raylet_client.
+                                 prepare_actor_checkpoint(actor_id))
                 checkpoint_info.checkpoint_ids.append(checkpoint_id)
-                return_value = actor.save_checkpoint(actor_id, checkpoint_id)
+                actor.save_checkpoint(actor_id, checkpoint_id)
                 if (len(checkpoint_info.checkpoint_ids) >
                         ray._config.num_actor_checkpoints_to_keep()):
                     actor.checkpoint_expired(
@@ -765,13 +763,9 @@ class FunctionActorManager(object):
                     self._worker,
                     ray_constants.CHECKPOINT_PUSH_ERROR,
                     traceback_str,
-                    driver_id=self._worker.task_driver_id,
-                    data={
-                        "actor_class": actor.__class__.__name__,
-                        "function_name": method_name,
-                    })
+                    driver_id=self._worker.task_driver_id)
 
-    def _restore_and_log_checkpoint(self, actor, method_name):
+    def _restore_and_log_checkpoint(self, actor):
         """Restore an actor from a checkpoint if available and log any errors.
 
         This should only be called on workers that have just executed an actor
@@ -779,11 +773,8 @@ class FunctionActorManager(object):
 
         Args:
             actor: The actor to restore from a checkpoint.
-            method_name: The method that was executed just before we tried to
-                restore the checkpoint.
         """
         actor_id = self._worker.actor_id
-        checkpoint_info = self._worker.actor_checkpoint_info[actor_id]
         try:
             checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
             if len(checkpoints) > 0:
@@ -793,14 +784,16 @@ class FunctionActorManager(object):
                 if checkpoint_id is not None:
                     # Check that the returned checkpoint id is in the
                     # `available_checkpoints` list.
-                    msg = ("`load_checkpoint` must return a checkpoint id that " +
-                           "exists in the `available_checkpoints` list, or eone.")
+                    msg = (
+                        "`load_checkpoint` must return a checkpoint id that " +
+                        "exists in the `available_checkpoints` list, or eone.")
                     assert any(checkpoint_id == checkpoint.checkpoint_id
                                for checkpoint in checkpoints), msg
                     # Notify raylet that this actor has been resumed from
                     # a checkpoint.
-                    self.worker._raylet_client.notify_actor_resumed_from_checkpoint(
-                        actor_id, checkpoint_id)
+                    (self._worker.raylet_client.
+                     notify_actor_resumed_from_checkpoint(
+                         actor_id, checkpoint_id))
         except Exception:
             # Checkpoint save or reload failed. Notify the driver.
             traceback_str = ray.utils.format_error_message(
@@ -809,8 +802,4 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.CHECKPOINT_PUSH_ERROR,
                 traceback_str,
-                driver_id=self._worker.task_driver_id,
-                data={
-                    "actor_class": actor.__class__.__name__,
-                    "function_name": method_name,
-                })
+                driver_id=self._worker.task_driver_id)

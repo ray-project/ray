@@ -767,7 +767,7 @@ Checkpoint = namedtuple(
 """A namedtuple that represents a checkpoint."""
 
 
-class Checkpointable(six.with_metaclass(ABCMeta)):
+class Checkpointable(six.with_metaclass(ABCMeta, object)):
     """An interface that indicates an actor can be checkpointed."""
 
     @abstractmethod

@@ -2353,19 +2353,29 @@ def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
 def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test checkpointing of a remote actor through method invocation."""
 
-    @ray.remote(max_reconstructions=2)
+    # Define a class that exposes a method to save checkpoints.
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
-        def should_checkpoint(self, checkpoint_context):
-            return False
+        def __init__(self):
+            super(RemoteCheckpointableActor, self).__init__()
+            self._should_checkpoint = False
 
-    actor = RemoteCheckpointableActor.remote()
+        def checkpoint(self):
+            self._should_checkpoint = True
+
+        def should_checkpoint(self, checkpoint_context):
+            should_checkpoint = self._should_checkpoint
+            self._should_checkpoint = False
+            return should_checkpoint
+
+    cls = ray.remote(max_reconstructions=2)(RemoteCheckpointableActor)
+    actor = cls.remote()
     # Call increase 3 times.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
     # Call a checkpoint task.
-    actor.__ray_checkpoint__.remote()
+    actor.checkpoint.remote()
     # Assert that the actor wasn't resumed from a checkpoint.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
@@ -2416,6 +2426,7 @@ def test_checkpointing_on_node_failure(two_node_cluster,
 def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
+
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
@@ -2457,6 +2468,7 @@ def test_checkpointing_save_exception(ray_start_regular,
 def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
+
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
