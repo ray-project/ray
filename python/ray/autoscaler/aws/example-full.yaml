@@ -89,6 +89,11 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
