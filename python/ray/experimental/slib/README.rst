@@ -1,4 +1,5 @@
-**Streaming Library**
+Streaming Library
+=================
 
 Examples:
 
