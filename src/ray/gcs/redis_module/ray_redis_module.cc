@@ -175,13 +175,17 @@ int PublishTableAdd(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
   // Publish the data to any clients who requested notifications on this key.
   auto it = notification_map.find(notification_key);
   if (it != notification_map.end()) {
-    for (const auto& client_channel : it->second) {
-        RedisModuleCallReply *reply = RedisModule_Call(
-            ctx, "PUBLISH", "bb", client_channel.data(), client_channel.size(),
-            fbb.GetBufferPointer(), fbb.GetSize());
-        if (reply == NULL) {
-          return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-        }
+    for (const std::string& client_channel : it->second) {
+      // RedisModule_Call seems to be broken and cannot accept "bb",
+      // therefore we construct a temporary redis string here, which
+      // will be garbage collected by redis.
+      auto channel = RedisModule_CreateString(
+          ctx, client_channel.data(), client_channel.size());
+      RedisModuleCallReply *reply = RedisModule_Call(
+          ctx, "PUBLISH", "sb", channel, fbb.GetBufferPointer(), fbb.GetSize());
+      if (reply == NULL) {
+        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+      }
     }
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -629,6 +633,26 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **arg
   return result;
 }
 
+std::string DebugString() {
+  std::stringstream result;
+  result << "RedisModule:";
+  result << "\n- NotificationMap.size = " << notification_map.size();
+  result << std::endl;
+  return result.str();
+}
+
+int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
+                             int argc) {
+  RedisModule_AutoMemory(ctx);
+
+  if (argc != 1) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RAY_CHECK(argv[0]);
+  std::string debug_string = DebugString();
+  return RedisModule_ReplyWithStringBuffer(ctx, debug_string.data(), debug_string.size());
+}
+
 extern "C" {
 
 /* This function must be present on each Redis module. It is used in order to
@@ -671,6 +695,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   if (RedisModule_CreateCommand(ctx, "ray.table_test_and_update",
                                 TableTestAndUpdate_RedisCommand, "write", 0, 0,
                                 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.debug_string", DebugString_RedisCommand,
+                                "readonly", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
