@@ -10,7 +10,6 @@ import ray
 from ray.experimental.queue import Queue, Empty, Full
 
 
-@pytest.fixture
 def startup_module():
     # Start the Ray process.
     ray.init(num_cpus=1)
@@ -33,7 +32,7 @@ def put_async(queue, item, block, timeout, sleep):
     queue.put(item, block, timeout)
 
 
-def test_simple_use(ray_start):
+def test_simple_use():
     q = Queue()
 
     items = list(range(10))
@@ -45,7 +44,7 @@ def test_simple_use(ray_start):
         assert item == q.get()
 
 
-def test_async(ray_start):
+def test_async():
     q = Queue()
 
     items = set(range(10))
@@ -59,7 +58,7 @@ def test_async(ray_start):
     assert items == result
 
 
-def test_put(ray_start):
+def test_put():
     q = Queue(1)
 
     item = 0
@@ -89,7 +88,7 @@ def test_put(ray_start):
     assert ray.get(get_id) == 1
 
 
-def test_get(ray_start):
+def test_get():
     q = Queue()
 
     item = 0
@@ -114,7 +113,7 @@ def test_get(ray_start):
     assert q.get() == item
 
 
-def test_qsize(ray_start):
+def test_qsize():
     q = Queue()
 
     items = list(range(10))
