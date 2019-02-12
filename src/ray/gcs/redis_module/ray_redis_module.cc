@@ -70,6 +70,34 @@ Status FormatPubsubChannel(RedisModuleString **out, RedisModuleCtx *ctx,
   return Status::OK();
 }
 
+/// Parse a Redis string into a TablePrefix channel.
+Status ParseTablePrefix(const RedisModuleString *table_prefix_str, TablePrefix *out) {
+  long long table_prefix_long;
+  if (RedisModule_StringToLongLong(table_prefix_str, &table_prefix_long) !=
+      REDISMODULE_OK) {
+    return Status::RedisError("Table prefix must be a valid integer.");
+  }
+  if (table_prefix_long > static_cast<long long>(TablePrefix::MAX) ||
+      table_prefix_long < static_cast<long long>(TablePrefix::MIN)) {
+    return Status::RedisError("Pubsub channel must be in the TablePubsub range.");
+  } else {
+    *out = static_cast<TablePrefix>(table_prefix_long);
+    return Status::OK();
+  }
+}
+
+/// Format the string for a table key. `prefix_enum` must be a valid
+/// TablePrefix as a RedisModuleString. `keyname` is usually a UniqueID as a
+/// RedisModuleString.
+RedisModuleString *PrefixedKeyString(RedisModuleCtx *ctx, RedisModuleString *prefix_enum,
+                                     RedisModuleString *keyname) {
+  TablePrefix prefix;
+  if (!ParseTablePrefix(prefix_enum, &prefix).ok()) {
+    return nullptr;
+  }
+  return RedisString_Format(ctx, "%s%S", EnumNameTablePrefix(prefix), keyname);
+}
+
 // TODO(swang): This helper function should be deprecated by the version below,
 // which uses enums for table prefixes.
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx, const char *prefix,
@@ -88,15 +116,8 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx, const char *prefix,
 Status OpenPrefixedKey(RedisModuleKey **out, RedisModuleCtx *ctx,
                        RedisModuleString *prefix_enum, RedisModuleString *keyname,
                        int mode, RedisModuleString **mutated_key_str) {
-  long long prefix_long;
-  if (RedisModule_StringToLongLong(prefix_enum, &prefix_long) != REDISMODULE_OK) {
-    return Status::RedisError("Prefix must be a valid TablePrefix integer.");
-  }
-  if (prefix_long > static_cast<long long>(TablePrefix::MAX) ||
-      prefix_long < static_cast<long long>(TablePrefix::MIN)) {
-    return Status::RedisError("Prefix must be in the TablePrefix range.");
-  }
-  auto prefix = static_cast<TablePrefix>(prefix_long);
+  TablePrefix prefix;
+  RAY_RETURN_NOT_OK(ParseTablePrefix(prefix_enum, &prefix));
   *out =
       OpenPrefixedKey(ctx, EnumNameTablePrefix(prefix), keyname, mode, mutated_key_str);
   return Status::OK();
@@ -300,33 +321,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   if (index == RedisModule_ValueLength(key)) {
     // The requested index matches the current length of the log or no index
     // was requested. Perform the append.
-    int flags = REDISMODULE_ZADD_NX;
-    RedisModule_ZsetAdd(key, index, data, &flags);
-    // Check that we actually add a new entry during the append. This is only
-    // necessary since we implement the log with a sorted set, so all entries
-    // must be unique, or else we will have gaps in the log.
-    // TODO(rkn): We need to get rid of this uniqueness requirement. We can
-    // easily have multiple log events with the same message.
-    if (flags != REDISMODULE_ZADD_ADDED) {
-      // The following code is a workaround to store the data at a new unique
-      // key. This is so redis doesn't crash (we currently have duplicate keys
-      // for error conditions, which get delivered via pubsub).
-      size_t len;
-      const char *id_str = RedisModule_StringPtrLen(id, &len);
-      RAY_LOG(INFO) << "Duplicate key: " << std::string(id_str, len);
-      // Store the value into a unique new key, just to keep track of it and
-      // make sure the log size grows.
-      std::string postfix = std::to_string(index);
-      RedisModuleString *new_id =
-          RedisString_Format(ctx, "%S:%b", id, postfix.data(), postfix.size());
-      RedisModuleKey *new_key;
-      REPLY_AND_RETURN_IF_NOT_OK(OpenPrefixedKey(&new_key, ctx, prefix_str, new_id,
-                                                 REDISMODULE_READ | REDISMODULE_WRITE,
-                                                 mutated_key_str));
-      RedisModule_ZsetAdd(new_key, index, data, &flags);
-      REPLY_AND_RETURN_IF_FALSE(flags == REDISMODULE_ZADD_ADDED,
-                                "Appended a duplicate entry");
-    }
+    RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data);
     return REDISMODULE_OK;
   } else {
     // The requested index did not match the current length of the log. Return
@@ -393,7 +388,8 @@ int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
 
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
-Status TableEntryToFlatbuf(RedisModuleKey *table_key, RedisModuleString *entry_id,
+Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
+                           RedisModuleString *prefix_str, RedisModuleString *entry_id,
                            flatbuffers::FlatBufferBuilder &fbb) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
@@ -406,18 +402,21 @@ Status TableEntryToFlatbuf(RedisModuleKey *table_key, RedisModuleString *entry_i
                                        fbb.CreateVector(&data, 1));
     fbb.Finish(message);
   } break;
-  case REDISMODULE_KEYTYPE_ZSET: {
+  case REDISMODULE_KEYTYPE_LIST: {
+    RedisModule_CloseKey(table_key);
+    RedisModuleString *table_key_str = PrefixedKeyString(ctx, prefix_str, entry_id);
+    RedisModuleCallReply *reply =
+        RedisModule_Call(ctx, "LRANGE", "sll", table_key_str, 0, -1);
     // Build the flatbuffer from the set of log entries.
-    if (RedisModule_ZsetFirstInScoreRange(table_key, REDISMODULE_NEGATIVE_INFINITE,
-                                          REDISMODULE_POSITIVE_INFINITE, 1,
-                                          1) != REDISMODULE_OK) {
-      return Status::RedisError("Empty zset or wrong type");
+    if (RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
+      return Status::RedisError("Empty list or wrong type");
     }
     std::vector<flatbuffers::Offset<flatbuffers::String>> data;
-    for (; !RedisModule_ZsetRangeEndReached(table_key);
-         RedisModule_ZsetRangeNext(table_key)) {
-      data.push_back(RedisStringToFlatbuf(
-          fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
+    for (size_t i = 0; i < RedisModule_CallReplyLength(reply); i++) {
+      RedisModuleCallReply *element = RedisModule_CallReplyArrayElement(reply, i);
+      size_t len;
+      const char *element_str = RedisModule_CallReplyStringPtr(element, &len);
+      data.push_back(fbb.CreateString(element_str, len));
     }
     auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
                                        fbb.CreateVector(data));
@@ -467,7 +466,7 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   } else {
     // Serialize the data to a flatbuffer to return to the client.
     flatbuffers::FlatBufferBuilder fbb;
-    REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(table_key, id, fbb));
+    REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(ctx, table_key, prefix_str, id, fbb));
     RedisModule_ReplyWithStringBuffer(
         ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
   }
@@ -524,7 +523,7 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
   // notifications. An empty notification will be published if the key is
   // empty.
   flatbuffers::FlatBufferBuilder fbb;
-  REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(table_key, id, fbb));
+  REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(ctx, table_key, prefix_str, id, fbb));
   RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
                    reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
 
