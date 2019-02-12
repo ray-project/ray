@@ -45,7 +45,8 @@ sleep 1s
 # Run tests.
 $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
 sleep 1s
-$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC
+# Use timeout=1000ms for the Wait tests.
+$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000
 $REDIS_DIR/redis-cli -p 6379 shutdown
 sleep 1s
 

@@ -48,8 +48,9 @@ sleep 1s
 ${REDIS_SERVER} --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 1s
 
-# Run tests.
-$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC
+# Run tests. Use timeout=10000ms for the Wait tests since tests run slower
+# in valgrind.
+$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 10000
 sleep 1s
 $VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
 $REDIS_DIR/redis-cli -p 6379 shutdown
