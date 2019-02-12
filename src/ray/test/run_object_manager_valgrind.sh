@@ -52,6 +52,9 @@ sleep 1s
 # in valgrind.
 $VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 10000
 sleep 1s
+# Run tests again with inlined objects.
+$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 10000 true
+sleep 1s
 $VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
 $REDIS_DIR/redis-cli -p 6379 shutdown
 sleep 1s

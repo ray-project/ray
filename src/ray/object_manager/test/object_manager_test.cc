@@ -10,6 +10,7 @@
 namespace {
 std::string store_executable;
 int64_t wait_timeout_ms;
+bool test_inline_objects = false;
 }
 
 namespace ray {
@@ -340,32 +341,40 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NextWaitTest() {
+    int data_size;
+    // Set the data size under or over the inline objects limit depending on
+    // the test configuration.
+    if (test_inline_objects) {
+      data_size = RayConfig::instance().inline_object_max_size_bytes() / 2;
+    } else {
+      data_size = RayConfig::instance().inline_object_max_size_bytes() * 2;
+    }
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
       // Ensure timeout_ms = 0 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, /*timeout_ms=*/0, false, false);
+      TestWait(data_size, 5, 3, /*timeout_ms=*/0, false, false);
     } break;
     case 1: {
       // Ensure timeout_ms = 1000 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, wait_timeout_ms, false, false);
+      TestWait(data_size, 5, 3, wait_timeout_ms, false, false);
     } break;
     case 2: {
       // Generate objects locally to ensure local object code-path works properly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, wait_timeout_ms, false, /*test_local=*/true);
+      TestWait(data_size, 5, 3, wait_timeout_ms, false, /*test_local=*/true);
     } break;
     case 3: {
       // Wait on an object that's never registered with GCS to ensure timeout works
       // properly.
-      TestWait(100, /*num_objects=*/5, /*required_objects=*/6, wait_timeout_ms,
+      TestWait(data_size, /*num_objects=*/5, /*required_objects=*/6, wait_timeout_ms,
                /*include_nonexistent=*/true, false);
     } break;
     case 4: {
       // Ensure infinite time code-path works properly.
-      TestWait(100, 5, 5, /*timeout_ms=*/-1, false, false);
+      TestWait(data_size, 5, 5, /*timeout_ms=*/-1, false, false);
     } break;
     }
   }
@@ -478,6 +487,7 @@ class TestObjectManager : public TestObjectManagerBase {
 };
 
 TEST_F(TestObjectManager, StartTestObjectManager) {
+  // TODO: Break this test suite into unit tests.
   auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();
@@ -489,5 +499,9 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   store_executable = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
+  // If a third argument is provided, then test with inline objects.
+  if (argc > 3) {
+    test_inline_objects = true;
+  }
   return RUN_ALL_TESTS();
 }
