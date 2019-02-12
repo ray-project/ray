@@ -485,3 +485,8 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=1 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_wait_hanging.py
