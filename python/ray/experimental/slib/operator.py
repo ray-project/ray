@@ -13,7 +13,7 @@ class PScheme(object):
 class PStrategy(enum.Enum):
     Forward = 0     # Default
     Shuffle = 1
-    Balance = 2
+    Rescale = 2
     RoundRobin = 3
     Broadcast = 4
     Custom = 5

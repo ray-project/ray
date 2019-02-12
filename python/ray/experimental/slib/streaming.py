@@ -280,9 +280,9 @@ class DataStream(object):
     def broadcast(self):
         return self.__partition(PStrategy.Broadcast)
 
-    # Balances load to downstream instances
-    def balance(self):
-        return self.__partition(PStrategy.Balance)
+    # Rescales load to downstream instances
+    def rescale(self):
+        return self.__partition(PStrategy.Rescale)
 
     # Round-robin partitioning
     def round_robin(self):

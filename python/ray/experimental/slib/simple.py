@@ -1,7 +1,8 @@
 import time
 import logging
+import argparse
 
-from ray.slib.streaming import *
+from ray.experimental.slib.streaming import *
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -14,8 +15,14 @@ def filter_fn(word):
      if "f" in word: return True
      return False
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-file", required=True,
+                    help="the input text file")
 
 if __name__ == '__main__':
+
+    args = parser.parse_args()
+
     ray.init()
     ray.register_custom_serializer(BatchedQueue, use_pickle=True)
     ray.register_custom_serializer(OpType, use_pickle=True)
@@ -27,20 +34,13 @@ if __name__ == '__main__':
     env = Environment()
 
     # Stream represents the ouput of the filter and can be forked into other dataflows
-    stream = env.read_text_file("test_input.txt") \
+    stream = env.read_text_file(args.input_file) \
                     .shuffle() \
                     .flat_map(splitter) \
                     .set_parallelism(4) \
                     .filter(filter_fn) \
                     .set_parallelism(2) \
                     .inspect(print)         # Prints the contents of the stream
-                    # .key_by(0) \
-                    # .set_parallelism(2) \
-                    # .time_window(10**4) \
-                    # .broadcast()
-                    # .set_parallelism(4) \
-                    # .filter(filter_fn) \
-                    # .set_parallelism(2) \
 
     # print("Branch 1")
     # stream2 = stream.shuffle().filter(different_split) \
@@ -72,7 +72,9 @@ if __name__ == '__main__':
 
     end = time.time()
     print("Assembled logical dataflow in {} secs\n".format(end-start))
+
     env.print_logical_graph()
+
     start = time.time()
     env.execute()
     end = time.time()
