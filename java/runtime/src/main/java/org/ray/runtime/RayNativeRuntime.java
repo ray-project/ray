@@ -69,7 +69,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager = new RunManager(rayConfig);
       manager.startRayProcesses(true);
     }
-    redisClient = new RedisClient(rayConfig.getRedisAddress());
+    redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);

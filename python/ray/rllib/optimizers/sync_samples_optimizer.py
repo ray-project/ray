@@ -54,7 +54,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
-                fetches = self.local_evaluator.compute_apply(samples)
+                fetches = self.local_evaluator.learn_on_batch(samples)
                 if "stats" in fetches:
                     self.learner_stats = fetches["stats"]
                 if self.num_sgd_iter > 1:
