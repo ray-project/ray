@@ -11,8 +11,8 @@ from ray.experimental.queue import Queue, Empty, Full
 
 
 def startup_module():
-    # Start the Ray process.
-    ray.init(num_cpus=1)
+    if not ray.worker.global_worker.connected:
+        ray.init(num_cpus=1)
 
 
 def teardown_module():
