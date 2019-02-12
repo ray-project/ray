@@ -2462,7 +2462,9 @@ def test_checkpointing_save_exception(ray_start_regular,
     errors = ray.error_info()
     assert len(errors) > 0
     for error in errors:
-        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
+        # An error for the actor process dying may also get pushed.
+        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
+                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
 
 
 def test_checkpointing_load_exception(ray_start_regular,
@@ -2504,7 +2506,9 @@ def test_checkpointing_load_exception(ray_start_regular,
     errors = ray.error_info()
     assert len(errors) > 0
     for error in errors:
-        assert error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
+        # An error for the actor process dying may also get pushed.
+        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
+                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
 
 
 @pytest.mark.parametrize(
