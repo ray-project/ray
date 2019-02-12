@@ -223,12 +223,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             init_commands = config["head_start_ray_commands"]
         elif no_restart:
             init_commands = (
-                config["setup_commands"] +
-                config["head_setup_commands"])
+                config["setup_commands"] + config["head_setup_commands"])
         else:
             init_commands = (
-                config["setup_commands"] +
-                config["head_setup_commands"] +
+                config["setup_commands"] + config["head_setup_commands"] +
                 config["head_start_ray_commands"])
 
         updater = NodeUpdaterThread(
@@ -265,9 +263,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         else:
             modifiers = ""
         print("To monitor auto-scaling activity, you can run:\n\n"
-              "  ray exec {} {}{}{}\n".format(config_file, "--docker "
-                                              if use_docker else " ",
-                                              quote(monitor_str), modifiers))
+              "  ray exec {} {}{}{}\n".format(
+                  config_file, "--docker " if use_docker else " ",
+                  quote(monitor_str), modifiers))
         print("To open a console on the cluster:\n\n"
               "  ray attach {}{}\n".format(config_file, modifiers))
         print("To ssh manually to the cluster, run:\n\n"
@@ -347,14 +345,17 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             container_name = config["docker"]["container_name"]
             if not container_name:
                 raise ValueError("Docker container not specified in config.")
-            return with_docker_exec([command], container_name=container_name)[0]
+            return with_docker_exec(
+                [command], container_name=container_name)[0]
 
         cmd = wrap_docker(cmd) if docker else cmd
 
         if stop:
-            shutdown_cmd = ("ray stop; ray teardown ~/ray_bootstrap_config.yaml "
-                            "--yes --workers-only")
-            shutdown_cmd = wrap_docker(shutdown_cmd) if docker else shutdown_cmd
+            shutdown_cmd = (
+                "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
+                "--yes --workers-only")
+            if docker:
+                shutdown_cmd = wrap_docker(shutdown_cmd)
             cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
         _exec(
