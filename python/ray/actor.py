@@ -797,9 +797,9 @@ class Checkpointable(six.with_metaclass(ABCMeta, object)):
         checkpoint id to persistent storage.
 
         Args:
-            actor_id: Actor’s ID.
+            actor_id: Actor's ID.
             checkpoint_id: ID of this checkpoint. You should save it together
-                with actor’s checkpoint data. And it will be used by the
+                with actor's checkpoint data. And it will be used by the
                 `load_checkpoint` method.
         Returns:
             None.
@@ -820,7 +820,7 @@ class Checkpointable(six.with_metaclass(ABCMeta, object)):
         raised.
 
         Args:
-            actor_id: Actor’s ID.
+            actor_id: Actor's ID.
             available_checkpoints: A list of `Checkpoint` namedtuples that
                 contains all available checkpoint IDs and their timestamps,
                 sorted by timestamp in descending order.

@@ -63,9 +63,9 @@ public interface Checkpointable {
    * If `shouldCheckpoint` returns true, this method will be called. You should implement this
    * callback to save actor's checkpoint and the given checkpoint id to persistent storage.
    *
-   * @param actorId Actor’s ID.
-   * @param checkpointId An ID that represents this actor’s current state in GCS. You should
-   *     save this checkpoint ID together with actor’s checkpoint data.
+   * @param actorId Actor's ID.
+   * @param checkpointId An ID that represents this actor's current state in GCS. You should
+   *     save this checkpoint ID together with actor's checkpoint data.
    */
   void saveCheckpoint(UniqueId actorId, UniqueId checkpointId);
 
