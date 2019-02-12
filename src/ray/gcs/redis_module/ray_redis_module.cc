@@ -187,6 +187,7 @@ int PublishTableAdd(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
         return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
       }
     }
+    notification_map.erase(it);
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
