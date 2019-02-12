@@ -107,7 +107,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   private void initRedisClients() {
-    redisClient = new RedisClient(rayConfig.getRedisAddress());
+    redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     int numRedisShards = Integer.valueOf(redisClient.get("NumRedisShards", null));
     List<String> addresses = redisClient.lrange("RedisShards", 0, -1);
     Preconditions.checkState(numRedisShards == addresses.size());

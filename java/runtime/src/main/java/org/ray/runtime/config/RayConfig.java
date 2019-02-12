@@ -47,6 +47,8 @@ public class RayConfig {
   private Integer redisPort;
   public final int headRedisPort;
   public final int numberRedisShards;
+  public final String headRedisPassword;
+  public final String redisPassword;
 
   public final String objectStoreSocketName;
   public final Long objectStoreSize;
@@ -157,6 +159,8 @@ public class RayConfig {
     }
     headRedisPort = config.getInt("ray.redis.head-port");
     numberRedisShards = config.getInt("ray.redis.shard-number");
+    headRedisPassword = config.getString("ray.redis.head-password");
+    redisPassword = config.getString("ray.redis.password");
 
     // object store configurations
     objectStoreSocketName = config.getString("ray.object-store.socket-name");
