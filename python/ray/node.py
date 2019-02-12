@@ -55,6 +55,8 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
+        assert not (shutdown_at_exit and connect_only), (
+            "'shutdown_at_exit' and 'connect_only' cannot be both true.")
         self.all_processes = {}
 
         ray_params.update_if_absent(
@@ -172,8 +174,8 @@ class Node(object):
 
         Returns:
             A string of file name. If there existing a file having
-            the same name, the returned name will look like
-            "{directory_name}/{prefix}.{unique_index}{suffix}"
+                the same name, the returned name will look like
+                "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
