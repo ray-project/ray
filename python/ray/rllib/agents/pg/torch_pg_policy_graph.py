@@ -10,18 +10,18 @@ import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.policy_graph import PolicyGraph
-from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
+from ray.rllib.evaluation.torch_policy_graph import TorchPolicyGraph
 from ray.rllib.utils.annotations import override
 
+
 class PGLoss(nn.Module):
-	def __init__(self, policy_model):
-		nn.Module.__init__(self)
-		self.policy_model = policy_model
-		print("Initialized loss model")
+    def __init__(self, policy_model):
+        nn.Module.__init__(self)
+        self.policy_model = policy_model
+        print("Initialized loss model")
 
-
-	def forward(self, observations, actions, advantages):
-		logits, _, values, _ = self.policy_model({"obs": observations}, [])
+    def forward(self, observations, actions, advantages):
+        logits, _, values, _ = self.policy_model({"obs": observations}, [])
         log_probs = F.log_softmax(logits, dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
@@ -29,9 +29,10 @@ class PGLoss(nn.Module):
         print("Calculated pi error")
         return pi_err
 
-class PGPolicyGraph(TorchPolicyGraph):
-	def __init__(self, obs_space, action_space, config):
-		config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
+
+class PGTorchPolicyGraph(TorchPolicyGraph):
+    def __init__(self, obs_space, action_space, config):
+        config = dict(ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG, **config)
         self.config = config
         _, self.logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
@@ -62,12 +63,11 @@ class PGPolicyGraph(TorchPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        return compute_advantages(sample_batch, 0.0, self.config["gamma"],
-                                  use_gae=False)
+        return compute_advantages(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)
 
     def _value(self, obs):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0)
             _, _, vf, _ = self.model({"obs": obs}, [])
             return vf.detach().numpy().squeeze()
-
