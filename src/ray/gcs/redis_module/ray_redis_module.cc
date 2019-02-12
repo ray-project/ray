@@ -190,7 +190,6 @@ int PublishTableAdd(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
         return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
       }
     }
-    notification_map.erase(it);
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -646,6 +645,15 @@ std::string DebugString() {
   std::stringstream result;
   result << "RedisModule:";
   result << "\n- NotificationMap.size = " << notification_map.size();
+  result << "\n- NotificationMap = ";
+  auto it = notification_map.begin();
+  while(it != notification_map.end()) {
+    result << "\n [" << it->first << "] -> ";
+    for (const auto& entry : it->second) {
+      result << entry << " ";
+    }
+    it++;
+  }
   result << std::endl;
   return result.str();
 }
