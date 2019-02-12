@@ -206,7 +206,7 @@ if sys.version_info >= (3, 7):
             return cls(custom)
 
         def __reduce__(self):
-            return (self.from_custom, (custom.value,))
+            return (self.from_custom, (custom.value, ))
 
     CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
 
