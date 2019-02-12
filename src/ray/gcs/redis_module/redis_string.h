@@ -70,7 +70,7 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx, const char *fmt, ...)
   return result;
 }
 
-std::string RedisString_ToString(RedisModuleString* string) {
+std::string RedisString_ToString(RedisModuleString *string) {
   size_t size;
   const char *data = RedisModule_StringPtrLen(string, &size);
   return std::string(data, size);

@@ -121,7 +121,7 @@ Status OpenPrefixedKey(RedisModuleKey **out, RedisModuleCtx *ctx,
 /// Open the key used to store the channels that should be published to when an
 /// update happens at the given keyname.
 Status GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *keyname, std::string* out) {
+                       RedisModuleString *keyname, std::string *out) {
   RedisModuleString *channel;
   RAY_RETURN_NOT_OK(FormatPubsubChannel(&channel, ctx, pubsub_channel_str, keyname));
   RedisModuleString *prefixed_keyname = RedisString_Format(ctx, "BCAST:%S", channel);
@@ -173,16 +173,17 @@ int PublishTableAdd(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
   }
 
   std::string notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
+  REPLY_AND_RETURN_IF_NOT_OK(
+      GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
   // Publish the data to any clients who requested notifications on this key.
   auto it = notification_map.find(notification_key);
   if (it != notification_map.end()) {
-    for (const std::string& client_channel : it->second) {
+    for (const std::string &client_channel : it->second) {
       // RedisModule_Call seems to be broken and cannot accept "bb",
       // therefore we construct a temporary redis string here, which
       // will be garbage collected by redis.
-      auto channel = RedisModule_CreateString(
-          ctx, client_channel.data(), client_channel.size());
+      auto channel =
+          RedisModule_CreateString(ctx, client_channel.data(), client_channel.size());
       RedisModuleCallReply *reply = RedisModule_Call(
           ctx, "PUBLISH", "sb", channel, fbb.GetBufferPointer(), fbb.GetSize());
       if (reply == NULL) {
@@ -509,7 +510,8 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
   // Add this client to the set of clients that should be notified when there
   // are changes to the key.
   std::string notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
+  REPLY_AND_RETURN_IF_NOT_OK(
+      GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
   notification_map[notification_key].push_back(RedisString_ToString(client_channel));
 
   // Lookup the current value at the key.
@@ -561,10 +563,12 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
   // Remove this client from the set of clients that should be notified when
   // there are changes to the key.
   std::string notification_key;
-  REPLY_AND_RETURN_IF_NOT_OK(GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
+  REPLY_AND_RETURN_IF_NOT_OK(
+      GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
   auto it = notification_map.find(notification_key);
   if (it != notification_map.end()) {
-    std::remove(it->second.begin(), it->second.end(), RedisString_ToString(client_channel));
+    std::remove(it->second.begin(), it->second.end(),
+                RedisString_ToString(client_channel));
     if (it->second.size() == 0) {
       notification_map.erase(it);
     }
@@ -646,8 +650,7 @@ std::string DebugString() {
   return result.str();
 }
 
-int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
-                             int argc) {
+int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argv);
   RedisModule_AutoMemory(ctx);
 
