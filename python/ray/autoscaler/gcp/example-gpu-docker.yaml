@@ -110,7 +110,7 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-startup_commands:
+initialization_commands:
     # Wait until nvidia drivers are installed
     - >-
       timeout 300 bash -c "

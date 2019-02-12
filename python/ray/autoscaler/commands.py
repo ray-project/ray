@@ -138,7 +138,7 @@ def kill_node(config_file, yes, override_cluster_name):
         auth_config=config["auth"],
         cluster_name=config["cluster_name"],
         file_mounts=config["file_mounts"],
-        startup_commands=[],
+        initialization_commands=[],
         setup_commands=[],
         runtime_hash="")
 
@@ -238,7 +238,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            startup_commands=config["startup_commands"],
+            initialization_commands=config["initialization_commands"],
             setup_commands=init_commands,
             runtime_hash=runtime_hash,
         )
@@ -338,7 +338,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            startup_commands=config["startup_commands"],
+            initialization_commands=config["initialization_commands"],
             setup_commands=[],
             runtime_hash="",
         )
@@ -432,7 +432,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            startup_commands=[],
+            initialization_commands=[],
             setup_commands=[],
             runtime_hash="",
         )

@@ -49,7 +49,7 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 startup_commands,
+                 initialization_commands,
                  setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
@@ -67,7 +67,7 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.startup_commands = startup_commands
+        self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.runtime_hash = runtime_hash
 
@@ -219,7 +219,7 @@ class NodeUpdater(object):
 
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.startup_commands:
+            for cmd in self.initialization_commands:
                 self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
 
         m = "{}: Setup commands completed".format(self.node_id)
