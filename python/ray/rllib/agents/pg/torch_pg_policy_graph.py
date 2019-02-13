@@ -18,7 +18,6 @@ class PGLoss(nn.Module):
     def __init__(self, policy_model):
         nn.Module.__init__(self)
         self.policy_model = policy_model
-        print("Initialized loss model")
 
     def forward(self, observations, actions, advantages):
         logits, _, values, _ = self.policy_model({"obs": observations}, [])
@@ -26,7 +25,6 @@ class PGLoss(nn.Module):
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         pi_err = -advantages.dot(action_log_probs.reshape(-1))
-        print("Calculated pi error")
         return pi_err
 
 
@@ -47,8 +45,6 @@ class PGTorchPolicyGraph(TorchPolicyGraph):
             self.model,
             loss,
             loss_inputs=["obs", "actions", "advantages"])
-
-        print("Initialized Torch Policy Graph")
 
     @override(TorchPolicyGraph)
     def extra_action_out(self, model_out):
