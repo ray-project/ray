@@ -48,7 +48,7 @@ sleep 1s
 # Use timeout=1000ms for the Wait tests.
 $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000
 # Run tests again with inlined objects.
-$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000
+$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC 1000 true
 $REDIS_DIR/redis-cli -p 6379 shutdown
 sleep 1s
 
