@@ -69,7 +69,7 @@ class AgentIOTest(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
-                "input_evaluation": None,
+                "input_evaluation": [],
             })
         result = agent.train()
         self.assertEqual(result["timesteps_total"], 250)  # read from input
@@ -101,7 +101,7 @@ class AgentIOTest(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
-                "input_evaluation": None,
+                "input_evaluation": [],
                 "postprocess_inputs": True,  # adds back 'advantages'
             })
 
@@ -115,7 +115,7 @@ class AgentIOTest(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "input": self.test_dir,
-                "input_evaluation": "simulation",
+                "input_evaluation": ["simulation"],
             })
         for _ in range(50):
             result = agent.train()
@@ -130,7 +130,7 @@ class AgentIOTest(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "input": glob.glob(self.test_dir + "/*.json"),
-                "input_evaluation": None,
+                "input_evaluation": [],
                 "sample_batch_size": 99,
             })
         result = agent.train()
@@ -147,7 +147,7 @@ class AgentIOTest(unittest.TestCase):
                     "sampler": 0.9,
                 },
                 "train_batch_size": 2000,
-                "input_evaluation": None,
+                "input_evaluation": [],
             })
         result = agent.train()
         self.assertTrue(not np.isnan(result["episode_reward_mean"]))
@@ -185,7 +185,7 @@ class AgentIOTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "input": self.test_dir,
-                "input_evaluation": "simulation",
+                "input_evaluation": ["simulation"],
                 "train_batch_size": 2000,
                 "multiagent": {
                     "policy_graphs": {

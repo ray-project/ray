@@ -544,6 +544,10 @@ class Agent(Trainable):
             raise ValueError(
                 "The `use_gpu_for_workers` config is deprecated, please use "
                 "`num_gpus_per_worker=1` instead.")
+        if type(config["input_evaluation"]) != list:
+            raise ValueError(
+                "`input_evaluation` must be a list of strings, got {}".format(
+                    config["input_evaluation"]))
 
     def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
                         config):
