@@ -538,6 +538,9 @@ def _postprocess_dqn(policy_graph, batch):
                       batch["actions"], batch["rewards"], batch["new_obs"],
                       batch["dones"])
 
+    if "weights" not in batch:
+        batch["weights"] = np.ones_like(batch["rewards"])
+
     # Prioritize on the worker side
     if batch.count > 0 and policy_graph.config["worker_side_prioritization"]:
         td_errors = policy_graph.compute_td_error(
@@ -546,8 +549,6 @@ def _postprocess_dqn(policy_graph, batch):
         new_priorities = (
             np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
         batch.data["weights"] = new_priorities
-    else:
-        batch.data["weights"] = np.ones_like(batch["rewards"])
 
     return batch
 
