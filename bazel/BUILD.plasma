@@ -137,7 +137,7 @@ cc_binary(
         ],
     ),
     visibility = ["//visibility:public"],
-deps = [":plasma_lib"],
+    deps = [":plasma_lib"],
 )
 
 FLATC_ARGS = [
