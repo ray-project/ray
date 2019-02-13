@@ -648,13 +648,17 @@ def test_redis_module_failure(shutdown_only):
                      "RAY.TABLE_ADD", 1, 10000, 1, 1)
     run_failure_test("Pubsub channel must be a valid integer", "RAY.TABLE_ADD",
                      1, b"a", 1, 1)
-    run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+    # Change the key from 1 to 2, since the previous command should have
+    # succeeded at writing the key, but not publishing it.
+    run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
                      -1)
-    run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 1, 1,
+    run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
                      b"a")
-    run_one_command("RAY.TABLE_APPEND", 1, 1, 1, 1)
-    run_failure_test("Appended a duplicate entry", "RAY.TABLE_APPEND", 1, 1, 1,
-                     1, 1)
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
+    # It's okay to add duplicate entries.
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 0)
+    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 1)
 
 
 @pytest.fixture

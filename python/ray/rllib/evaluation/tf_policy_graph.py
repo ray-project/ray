@@ -182,9 +182,9 @@ class TFPolicyGraph(PolicyGraph):
         return builder.get(fetches)
 
     @override(PolicyGraph)
-    def compute_apply(self, postprocessed_batch):
-        builder = TFRunBuilder(self._sess, "compute_apply")
-        fetches = self._build_compute_apply(builder, postprocessed_batch)
+    def learn_on_batch(self, postprocessed_batch):
+        builder = TFRunBuilder(self._sess, "learn_on_batch")
+        fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
 
     @override(PolicyGraph)
@@ -389,7 +389,7 @@ class TFPolicyGraph(PolicyGraph):
             [self._apply_op, self.extra_apply_grad_fetches()])
         return fetches[1]
 
-    def _build_compute_apply(self, builder, postprocessed_batch):
+    def _build_learn_on_batch(self, builder, postprocessed_batch):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(self.extra_apply_grad_feed_dict())
         builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))

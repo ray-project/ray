@@ -130,6 +130,10 @@ COMMON_CONFIG = {
     "compress_observations": False,
     # Drop metric batches from unresponsive workers after this many seconds
     "collect_metrics_timeout": 180,
+    # If using num_envs_per_worker > 1, whether to create those new envs in
+    # remote processes instead of in the same worker. This adds overheads, but
+    # can make sense if your envs are very CPU intensive (e.g., for StarCraft).
+    "remote_worker_envs": False,
 
     # === Offline Datasets ===
     # __sphinx_doc_input_begin__
@@ -468,7 +472,9 @@ class Agent(Trainable):
                         "tf_session_args": self.
                         config["local_evaluator_tf_session_args"]
                     }),
-                extra_config or {}))
+                extra_config or {}),
+            remote_worker_envs=False,
+        )
 
     @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
@@ -481,9 +487,16 @@ class Agent(Trainable):
         }
 
         cls = PolicyEvaluator.as_remote(**remote_args).remote
+
         return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
-                                 self.config) for i in range(count)
+            self._make_evaluator(
+                cls,
+                env_creator,
+                policy_graph,
+                i + 1,
+                self.config,
+                remote_worker_envs=self.config["remote_worker_envs"])
+            for i in range(count)
         ]
 
     @DeveloperAPI
@@ -549,8 +562,13 @@ class Agent(Trainable):
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
 
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config):
+    def _make_evaluator(self,
+                        cls,
+                        env_creator,
+                        policy_graph,
+                        worker_index,
+                        config,
+                        remote_worker_envs=False):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -582,10 +600,10 @@ class Agent(Trainable):
                 compress_columns=config["output_compress_columns"]))
         else:
             output_creator = (lambda ioctx: JsonWriter(
-                    config["output"],
-                    ioctx,
-                    max_file_size=config["output_max_file_size"],
-                    compress_columns=config["output_compress_columns"]))
+                config["output"],
+                ioctx,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
 
         if config["input"] == "sampler":
             input_evaluation = []
@@ -619,7 +637,8 @@ class Agent(Trainable):
             callbacks=config["callbacks"],
             input_creator=input_creator,
             input_evaluation=input_evaluation,
-            output_creator=output_creator)
+            output_creator=output_creator,
+            remote_worker_envs=remote_worker_envs)
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

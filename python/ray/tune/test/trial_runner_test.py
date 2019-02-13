@@ -19,7 +19,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             EPISODES_TOTAL)
+                             EPISODES_TOTAL, TRAINING_ITERATION)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
@@ -559,6 +559,28 @@ class TrainableFunctionApiTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
+
+    def testIterationCounter(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(itr=i, done=i == 99)
+
+        register_trainable("exp", train)
+        config = {
+            "my_exp": {
+                "run": "exp",
+                "config": {
+                    "iterations": 100,
+                },
+                "stop": {
+                    "timesteps_total": 100
+                },
+            }
+        }
+        [trial] = run_experiments(config)
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
+        self.assertEqual(trial.last_result["itr"], 99)
 
 
 class RunExperimentTest(unittest.TestCase):
