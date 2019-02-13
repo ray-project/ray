@@ -90,6 +90,7 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "run_options": (list, OPTIONAL),
         },
         OPTIONAL),
 
@@ -102,7 +103,12 @@ CLUSTER_CONFIG_SCHEMA = {
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
 
-    # List of common shell commands to run to initialize nodes.
+    # List of commands that will be run before `setup_commands`. If docker is
+    # enabled, these commands will run outside the container and before docker
+    # is setup.
+    "initialization_commands": (list, OPTIONAL),
+
+    # List of common shell commands to run to setup nodes.
     "setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.
@@ -527,13 +533,16 @@ class StandardAutoscaler(object):
                        "{}: No heartbeat in {}s, "
                        "restarting Ray to recover...".format(node_id, delta))
         updater = NodeUpdaterThread(
-            node_id,
-            self.config["provider"],
-            self.provider,
-            self.config["auth"],
-            self.config["cluster_name"], {},
-            with_head_node_ip(self.config["worker_start_ray_commands"]),
-            self.runtime_hash,
+            node_id=node_id,
+            provider_config=self.config["provider"],
+            provider=self.provider,
+            auth_config=self.config["auth"],
+            cluster_name=self.config["cluster_name"],
+            file_mounts={},
+            initialization_commands=[],
+            setup_commands=with_head_node_ip(
+                self.config["worker_start_ray_commands"]),
+            runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
         updater.start()
@@ -561,14 +570,16 @@ class StandardAutoscaler(object):
 
     def spawn_updater(self, node_id, init_commands):
         updater = NodeUpdaterThread(
-            node_id,
-            self.config["provider"],
-            self.provider,
-            self.config["auth"],
-            self.config["cluster_name"],
-            self.config["file_mounts"],
-            with_head_node_ip(init_commands),
-            self.runtime_hash,
+            node_id=node_id,
+            provider_config=self.config["provider"],
+            provider=self.provider,
+            auth_config=self.config["auth"],
+            cluster_name=self.config["cluster_name"],
+            file_mounts=self.config["file_mounts"],
+            initialization_commands=with_head_node_ip(
+                self.config["initialization_commands"]),
+            setup_commands=with_head_node_ip(init_commands),
+            runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
         updater.start()
