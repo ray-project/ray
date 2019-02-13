@@ -80,8 +80,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
 
         # v network evaluation
         with tf.variable_scope(V_SCOPE) as scope:
-            state_values = self._build_value_network(self.obs_t,
-                                                     observation_space)
+            state_values = self.model.value_function()
             self.v_func_vars = _scope_vars(scope.name)
         self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)
         self.p_loss = self._build_policy_loss(state_values, self.cum_rew_t,
@@ -125,13 +124,6 @@ class MARWILPolicyGraph(TFPolicyGraph):
             "obs": obs,
             "is_training": self._get_is_training_placeholder(),
         }, obs_space, logit_dim, self.config["model"])
-
-    def _build_value_network(self, obs, obs_space):
-        value_model = ModelCatalog.get_model({
-            "obs": obs,
-            "is_training": self._get_is_training_placeholder(),
-        }, obs_space, 1, self.config["model"])
-        return value_model.outputs
 
     def _build_value_loss(self, state_values, cum_rwds):
         return ValueLoss(state_values, cum_rwds)
