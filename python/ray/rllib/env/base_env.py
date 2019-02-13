@@ -79,7 +79,7 @@ class BaseEnv(object):
                         "Remote multiagent environments are not implemented")
 
                 env = _MultiAgentEnvToBaseEnv(
-                    make_env=make_env, existing_envs=[], num_envs=num_envs)
+                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
             elif isinstance(env, ExternalEnv):
                 if num_envs != 1:
                     raise ValueError(
@@ -90,6 +90,7 @@ class BaseEnv(object):
             else:
                 env = VectorEnv.wrap(
                     make_env=make_env,
+                    existing_envs=[env],
                     num_envs=num_envs,
                     remote_envs=remote_envs,
                     action_space=env.action_space,

@@ -24,6 +24,7 @@ class VectorEnv(object):
 
     @staticmethod
     def wrap(make_env=None,
+             existing_envs=None,
              num_envs=1,
              remote_envs=False,
              action_space=None,
@@ -31,8 +32,8 @@ class VectorEnv(object):
         if remote_envs:
             return _RemoteVectorizedGymEnv(make_env, num_envs, action_space,
                                            observation_space)
-        return _VectorizedGymEnv(make_env, [], num_envs, action_space,
-                                 observation_space)
+        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
+                                 action_space, observation_space)
 
     @PublicAPI
     def vector_reset(self):
