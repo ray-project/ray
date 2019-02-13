@@ -80,7 +80,4 @@ The path you specified will be given as it is without being affected any other p
 Notes
 -----
 
-Temporary file policies are defined in ``python/ray/tempfile_services.py``.
-
-Currently, we keep ``/tmp/ray`` as the default directory for temporary data files of RLlib as before.
-It is not very reasonable and could be changed later.
+Temporary file policies are defined in ``python/ray/node.py``.
