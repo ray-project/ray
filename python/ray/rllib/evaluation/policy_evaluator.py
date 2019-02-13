@@ -117,7 +117,8 @@ class PolicyEvaluator(EvaluatorInterface):
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
                  input_evaluation_method=None,
-                 output_creator=lambda ioctx: NoopOutput()):
+                 output_creator=lambda ioctx: NoopOutput(),
+                 remote_worker_envs=False):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -192,6 +193,10 @@ class PolicyEvaluator(EvaluatorInterface):
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
                 for saving generated experiences.
+            remote_worker_envs (bool): If using num_envs > 1, whether to create
+                those new envs in remote processes instead of in the current
+                process. This adds overheads, but can make sense if your envs
+                are very CPU intensive (e.g., for StarCraft).
         """
 
         if log_level:
@@ -250,7 +255,9 @@ class PolicyEvaluator(EvaluatorInterface):
 
         def make_env(vector_index):
             return wrap(
-                env_creator(env_context.with_vector_index(vector_index)))
+                env_creator(
+                    env_context.copy_with_overrides(
+                        vector_index=vector_index, remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy_graph, self.env)
@@ -293,7 +300,10 @@ class PolicyEvaluator(EvaluatorInterface):
 
         # Always use vector env for consistency even if num_envs = 1
         self.async_env = BaseEnv.to_base_env(
-            self.env, make_env=make_env, num_envs=num_envs)
+            self.env,
+            make_env=make_env,
+            num_envs=num_envs,
+            remote_envs=remote_worker_envs)
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
