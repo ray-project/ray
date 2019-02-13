@@ -566,8 +566,8 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
       GetBroadcastKey(ctx, pubsub_channel_str, id, &notification_key));
   auto it = notification_map.find(notification_key);
   if (it != notification_map.end()) {
-    std::remove(it->second.begin(), it->second.end(),
-                RedisString_ToString(client_channel));
+    it->second.erase(std::remove(it->second.begin(), it->second.end(),
+                                 RedisString_ToString(client_channel)), it->second.end());
     if (it->second.size() == 0) {
       notification_map.erase(it);
     }
