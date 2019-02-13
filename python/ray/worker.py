@@ -23,6 +23,7 @@ import traceback
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+import ray.experimental.signal as ray_signal
 import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -31,7 +32,6 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
-import ray.tempfile_services as tempfile_services
 import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
@@ -879,6 +879,8 @@ class Worker(object):
         # Mark the actor init as failed
         if not self.actor_id.is_nil() and function_name == "__init__":
             self.mark_actor_init_failed(error)
+        # Send signal with the error.
+        ray_signal.send(ray_signal.ErrorSignal(error))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -895,6 +897,7 @@ class Worker(object):
         if not task.actor_creation_id().is_nil():
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
+            self.actor_creation_task_id = task.task_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
 
@@ -1383,10 +1386,13 @@ def init(redis_address=None,
         "redis_address": redis_address
     }
 
+    global _global_node
     if driver_mode == LOCAL_MODE:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
         pass
     elif redis_address is None:
+        # TODO(suquark): We should remove the code below because they
+        # have been set when initializing the node.
         if node_ip_address is None:
             node_ip_address = ray.services.get_node_ip_address()
         if num_redis_shards is None:
@@ -1420,7 +1426,6 @@ def init(redis_address=None,
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler.
-        global _global_node
         _global_node = ray.node.Node(
             head=True, shutdown_at_exit=False, ray_params=ray_params)
         address_info["redis_address"] = _global_node.redis_address
@@ -1477,6 +1482,18 @@ def init(redis_address=None,
         # Get the address info of the processes to connect to from Redis.
         address_info = get_address_info_from_redis(
             redis_address, node_ip_address, redis_password=redis_password)
+        # TODO(suquark): Use "node" as the input of "connect()".
+        # In this case, we only need to connect the node.
+        ray_params = ray.parameter.RayParams(
+            node_ip_address=node_ip_address,
+            redis_address=redis_address,
+            redis_password=redis_password,
+            plasma_store_socket_name=address_info["object_store_address"],
+            raylet_socket_name=address_info["raylet_socket_name"],
+            object_id_seed=object_id_seed,
+            temp_dir=temp_dir)
+        _global_node = ray.node.Node(
+            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
 
     if driver_mode == LOCAL_MODE:
         driver_address_info = {}
@@ -1489,8 +1506,6 @@ def init(redis_address=None,
             "raylet_socket_name": address_info["raylet_socket_name"],
         }
 
-    # We only pass `temp_dir` to a worker (WORKER_MODE).
-    # It can't be a worker here.
     connect(
         driver_address_info,
         redis_password=redis_password,
@@ -1847,8 +1862,7 @@ def connect(info,
             redirect_worker_output = 0
         if redirect_worker_output:
             log_stdout_file, log_stderr_file = (
-                tempfile_services.new_worker_redirected_log_file(
-                    worker.worker_id))
+                _global_node.new_worker_redirected_log_file(worker.worker_id))
             # Redirect stdout/stderr at the file descriptor level. If we simply
             # set sys.stdout and sys.stderr, then logging from C++ can fail to
             # be redirected.

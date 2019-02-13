@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import errno
 import functools
 import hashlib
 import inspect
@@ -465,3 +466,36 @@ def thread_safe_client(client, lock=None):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def try_to_create_directory(directory_path):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            logger.warning(
+                "Attempted to create '{}', but the directory already "
+                "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
