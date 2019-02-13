@@ -44,7 +44,7 @@ matrix:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
         #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
         - sudo apt-get update -qq
-        - sudo apt-get install -qq clang-format-3.8 golang
+        - sudo apt-get install -qq clang-format-3.8 golang-1.8-go
       install: []
       script:
         - .travis/check-git-clang-format-output.sh
