@@ -9,7 +9,6 @@ import pytest
 import time
 
 import ray
-import ray.tempfile_services
 from ray.test.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
