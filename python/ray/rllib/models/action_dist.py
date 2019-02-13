@@ -122,11 +122,11 @@ class DiagGaussian(ActionDistribution):
     """
 
     def __init__(self, inputs):
-        ActionDistribution.__init__(self, inputs)
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
+        ActionDistribution.__init__(self, inputs)
 
     @override(ActionDistribution)
     def logp(self, x):
