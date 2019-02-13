@@ -44,7 +44,7 @@ matrix:
         #- wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
         #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
         - sudo apt-get update -qq
-        - sudo apt-get install -qq clang-format-3.8 golang-1.8-go
+        - sudo apt-get install -qq clang-format-3.8
       install: []
       script:
         - .travis/check-git-clang-format-output.sh
@@ -65,10 +65,12 @@ matrix:
         - python setup.py check --restructuredtext --strict --metadata
         - cd ..
         # Run Bazel linter Buildifier.
+        - wget https://dl.google.com/go/go1.10.3.linux-amd64.tar.gz
+        - tar -xf go1.10.3.linux-amd64.tar.gz
         - mkdir $HOME/go_dir
+        - export GOROOT=`pwd`/go
         - export GOPATH="$HOME/go_dir"
-        - export PATH="$HOME/go_dir:$PATH"
-        - go version
+        - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./.travis/bazel-format.sh
 
