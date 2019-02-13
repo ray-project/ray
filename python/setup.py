@@ -154,6 +154,9 @@ requires = [
     "typing",
     "flatbuffers",
     "faulthandler;python_version<'3.3'",
+    # simplejson and psutil are required by the Reporter.
+    "simplejson",
+    "psutil",
 ]
 
 setup(

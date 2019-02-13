@@ -131,7 +131,6 @@ class Reporter(object):
         stats = self.get_all_stats()
 
         self.redis_client.publish(
-            #ray.gcs_utils.REPORTER_CHANNEL,
             self.redis_key,
             simplejson.dumps(stats, namedtuple_as_object=True),
         )
