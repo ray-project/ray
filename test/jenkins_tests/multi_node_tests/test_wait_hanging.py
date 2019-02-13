@@ -4,9 +4,11 @@ from __future__ import print_function
 
 import ray
 
+
 @ray.remote
 def f():
     return 0
+
 
 @ray.remote
 def g():
@@ -14,6 +16,7 @@ def g():
     start = time.time()
     while time.time() < start + 1:
         ray.get([f.remote() for _ in range(10)])
+
 
 # 10MB -> hangs after ~5 iterations
 # 20MB -> hangs after ~20 iterations
