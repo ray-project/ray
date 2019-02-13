@@ -1,17 +1,23 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import enum
+
 
 # Stream partitioning schemes
 class PScheme(object):
-    def __init__(self,strategy,partition_fn=None):
+    def __init__(self, strategy, partition_fn=None):
         self.strategy = strategy
         self.partition_fn = partition_fn
 
     def __repr__(self):
-        return "({},{})".format(self.strategy,self.partition_fn)
+        return "({},{})".format(self.strategy, self.partition_fn)
+
 
 # Partitioning strategies
 class PStrategy(enum.Enum):
-    Forward = 0     # Default
+    Forward = 0  # Default
     Shuffle = 1
     Rescale = 2
     RoundRobin = 3
@@ -19,6 +25,7 @@ class PStrategy(enum.Enum):
     Custom = 5
     ShuffleByKey = 6
     # ...
+
 
 # Operator types
 class OpType(enum.Enum):
@@ -36,6 +43,7 @@ class OpType(enum.Enum):
     Sum = 11
     # ...
 
+
 # A logical dataflow operator
 class Operator(object):
     def __init__(self,
@@ -48,14 +56,19 @@ class Operator(object):
         self.id = id
         self.type = type
         self.name = name
-        self.logic = logic                  # The operator's logic
+        self.logic = logic  # The operator's logic
         self.num_instances = num_instances
-        self.partitioning_strategies = {}   # One partitioning strategy per downstream operator (default: forward)
-        self.other_args = other             # Depends on the type of the operator
+        self.partitioning_strategies = {
+        }  # One partitioning strategy per downstream operator (default: forward)
+        self.other_args = other  # Depends on the type of the operator
 
     # Sets the partitioning scheme for an output stream of the operator
-    def _set_partition_strategy(self, stream_id, partitioning_scheme, dest_operator=None):
-        self.partitioning_strategies[stream_id] = (partitioning_scheme,dest_operator)
+    def _set_partition_strategy(self,
+                                stream_id,
+                                partitioning_scheme,
+                                dest_operator=None):
+        self.partitioning_strategies[stream_id] = (partitioning_scheme,
+                                                   dest_operator)
 
     # Retrieves the partitioning scheme for the given output stream of the operator
     # Returns None is no strategy has been defined for the particular stream
@@ -67,9 +80,10 @@ class Operator(object):
     # Should be called only after the logical dataflow has been constructed
     def _clean(self):
         strategies = {}
-        for _,v in self.partitioning_strategies.items():
-            s,dst = v;
-            if dst != None: strategies.setdefault(dst,s)
+        for _, v in self.partitioning_strategies.items():
+            strategy, destination_operator = v
+            if destination_operator != None:
+                strategies.setdefault(destination_operator, strategy)
         self.partitioning_strategies = strategies
 
     def print(self):

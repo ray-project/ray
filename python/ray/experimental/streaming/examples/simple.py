@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import time
 import logging
 import argparse
@@ -7,17 +11,20 @@ from ray.experimental.slib.streaming import *
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
+
 # Test functions
 def splitter(line):
     return line.split(' ')
 
+
 def filter_fn(word):
-     if "f" in word: return True
-     return False
+    if "f" in word:
+        return True
+    return False
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--input-file", required=True,
-                    help="the input text file")
+parser.add_argument("--input-file", required=True, help="the input text file")
 
 if __name__ == '__main__':
 
@@ -71,14 +78,14 @@ if __name__ == '__main__':
     #         .sink()
 
     end = time.time()
-    print("Assembled logical dataflow in {} secs\n".format(end-start))
+    print("Assembled logical dataflow in {} secs\n".format(end - start))
 
     env.print_logical_graph()
 
     start = time.time()
     env.execute()
     end = time.time()
-    print("Elapsed time: {} secs".format(end-start))
+    print("Elapsed time: {} secs".format(end - start))
     #env.print_physical_graph()
 
     #time.sleep(20)

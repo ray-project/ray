@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import time
 import logging
 import argparse
@@ -7,16 +11,18 @@ from ray.experimental.slib.streaming import *
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
+
 # Splits input line into words and outputs tuples of the form (word,1)
 def splitter(line):
     res = []
     words = line.split()
-    for w in words: res.append((w,1))
+    for w in words:
+        res.append((w, 1))
     return res
 
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--input-file", required=True,
-                    help="the input text file")
+parser.add_argument("--input-file", required=True, help="the input text file")
 
 if __name__ == '__main__':
 
@@ -27,7 +33,8 @@ if __name__ == '__main__':
     ray.register_custom_serializer(OpType, use_pickle=True)
     ray.register_custom_serializer(PStrategy, use_pickle=True)
 
-    env = Environment()     # A Ray streaming environment with the default configuration
+    env = Environment(
+    )  # A Ray streaming environment with the default configuration
     env.set_parallelism(2)  # Each operator will be executed by two actors
 
     # Stream represents the ouput of the sum and can be forked into other dataflows
@@ -41,4 +48,4 @@ if __name__ == '__main__':
     start = time.time()
     env.execute()
     end = time.time()
-    print("Elapsed time: {} secs".format(end-start))
+    print("Elapsed time: {} secs".format(end - start))
