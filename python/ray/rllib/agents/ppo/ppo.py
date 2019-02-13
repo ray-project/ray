@@ -36,7 +36,7 @@ DEFAULT_CONFIG = with_common_config({
     # Share layers for value function
     "vf_share_layers": False,
     # Coefficient of the value function loss
-    "vf_loss_coeff": 1.0,
+    "vf_loss_coeff": 0.01,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
@@ -159,7 +159,12 @@ class PPOAgent(Agent):
                 "by the multi-GPU optimizer. Consider setting "
                 "simple_optimizer=True if this doesn't work for you.")
         if self.config["observation_filter"] != "NoFilter":
-            # TODO(ekl): consider setting the default to be NoFilter
             logger.warning(
-                "By default, observations will be normalized with {}".format(
-                    self.config["observation_filter"]))
+                "By default, observations will be normalized with {}. ".format(
+                    self.config["observation_filter"]) +
+                "If you are using image or discrete type observations, "
+                "consider disabling this with observation_filter=NoFilter.")
+        if not self.config["vf_share_layers"]:
+            logger.warning(
+                "By default, the value function will NOT share layers with "
+                "the policy model (vf_share_layers=False).")
