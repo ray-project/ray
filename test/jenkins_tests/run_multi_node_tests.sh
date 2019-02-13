@@ -14,6 +14,11 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
+python3 $ROOT_DIR/multi_node_docker_test.py \
+    --docker-image=$DOCKER_SHA \
+    --num-nodes=1 \
+    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_wait_hanging.py
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v0 \
@@ -485,8 +490,3 @@ python3 $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
-
-python3 $ROOT_DIR/multi_node_docker_test.py \
-    --docker-image=$DOCKER_SHA \
-    --num-nodes=1 \
-    --test-script=/ray/test/jenkins_tests/multi_node_tests/test_wait_hanging.py
