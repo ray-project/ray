@@ -68,6 +68,7 @@ matrix:
         - mkdir $HOME/go_dir
         - export GOPATH="$HOME/go_dir"
         - export PATH="$HOME/go_dir:$PATH"
+        - go version
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./.travis/bazel-format.sh
 
