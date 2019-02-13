@@ -186,10 +186,11 @@ CUSTOM_OBJECTS = [
     NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])
 ]
 
+# Test dataclasses in Python 3.7.
 if sys.version_info >= (3, 7):
     from dataclasses import make_dataclass
 
-    DataClass0 = make_dataclass('DataClass0', [('number', int)])
+    DataClass0 = make_dataclass("DataClass0", [("number", int)])
 
     CUSTOM_OBJECTS.append(DataClass0(number=3))
 
@@ -197,7 +198,7 @@ if sys.version_info >= (3, 7):
         def __init__(self, value):
             self.value = value
 
-    DataClass1 = make_dataclass('DataClass1', [('custom', CustomClass)])
+    DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
 
     class DataClass2(DataClass1):
         @classmethod
