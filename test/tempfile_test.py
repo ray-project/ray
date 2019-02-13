@@ -3,7 +3,6 @@ import shutil
 import time
 import pytest
 import ray
-import ray.tempfile_services as tempfile_services
 
 
 def test_conn_cluster():
@@ -66,9 +65,10 @@ def test_temp_plasma_store_socket():
 
 def test_raylet_tempfiles():
     ray.init(redirect_worker_output=False)
-    top_levels = set(os.listdir(tempfile_services.get_temp_root()))
+    node = ray.worker._global_node
+    top_levels = set(os.listdir(node.get_temp_dir_path()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
-    log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
+    log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files == {
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
@@ -76,14 +76,15 @@ def test_raylet_tempfiles():
         "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
         "raylet.out", "raylet.err"
     }  # with raylet logs
-    socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
+    socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
     ray.init(redirect_worker_output=True, num_cpus=0)
-    top_levels = set(os.listdir(tempfile_services.get_temp_root()))
+    node = ray.worker._global_node
+    top_levels = set(os.listdir(node.get_temp_dir_path()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
-    log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
+    log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files == {
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
@@ -91,15 +92,16 @@ def test_raylet_tempfiles():
         "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
         "raylet.out", "raylet.err"
     }  # with raylet logs
-    socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
+    socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
     ray.init(redirect_worker_output=True, num_cpus=2)
-    top_levels = set(os.listdir(tempfile_services.get_temp_root()))
+    node = ray.worker._global_node
+    top_levels = set(os.listdir(node.get_temp_dir_path()))
     assert top_levels == {"ray_ui.ipynb", "sockets", "logs"}
     time.sleep(3)  # wait workers to start
-    log_files = set(os.listdir(tempfile_services.get_logs_dir_path()))
+    log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files.issuperset({
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "webui.out", "webui.err", "monitor.out",
@@ -112,6 +114,6 @@ def test_raylet_tempfiles():
     assert sum(
         1 for filename in log_files if filename.startswith("worker")) == 4
 
-    socket_files = set(os.listdir(tempfile_services.get_sockets_dir_path()))
+    socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()

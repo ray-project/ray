@@ -96,7 +96,8 @@ class BayesOptSearch(SuggestionAlgorithm):
             self.optimizer.register(
                 params=self._live_trial_mapping[trial_id],
                 target=result[self._reward_attr])
-            del self._live_trial_mapping[trial_id]
+
+        del self._live_trial_mapping[trial_id]
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

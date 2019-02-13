@@ -24,6 +24,7 @@ class VectorEnv(object):
 
     @staticmethod
     def wrap(make_env=None,
+             existing_envs=None,
              num_envs=1,
              remote_envs=False,
              action_space=None,
@@ -31,8 +32,8 @@ class VectorEnv(object):
         if remote_envs:
             return _RemoteVectorizedGymEnv(make_env, num_envs, action_space,
                                            observation_space)
-        return _VectorizedGymEnv(make_env, [], num_envs, action_space,
-                                 observation_space)
+        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
+                                 action_space, observation_space)
 
     @PublicAPI
     def vector_reset(self):
@@ -148,13 +149,8 @@ class _RemoteVectorizedGymEnv(_VectorizedGymEnv):
         self.make_local_env = make_env
         self.num_envs = num_envs
         self.initialized = False
-        logger.warning(
-            "Creating throwaway env to get action and obs space. To avoid "
-            "resource overheads, your env should defer any expensive "
-            "initialization to reset().")
-        dummy = make_env(0)
-        self.action_space = dummy.action_space
-        self.observation_space = dummy.observation_space
+        self.action_space = action_space
+        self.observation_space = observation_space
 
     def _initialize_if_needed(self):
         if self.initialized:

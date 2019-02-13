@@ -32,7 +32,6 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
-import ray.tempfile_services as tempfile_services
 import ray.ray_constants as ray_constants
 from ray import import_thread
 from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
@@ -1387,10 +1386,13 @@ def init(redis_address=None,
         "redis_address": redis_address
     }
 
+    global _global_node
     if driver_mode == LOCAL_MODE:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
         pass
     elif redis_address is None:
+        # TODO(suquark): We should remove the code below because they
+        # have been set when initializing the node.
         if node_ip_address is None:
             node_ip_address = ray.services.get_node_ip_address()
         if num_redis_shards is None:
@@ -1424,7 +1426,6 @@ def init(redis_address=None,
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler.
-        global _global_node
         _global_node = ray.node.Node(
             head=True, shutdown_at_exit=False, ray_params=ray_params)
         address_info["redis_address"] = _global_node.redis_address
@@ -1481,6 +1482,18 @@ def init(redis_address=None,
         # Get the address info of the processes to connect to from Redis.
         address_info = get_address_info_from_redis(
             redis_address, node_ip_address, redis_password=redis_password)
+        # TODO(suquark): Use "node" as the input of "connect()".
+        # In this case, we only need to connect the node.
+        ray_params = ray.parameter.RayParams(
+            node_ip_address=node_ip_address,
+            redis_address=redis_address,
+            redis_password=redis_password,
+            plasma_store_socket_name=address_info["object_store_address"],
+            raylet_socket_name=address_info["raylet_socket_name"],
+            object_id_seed=object_id_seed,
+            temp_dir=temp_dir)
+        _global_node = ray.node.Node(
+            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
 
     if driver_mode == LOCAL_MODE:
         driver_address_info = {}
@@ -1493,8 +1506,6 @@ def init(redis_address=None,
             "raylet_socket_name": address_info["raylet_socket_name"],
         }
 
-    # We only pass `temp_dir` to a worker (WORKER_MODE).
-    # It can't be a worker here.
     connect(
         driver_address_info,
         redis_password=redis_password,
@@ -1851,8 +1862,7 @@ def connect(info,
             redirect_worker_output = 0
         if redirect_worker_output:
             log_stdout_file, log_stderr_file = (
-                tempfile_services.new_worker_redirected_log_file(
-                    worker.worker_id))
+                _global_node.new_worker_redirected_log_file(worker.worker_id))
             # Redirect stdout/stderr at the file descriptor level. If we simply
             # set sys.stdout and sys.stderr, then logging from C++ can fail to
             # be redirected.
