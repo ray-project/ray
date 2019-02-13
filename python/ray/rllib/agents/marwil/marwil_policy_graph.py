@@ -63,10 +63,17 @@ class MARWILPolicyGraph(TFPolicyGraph):
         # Action inputs
         self.obs_t = tf.placeholder(
             tf.float32, shape=(None, ) + observation_space.shape)
+        prev_actions_ph = ModelCatalog.get_action_placeholder(action_space)
+        prev_rewards_ph = tf.placeholder(
+            tf.float32, [None], name="prev_reward")
 
         with tf.variable_scope(P_SCOPE) as scope:
-            self.model = self._build_policy_network(
-                self.obs_t, observation_space, logit_dim)
+            self.model = ModelCatalog.get_model({
+                "obs": self.obs_t,
+                "prev_actions": prev_actions_ph,
+                "prev_rewards": prev_rewards_ph,
+                "is_training": self._get_is_training_placeholder(),
+            }, observation_space, logit_dim, self.config["model"])
             logits = self.model.outputs
             self.p_func_vars = _scope_vars(scope.name)
 
@@ -109,7 +116,9 @@ class MARWILPolicyGraph(TFPolicyGraph):
             loss=self.model.loss() + objective,
             loss_inputs=self.loss_inputs,
             state_inputs=self.model.state_in,
-            state_outputs=self.model.state_out)
+            state_outputs=self.model.state_out,
+            prev_action_input=prev_actions_ph,
+            prev_reward_input=prev_rewards_ph)
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
@@ -118,12 +127,6 @@ class MARWILPolicyGraph(TFPolicyGraph):
             "policy_loss": self.p_loss.loss,
             "vf_loss": self.v_loss.loss
         }
-
-    def _build_policy_network(self, obs, obs_space, logit_dim):
-        return ModelCatalog.get_model({
-            "obs": obs,
-            "is_training": self._get_is_training_placeholder(),
-        }, obs_space, logit_dim, self.config["model"])
 
     def _build_value_loss(self, state_values, cum_rwds):
         return ValueLoss(state_values, cum_rwds)
