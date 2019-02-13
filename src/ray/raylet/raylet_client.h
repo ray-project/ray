@@ -10,10 +10,12 @@
 #include "ray/status.h"
 
 using ray::ActorID;
+using ray::ActorCheckpointID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
+using ray::ClientID;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -145,9 +147,25 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return ray::Status.
+  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                     ActorCheckpointID &checkpoint_id);
+
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return ray::Status.
+  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                               const ActorCheckpointID &checkpoint_id);
+
   Language GetLanguage() const { return language_; }
 
-  JobID GetClientID() const { return client_id_; }
+  ClientID GetClientID() const { return client_id_; }
 
   JobID GetDriverID() const { return driver_id_; }
 
@@ -156,7 +174,7 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const UniqueID client_id_;
+  const ClientID client_id_;
   const bool is_worker_;
   const JobID driver_id_;
   const Language language_;

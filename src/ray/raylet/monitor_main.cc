@@ -31,8 +31,19 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(raylet_config);
 
-  // Initialize the monitor.
   boost::asio::io_service io_service;
+
+  // The code below is commented out because it appears to introduce a double
+  // free error in the raylet monitor.
+  // // Destroy the Raylet monitor on a SIGTERM. The pointer to io_service is
+  // // guaranteed to be valid since this function will run the event loop
+  // // instead of returning immediately.
+  // auto handler = [&io_service](const boost::system::error_code &error,
+  //                              int signal_number) { io_service.stop(); };
+  // boost::asio::signal_set signals(io_service, SIGTERM);
+  // signals.async_wait(handler);
+
+  // Initialize the monitor.
   ray::raylet::Monitor monitor(io_service, redis_address, redis_port, redis_password);
   monitor.Start();
   io_service.run();

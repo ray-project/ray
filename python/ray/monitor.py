@@ -17,9 +17,9 @@ import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.services import get_ip_address, get_port
-from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
+from ray.utils import (binary_to_hex, binary_to_object_id, hex_to_binary,
+                       setup_logger)
 
-# Set up logging.
 logger = logging.getLogger(__name__)
 
 
@@ -36,17 +36,15 @@ class Monitor(object):
             receive notifications about failed components.
     """
 
-    def __init__(self,
-                 redis_address,
-                 redis_port,
-                 autoscaling_config,
-                 redis_password=None):
+    def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
+        redis_ip_address = get_ip_address(args.redis_address)
+        redis_port = get_port(args.redis_address)
         self.state._initialize_global_state(
-            redis_address, redis_port, redis_password=redis_password)
-        self.redis = redis.StrictRedis(
-            host=redis_address, port=redis_port, db=0, password=redis_password)
+            redis_ip_address, redis_port, redis_password=redis_password)
+        self.redis = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -68,8 +66,10 @@ class Monitor(object):
             # that redis server.
             addr_port = self.redis.lrange("RedisShards", 0, -1)
             if len(addr_port) > 1:
-                logger.warning("TODO: if launching > 1 redis shard, flushing "
-                               "needs to touch shards in parallel.")
+                logger.warning(
+                    "Monitor: "
+                    "TODO: if launching > 1 redis shard, flushing needs to "
+                    "touch shards in parallel.")
                 self.issue_gcs_flushes = False
             else:
                 addr_port = addr_port[0].split(b":")
@@ -81,9 +81,15 @@ class Monitor(object):
                     self.redis_shard.execute_command("HEAD.FLUSH 0")
                 except redis.exceptions.ResponseError as e:
                     logger.info(
+                        "Monitor: "
                         "Turning off flushing due to exception: {}".format(
                             str(e)))
                     self.issue_gcs_flushes = False
+
+    def __del__(self):
+        """Destruct the monitor object."""
+        # We close the pubsub client to avoid leaking file descriptors.
+        self.primary_subscribe_client.close()
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -127,8 +133,9 @@ class Monitor(object):
                 self.load_metrics.update(ip, static_resources,
                                          dynamic_resources)
             else:
-                print("Warning: could not find ip for client {} in {}.".format(
-                    client_id, self.local_scheduler_id_to_ip_map))
+                logger.warning(
+                    "Monitor: "
+                    "could not find ip for client {}".format(client_id))
 
     def _xray_clean_up_entries_for_driver(self, driver_id):
         """Remove this driver's object/task entries from redis.
@@ -160,9 +167,9 @@ class Monitor(object):
         object_table_objects = self.state.object_table()
         driver_object_id_bins = set()
         for object_id, _ in object_table_objects.items():
-            task_id_bin = ray.raylet.compute_task_id(object_id).id()
+            task_id_bin = ray._raylet.compute_task_id(object_id).binary()
             if task_id_bin in driver_task_id_bins:
-                driver_object_id_bins.add(object_id.id())
+                driver_object_id_bins.add(object_id.binary())
 
         def to_shard_index(id_bin):
             return binary_to_object_id(id_bin).redis_shard_hash() % len(
@@ -184,11 +191,14 @@ class Monitor(object):
                 continue
             redis = self.state.redis_clients[shard_index]
             num_deleted = redis.delete(*keys)
-            logger.info("Removed {} dead redis entries of the driver from"
-                        " redis shard {}.".format(num_deleted, shard_index))
+            logger.info("Monitor: "
+                        "Removed {} dead redis entries of the "
+                        "driver from redis shard {}.".format(
+                            num_deleted, shard_index))
             if num_deleted != len(keys):
-                logger.warning("Failed to remove {} relevant redis entries"
-                               " from redis shard {}.".format(
+                logger.warning("Monitor: "
+                               "Failed to remove {} relevant redis "
+                               "entries from redis shard {}.".format(
                                    len(keys) - num_deleted, shard_index))
 
     def xray_driver_removed_handler(self, unused_channel, data):
@@ -204,8 +214,9 @@ class Monitor(object):
         message = ray.gcs_utils.DriverTableData.GetRootAsDriverTableData(
             driver_data, 0)
         driver_id = message.DriverId()
-        logger.info("XRay Driver {} has been removed.".format(
-            binary_to_hex(driver_id)))
+        logger.info("Monitor: "
+                    "XRay Driver {} has been removed.".format(
+                        binary_to_hex(driver_id)))
         self._xray_clean_up_entries_for_driver(driver_id)
 
     def process_messages(self, max_messages=10000):
@@ -231,7 +242,6 @@ class Monitor(object):
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                message_handler = None
                 if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
                     # Similar functionality as local scheduler info channel
                     message_handler = self.xray_heartbeat_batch_handler
@@ -242,7 +252,6 @@ class Monitor(object):
                     raise Exception("This code should be unreachable.")
 
                 # Call the handler.
-                assert (message_handler is not None)
                 message_handler(channel, data)
 
     def update_local_scheduler_map(self):
@@ -280,7 +289,7 @@ class Monitor(object):
         max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
         num_flushed = self.redis_shard.execute_command(
             "HEAD.FLUSH {}".format(max_entries_to_flush))
-        logger.info("num_flushed {}".format(num_flushed))
+        logger.info("Monitor: num_flushed {}".format(num_flushed))
 
         # This flushes event log and log files.
         ray.experimental.flush_redis_unsafe(self.redis)
@@ -358,11 +367,7 @@ if __name__ == "__main__":
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
     args = parser.parse_args()
-    level = logging.getLevelName(args.logging_level.upper())
-    logging.basicConfig(level=level, format=args.logging_format)
-
-    redis_ip_address = get_ip_address(args.redis_address)
-    redis_port = get_port(args.redis_address)
+    setup_logger(args.logging_level, args.logging_format)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
@@ -370,8 +375,7 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(
-        redis_ip_address,
-        redis_port,
+        args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password)
 
@@ -379,10 +383,8 @@ if __name__ == "__main__":
         monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = redis.StrictRedis(
-            host=redis_ip_address,
-            port=redis_port,
-            password=args.redis_password)
+        redis_client = ray.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = "The monitor failed with the following error:\n{}".format(
             traceback_str)

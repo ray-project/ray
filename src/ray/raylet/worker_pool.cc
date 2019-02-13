@@ -71,10 +71,10 @@ WorkerPool::~WorkerPool() {
     for (const auto &worker : entry.second.registered_workers) {
       pids_to_kill.insert(worker->Pid());
     }
-  }
-  // Kill all the workers that have been started but not registered.
-  for (const auto &entry : starting_worker_processes_) {
-    pids_to_kill.insert(entry.first);
+    // Kill all the workers that have been started but not registered.
+    for (const auto &starting_worker : entry.second.starting_worker_processes) {
+      pids_to_kill.insert(starting_worker.first);
+    }
   }
   for (const auto &pid : pids_to_kill) {
     RAY_CHECK(pid > 0);
@@ -97,37 +97,21 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 void WorkerPool::StartWorkerProcess(const Language &language) {
+  auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
-  if (static_cast<int>(starting_worker_processes_.size()) >=
+  if (static_cast<int>(state.starting_worker_processes.size()) >=
       maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << starting_worker_processes_.size()
-                   << " worker processes pending registration";
+    RAY_LOG(DEBUG) << "Worker not started, " << state.starting_worker_processes.size()
+                   << " worker processes of language type " << static_cast<int>(language)
+                   << " pending registration";
     return;
   }
-  auto &state = GetStateForLanguage(language);
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
-
-  // Launch the process to create the worker.
-  pid_t pid = fork();
-  if (pid < 0) {
-    // Failure case.
-    RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
-    return;
-  } else if (pid > 0) {
-    // Parent process case.
-    RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
-    starting_worker_processes_.emplace(std::make_pair(pid, num_workers_per_process_));
-    return;
-  }
-
-  // Child process case.
-  // Reset the SIGCHLD handler for the worker.
-  signal(SIGCHLD, SIG_DFL);
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<const char *> worker_command_args;
@@ -136,12 +120,39 @@ void WorkerPool::StartWorkerProcess(const Language &language) {
   }
   worker_command_args.push_back(nullptr);
 
+  pid_t pid = StartProcess(worker_command_args);
+  if (pid < 0) {
+    // Failure case.
+    RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
+    return;
+  } else if (pid > 0) {
+    // Parent process case.
+    RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
+    state.starting_worker_processes.emplace(
+        std::make_pair(pid, num_workers_per_process_));
+    return;
+  }
+}
+
+pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_args) {
+  // Launch the process to create the worker.
+  pid_t pid = fork();
+
+  if (pid != 0) {
+    return pid;
+  }
+
+  // Child process case.
+  // Reset the SIGCHLD handler for the worker.
+  signal(SIGCHLD, SIG_DFL);
+
   // Try to execute the worker command.
   int rv = execvp(worker_command_args[0],
                   const_cast<char *const *>(worker_command_args.data()));
   // The worker failed to start. This is a fatal error.
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
                  << strerror(errno);
+  return 0;
 }
 
 void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
@@ -150,11 +161,11 @@ void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   state.registered_workers.insert(std::move(worker));
 
-  auto it = starting_worker_processes_.find(pid);
-  RAY_CHECK(it != starting_worker_processes_.end());
+  auto it = state.starting_worker_processes.find(pid);
+  RAY_CHECK(it != state.starting_worker_processes.end());
   it->second--;
   if (it->second == 0) {
-    starting_worker_processes_.erase(it);
+    state.starting_worker_processes.erase(it);
   }
 }
 
@@ -241,8 +252,6 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      RAY_LOG(DEBUG) << "worker: pid : " << worker->Pid()
-                     << " driver_id: " << worker->GetAssignedDriverId();
       if (worker->GetAssignedDriverId() == driver_id) {
         workers.push_back(worker);
       }
@@ -253,10 +262,12 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver
 }
 
 std::string WorkerPool::WarningAboutSize() {
-  int64_t num_workers_started_or_registered = starting_worker_processes_.size();
+  int64_t num_workers_started_or_registered = 0;
   for (const auto &entry : states_by_lang_) {
     num_workers_started_or_registered +=
         static_cast<int64_t>(entry.second.registered_workers.size());
+    num_workers_started_or_registered +=
+        static_cast<int64_t>(entry.second.starting_worker_processes.size());
   }
   int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
   std::stringstream warning_message;

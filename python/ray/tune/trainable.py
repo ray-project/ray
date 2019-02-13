@@ -18,9 +18,9 @@ import uuid
 
 import ray
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
-                             EPISODES_THIS_ITER, EPISODES_TOTAL)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
+    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION)
 from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,7 @@ class Trainable(object):
         # self._timesteps_total should not override user-provided total
         result.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
         result.setdefault(EPISODES_TOTAL, self._episodes_total)
+        result.setdefault(TRAINING_ITERATION, self._iteration)
 
         # Provides auto-filled neg_mean_loss for avoiding regressions
         if result.get("mean_loss"):
@@ -191,7 +192,6 @@ class Trainable(object):
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
             timestamp=int(time.mktime(now.timetuple())),
-            training_iteration=self._iteration,
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
@@ -202,7 +202,7 @@ class Trainable(object):
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
 
-        self._result_logger.on_result(result)
+        self._log_result(result)
 
         return result
 
@@ -331,6 +331,23 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def export_model(self, export_formats, export_dir=None):
+        """Exports model based on export_formats.
+
+        Subclasses should override _export_model() to actually
+        export model to local directory.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Optional dir to place the exported model.
+                Defaults to self.logdir.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        export_dir = export_dir or self.logdir
+        return self._export_model(export_formats, export_dir)
+
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
@@ -398,9 +415,30 @@ class Trainable(object):
         """
         pass
 
+    def _log_result(self, result):
+        """Subclasses can optionally override this to customize logging.
+
+        Args:
+            result (dict): Training result returned by _train().
+        """
+
+        self._result_logger.on_result(result)
+
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
+
+    def _export_model(self, export_formats, export_dir):
+        """Subclasses should override this to export model.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Directory to place exported models.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        return {}
 
 
 def wrap_function(train_func):

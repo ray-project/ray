@@ -2,6 +2,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/client.h"
+#include "ray/ray_config.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -247,10 +249,7 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
   data->type = type;
   data->error_message = error_message;
   data->timestamp = timestamp;
-  return Append(job_id, job_id, data, [](ray::gcs::AsyncGcsClient *client,
-                                         const JobID &id, const ErrorTableDataT &data) {
-    RAY_LOG(DEBUG) << "Error message pushed callback";
-  });
+  return Append(job_id, job_id, data, /*done_callback=*/nullptr);
 }
 
 std::string ErrorTable::DebugString() const {
@@ -264,10 +263,7 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
   profile_events.UnPackTo(data.get());
 
   return Append(JobID::nil(), UniqueID::from_random(), data,
-                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
-                   const ProfileTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Profile message pushed callback";
-                });
+                /*done_callback=*/nullptr);
 }
 
 std::string ProfileTable::DebugString() const {
@@ -278,11 +274,7 @@ Status DriverTable::AppendDriverData(const JobID &driver_id, bool is_dead) {
   auto data = std::make_shared<DriverTableDataT>();
   data->driver_id = driver_id.binary();
   data->is_dead = is_dead;
-  return Append(driver_id, driver_id, data,
-                [](ray::gcs::AsyncGcsClient *client, const JobID &id,
-                   const DriverTableDataT &data) {
-                  RAY_LOG(DEBUG) << "Driver entry added callback";
-                });
+  return Append(driver_id, driver_id, data, /*done_callback=*/nullptr);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -448,6 +440,41 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
+                                               const ActorID &actor_id,
+                                               const UniqueID &checkpoint_id) {
+  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ActorCheckpointIdDataT &data) {
+    std::shared_ptr<ActorCheckpointIdDataT> copy =
+        std::make_shared<ActorCheckpointIdDataT>(data);
+    copy->timestamps.push_back(current_sys_time_ms());
+    copy->checkpoint_ids += checkpoint_id.binary();
+    auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
+    while (copy->timestamps.size() > num_to_keep) {
+      // Delete the checkpoint from actor checkpoint table.
+      const auto &checkpoint_id =
+          UniqueID::from_binary(copy->checkpoint_ids.substr(0, kUniqueIDSize));
+      RAY_LOG(DEBUG) << "Deleting checkpoint " << checkpoint_id << " for actor "
+                     << actor_id;
+      copy->timestamps.erase(copy->timestamps.begin());
+      copy->checkpoint_ids.erase(0, kUniqueIDSize);
+      // TODO(hchen): also delete checkpoint data from GCS.
+    }
+    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+  };
+  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+    std::shared_ptr<ActorCheckpointIdDataT> data =
+        std::make_shared<ActorCheckpointIdDataT>();
+    data->actor_id = id.binary();
+    data->timestamps.push_back(current_sys_time_ms());
+    data->checkpoint_ids = checkpoint_id.binary();
+    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+  };
+  return Lookup(job_id, actor_id, lookup_callback, failure_callback);
+}
+
 template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
@@ -461,6 +488,8 @@ template class Log<JobID, ErrorTableData>;
 template class Log<UniqueID, ClientTableData>;
 template class Log<JobID, DriverTableData>;
 template class Log<UniqueID, ProfileTableData>;
+template class Table<ActorCheckpointID, ActorCheckpointData>;
+template class Table<ActorID, ActorCheckpointIdData>;
 
 }  // namespace gcs
 

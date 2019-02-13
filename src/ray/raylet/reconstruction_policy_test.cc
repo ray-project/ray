@@ -29,10 +29,10 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id, std::unordered_set<ray::ClientID>(),
+        callback.second(object_id, std::unordered_set<ray::ClientID>(), false, {}, "",
                         /*created=*/false);
       } else {
-        callback.second(object_id, it->second, /*created=*/true);
+        callback.second(object_id, it->second, false, {}, "", /*created=*/true);
       }
     }
     callbacks_.clear();
@@ -60,9 +60,11 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
                            const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
-  MOCK_METHOD3(ReportObjectAdded,
+  MOCK_METHOD6(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &,
-                           const object_manager::protocol::ObjectInfoT &));
+                           const object_manager::protocol::ObjectInfoT &, bool,
+                           const std::vector<uint8_t> &, const std::string &));
+
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
 
  private:

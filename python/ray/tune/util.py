@@ -23,13 +23,13 @@ def pin_in_object_store(obj):
     obj_id = ray.put(_to_pinnable(obj))
     _pinned_objects.append(ray.get(obj_id))
     return "{}{}".format(PINNED_OBJECT_PREFIX,
-                         base64.b64encode(obj_id.id()).decode("utf-8"))
+                         base64.b64encode(obj_id.binary()).decode("utf-8"))
 
 
 def get_pinned_object(pinned_id):
     """Retrieve a pinned object from the object store."""
 
-    from ray.raylet import ObjectID
+    from ray import ObjectID
 
     return _from_pinnable(
         ray.get(

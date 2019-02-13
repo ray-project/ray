@@ -118,6 +118,8 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
+  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -157,12 +159,6 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
     : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
-
-Status Attach(plasma::EventLoop &event_loop) {
-  // TODO(pcm): Implement this via
-  // context()->AttachToEventLoop(event loop)
-  return Status::OK();
-}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
@@ -224,6 +220,14 @@ ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
+
+ActorCheckpointTable &AsyncGcsClient::actor_checkpoint_table() {
+  return *actor_checkpoint_table_;
+}
+
+ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
+  return *actor_checkpoint_id_table_;
+}
 
 }  // namespace gcs
 

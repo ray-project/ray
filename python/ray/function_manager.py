@@ -223,7 +223,7 @@ class FunctionDescriptor(object):
             ray.ObjectID to represent the function descriptor.
         """
         if self.is_for_driver_task:
-            return ray.ObjectID.nil_id()
+            return ray.FunctionID.nil()
         function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.module_name.encode("ascii"))
@@ -232,7 +232,7 @@ class FunctionDescriptor(object):
         function_id_hash.update(self._function_source_hash)
         # Compute the function ID.
         function_id = function_id_hash.digest()
-        return ray.ObjectID(function_id)
+        return ray.FunctionID(function_id)
 
     def get_function_descriptor_list(self):
         """Return a list of bytes representing the function descriptor.
@@ -355,13 +355,13 @@ class FunctionActorManager(object):
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.task_driver_id.id() + b":" +
-               remote_function._function_descriptor.function_id.id())
+        key = (b"RemoteFunction:" + self._worker.task_driver_id.binary() + b":"
+               + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hmset(
             key, {
-                "driver_id": self._worker.task_driver_id.id(),
+                "driver_id": self._worker.task_driver_id.binary(),
                 "function_id": remote_function._function_descriptor.
-                function_id.id(),
+                function_id.binary(),
                 "name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
@@ -377,8 +377,8 @@ class FunctionActorManager(object):
              "driver_id", "function_id", "name", "function", "num_return_vals",
              "module", "resources", "max_calls"
          ])
-        function_id = ray.ObjectID(function_id_str)
-        driver_id = ray.ObjectID(driver_id_str)
+        function_id = ray.FunctionID(function_id_str)
+        driver_id = ray.DriverID(driver_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
@@ -403,12 +403,10 @@ class FunctionActorManager(object):
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                traceback_str,
-                driver_id=driver_id,
-                data={
-                    "function_id": function_id.id(),
-                    "function_name": function_name
-                })
+                "Failed to unpickle the remote function '{}' with function ID "
+                "{}. Traceback:\n{}".format(function_name, function_id.hex(),
+                                            traceback_str),
+                driver_id=driver_id)
         else:
             # The below line is necessary. Because in the driver process,
             # if the function is defined in the file where the python script
@@ -423,7 +421,8 @@ class FunctionActorManager(object):
                     max_calls=max_calls))
             # Add the function to the function table.
             self._worker.redis_client.rpush(
-                b"FunctionTable:" + function_id.id(), self._worker.worker_id)
+                b"FunctionTable:" + function_id.binary(),
+                self._worker.worker_id)
 
     def get_execution_info(self, driver_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -505,15 +504,13 @@ class FunctionActorManager(object):
         Args:
             key: The key to store the actor class info at.
             actor_class_info: Information about the actor class.
-            worker: The worker to use to connect to Redis.
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names,
-                           checkpoint_interval):
+    def export_actor_class(self, Class, actor_method_names):
         function_descriptor = FunctionDescriptor.from_class(Class)
         # `task_driver_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
@@ -524,14 +521,13 @@ class FunctionActorManager(object):
             "You might have started a background thread in a non-actor task, "
             "please make sure the thread finishes before the task finishes.")
         driver_id = self._worker.task_driver_id
-        key = (b"ActorClass:" + driver_id.id() + b":" +
-               function_descriptor.function_id.id())
+        key = (b"ActorClass:" + driver_id.binary() + b":" +
+               function_descriptor.function_id.binary())
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
             "class": pickle.dumps(Class),
-            "checkpoint_interval": checkpoint_interval,
-            "driver_id": driver_id.id(),
+            "driver_id": driver_id.binary(),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
@@ -556,8 +552,8 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        key = (b"ActorClass:" + driver_id.id() + b":" +
-               function_descriptor.function_id.id())
+        key = (b"ActorClass:" + driver_id.binary() + b":" +
+               function_descriptor.function_id.binary())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
@@ -576,20 +572,18 @@ class FunctionActorManager(object):
 
         Args:
             actor_class_key: The key in Redis to use to fetch the actor.
-            worker: The worker to use.
         """
         actor_id = self._worker.actor_id
-        (driver_id_str, class_name, module, pickled_class, checkpoint_interval,
+        (driver_id_str, class_name, module, pickled_class,
          actor_method_names) = self._worker.redis_client.hmget(
              actor_class_key, [
                  "driver_id", "class_name", "module", "class",
-                 "checkpoint_interval", "actor_method_names"
+                 "actor_method_names"
              ])
 
         class_name = decode(class_name)
         module = decode(module)
-        driver_id = ray.ObjectID(driver_id_str)
-        checkpoint_interval = int(checkpoint_interval)
+        driver_id = ray.DriverID(driver_id_str)
         actor_method_names = json.loads(decode(actor_method_names))
 
         # In Python 2, json loads strings as unicode, so convert them back to
@@ -608,7 +602,6 @@ class FunctionActorManager(object):
             pass
 
         self._worker.actors[actor_id] = TemporaryActor()
-        self._worker.actor_checkpoint_interval = checkpoint_interval
 
         def temporary_actor_method(*xs):
             raise Exception(
@@ -641,11 +634,10 @@ class FunctionActorManager(object):
                 traceback.format_exc())
             # Log the error message.
             push_error_to_driver(
-                self._worker,
-                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                traceback_str,
-                driver_id,
-                data={"actor_id": actor_id.id()})
+                self._worker, ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+                "Failed to unpickle actor class '{}' for actor ID {}. "
+                "Traceback:\n{}".format(class_name, actor_id.hex(),
+                                        traceback_str), driver_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.
@@ -679,7 +671,6 @@ class FunctionActorManager(object):
         necessary checkpointing operations.
 
         Args:
-            worker (Worker): The worker that is executing the actor.
             method_name (str): The name of the actor method.
             method (instancemethod): The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
@@ -699,48 +690,116 @@ class FunctionActorManager(object):
             # to execute.
             self._worker.actor_task_counter += 1
 
-            # If this is the first task to execute on the actor, try to resume
-            # from a checkpoint.
-            # Current __init__ will be called by default. So the real function
-            # call will start from 2.
-            if actor_imported and self._worker.actor_task_counter == 2:
-                checkpoint_resumed = ray.actor.restore_and_log_checkpoint(
-                    self._worker, actor)
-                if checkpoint_resumed:
-                    # NOTE(swang): Since we did not actually execute the
-                    # __init__ method, this will put None as the return value.
-                    # If the __init__ method is supposed to return multiple
-                    # values, an exception will be logged.
-                    return
-
-            # Determine whether we should checkpoint the actor.
-            checkpointing_on = (actor_imported
-                                and self._worker.actor_checkpoint_interval > 0)
-            # We should checkpoint the actor if user checkpointing is on, we've
-            # executed checkpoint_interval tasks since the last checkpoint, and
-            # the method we're about to execute is not a checkpoint.
-            save_checkpoint = (checkpointing_on
-                               and (self._worker.actor_task_counter %
-                                    self._worker.actor_checkpoint_interval == 0
-                                    and method_name != "__ray_checkpoint__"))
-
             # Execute the assigned method and save a checkpoint if necessary.
             try:
                 if is_class_method(method):
                     method_returns = method(*args)
                 else:
                     method_returns = method(actor, *args)
-            except Exception:
+            except Exception as e:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown.
-                if save_checkpoint:
-                    ray.actor.save_and_log_checkpoint(self._worker, actor)
-                raise
+                if isinstance(actor, ray.actor.Checkpointable):
+                    self._save_and_log_checkpoint(actor)
+                raise e
             else:
-                # Save the checkpoint before returning the method's return
-                # values.
-                if save_checkpoint:
-                    ray.actor.save_and_log_checkpoint(self._worker, actor)
+                # Handle any checkpointing operations before storing the
+                # method's return values.
+                # NOTE(swang): If method_returns is a pointer to the actor's
+                # state and the checkpointing operations can modify the return
+                # values if they mutate the actor's state. Is this okay?
+                if isinstance(actor, ray.actor.Checkpointable):
+                    # If this is the first task to execute on the actor, try to
+                    # resume from a checkpoint.
+                    if self._worker.actor_task_counter == 1:
+                        if actor_imported:
+                            self._restore_and_log_checkpoint(actor)
+                    else:
+                        # Save the checkpoint before returning the method's
+                        # return values.
+                        self._save_and_log_checkpoint(actor)
                 return method_returns
 
         return actor_method_executor
+
+    def _save_and_log_checkpoint(self, actor):
+        """Save an actor checkpoint if necessary and log any errors.
+
+        Args:
+            actor: The actor to checkpoint.
+
+        Returns:
+            The result of the actor's user-defined `save_checkpoint` method.
+        """
+        actor_id = self._worker.actor_id
+        checkpoint_info = self._worker.actor_checkpoint_info[actor_id]
+        checkpoint_info.num_tasks_since_last_checkpoint += 1
+        now = int(1000 * time.time())
+        checkpoint_context = ray.actor.CheckpointContext(
+            actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
+            now - checkpoint_info.last_checkpoint_timestamp)
+        # If we should take a checkpoint, notify raylet to prepare a checkpoint
+        # and then call `save_checkpoint`.
+        if actor.should_checkpoint(checkpoint_context):
+            try:
+                now = int(1000 * time.time())
+                checkpoint_id = (self._worker.raylet_client.
+                                 prepare_actor_checkpoint(actor_id))
+                checkpoint_info.checkpoint_ids.append(checkpoint_id)
+                actor.save_checkpoint(actor_id, checkpoint_id)
+                if (len(checkpoint_info.checkpoint_ids) >
+                        ray._config.num_actor_checkpoints_to_keep()):
+                    actor.checkpoint_expired(
+                        actor_id,
+                        checkpoint_info.checkpoint_ids.pop(0),
+                    )
+                checkpoint_info.num_tasks_since_last_checkpoint = 0
+                checkpoint_info.last_checkpoint_timestamp = now
+            except Exception:
+                # Checkpoint save or reload failed. Notify the driver.
+                traceback_str = ray.utils.format_error_message(
+                    traceback.format_exc())
+                ray.utils.push_error_to_driver(
+                    self._worker,
+                    ray_constants.CHECKPOINT_PUSH_ERROR,
+                    traceback_str,
+                    driver_id=self._worker.task_driver_id)
+
+    def _restore_and_log_checkpoint(self, actor):
+        """Restore an actor from a checkpoint if available and log any errors.
+
+        This should only be called on workers that have just executed an actor
+        creation task.
+
+        Args:
+            actor: The actor to restore from a checkpoint.
+        """
+        actor_id = self._worker.actor_id
+        try:
+            checkpoints = ray.actor.get_checkpoints_for_actor(actor_id)
+            if len(checkpoints) > 0:
+                # If we found previously saved checkpoints for this actor,
+                # call the `load_checkpoint` callback.
+                checkpoint_id = actor.load_checkpoint(actor_id, checkpoints)
+                if checkpoint_id is not None:
+                    # Check that the returned checkpoint id is in the
+                    # `available_checkpoints` list.
+                    msg = (
+                        "`load_checkpoint` must return a checkpoint id that " +
+                        "exists in the `available_checkpoints` list, or eone.")
+                    assert any(checkpoint_id == checkpoint.checkpoint_id
+                               for checkpoint in checkpoints), msg
+                    # Notify raylet that this actor has been resumed from
+                    # a checkpoint.
+                    (self._worker.raylet_client.
+                     notify_actor_resumed_from_checkpoint(
+                         actor_id, checkpoint_id))
+        except Exception:
+            # Checkpoint save or reload failed. Notify the driver.
+            traceback_str = ray.utils.format_error_message(
+                traceback.format_exc())
+            ray.utils.push_error_to_driver(
+                self._worker,
+                ray_constants.CHECKPOINT_PUSH_ERROR,
+                traceback_str,
+                driver_id=self._worker.task_driver_id)

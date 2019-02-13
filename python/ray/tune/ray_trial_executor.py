@@ -36,7 +36,9 @@ class RayTrialExecutor(TrialExecutor):
     def _setup_runner(self, trial):
         cls = ray.remote(
             num_cpus=trial.resources.cpu,
-            num_gpus=trial.resources.gpu)(trial._get_trainable_cls())
+            num_gpus=trial.resources.gpu,
+            resources=trial.resources.custom_resources)(
+                trial._get_trainable_cls())
 
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -230,16 +232,37 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
+        committed = self._committed_resources
+        all_keys = set(resources.custom_resources).union(
+            set(committed.custom_resources))
+
+        custom_resources = {
+            k: committed.get(k) + resources.get_res_total(k)
+            for k in all_keys
+        }
+
         self._committed_resources = Resources(
-            self._committed_resources.cpu + resources.cpu_total(),
-            self._committed_resources.gpu + resources.gpu_total())
+            committed.cpu + resources.cpu_total(),
+            committed.gpu + resources.gpu_total(),
+            custom_resources=custom_resources)
 
     def _return_resources(self, resources):
+        committed = self._committed_resources
+
+        all_keys = set(resources.custom_resources).union(
+            set(committed.custom_resources))
+
+        custom_resources = {
+            k: committed.get(k) - resources.get_res_total(k)
+            for k in all_keys
+        }
         self._committed_resources = Resources(
-            self._committed_resources.cpu - resources.cpu_total(),
-            self._committed_resources.gpu - resources.gpu_total())
-        assert self._committed_resources.cpu >= 0
-        assert self._committed_resources.gpu >= 0
+            committed.cpu - resources.cpu_total(),
+            committed.gpu - resources.gpu_total(),
+            custom_resources=custom_resources)
+
+        assert self._committed_resources.is_nonnegative(), (
+            "Resource invalid: {}".format(resources))
 
     def _update_avail_resources(self, num_retries=5):
         for i in range(num_retries):
@@ -253,28 +276,37 @@ class RayTrialExecutor(TrialExecutor):
                             "You can resume this experiment by passing in "
                             "`resume=True` to `run_experiments`.")
 
-        num_cpus = resources["CPU"]
-        num_gpus = resources["GPU"]
+        resources = resources.copy()
+        num_cpus = resources.pop("CPU")
+        num_gpus = resources.pop("GPU")
+        custom_resources = resources
 
-        self._avail_resources = Resources(int(num_cpus), int(num_gpus))
+        self._avail_resources = Resources(
+            int(num_cpus), int(num_gpus), custom_resources=custom_resources)
         self._resources_initialized = True
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
         self._update_avail_resources()
-        cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
-        gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
+        currently_available = Resources.subtract(self._avail_resources,
+                                                 self._committed_resources)
 
-        have_space = (resources.cpu_total() <= cpu_avail
-                      and resources.gpu_total() <= gpu_avail)
+        have_space = (
+            resources.cpu_total() <= currently_available.cpu
+            and resources.gpu_total() <= currently_available.gpu and all(
+                resources.get_res_total(res) <= currently_available.get(res)
+                for res in resources.custom_resources))
 
         if have_space:
             return True
 
         can_overcommit = self._queue_trials
 
-        if (resources.cpu_total() > 0 and cpu_avail <= 0) or \
-           (resources.gpu_total() > 0 and gpu_avail <= 0):
+        if (resources.cpu_total() > 0 and currently_available.cpu <= 0) or \
+           (resources.gpu_total() > 0 and currently_available.gpu <= 0) or \
+           any((resources.get_res_total(res_name) > 0
+                and currently_available.get(res_name) <= 0)
+               for res_name in resources.custom_resources):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
@@ -293,9 +325,18 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a human readable message for printing to the console."""
 
         if self._resources_initialized:
-            return "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
+            status = "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
                 self._committed_resources.cpu, self._avail_resources.cpu,
                 self._committed_resources.gpu, self._avail_resources.gpu)
+            customs = ", ".join([
+                "{}/{} {}".format(
+                    self._committed_resources.get_res_total(name),
+                    self._avail_resources.get_res_total(name), name)
+                for name in self._avail_resources.custom_resources
+            ])
+            if customs:
+                status += " ({})".format(customs)
+            return status
         else:
             return "Resources requested: ?"
 
@@ -303,8 +344,15 @@ class RayTrialExecutor(TrialExecutor):
         """Returns a string describing the total resources available."""
 
         if self._resources_initialized:
-            return "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
-                                             self._avail_resources.gpu)
+            res_str = "{} CPUs, {} GPUs".format(self._avail_resources.cpu,
+                                                self._avail_resources.gpu)
+            if self._avail_resources.custom_resources:
+                custom = ", ".join(
+                    "{} {}".format(
+                        self._avail_resources.get_res_total(name), name)
+                    for name in self._avail_resources.custom_resources)
+                res_str += " ({})".format(custom)
+            return res_str
         else:
             return "? CPUs, ? GPUs"
 
@@ -352,3 +400,14 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception("Error restoring runner for Trial %s.", trial)
             self.set_status(trial, Trial.ERROR)
             return False
+
+    def export_trial_if_needed(self, trial):
+        """Exports model of this trial based on trial.export_formats.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        if trial.export_formats and len(trial.export_formats) > 0:
+            return ray.get(
+                trial.runner.export_model.remote(trial.export_formats))
+        return {}

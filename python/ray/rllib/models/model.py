@@ -9,8 +9,10 @@ import tensorflow as tf
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.utils.annotations import PublicAPI
 
 
+@PublicAPI
 class Model(object):
     """Defines an abstract network model for use with RLlib.
 
@@ -90,6 +92,7 @@ class Model(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def _build_layers_v2(self, input_dict, num_outputs, options):
         """Define the layers of a custom model.
 
@@ -122,6 +125,7 @@ class Model(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def value_function(self):
         """Builds the value function output.
 
@@ -134,6 +138,7 @@ class Model(object):
         return tf.reshape(
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
+    @PublicAPI
     def loss(self):
         """Builds any built-in (self-supervised) loss for the model.
 

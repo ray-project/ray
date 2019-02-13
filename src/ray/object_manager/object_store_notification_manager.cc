@@ -5,7 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "arrow/util/logging.h"
+#include "ray/status.h"
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/object_store_notification_manager.h"
@@ -20,9 +20,9 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       num_adds_processed_(0),
       num_removes_processed_(0),
       socket_(io_service) {
-  ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str()));
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
-  ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
+  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
@@ -30,7 +30,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
 }
 
 ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
-  ARROW_CHECK_OK(store_client_.Disconnect());
+  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
 void ObjectStoreNotificationManager::NotificationWait() {

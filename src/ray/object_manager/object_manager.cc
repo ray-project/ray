@@ -10,13 +10,15 @@ namespace ray {
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                             plasma::PlasmaClient &store_client)
     : config_(config),
       object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       send_work_(send_service_),
       receive_work_(receive_service_),
+      store_client_(store_client),
       connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   RAY_CHECK(config_.max_sends > 0);
@@ -64,11 +66,39 @@ void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
-  ray::Status status =
-      object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+  // If this object was created from inlined data, this means it is already in GCS,
+  // so no need to write it again.
+  if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
+    std::vector<uint8_t> inline_object_data;
+    std::string inline_object_metadata;
+    bool inline_object_flag = false;
+    if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
+      // Inline object. Try to get the data from the object store.
+      plasma::ObjectBuffer object_buffer;
+      plasma::ObjectID plasma_id = object_id.to_plasma_id();
+      RAY_ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
+      if (object_buffer.data != nullptr) {
+        // The object exists. Store the object data in the GCS entry.
+        inline_object_flag = true;
+        inline_object_data.assign(
+            object_buffer.data->data(),
+            object_buffer.data->data() + object_buffer.data->size());
+        inline_object_metadata.assign(
+            object_buffer.metadata->data(),
+            object_buffer.metadata->data() + object_buffer.metadata->size());
+        // Mark this object as inlined, so that if this object is later
+        // evicted, we do not report it to the GCS.
+        local_inlined_objects_.insert(object_id);
+      }
+    }
 
+    RAY_CHECK_OK(object_directory_->ReportObjectAdded(
+        object_id, client_id_, object_info, inline_object_flag, inline_object_data,
+        inline_object_metadata));
+  }
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
   auto iter = unfulfilled_push_requests_.find(object_id);
@@ -90,10 +120,16 @@ void ObjectManager::HandleObjectAdded(
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Object removed " << object_id;
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
+  if (local_inlined_objects_.find(object_id) == local_inlined_objects_.end()) {
+    // Inline object data can be retrieved by any node by contacting the GCS,
+    // so only report that the object was evicted if it wasn't inlined.
+    RAY_CHECK_OK(object_directory_->ReportObjectRemoved(object_id, client_id_));
+  }
   local_objects_.erase(it);
-  ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
+  local_inlined_objects_.erase(object_id);
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
@@ -108,7 +144,28 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
+void ObjectManager::PutInlineObject(const ObjectID &object_id,
+                                    const std::vector<uint8_t> &inline_object_data,
+                                    const std::string &inline_object_metadata) {
+  if (local_objects_.find(object_id) == local_objects_.end()) {
+    // Inline object is not in the local object store. Create it from
+    // inline_object_data, and inline_object_metadata, respectively.
+    //
+    // Since this function is called on notification or when reading the
+    // object's entry from GCS, we know this object's entry is already in GCS.
+    // Remember this by adding the object to local_inlined_objects_. This way
+    // we avoid writing another copy of this object to GCS in HandleObjectAdded().
+    local_inlined_objects_.insert(object_id);
+    auto status = store_client_.CreateAndSeal(
+        object_id.to_plasma_id(),
+        std::string(inline_object_data.begin(), inline_object_data.end()),
+        inline_object_metadata);
+    RAY_CHECK(status.IsPlasmaObjectExists() || status.ok()) << status.message();
+  }
+}
+
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Pull on " << client_id_ << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_.count(object_id) != 0) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
@@ -126,7 +183,13 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
-             bool created) {
+             bool inline_object_flag, const std::vector<uint8_t> &inline_object_data,
+             const std::string &inline_object_metadata, bool created) {
+        if (inline_object_flag) {
+          // This is an inlined object. Store it in the Plasma store and return.
+          PutInlineObject(object_id, inline_object_data, inline_object_metadata);
+          return;
+        }
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -168,7 +231,14 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
-  RAY_CHECK(client_vector.size() != 1 || client_vector[0] != client_id_);
+  if (client_vector.size() == 1 && client_vector[0] == client_id_) {
+    RAY_LOG(ERROR) << "The object manager with client ID " << client_id_
+                   << " is trying to pull object " << object_id
+                   << " but the object table suggests that this object manager "
+                   << "already has the object. The object may have been evicted.";
+    it->second.timer_set = false;
+    return;
+  }
 
   // Choose a random client to pull the object from.
   // Generate a random index.
@@ -188,6 +258,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     RAY_CHECK(client_id != client_id_);
   }
 
+  RAY_LOG(DEBUG) << "Sending pull request from " << client_id_ << " to " << client_id
+                 << " of object " << object_id;
   // Try pulling from the client.
   PullEstablishConnection(object_id, client_id);
 
@@ -289,6 +361,9 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                                        const ClientID &client_id, uint64_t chunk_index,
                                        double start_time, double end_time,
                                        ray::Status status) {
+  RAY_LOG(DEBUG) << "HandleSendFinished on " << client_id_ << " to " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index
+                 << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
   }
@@ -326,6 +401,8 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+  RAY_LOG(DEBUG) << "Push on " << client_id_ << " to " << client_id << " of object "
+                 << object_id;
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
     auto &clients = unfulfilled_push_requests_[object_id];
@@ -374,6 +451,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
       // again.
+      RAY_LOG(DEBUG) << "Object " << object_id << " recently pushed to " << client_id;
       return;
     } else {
       it->second = current_time;
@@ -420,8 +498,8 @@ ray::Status ObjectManager::ExecuteSendObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index,
     const RemoteConnectionInfo &connection_info) {
-  RAY_LOG(DEBUG) << "ExecuteSendObject " << client_id << " " << object_id << " "
-                 << chunk_index;
+  RAY_LOG(DEBUG) << "ExecuteSendObject on " << client_id_ << " to " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index;
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
   connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id, &conn);
@@ -485,8 +563,6 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 
   if (status.ok()) {
     connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn);
-    RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
-                   << config_.max_sends;
   }
   return status;
 }
@@ -506,6 +582,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 int64_t timeout_ms, uint64_t num_required_objects,
                                 bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::from_random();
+  RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << client_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
                                    wait_local, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
@@ -564,12 +641,22 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id,
           [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          bool inline_object_flag,
+                          const std::vector<uint8_t> &inline_object_data,
+                          const std::string &inline_object_metadata, bool created) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            if (!client_ids.empty()) {
+            if (!client_ids.empty() || inline_object_flag) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
+              if (inline_object_flag) {
+                // This is an inlined object. Store it in the Plasma store and return.
+                PutInlineObject(lookup_object_id, inline_object_data,
+                                inline_object_metadata);
+              }
             }
+            RAY_LOG(DEBUG) << "Wait request " << wait_id << ": " << client_ids.size()
+                           << " locations found for object " << lookup_object_id;
             wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
               SubscribeRemainingWaitObjects(wait_id);
@@ -593,13 +680,21 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
   // locations from the object directory.
   for (const auto &object_id : wait_state.object_id_order) {
     if (wait_state.remaining.count(object_id) > 0) {
+      RAY_LOG(DEBUG) << "Wait request " << wait_id << ": subscribing to object "
+                     << object_id;
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id,
           [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<ClientID> &client_ids, bool created) {
-            if (!client_ids.empty()) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          bool inline_object_flag,
+                          const std::vector<uint8_t> &inline_object_data,
+                          const std::string &inline_object_metadata, bool created) {
+            if (!client_ids.empty() || inline_object_flag) {
+              RAY_LOG(DEBUG) << "Wait request " << wait_id
+                             << ": subscription notification received for object "
+                             << subscribe_object_id;
               auto object_id_wait_state = active_wait_requests_.find(wait_id);
               if (object_id_wait_state == active_wait_requests_.end()) {
                 // Depending on the timing of calls to the object directory, we
@@ -607,6 +702,11 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                 // already completed. If so, then don't process the
                 // notification.
                 return;
+              }
+              if (inline_object_flag) {
+                // This is an inlined object. Store it in the Plasma store.
+                PutInlineObject(subscribe_object_id, inline_object_data,
+                                inline_object_metadata);
               }
               auto &wait_state = object_id_wait_state->second;
               wait_state.remaining.erase(subscribe_object_id);
@@ -675,6 +775,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   }
   wait_state.callback(found, remaining);
   active_wait_requests_.erase(wait_id);
+  RAY_LOG(DEBUG) << "Wait request " << wait_id << " finished: found " << found.size()
+                 << " remaining " << remaining.size();
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
@@ -707,8 +809,11 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
-  auto message_type_value =
+  const auto message_type_value =
       static_cast<object_manager_protocol::MessageType>(message_type);
+  RAY_LOG(DEBUG) << "[ObjectManager] Message "
+                 << object_manager_protocol::EnumNameMessageType(message_type_value)
+                 << "(" << message_type << ") from object manager";
   switch (message_type_value) {
   case object_manager_protocol::MessageType::PushRequest: {
     ReceivePushRequest(conn, message);
@@ -806,8 +911,8 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
 ray::Status ObjectManager::ExecuteReceiveObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index, TcpClientConnection &conn) {
-  RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
-                 << chunk_index;
+  RAY_LOG(DEBUG) << "ExecuteReceiveObject on " << client_id_ << " from " << client_id
+                 << " of object " << object_id << " chunk " << chunk_index;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
@@ -825,8 +930,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(DEBUG) << "Create Chunk Failed index = " << chunk_index << ": "
-                   << chunk_status.second.message();
+    RAY_LOG(DEBUG) << "ExecuteReceiveObject failed: " << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
@@ -841,8 +945,9 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   conn.ProcessMessages();
-  RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
-                 << "/" << config_.max_receives;
+  RAY_LOG(DEBUG) << "ExecuteReceiveObject completed on " << client_id_ << " from "
+                 << client_id << " of object " << object_id << " chunk " << chunk_index
+                 << " at " << current_sys_time_ms();
 
   return chunk_status.second;
 }

@@ -23,7 +23,7 @@ import tensorflow.contrib.rnn as rnn
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
 
 
 class LSTM(Model):
@@ -91,6 +91,7 @@ class LSTM(Model):
         return logits, last_layer
 
 
+@PublicAPI
 def add_time_dimension(padded_inputs, seq_lens):
     """Adds a time dimension to padded inputs.
 
@@ -118,6 +119,7 @@ def add_time_dimension(padded_inputs, seq_lens):
     return tf.reshape(padded_inputs, new_shape)
 
 
+@DeveloperAPI
 def chop_into_sequences(episode_ids,
                         agent_indices,
                         feature_columns,

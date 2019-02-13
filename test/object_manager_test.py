@@ -210,10 +210,13 @@ def test_actor_broadcast(ray_start_cluster):
 def test_object_transfer_retry(ray_start_empty_cluster):
     cluster = ray_start_empty_cluster
 
-    repeated_push_delay = 4
+    repeated_push_delay = 10
 
+    # Force the sending object manager to allow duplicate pushes again sooner.
+    # Also, force the receiving object manager to retry the Pull sooner.
     config = json.dumps({
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000
+        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
+        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
     })
     cluster.add_node(_internal_config=config)
     cluster.add_node(num_gpus=1, _internal_config=config)
@@ -226,7 +229,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     x_ids = [f.remote(10**i) for i in [1, 2, 3, 4, 5, 6, 7]]
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     start_time = time.time()
 
@@ -240,20 +243,19 @@ def test_object_transfer_retry(ray_start_empty_cluster):
         ray.put(x)
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     end_time = time.time()
+    print(end_time - start_time)
+    # Make sure that the first time the objects get transferred, it happens
+    # quickly.
+    assert end_time - start_time < repeated_push_delay
 
     # Get the objects again and make sure they get transferred.
     xs = ray.get(x_ids)
 
     end_transfer_time = time.time()
 
-    # Make sure that the object was retransferred before the object manager
-    # repeated push delay expired.
-    if end_time - start_time <= repeated_push_delay:
-        warnings.warn("This test didn't really fail, but the timing is such "
-                      "that it is not testing the thing it should be testing.")
     # We should have had to wait for the repeated push delay.
     assert end_transfer_time - start_time >= repeated_push_delay
 
@@ -264,7 +266,7 @@ def test_object_transfer_retry(ray_start_empty_cluster):
         ray.put(x)
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.id())) for x_id in x_ids)
+            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
 
     time.sleep(repeated_push_delay)
     ray.get(x_ids)

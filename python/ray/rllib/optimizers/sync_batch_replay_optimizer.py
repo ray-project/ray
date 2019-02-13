@@ -71,7 +71,9 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
                     self.buffer_size -= evicted.count
 
         if self.num_steps_sampled >= self.replay_starts:
-            self._optimize()
+            return self._optimize()
+        else:
+            return {}
 
     @override(PolicyOptimizer)
     def stats(self):
@@ -93,9 +95,10 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             samples.append(random.choice(self.replay_buffer))
         samples = SampleBatch.concat_samples(samples)
         with self.grad_timer:
-            info_dict = self.local_evaluator.compute_apply(samples)
+            info_dict = self.local_evaluator.learn_on_batch(samples)
             for policy_id, info in info_dict.items():
                 if "stats" in info:
                     self.learner_stats[policy_id] = info["stats"]
             self.grad_timer.push_units_processed(samples.count)
         self.num_steps_trained += samples.count
+        return info_dict

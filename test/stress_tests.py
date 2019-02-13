@@ -9,7 +9,6 @@ import pytest
 import time
 
 import ray
-import ray.tempfile_services
 from ray.test.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
@@ -197,7 +196,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = 10**9
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
