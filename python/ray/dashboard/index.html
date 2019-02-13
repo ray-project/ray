@@ -1,0 +1,71 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ray dashboard</title>
+    <meta name="description" content="ray dashboard"</meta>
+    <link rel="stylesheet" href="res/main.css">
+
+    <meta name="referrer" content="same-origin">
+    <!--
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.4/vue.min.js"
+    integrity="sha384-rldcjlIPDkF0mEihgyEOIFhd2NW5YL717okjKC5YF2LrqoiBeMk4tpcgbRrlDHj5"
+    crossorigin="anonymous"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.min.js"
+    integrity="sha384-U/+EF1mNzvy5eahP9DeB32duTkAmXrePwnRWtuSh1C/bHHhyR1KZCr/aGZBkctpY"
+    crossorigin="anonymous"></script>
+    -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.4/vue.js"
+    integrity="sha384-94H2I+MU5hfBDUinQG+/Y9JbHALTPlQmHO26R3Jv60MT6WWkOD5hlYNyT9ciiLsR"
+    crossorigin="anonymous"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.js"
+    integrity="sha384-i1spcL1noifN1wFk9Li9LLBO5DJoBKQCNeSsSBDyrhbZayRb2Z1NIm9jImiTJn9I"
+    crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div id="dashboard">
+        <template v-if="clients && !error">
+        <h2>Last update: {{last_update | age}} ago</h2>
+        <h2 class="totals">Nodes: {{Object.keys(clients).length}} - Load: {{totals.load.toFixed(2)}}/{{totals.workers}}/{{totals.cpus}}</h2>
+        <h2 class="totals">RAM: {{totals.ram_used | si}}/{{totals.ram_total | si}} - Storage: {{totals.storage_used | si}}/{{totals.storage_total | si}}</h2>
+        <table class="ray_node_grid">
+            <thead>
+                <tr>
+                    <th class="ip">Node IP</th>
+                    <th class="uptime">Uptime</th>
+                    <th class="workers">Workers/Cores (%)</th>
+                    <th class="mem">Memory</th>
+                    <th class="storage">Storage</th>
+                    <th class="load">Load averages</th>
+                </tr>
+            </thead>
+            <tbody>
+                <node
+                    v-for="v, k, _ in clients"
+                    :v="v" :ip="k" :key="k" :now="now"
+                ></node>
+            </tbody>
+        </table>
+        <template v-if="tasks">
+            <h2>tasks</h2>
+            <ul>
+                <li v-for="v, k, _ in tasks">{{k}}: {{v}}</li>
+            </ul>
+        </template>
+        </template>
+        <template v-if="error">
+            <h2>{{error}}</h2>
+        </template>
+        <template v-if="ray_config">
+            <h2>ray config</h2>
+            <pre>{{ray_config}}</pre>
+        </template>
+    </div>
+</body>
+
+<script src="res/main.js"></script>
