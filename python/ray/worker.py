@@ -117,6 +117,25 @@ class RayTaskError(Exception):
         return "\n".join(out)
 
 
+class ActorCheckpointInfo(object):
+    """Information used to maintain actor checkpoints."""
+
+    __slots__ = [
+        # Number of tasks executed since last checkpoint.
+        "num_tasks_since_last_checkpoint",
+        # Timestamp of the last checkpoint, in milliseconds.
+        "last_checkpoint_timestamp",
+        # IDs of the previous checkpoints.
+        "checkpoint_ids",
+    ]
+
+    def __init__(self, num_tasks_since_last_checkpoint,
+                 last_checkpoint_timestamp, checkpoint_ids):
+        self.num_tasks_since_last_checkpoint = num_tasks_since_last_checkpoint
+        self.last_checkpoint_timestamp = last_checkpoint_timestamp
+        self.checkpoint_ids = checkpoint_ids
+
+
 class Worker(object):
     """A class used to define the control flow of a worker process.
 
@@ -141,6 +160,8 @@ class Worker(object):
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
+        # Information used to maintain actor checkpoints.
+        self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
         # The number of threads Plasma should use when putting an object in the
         # object store.
@@ -515,7 +536,6 @@ class Worker(object):
                     actor_id=None,
                     actor_handle_id=None,
                     actor_counter=0,
-                    is_actor_checkpoint_method=False,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
@@ -538,8 +558,6 @@ class Worker(object):
                 be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
-            is_actor_checkpoint_method: True if this is an actor checkpoint
-                task and false otherwise.
             actor_creation_id: The ID of the actor to create, if this is an
                 actor creation task.
             actor_creation_dummy_object_id: If this task is an actor method,
@@ -900,6 +918,11 @@ class Worker(object):
             self.actor_creation_task_id = task.task_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
+            self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
+                num_tasks_since_last_checkpoint=0,
+                last_checkpoint_timestamp=int(1000 * time.time()),
+                checkpoint_ids=[],
+            )
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
@@ -2395,16 +2418,12 @@ def make_decorator(num_return_vals=None,
                    num_gpus=None,
                    resources=None,
                    max_calls=None,
-                   checkpoint_interval=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
-            if checkpoint_interval is not None:
-                raise Exception("The keyword 'checkpoint_interval' is not "
-                                "allowed for remote functions.")
             if max_reconstructions is not None:
                 raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
@@ -2437,7 +2456,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
                                      resources, actor_method_cpus,
-                                     checkpoint_interval, max_reconstructions)
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2509,7 +2528,7 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', 'checkpoint_interval',"
+                    "'resources', 'max_calls', "
                     "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
@@ -2517,7 +2536,7 @@ def remote(*args, **kwargs):
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "checkpoint_interval", "max_reconstructions"
+            "max_calls", "max_reconstructions"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2534,7 +2553,6 @@ def remote(*args, **kwargs):
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
-    checkpoint_interval = kwargs.get("checkpoint_interval")
     max_reconstructions = kwargs.get("max_reconstructions")
 
     return make_decorator(
@@ -2543,6 +2561,5 @@ def remote(*args, **kwargs):
         num_gpus=num_gpus,
         resources=resources,
         max_calls=max_calls,
-        checkpoint_interval=checkpoint_interval,
         max_reconstructions=max_reconstructions,
         worker=worker)

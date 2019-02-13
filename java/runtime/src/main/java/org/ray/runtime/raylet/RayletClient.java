@@ -25,4 +25,8 @@ public interface RayletClient {
       timeoutMs, UniqueId currentTaskId);
 
   void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly);
+
+  UniqueId prepareCheckpoint(UniqueId actorId);
+
+  void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId);
 }

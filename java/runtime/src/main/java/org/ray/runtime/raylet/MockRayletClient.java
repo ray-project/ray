@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.NotImplementedException;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.id.UniqueId;
@@ -93,5 +94,15 @@ public class MockRayletClient implements RayletClient {
   @Override
   public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
     return;
+  }
+
+  @Override
+  public UniqueId prepareCheckpoint(UniqueId actorId) {
+    throw new NotImplementedException("Not implemented.");
+  }
+
+  @Override
+  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    throw new NotImplementedException("Not implemented.");
   }
 }
