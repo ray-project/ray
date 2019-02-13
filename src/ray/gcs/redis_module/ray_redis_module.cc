@@ -75,11 +75,11 @@ Status ParseTablePrefix(const RedisModuleString *table_prefix_str, TablePrefix *
   long long table_prefix_long;
   if (RedisModule_StringToLongLong(table_prefix_str, &table_prefix_long) !=
       REDISMODULE_OK) {
-    return Status::RedisError("Table prefix must be a valid integer.");
+    return Status::RedisError("Prefix must be a valid TablePrefix integer");
   }
   if (table_prefix_long > static_cast<long long>(TablePrefix::MAX) ||
       table_prefix_long < static_cast<long long>(TablePrefix::MIN)) {
-    return Status::RedisError("Pubsub channel must be in the TablePubsub range.");
+    return Status::RedisError("Prefix must be in the TablePrefix range");
   } else {
     *out = static_cast<TablePrefix>(table_prefix_long);
     return Status::OK();
@@ -304,6 +304,11 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   RedisModuleKey *key;
   REPLY_AND_RETURN_IF_NOT_OK(OpenPrefixedKey(
       &key, ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE, mutated_key_str));
+  int type = RedisModule_KeyType(key);
+  REPLY_AND_RETURN_IF_FALSE(
+      type == REDISMODULE_KEYTYPE_LIST || type == REDISMODULE_KEYTYPE_EMPTY,
+      "TABLE_APPEND entries must be a list or an empty list");
+
   // Determine the index at which the data should be appended. If no index is
   // requested, then is the current length of the log.
   size_t index = RedisModule_ValueLength(key);
@@ -321,8 +326,13 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
   if (index == RedisModule_ValueLength(key)) {
     // The requested index matches the current length of the log or no index
     // was requested. Perform the append.
-    REPLY_AND_RETURN_IF_NOT_OK(RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data));
-    return REDISMODULE_OK;
+    if (RedisModule_ListPush(key, REDISMODULE_LIST_TAIL, data) == REDISMODULE_OK) {
+      return REDISMODULE_OK;
+    } else {
+      static const char *reply = "Unexpected error during TABLE_APPEND";
+      RedisModule_ReplyWithError(ctx, reply);
+      return REDISMODULE_ERR;
+    }
   } else {
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
