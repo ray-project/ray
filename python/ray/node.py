@@ -297,6 +297,19 @@ class Node(object):
             process_info
         ]
 
+    def start_dashboard(self):
+        """Start the dashboard."""
+        stdout_file, stderr_file = self.new_log_files("dashboard", True)
+        process_info = ray.services.start_dashboard(
+            self.redis_address,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password)
+        assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
+            process_info
+        ]
+
     def start_ui(self):
         """Start the web UI."""
         stdout_file, stderr_file = self.new_log_files("webui")
@@ -420,6 +433,7 @@ class Node(object):
             self.start_redis()
             self.start_monitor()
             self.start_raylet_monitor()
+            self.start_dashboard()
 
         self.start_plasma_store()
         self.start_raylet()
@@ -567,6 +581,16 @@ class Node(object):
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+
+    def kill_dashboard(self, check_alive=True):
+        """Kill the dashboard.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_DASHBOARD, check_alive=check_alive)
 
     def kill_monitor(self, check_alive=True):
         """Kill the monitor.
