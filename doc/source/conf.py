@@ -36,6 +36,7 @@ MOCK_MODULES = [
     "tensorflow.python.client",
     "tensorflow.python.util",
     "ray.core.generated",
+    "ray.core.generated.ActorCheckpointIdData",
     "ray.core.generated.ClientTableData",
     "ray.core.generated.GcsTableEntry",
     "ray.core.generated.HeartbeatTableData",

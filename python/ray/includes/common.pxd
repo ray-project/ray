@@ -6,10 +6,19 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
-    CUniqueID, TaskID as CTaskID, ObjectID as CObjectID,
-    FunctionID as CFunctionID, ActorClassID as CActorClassID, ActorID as CActorID,
-    ActorHandleID as CActorHandleID, WorkerID as CWorkerID,
-    DriverID as CDriverID, ConfigID as CConfigID, ClientID as CClientID)
+    ActorCheckpointID as CActorCheckpointID,
+    ActorClassID as CActorClassID,
+    ActorHandleID as CActorHandleID,
+    ActorID as CActorID,
+    CUniqueID,
+    ClientID as CClientID,
+    ConfigID as CConfigID,
+    DriverID as CDriverID,
+    FunctionID as CFunctionID,
+    ObjectID as CObjectID,
+    TaskID as CTaskID,
+    WorkerID as CWorkerID,
+)
 
 
 cdef extern from "ray/status.h" namespace "ray" nogil:

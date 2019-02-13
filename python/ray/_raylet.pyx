@@ -19,12 +19,31 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, CRayStatus, LANGUAGE_CPP, LANGUAGE_JAVA, LANGUAGE_PYTHON)
+    CActorCheckpointID,
+    CActorClassID,
+    CActorHandleID,
+    CActorID,
+    CClientID,
+    CConfigID,
+    CDriverID,
+    CFunctionID,
+    CLanguage,
+    CObjectID,
+    CRayStatus,
+    CTaskID,
+    CUniqueID,
+    CWorkerID,
+    LANGUAGE_CPP,
+    LANGUAGE_JAVA,
+    LANGUAGE_PYTHON,
+)
 from ray.includes.libraylet cimport (
-    CRayletClient, GCSProfileTableDataT, GCSProfileEventT,
-    ResourceMappingType, WaitResultPair)
+    CRayletClient,
+    GCSProfileEventT,
+    GCSProfileTableDataT,
+    ResourceMappingType,
+    WaitResultPair,
+)
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
@@ -302,6 +321,14 @@ cdef class RayletClient:
     def free_objects(self, object_ids, c_bool local_only):
         cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.get().FreeObjects(free_ids, local_only))
+
+    def prepare_actor_checkpoint(self, ActorID actor_id):
+        cdef CActorCheckpointID checkpoint_id
+        check_status(self.client.get().PrepareActorCheckpoint(actor_id.data, checkpoint_id))
+        return ObjectID.from_native(checkpoint_id);
+
+    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id, ActorCheckpointID checkpoint_id):
+        check_status(self.client.get().NotifyActorResumedFromCheckpoint(actor_id.data, checkpoint_id.data))
 
     @property
     def language(self):

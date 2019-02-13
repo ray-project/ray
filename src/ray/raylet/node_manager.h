@@ -186,6 +186,10 @@ class NodeManager {
   /// \param worker The worker that finished the task.
   /// \return Void.
   void FinishAssignedTask(Worker &worker);
+  /// Helper function to produce actor table data for a newly created actor.
+  ///
+  /// \param task The actor creation task that created the actor.
+  ActorTableDataT CreateActorTableDataFromCreationTask(const Task &task);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creationt ask.
@@ -282,9 +286,11 @@ class NodeManager {
   /// old state transition.
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
-  /// \param data Data associated with this notification.
+  /// \param actor_registration The ActorRegistration object that represents actor's
+  /// new state.
   /// \return Void.
-  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
+  void HandleActorStateTransition(const ActorID &actor_id,
+                                  ActorRegistration &&actor_registration);
 
   /// Publish an actor's state transition to all other nodes.
   ///
@@ -385,6 +391,25 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
+  /// Process client message of PrepareActorCheckpointRequest.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  void ProcessPrepareActorCheckpointRequest(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of NotifyActorResumedFromCheckpoint.
+  ///
+  /// \param message_data A pointer to the message data.
+  void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
+
+  /// Update actor frontier when a task finishes.
+  /// If the task is an actor creation task and the actor was resumed from a checkpoint,
+  /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
+  ///
+  /// \param task The task that just finished.
+  void UpdateActorFrontier(const Task &task);
+
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.
   /// This function needs to be called either when actor process dies or when
@@ -458,6 +483,10 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
+
+  /// This map stores actor ID to the ID of the checkpoint that will be used to
+  /// restore the actor.
+  std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 };
 
 }  // namespace raylet
