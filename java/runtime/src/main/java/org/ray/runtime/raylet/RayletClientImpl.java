@@ -269,7 +269,6 @@ public class RayletClientImpl implements RayletClient {
         actorIdOffset,
         actorHandleIdOffset,
         actorCounter,
-        false,
         newActorHandlesOffset,
         argsOffset,
         returnsOffset,
