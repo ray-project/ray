@@ -574,7 +574,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
-      TreatTaskAsFailed(task);
+      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorState::RECONSTRUCTING);
@@ -858,7 +858,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       // `HandleDisconnectedActor`.
       if (actor_id.is_nil()) {
         const Task &task = local_queues_.RemoveTask(task_id);
-        TreatTaskAsFailed(task);
+        TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
       }
 
       if (!intentional_disconnect) {
@@ -1214,9 +1214,10 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const Task &task) {
+void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
   const TaskSpecification &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed.";
+  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
+                 << EnumNameErrorType(error_type) << ".";
   // If this was an actor creation task that tried to resume from a checkpoint,
   // then erase it here since the task did not finish.
   if (spec.IsActorCreationTask()) {
@@ -1231,21 +1232,10 @@ void NodeManager::TreatTaskAsFailed(const Task &task) {
     // information about the TaskSpecification implementation.
     num_returns -= 1;
   }
+  const std::string meta = std::to_string(static_cast<int>(error_type));
   for (int64_t i = 0; i < num_returns; i++) {
     const ObjectID object_id = spec.ReturnId(i);
-
-    std::shared_ptr<Buffer> data;
-    // TODO(ekl): this writes an invalid arrow object, which is sufficient to
-    // signal that the worker failed, but it would be nice to return more
-    // detailed failure metadata in the future.
-    arrow::Status status =
-        store_client_.Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
-    if (!status.IsPlasmaObjectExists()) {
-      // TODO(rkn): We probably don't want this checks. E.g., if the object
-      // store is full, we don't want to kill the raylet.
-      RAY_ARROW_CHECK_OK(status);
-      RAY_ARROW_CHECK_OK(store_client_.Seal(object_id.to_plasma_id()));
-    }
+    RAY_IGNORE_EXPR(store_client_.CreateAndSeal(object_id.to_plasma_id(), "", meta));
   }
   // A task failing is equivalent to assigning and finishing the task, so clean
   // up any leftover state as for any task dispatched and removed from the
@@ -1297,7 +1287,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
               // The object does not exist on any nodes but has been created
               // before, so the object has been lost. Mark the task as failed to
               // prevent any tasks that depend on this object from hanging.
-              TreatTaskAsFailed(task);
+              TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
               *task_marked_as_failed = true;
             }
           }
@@ -1343,7 +1333,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       if (actor_entry->second.GetState() == ActorState::DEAD) {
         // If this actor is dead, either because the actor process is dead
         // or because its residing node is dead, treat this task as failed.
-        TreatTaskAsFailed(task);
+        TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
       } else {
         // If this actor is alive, check whether this actor is local.
         auto node_manager_id = actor_entry->second.GetNodeManagerId();

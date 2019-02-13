@@ -2621,7 +2621,7 @@ def test_inline_objects(shutdown_only):
             value = ray.get(inline_object)
             assert value == "inline"
             inlined += 1
-        except ray.worker.RayTaskError:
+        except ray.UnreconstructableError:
             pass
     # Make sure some objects were inlined. Some of them may not get inlined
     # because we evict the object soon after creating it.
@@ -2638,7 +2638,7 @@ def test_inline_objects(shutdown_only):
             ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Objects created by an actor that were evicted and larger than the
         # maximum inline object size cannot be retrieved or reconstructed.
-        with pytest.raises(ray.worker.RayTaskError):
+        with pytest.raises(ray.UnreconstructableError):
             ray.get(non_inline_object) == 10000 * [1]
 
 

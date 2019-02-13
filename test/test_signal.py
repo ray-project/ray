@@ -106,7 +106,7 @@ def test_task_crash(ray_start):
     try:
         ray.get(object_id)
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.RayTaskError
     finally:
         result_list = signal.receive([object_id], timeout=5)
         assert len(result_list) == 1
@@ -142,7 +142,7 @@ def test_actor_crash(ray_start):
     try:
         ray.get(a.crash.remote())
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.RayTaskError
     finally:
         result_list = signal.receive([a], timeout=5)
         assert len(result_list) == 1
@@ -184,7 +184,7 @@ def test_actor_crash_init2(ray_start):
     try:
         ray.get(a.method.remote())
     except Exception as e:
-        assert type(e) == ray.worker.RayTaskError
+        assert type(e) == ray.RayTaskError
     finally:
         result_list = receive_all_signals([a], timeout=5)
         assert len(result_list) == 2

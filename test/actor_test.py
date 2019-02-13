@@ -1405,7 +1405,7 @@ def test_exception_raised_when_actor_node_dies(head_node_cluster):
         # Submit some new actor tasks.
         x_ids = [actor.inc.remote() for _ in range(5)]
         for x_id in x_ids:
-            with pytest.raises(ray.worker.RayTaskError):
+            with pytest.raises(ray.RayActorError):
                 # There is some small chance that ray.get will actually
                 # succeed (if the object is transferred before the raylet
                 # dies).
@@ -2126,9 +2126,9 @@ def test_actor_eviction(shutdown_only):
     num_evicted, num_success = 0, 0
     for obj in objects:
         try:
-            ray.get(obj)
+            print(ray.get(obj))
             num_success += 1
-        except ray.worker.RayTaskError:
+        except ray.UnreconstructableError:
             num_evicted += 1
     # Some objects should have been evicted, and some should still be in the
     # object store.
@@ -2173,7 +2173,7 @@ def test_actor_reconstruction(ray_start_regular):
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
     # The actor has exceeded max reconstructions, and this task should fail.
-    with pytest.raises(ray.worker.RayTaskError):
+    with pytest.raises(ray.RayActorError):
         ray.get(actor.increase.remote())
 
     # Create another actor.
@@ -2181,7 +2181,7 @@ def test_actor_reconstruction(ray_start_regular):
     # Intentionlly exit the actor
     actor.__ray_terminate__.remote()
     # Check that the actor won't be reconstructed.
-    with pytest.raises(ray.worker.RayTaskError):
+    with pytest.raises(ray.worker.RayActorError):
         ray.get(actor.increase.remote())
 
 
@@ -2241,7 +2241,7 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
     object_store_socket = ray.get(actor.get_object_store_socket.remote())
     kill_node(object_store_socket)
     # The actor has exceeded max reconstructions, and this task should fail.
-    with pytest.raises(ray.worker.RayTaskError):
+    with pytest.raises(ray.worker.RayActorError):
         ray.get(actor.increase.remote())
 
 

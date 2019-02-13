@@ -347,3 +347,14 @@ table ActorCheckpointIdData {
   // A list of the timestamps for each of the above `checkpoint_ids`.
   timestamps: [long];
 }
+
+// This enum type is used as object's metadata to indicate the object's creating
+// task has failed because of a certain error.
+enum ErrorType:int {
+  // Indicates that a task failed because the worker died.
+  WORKER_DIED = 1,
+  // Indicates that a task failed because the actor died.
+  ACTOR_DIED = 2,
+  // Indicates that an object is lost and cannot be reconstructed.
+  OBJECT_UNRECONSTRUCTABLE = 3,
+}

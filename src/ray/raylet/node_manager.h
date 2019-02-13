@@ -157,8 +157,9 @@ class NodeManager {
   /// the local queue.
   ///
   /// \param task The task to fail.
+  /// \param error_type The type of the error that caused this task to fail.
   /// \return Void.
-  void TreatTaskAsFailed(const Task &task);
+  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any

@@ -28,18 +28,43 @@ import ray.experimental.state as state
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
+import ray.parameter
+import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature
-import ray.ray_constants as ray_constants
+
+from ray import (
+    ActorHandleID,
+    ActorID,
+    ClientID,
+    DriverID,
+    ObjectID,
+    TaskID,
+)
 from ray import import_thread
-from ray import ObjectID, DriverID, ActorID, ActorHandleID, ClientID, TaskID
 from ray import profiling
-from ray.function_manager import (FunctionActorManager, FunctionDescriptor)
-import ray.parameter
-from ray.utils import (check_oversized_pickle, is_cython, _random_string,
-                       thread_safe_client, setup_logger)
+from ray.core.generated.ErrorType import ErrorType
+from ray.exceptions import (
+    RayActorError,
+    RayError,
+    RayTaskError,
+    RayWorkerError,
+    UnreconstructableError,
+    RAY_EXCEPTION_TYPES,
+)
+from ray.function_manager import (
+    FunctionActorManager,
+    FunctionDescriptor,
+)
+from ray.utils import (
+    _random_string,
+    check_oversized_pickle,
+    is_cython,
+    setup_logger,
+    thread_safe_client,
+)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -66,55 +91,6 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
-
-
-class RayTaskError(Exception):
-    """An object used internally to represent a task that threw an exception.
-
-    If a task throws an exception during execution, a RayTaskError is stored in
-    the object store for each of the task's outputs. When an object is
-    retrieved from the object store, the Python method that retrieved it checks
-    to see if the object is a RayTaskError and if it is then an exception is
-    thrown propagating the error message.
-
-    Currently, we either use the exception attribute or the traceback attribute
-    but not both.
-
-    Attributes:
-        function_name (str): The name of the function that failed and produced
-            the RayTaskError.
-        traceback_str (str): The traceback from the exception.
-    """
-
-    def __init__(self, function_name, traceback_str):
-        """Initialize a RayTaskError."""
-        if setproctitle:
-            self.proctitle = setproctitle.getproctitle()
-        else:
-            self.proctitle = "ray_worker"
-        self.pid = os.getpid()
-        self.host = os.uname()[1]
-        self.function_name = function_name
-        self.traceback_str = traceback_str
-        assert traceback_str is not None
-
-    def __str__(self):
-        """Format a RayTaskError as a string."""
-        lines = self.traceback_str.split("\n")
-        out = []
-        in_worker = False
-        for line in lines:
-            if line.startswith("Traceback "):
-                out.append("{}{}{} (pid={}, host={})".format(
-                    colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
-                    self.pid, self.host))
-            elif in_worker:
-                in_worker = False
-            elif "ray/worker.py" in line or "ray/function_manager.py" in line:
-                in_worker = True
-            else:
-                out.append(line)
-        return "\n".join(out)
 
 
 class ActorCheckpointInfo(object):
@@ -400,6 +376,8 @@ class Worker(object):
         start_time = time.time()
         # Only send the warning once.
         warning_sent = False
+        serialization_context = self.get_serialization_context(
+            self.task_driver_id)
         while True:
             try:
                 # We divide very large get requests into smaller get requests
@@ -407,23 +385,22 @@ class Worker(object):
                 # long time, if the store is blocked, it can block the manager
                 # as well as a consequence.
                 results = []
-                for i in range(0, len(object_ids),
-                               ray._config.worker_get_request_size()):
-                    results += self.plasma_client.get(
-                        object_ids[i:(
-                            i + ray._config.worker_get_request_size())],
+                batch_size = ray._config.worker_fetch_request_size()
+                for i in range(0, len(object_ids), batch_size):
+                    metadata_data_pairs = self.plasma_client.get_buffers(
+                        object_ids[i: i + batch_size],
                         timeout,
-                        self.get_serialization_context(self.task_driver_id))
+                        with_meta=True,
+                    )
+                    for j in range(len(metadata_data_pairs)):
+                        metadata, data = metadata_data_pairs[j]
+                        results.append(self._deserialize_object_from_arrow(
+                            data,
+                            metadata,
+                            object_ids[i + j],
+                            serialization_context,
+                        ))
                 return results
-            except pyarrow.lib.ArrowInvalid:
-                # TODO(ekl): the local scheduler could include relevant
-                # metadata in the task kill case for a better error message
-                invalid_error = RayTaskError(
-                    "<unknown>",
-                    "Invalid return value: likely worker died or was killed "
-                    "while executing the task; check previous logs or dmesg "
-                    "for errors.")
-                return [invalid_error] * len(object_ids)
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
@@ -447,6 +424,30 @@ class Worker(object):
                             warning_message,
                             driver_id=self.task_driver_id)
                     warning_sent = True
+
+    def _deserialize_object_from_arrow(self, data, metadata, object_id,
+                                       serialization_context):
+        if metadata:
+            # If metadata is not empty, return an exception object based on
+            # the error type.
+            error_type = int(metadata)
+            if error_type == ErrorType.WORKER_DIED:
+                return RayWorkerError()
+            elif error_type == ErrorType.ACTOR_DIED:
+                return RayActorError()
+            elif error_type == ErrorType.OBJECT_UNRECONSTRUCTABLE:
+                return UnreconstructableError(object_id)
+            else:
+                assert False, "Unrecognized error type " + str(error_type)
+        elif data:
+            # If data is not empty, deserialize the object.
+            # Note, the lock is needed because `serialization_context` isn't
+            # thread-safe.
+            with self.plasma_client.lock:
+                return pyarrow.deserialize(data, serialization_context)
+        else:
+            # Object isn't available in plasma.
+            return plasma.ObjectNotAvailable
 
     def get_object(self, object_ids):
         """Get the value or values in the object store associated with the IDs.
@@ -741,7 +742,7 @@ class Worker(object):
                 passed by value.
 
         Raises:
-            RayTaskError: This exception is raised if a task that
+            Rayrror: This exception is raised if a task that
                 created one of the arguments failed.
         """
         arguments = []
@@ -749,7 +750,7 @@ class Worker(object):
             if isinstance(arg, ObjectID):
                 # get the object from the local object store
                 argument = self.get_object([arg])[0]
-                if isinstance(argument, RayTaskError):
+                if isinstance(argument, RayError):
                     raise argument
             else:
                 # pass the argument by value
@@ -831,11 +832,6 @@ class Worker(object):
             with profiling.profile("task:deserialize_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
-        except RayTaskError as e:
-            self._handle_process_task_failure(
-                function_descriptor, return_object_ids, e,
-                ray.utils.format_error_message(traceback.format_exc()))
-            return
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
@@ -1154,12 +1150,15 @@ def _initialize_serialization(driver_id, worker=global_worker):
 
     worker.serialization_context_map[driver_id] = serialization_context
 
-    register_custom_serializer(
-        RayTaskError,
-        use_dict=True,
-        local=True,
-        driver_id=driver_id,
-        class_id="ray.RayTaskError")
+    # Register exception types.
+    for error_cls in RAY_EXCEPTION_TYPES:
+        register_custom_serializer(
+            error_cls,
+            use_dict=True,
+            local=True,
+            driver_id=driver_id,
+            class_id=error_cls.__module__ + ". " + error_cls.__name__,
+        )
     # Tell Ray to serialize lambdas with pickle.
     register_custom_serializer(
         type(lambda: 0),
@@ -2255,14 +2254,14 @@ def get(object_ids, worker=global_worker):
         if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
-                if isinstance(value, RayTaskError):
+                if isinstance(value, RayError):
                     last_task_error_raise_time = time.time()
                     raise value
             return values
         else:
             value = worker.get_object([object_ids])[0]
-            if isinstance(value, RayTaskError):
-                # If the result is a RayTaskError, then the task that created
+            if isinstance(value, RayError):
+                # If the result is a RayError, then the task that created
                 # this object failed, and we should propagate the error message
                 # here.
                 last_task_error_raise_time = time.time()
