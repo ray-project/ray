@@ -151,7 +151,8 @@ class PPOAgent(Agent):
         if (self.config["batch_mode"] == "truncate_episodes"
                 and not self.config["use_gae"]):
             raise ValueError(
-                "Episode truncation is not supported without a value function")
+                "Episode truncation is not supported without a value "
+                "function. Consider setting batch_mode=complete_episodes.")
         if (self.config["multiagent"]["policy_graphs"]
                 and not self.config["simple_optimizer"]):
             logger.info(
