@@ -157,6 +157,8 @@ requires = [
     # simplejson and psutil are required by the Reporter.
     "simplejson",
     "psutil",
+    # aiohttp is required by the Dashboard.
+    "aiohttp",
 ]
 
 setup(
