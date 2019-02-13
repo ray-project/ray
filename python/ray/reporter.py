@@ -21,6 +21,15 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+def running_worker(s):
+    if "ray_worker" not in s:
+        return False
+
+    if s == "ray_worker":
+        return False
+
+    return True
+
 def determine_ip_address():
     """Return the first IP address for an ethernet interface on the system."""
     addrs = [
@@ -93,7 +102,7 @@ class Reporter(object):
         return [
             x.as_dict(attrs=["pid", "create_time", "cpu_times", "name", "memory_full_info"])
             for x in psutil.process_iter()
-            if "ray" in x.name()
+            if running_worker(x.name())
         ]
 
     def get_load_avg(self):
@@ -136,7 +145,7 @@ class Reporter(object):
                 traceback.print_exc()
                 pass
 
-            time.sleep(1)
+            time.sleep(ray_constants.REPORTER_UPDATE_INTERVAL_MS/1000)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
