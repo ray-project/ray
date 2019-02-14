@@ -5,6 +5,8 @@ from __future__ import print_function
 import logging
 import time
 
+import ray
+from ray import tune
 from ray.rllib import optimizers
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
@@ -142,6 +144,8 @@ class DQNAgent(Agent):
 
     @override(Agent)
     def _init(self):
+        self._validate_config()
+
         # Update effective batch size to include n-step
         adjusted_batch_size = max(self.config["sample_batch_size"],
                                   self.config.get("n_step", 1))
@@ -304,6 +308,15 @@ class DQNAgent(Agent):
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
 
+    def _validate_config(self):
+        if self.config["parameter_noise"]:
+            if self.config["batch_mode"] != "complete_episodes":
+                raise ValueError(
+                    "Exploration with parameter space noise requires batch_mode to be complete_episodes.")
+            if self.config.get("noisy", False):
+                raise ValueError(
+                    "Exploration with parameter space noise and noisy network can NOT be used at the same time.")
+
 
 def on_episode_start(info):
     # as a callback function to sample and pose parameter space noise
@@ -313,8 +326,8 @@ def on_episode_start(info):
         pi.add_parameter_noise()
 
 def on_episode_end(info):
-    # as a callback function to adjust the stddev of parameter space noise
-    # and remove the noise from parameters of network
+    # as a callback function to monitor the distance
+    # between noisy policy and original policy
     policies = info["policy"]
-    for pi in policies.values():
-        pi.adjust_parameter_noise()
+    episode = info["episode"]
+    episode.custom_metrics["policy_distance"] = policies["default"].pi_distance

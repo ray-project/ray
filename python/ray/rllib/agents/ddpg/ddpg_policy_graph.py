@@ -436,6 +436,23 @@ class DDPGPolicyGraph(TFPolicyGraph):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
+        if self.config["parameter_noise"]:
+            # adjust the sigma of parameter space noise
+            states, noisy_actions = [
+                list(x) for x in sample_batch.columns(
+                    ["obs", "actions"])
+            ]
+            self.sess.run(self.remove_noise_op)
+            clean_actions = self.sess.run(
+                self.output_actions, feed_dict={self.cur_observations: states, self.stochastic: False, self.eps: .0})
+            distance_in_action_space = np.sqrt(np.mean(np.square(clean_actions-noisy_actions)))
+            self.pi_distance = distance_in_action_space
+            if distance_in_action_space < self.config["exploration_sigma"]:
+                self.parameter_noise_sigma_val *= 1.01
+            else:
+                self.parameter_noise_sigma_val /= 1.01
+            self.parameter_noise_sigma.load(self.parameter_noise_sigma_val, session=self.sess)
+            
         return _postprocess_dqn(self, sample_batch)
 
     @override(TFPolicyGraph)
@@ -528,7 +545,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
             for var, var_noise in zip(pnet_params, self.parameter_noise):
                 add_noise_ops.append(tf.assign_add(var, var_noise))
             self.add_noise_op = tf.group(*tuple(add_noise_ops))
-        self.pi_distances = list()
+        self.pi_distance = None
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -550,10 +567,6 @@ class DDPGPolicyGraph(TFPolicyGraph):
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
             self.sess.run(self.add_noise_op)
-
-    def adjust_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            pass
 
     # support both hard and soft sync
     def update_target(self, tau=None):
