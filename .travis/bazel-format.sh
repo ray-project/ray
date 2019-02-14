@@ -44,8 +44,6 @@ while [[ $# > 0 ]]; do
 done
 
 pushd $ROOT_DIR/..
-# %{PYTHON_INCLUDE_GENRULE} in BUILD.tpl is not recognized by buildifier.
-BAZEL_FILES=`find bazel -name "BUILD*" -not -name "*.tpl" -or -name "*.bzl" | xargs`
-BAZEL_FILES="$BAZEL_FILES BUILD.bazel WORKSPACE"
+BAZEL_FILES="bazel/BUILD bazel/BUILD.plasma bazel/ray.bzl BUILD.bazel WORKSPACE"
 buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES 
 popd

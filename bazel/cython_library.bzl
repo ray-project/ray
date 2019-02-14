@@ -8,7 +8,7 @@
 # been written at cython/cython and tensorflow/tensorflow. We branch from
 # Tensorflow's version as it is more actively maintained and works for gRPC
 # Python's needs.
-def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
+def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
     First runs Cython to create .cpp files for each input .pyx or .py + .pxd
     pair. Then builds a shared object for each, passing "deps" to each cc_binary
@@ -22,7 +22,6 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
         srcs: .py, .pyx, or .pxd files to either compile or pass through.
         **kwargs: Extra keyword arguments passed to the py_library.
     """
-
     # First filter out files that should be run compiled vs. passed through.
     py_srcs = []
     pyx_srcs = []
@@ -41,14 +40,14 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
     # Invoke cython to produce the shared object libraries.
     for filename in pyx_srcs:
         native.genrule(
-            name = filename + "_cython_translation",
-            srcs = [filename],
-            outs = [filename.split(".")[0] + ".cpp"],
+            name=filename + "_cython_translation",
+            srcs=[filename],
+            outs=[filename.split(".")[0] + ".cpp"],
             # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
             # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
-            cmd =
-                "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
-            tools = ["@cython//:cython_binary"] + pxd_srcs,
+            cmd=
+            "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+            tools=["@cython//:cython_binary"] + pxd_srcs,
         )
 
     shared_objects = []
@@ -56,19 +55,18 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
         stem = src.split(".")[0]
         shared_object_name = stem + ".so"
         native.cc_binary(
-            name = shared_object_name,
-            srcs = [stem + ".cpp"],
-            deps = deps + ["@local_config_python//:python_headers"],
-            linkshared = 1,
+            name=shared_object_name,
+            srcs=[stem + ".cpp"],
+            deps=deps + ["@local_config_python//:python_headers"],
+            linkshared=1,
         )
         shared_objects.append(shared_object_name)
 
     # Now create a py_library with these shared objects as data.
     native.py_library(
-        name = name,
-        srcs = py_srcs,
-        deps = py_deps,
-        srcs_version = "PY2AND3",
-        data = shared_objects,
-        **kwargs
-    )
+        name=name,
+        srcs=py_srcs,
+        deps=py_deps,
+        srcs_version="PY2AND3",
+        data=shared_objects,
+        **kwargs)
