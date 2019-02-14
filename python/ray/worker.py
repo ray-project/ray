@@ -1252,11 +1252,9 @@ def init(redis_address=None,
          log_to_driver=True,
          node_ip_address=None,
          object_id_seed=None,
-         num_workers=None,
          local_mode=False,
-         driver_mode=None,
-         redirect_worker_output=True,
-         redirect_output=True,
+         redirect_worker_output=None,
+         redirect_output=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
@@ -1271,8 +1269,7 @@ def init(redis_address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
-         _internal_config=None,
-         use_raylet=None):
+         _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1321,10 +1318,6 @@ def init(redis_address=None,
             manner. However, the same ID should not be used for different jobs.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
-        redirect_output (bool): True if stdout and stderr for non-worker
-            processes should be redirected to files and false otherwise.
         ignore_reinit_error: True if we should suppress errors from calling
             ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
@@ -1365,18 +1358,6 @@ def init(redis_address=None,
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
-    # Add the use_raylet option for backwards compatibility.
-    if use_raylet is not None:
-        if use_raylet:
-            logger.warning("WARNING: The use_raylet argument has been "
-                           "deprecated. Please remove it.")
-        else:
-            raise DeprecationWarning("The use_raylet argument is deprecated. "
-                                     "Please remove it.")
-
-    if driver_mode is not None:
-        raise Exception("The 'driver_mode' argument has been deprecated. "
-                        "To run Ray in local mode, pass in local_mode=True.")
     if local_mode:
         driver_mode = LOCAL_MODE
     else:
@@ -1425,7 +1406,6 @@ def init(redis_address=None,
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
             node_ip_address=node_ip_address,
-            num_workers=num_workers,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
             driver_mode=driver_mode,
@@ -1459,9 +1439,6 @@ def init(redis_address=None,
         address_info["raylet_socket_name"] = _global_node.raylet_socket_name
     else:
         # In this case, we are connecting to an existing cluster.
-        if num_workers is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_workers must not be provided.")
         if num_cpus is not None or num_gpus is not None:
             raise Exception("When connecting to an existing cluster, num_cpus "
                             "and num_gpus must not be provided.")
@@ -1547,12 +1524,6 @@ def init(redis_address=None,
 
 # Functions to run as callback after a successful ray init
 _post_init_hooks = []
-
-
-def cleanup(worker=global_worker):
-    raise DeprecationWarning(
-        "The function ray.worker.cleanup() has been deprecated. Instead, "
-        "please call ray.shutdown().")
 
 
 def shutdown():
