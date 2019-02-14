@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
-from scipy.special import softmax
 from scipy.stats import entropy
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
@@ -322,6 +321,7 @@ class DQNPolicyGraph(TFPolicyGraph):
             self._build_parameter_noise([
                 var for var in self.q_func_vars if "LayerNorm" not in var.name
             ])
+            self.action_probs = tf.nn.softmax(self.q_values)
 
         # Action outputs
         self.output_actions, self.action_prob = self._build_q_value_policy(
@@ -466,14 +466,10 @@ class DQNPolicyGraph(TFPolicyGraph):
             states = [list(x) for x in sample_batch.columns(["obs"])][0]
 
             noisy_action_distribution = self.sess.run(
-                self.q_values, feed_dict={self.cur_observations: states})
-            noisy_action_distribution = softmax(
-                noisy_action_distribution, axis=1)
+                self.action_probs, feed_dict={self.cur_observations: states})
             self.sess.run(self.remove_noise_op)
             clean_action_distribution = self.sess.run(
-                self.q_values, feed_dict={self.cur_observations: states})
-            clean_action_distribution = softmax(
-                clean_action_distribution, axis=1)
+                self.action_probs, feed_dict={self.cur_observations: states})
             distance_in_action_space = np.mean(
                 entropy(clean_action_distribution.T,
                         noisy_action_distribution.T))
