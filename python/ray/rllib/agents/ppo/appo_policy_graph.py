@@ -168,7 +168,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess = tf.get_default_session()
         self.grads = None
 
-        is_discrete = False
+        is_multidiscrete = False
         output_hidden_shape = None
         actions_shape = [None]
 
@@ -191,10 +191,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 existing_seq_lens = existing_inputs[-1]
         else:
             if isinstance(action_space, gym.spaces.Discrete):
-                is_discrete = True
                 output_hidden_shape = [action_space.n]
             elif isinstance(action_space,
                             gym.spaces.multi_discrete.MultiDiscrete):
+                is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
                 output_hidden_shape = action_space.nvec
             elif self.config["vtrace"]:
@@ -244,10 +244,10 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         unpacked_outputs = tf.split(
             self.model.outputs, output_hidden_shape, axis=1)
 
-        dist_inputs = self.model.outputs if is_discrete else \
-            unpacked_outputs
-        prev_dist_inputs = behaviour_logits if is_discrete else \
-            unpacked_behaviour_logits
+        dist_inputs = unpacked_outputs if is_multidiscrete else \
+            self.model.outputs
+        prev_dist_inputs = unpacked_behaviour_logits if is_multidiscrete else \
+            behaviour_logits
 
         action_dist = dist_class(dist_inputs)
         prev_action_dist = dist_class(prev_dist_inputs)
@@ -302,16 +302,14 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             logger.info("Using V-Trace surrogate loss (vtrace=True)")
 
             # Prepare actions for loss
-            loss_actions = tf.expand_dims(
-                actions, axis=1) if is_discrete else actions
-            logp_actions = actions if is_discrete else tf.unstack(
+            loss_actions = actions if is_multidiscrete else tf.expand_dims(
                 actions, axis=1)
 
             self.loss = VTraceSurrogateLoss(
                 actions=make_time_major(loss_actions, drop_last=True),
                 prev_actions_logp=make_time_major(prev_action_dist.logp(
                     logp_actions), drop_last=True),
-                actions_logp=make_time_major(action_dist.logp(logp_actions),
+                actions_logp=make_time_major(action_dist.logp(actions),
                                              drop_last=True),
                 action_kl=prev_action_dist.kl(action_dist),
                 actions_entropy=make_time_major(action_dist.entropy(),
