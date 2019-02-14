@@ -43,12 +43,15 @@ extern RedisChainModule module;
 #define AUTO_MEMORY(FUNC)                                             \
   int FUNC(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) { \
     RedisModule_AutoMemory(ctx);                                      \
-    return redis_commands::FUNC(ctx, argv, argc);                     \
+    return internal_redis_commands::FUNC(ctx, argv, argc);            \
   }
 
-/// Commands in this namespace can be wrapped with AUTO_MEMORY in the
-/// auto_memory_redis_commands namespace to enable automatic memory management.
-namespace redis_commands {
+// Commands in this namespace should not be used directly. They should first be
+// wrapped with AUTO_MEMORY in the global namespace to enable automatic memory
+// management.
+// TODO(swang): Ideally, we would make the commands that don't have auto memory
+// management inaccessible instead of just using a separate namespace.
+namespace internal_redis_commands {
 
 /// Map from pub sub channel to clients that are waiting on that channel.
 std::unordered_map<std::string, std::vector<std::string>> notification_map;
@@ -684,7 +687,6 @@ int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 }
 };
 
-namespace auto_memory_redis_commands {
 // Wrap all Redis commands with Redis' auto memory management.
 AUTO_MEMORY(TableAdd_RedisCommand);
 AUTO_MEMORY(TableAppend_RedisCommand);
@@ -697,13 +699,8 @@ AUTO_MEMORY(DebugString_RedisCommand);
 AUTO_MEMORY(ChainTableAdd_RedisCommand);
 AUTO_MEMORY(ChainTableAppend_RedisCommand);
 #endif
-};
 
 extern "C" {
-// Only use commands that have auto memory management.
-// TODO(swang): Ideally, we would make the commands that don't have auto memory
-// management inaccessible instead of just using separate namespaces.
-using namespace auto_memory_redis_commands;
 
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
