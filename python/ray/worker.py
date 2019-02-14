@@ -388,18 +388,19 @@ class Worker(object):
                 batch_size = ray._config.worker_fetch_request_size()
                 for i in range(0, len(object_ids), batch_size):
                     metadata_data_pairs = self.plasma_client.get_buffers(
-                        object_ids[i: i + batch_size],
+                        object_ids[i:i + batch_size],
                         timeout,
                         with_meta=True,
                     )
                     for j in range(len(metadata_data_pairs)):
                         metadata, data = metadata_data_pairs[j]
-                        results.append(self._deserialize_object_from_arrow(
-                            data,
-                            metadata,
-                            object_ids[i + j],
-                            serialization_context,
-                        ))
+                        results.append(
+                            self._deserialize_object_from_arrow(
+                                data,
+                                metadata,
+                                object_ids[i + j],
+                                serialization_context,
+                            ))
                 return results
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
@@ -436,7 +437,7 @@ class Worker(object):
             elif error_type == ErrorType.ACTOR_DIED:
                 return RayActorError()
             elif error_type == ErrorType.OBJECT_UNRECONSTRUCTABLE:
-                return UnreconstructableError(object_id)
+                return UnreconstructableError(ray.ObjectID(object_id.binary()))
             else:
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
@@ -742,7 +743,7 @@ class Worker(object):
                 passed by value.
 
         Raises:
-            Rayrror: This exception is raised if a task that
+            RayError: This exception is raised if a task that
                 created one of the arguments failed.
         """
         arguments = []

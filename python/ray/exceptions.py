@@ -69,7 +69,7 @@ class RayActorError(RayError):
     """Indicates that the actor died unexpectedly before finish executing a
     task."""
 
-    def __init__(self):
+    def __str__(self):
         return "The actor died unexpectedly before finish executing this task."
 
 
@@ -84,7 +84,7 @@ class UnreconstructableError(RayError):
         self.object_id = object_id
 
     def __str__(self):
-        return "Object {} is lost and cannot be reconstructed.".formart(
+        return "Object {} is lost and cannot be reconstructed.".format(
             self.object_id.hex())
 
 
