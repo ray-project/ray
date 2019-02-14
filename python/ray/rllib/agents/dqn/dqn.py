@@ -73,6 +73,9 @@ DEFAULT_CONFIG = with_common_config({
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
     "softmax_temp": 1.0,
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    "parameter_noise": False,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -159,6 +162,10 @@ class DQNAgent(Agent):
                 continue
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
+
+        if self.config["parameter_noise"]:
+            self.config["callbacks"]["on_episode_start"] = tune.function(on_episode_start)
+            self.config["callbacks"]["on_episode_end"] = tune.function(on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
@@ -296,3 +303,18 @@ class DQNAgent(Agent):
         Agent.__setstate__(self, state)
         self.num_target_updates = state["num_target_updates"]
         self.last_target_update_ts = state["last_target_update_ts"]
+
+
+def on_episode_start(info):
+    # as a callback function to sample and pose parameter space noise
+    # on the parameters of network
+    policies = info["policy"]
+    for pi in policies.values():
+        pi.add_parameter_noise()
+
+def on_episode_end(info):
+    # as a callback function to adjust the stddev of parameter space noise
+    # and remove the noise from parameters of network
+    policies = info["policy"]
+    for pi in policies.values():
+        pi.adjust_parameter_noise()
