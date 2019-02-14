@@ -59,7 +59,7 @@ test_impala(){
         echo "Try running IMPALA stress test."
         {
             RLLIB_DIR=../../python/ray/rllib/
-            ray up -y $CLUSTER &&
+            for i in {1..3}; do ray up -y $CLUSTER && break || sleep 15; done
             ray rsync_up $CLUSTER $RLLIB_DIR/tuned_examples/ tuned_examples/ &&
             sleep 1 &&
             ray exec $CLUSTER "
@@ -102,7 +102,7 @@ test_sgd(){
         echo "Try running SGD stress test."
         {
             SGD_DIR=$ROOT_DIR/../../python/ray/experimental/sgd/
-            ray up -y $CLUSTER &&
+            for i in {1..3}; do ray up -y $CLUSTER && break || sleep 15; done
             # TODO: fix submit so that args work
             ray rsync_up $CLUSTER $SGD_DIR/mnist_example.py mnist_example.py &&
             sleep 1 &&
