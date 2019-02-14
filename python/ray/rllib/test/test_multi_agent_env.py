@@ -557,6 +557,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         raise Exception("failed to improve reward")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init()
     unittest.main(verbosity=2)
