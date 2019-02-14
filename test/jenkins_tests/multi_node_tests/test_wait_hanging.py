@@ -21,10 +21,10 @@ def g():
 # 10MB -> hangs after ~5 iterations
 # 20MB -> hangs after ~20 iterations
 # 50MB -> hangs after ~50 iterations
-ray.init(redis_max_memory=1024 * 1024 * 20)
+ray.init(redis_max_memory=1024 * 1024 * 50)
 
 i = 0
-for i in range(50):
+for i in range(100):
     i += 1
     a = g.remote()
     [ok], _ = ray.wait([a])
