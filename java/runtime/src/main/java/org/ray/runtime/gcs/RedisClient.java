@@ -1,6 +1,9 @@
 package org.ray.runtime.gcs;
 
+import java.util.List;
 import java.util.Map;
+
+import org.ray.runtime.util.StringUtil;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
@@ -15,6 +18,10 @@ public class RedisClient {
   private JedisPool jedisPool;
 
   public RedisClient(String redisAddress) {
+    this(redisAddress, null);
+  }
+
+  public RedisClient(String redisAddress, String password) {
     String[] ipAndPort = redisAddress.split(":");
     if (ipAndPort.length != 2) {
       throw new IllegalArgumentException("The argument redisAddress " +
@@ -23,8 +30,14 @@ public class RedisClient {
 
     JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
     jedisPoolConfig.setMaxTotal(JEDIS_POOL_SIZE);
-    jedisPool = new JedisPool(jedisPoolConfig, ipAndPort[0],
-        Integer.parseInt(ipAndPort[1]), 30000);
+
+    if (StringUtil.isNullOrEmpty(password)) {
+      jedisPool = new JedisPool(jedisPoolConfig,
+          ipAndPort[0], Integer.parseInt(ipAndPort[1]), 30000);
+    } else {
+      jedisPool = new JedisPool(jedisPoolConfig, ipAndPort[0],
+          Integer.parseInt(ipAndPort[1]), 30000, password);
+    }
   }
 
   public Long set(final String key, final String value, final String field) {
@@ -65,7 +78,11 @@ public class RedisClient {
         return jedis.hget(key, field);
       }
     }
-
   }
 
+  public List<String> lrange(String key, long start, long end) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.lrange(key, start, end);
+    }
+  }
 }

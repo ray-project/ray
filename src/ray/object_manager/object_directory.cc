@@ -115,22 +115,23 @@ void ObjectDirectory::RegisterBackend() {
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
-    const std::vector<uint8_t> &inline_object_data,
-    const std::string &inline_object_metadata) {
+    const plasma::ObjectBuffer &plasma_buffer) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id << " inline? "
                  << inline_object_flag;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
-  data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
   data->inline_object_flag = inline_object_flag;
   if (inline_object_flag) {
     // Add object's data to its GCS entry.
-    data->inline_object_data.assign(inline_object_data.begin(), inline_object_data.end());
-    data->inline_object_metadata.assign(inline_object_metadata.begin(),
-                                        inline_object_metadata.end());
+    data->inline_object_data.assign(
+        plasma_buffer.data->data(),
+        plasma_buffer.data->data() + plasma_buffer.data->size());
+    data->inline_object_metadata.assign(
+        plasma_buffer.metadata->data(),
+        plasma_buffer.metadata->data() + plasma_buffer.metadata->size());
   }
   ray::Status status =
       gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
@@ -144,14 +145,8 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = true;
-  data->num_evictions = object_evictions_[object_id];
   ray::Status status =
       gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
-  // Increment the number of times we've evicted this object. NOTE(swang): This
-  // is only necessary because the Ray redis module expects unique entries in a
-  // log. We track the number of evictions so that the next eviction, if there
-  // is one, is unique.
-  object_evictions_[object_id]++;
   return status;
 };
 
@@ -305,7 +300,6 @@ std::string ObjectDirectory::DebugString() const {
   std::stringstream result;
   result << "ObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
-  result << "\n- num eviction entries: " << object_evictions_.size();
   return result.str();
 }
 

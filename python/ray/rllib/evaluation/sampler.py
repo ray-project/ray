@@ -16,6 +16,8 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
+from ray.rllib.offline import InputReader
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,20 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 ])
 
 
-class SyncSampler(object):
+class SamplerInput(InputReader):
+    """Reads input experiences from an existing sampler."""
+
+    @override(InputReader)
+    def next(self):
+        batches = [self.get_data()]
+        batches.extend(self.get_extra_batches())
+        if len(batches) > 1:
+            return batches[0].concat_samples(batches)
+        else:
+            return batches[0]
+
+
+class SyncSampler(SamplerInput):
     def __init__(self,
                  env,
                  policies,
@@ -87,7 +102,7 @@ class SyncSampler(object):
         return extra
 
 
-class AsyncSampler(threading.Thread):
+class AsyncSampler(threading.Thread, SamplerInput):
     def __init__(self,
                  env,
                  policies,

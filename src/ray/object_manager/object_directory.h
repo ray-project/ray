@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "plasma/client.h"
+
 #include "ray/gcs/client.h"
 #include "ray/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -100,14 +102,13 @@ class ObjectDirectoryInterface {
   /// \param client_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \param inline_object_flag Flag specifying whether object is inlined.
-  /// \param inline_object_data Object data. Only for inlined objects.
-  /// \param inline_object_metadata Object metadata. Only for inlined objects.
+  /// \param plasma_buffer Object data and metadata from plasma. This data is
+  /// only valid for inlined objects (i.e., when inline_object_flag=true).
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
-      const std::vector<uint8_t> &inline_object_data,
-      const std::string &inline_object_metadata) = 0;
+      const plasma::ObjectBuffer &plasma_buffer) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -162,8 +163,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
                                 const object_manager::protocol::ObjectInfoT &object_info,
                                 bool inline_object_flag,
-                                const std::vector<uint8_t> &inline_object_data,
-                                const std::string &inline_object_metadata) override;
+                                const plasma::ObjectBuffer &plasma_buffer) override;
 
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
@@ -205,9 +205,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
-  /// Map from object ID to the number of times it's been evicted on this
-  /// node before.
-  std::unordered_map<ObjectID, int> object_evictions_;
 };
 
 }  // namespace ray

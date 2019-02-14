@@ -379,6 +379,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=observations,
             action_sampler=action_dist.sample(),
+            action_prob=action_dist.sampled_action_prob(),
             loss=self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
@@ -429,7 +430,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         out = {"behaviour_logits": self.model.outputs}
         if not self.config["vtrace"]:
             out["vf_preds"] = self.value_function
-        return out
+        return dict(TFPolicyGraph.extra_compute_action_fetches(self), **out)
 
     def extra_compute_grad_fetches(self):
         return self.stats_fetches

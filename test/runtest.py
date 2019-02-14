@@ -9,6 +9,7 @@ import random
 import re
 import setproctitle
 import shutil
+import socket
 import string
 import subprocess
 import sys
@@ -185,6 +186,31 @@ CUSTOM_OBJECTS = [
     Baz(),  # Qux(), SubQux(),
     NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])
 ]
+
+# Test dataclasses in Python 3.7.
+if sys.version_info >= (3, 7):
+    from dataclasses import make_dataclass
+
+    DataClass0 = make_dataclass("DataClass0", [("number", int)])
+
+    CUSTOM_OBJECTS.append(DataClass0(number=3))
+
+    class CustomClass(object):
+        def __init__(self, value):
+            self.value = value
+
+    DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
+
+    class DataClass2(DataClass1):
+        @classmethod
+        def from_custom(cls, data):
+            custom = CustomClass(data)
+            return cls(custom)
+
+        def __reduce__(self):
+            return (self.from_custom, (self.custom.value, ))
+
+    CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
 
 BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
 
@@ -2718,3 +2744,26 @@ def test_socket_dir_not_existing(shutdown_only):
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+
+
+def test_raylet_is_robust_to_random_messages(shutdown_only):
+
+    ray.init(num_cpus=1)
+    node_manager_address = None
+    node_manager_port = None
+    for client in ray.global_state.client_table():
+        if "NodeManagerAddress" in client:
+            node_manager_address = client["NodeManagerAddress"]
+            node_manager_port = client["NodeManagerPort"]
+    assert node_manager_address
+    assert node_manager_port
+    # Try to bring down the node manager:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((node_manager_address, node_manager_port))
+    s.send(1000 * b'asdf')
+
+    @ray.remote
+    def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
