@@ -127,6 +127,7 @@ public class ObjectStoreProxy {
 
   /**
    * Serialize and put an object to the object store.
+   *
    * @param id Id of the object.
    * @param object The object to put.
    */
@@ -140,6 +141,7 @@ public class ObjectStoreProxy {
 
   /**
    * Put an already serialized object to the object store.
+   *
    * @param id Id of the object.
    * @param serializedObject The serialized object to put.
    */
@@ -162,8 +164,8 @@ public class ObjectStoreProxy {
     public final boolean exists;
 
     /**
-     * The object. Note, this field only makes sense when @code{exists == true && exception
-     * !=null}.
+     * The Java object that was fetched and deserialized from the object store. Note, this field
+     * only makes sense when @code{exists == true && exception !=null}.
      */
     public final T object;
 

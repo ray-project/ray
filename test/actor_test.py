@@ -2181,7 +2181,7 @@ def test_actor_reconstruction(ray_start_regular):
     # Intentionlly exit the actor
     actor.__ray_terminate__.remote()
     # Check that the actor won't be reconstructed.
-    with pytest.raises(ray.worker.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
 
 
@@ -2241,7 +2241,7 @@ def test_actor_reconstruction_on_node_failure(head_node_cluster):
     object_store_socket = ray.get(actor.get_object_store_socket.remote())
     kill_node(object_store_socket)
     # The actor has exceeded max reconstructions, and this task should fail.
-    with pytest.raises(ray.worker.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
 
 

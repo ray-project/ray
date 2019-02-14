@@ -74,8 +74,8 @@ class RayActorError(RayError):
 
 
 class UnreconstructableError(RayError):
-    """Indicates that an object is lost (evicted or manually deleted) and cannot
-    be reconstructed.
+    """Indicates that an object is lost (either evicted or explicitly deleted)
+    and cannot be reconstructed.
 
     Note, this exception only happens for actor objects. If actor's current
     state is after object's creating task, the actor cannot re-run the task to
@@ -89,8 +89,8 @@ class UnreconstructableError(RayError):
         self.object_id = object_id
 
     def __str__(self):
-        return "Object {} is lost and cannot be reconstructed.".format(
-            self.object_id.hex())
+        return ("Object {} is lost (either evicted or explicitly deleted) and "
+                + "cannot be reconstructed.").format(self.object_id.hex())
 
 
 RAY_EXCEPTION_TYPES = [
