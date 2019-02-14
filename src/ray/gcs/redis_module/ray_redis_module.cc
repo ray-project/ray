@@ -40,10 +40,10 @@ extern RedisChainModule module;
   }
 
 // Wrap a Redis command with automatic memory management.
-#define AUTO_MEMORY(FUNC) \
+#define AUTO_MEMORY(FUNC)                                             \
   int FUNC(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) { \
-   RedisModule_AutoMemory(ctx); \
-   return redis_commands::FUNC(ctx, argv, argc); \
+    RedisModule_AutoMemory(ctx);                                      \
+    return redis_commands::FUNC(ctx, argv, argc);                     \
   }
 
 /// Commands in this namespace can be wrapped with AUTO_MEMORY in the
@@ -682,28 +682,28 @@ int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   std::string debug_string = DebugString();
   return RedisModule_ReplyWithStringBuffer(ctx, debug_string.data(), debug_string.size());
 }
-
 };
 
-
 namespace auto_memory_redis_commands {
-  // Wrap all Redis commands with Redis' auto memory management.
-  AUTO_MEMORY(TableAdd_RedisCommand);
-  AUTO_MEMORY(TableAppend_RedisCommand);
-  AUTO_MEMORY(TableLookup_RedisCommand);
-  AUTO_MEMORY(TableRequestNotifications_RedisCommand);
-  AUTO_MEMORY(TableCancelNotifications_RedisCommand);
-  AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
-  AUTO_MEMORY(DebugString_RedisCommand);
+// Wrap all Redis commands with Redis' auto memory management.
+AUTO_MEMORY(TableAdd_RedisCommand);
+AUTO_MEMORY(TableAppend_RedisCommand);
+AUTO_MEMORY(TableLookup_RedisCommand);
+AUTO_MEMORY(TableRequestNotifications_RedisCommand);
+AUTO_MEMORY(TableCancelNotifications_RedisCommand);
+AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
+AUTO_MEMORY(DebugString_RedisCommand);
 #if RAY_USE_NEW_GCS
-  AUTO_MEMORY(ChainTableAdd_RedisCommand);
-  AUTO_MEMORY(ChainTableAppend_RedisCommand);
+AUTO_MEMORY(ChainTableAdd_RedisCommand);
+AUTO_MEMORY(ChainTableAppend_RedisCommand);
 #endif
 };
 
 extern "C" {
-  // Only use commands that have auto memory management.
-  using namespace auto_memory_redis_commands;
+// Only use commands that have auto memory management.
+// TODO(swang): Ideally, we would make the commands that don't have auto memory
+// management inaccessible instead of just using separate namespaces.
+using namespace auto_memory_redis_commands;
 
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
