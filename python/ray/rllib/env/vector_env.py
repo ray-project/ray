@@ -112,6 +112,13 @@ class _VectorizedGymEnv(VectorEnv):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
             obs, rew, done, info = self.envs[i].step(actions[i])
+            if type(rew) not in [int, float]:
+                raise ValueError(
+                    "Reward should be a int or float, got {} ({})".format(
+                        rew, type(rew)))
+            if type(info) is not dict:
+                raise ValueError("Info should be a dict, got {} ({})".format(
+                    info, type(info)))
             obs_batch.append(obs)
             rew_batch.append(rew)
             done_batch.append(done)
