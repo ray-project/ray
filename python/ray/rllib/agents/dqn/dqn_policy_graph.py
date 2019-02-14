@@ -45,7 +45,8 @@ class QNetwork(object):
                             action_out,
                             num_outputs=hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm if parameter_noise else None)
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -94,7 +95,8 @@ class QNetwork(object):
                             state_out,
                             num_outputs=hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm if parameter_noise else None)
+                            normalizer_fn=layers.layer_norm
+                            if parameter_noise else None)
                 if use_noisy:
                     state_score = self.noisy_layer(
                         "dueling_output",
@@ -317,7 +319,9 @@ class DQNPolicyGraph(TFPolicyGraph):
 
         # Noise vars for Q network except for layer normalization vars
         if self.config["parameter_noise"]:
-            self._build_parameter_noise([var for var in self.q_func_vars if "LayerNorm" not in var.name])
+            self._build_parameter_noise([
+                var for var in self.q_func_vars if "LayerNorm" not in var.name
+            ])
 
         # Action outputs
         self.output_actions, self.action_prob = self._build_q_value_policy(
@@ -460,21 +464,28 @@ class DQNPolicyGraph(TFPolicyGraph):
         if self.config["parameter_noise"]:
             # adjust the sigma of parameter space noise
             states = [list(x) for x in sample_batch.columns(["obs"])][0]
-                
+
             noisy_action_distribution = self.sess.run(
                 self.q_values, feed_dict={self.cur_observations: states})
-            noisy_action_distribution = softmax(noisy_action_distribution, axis=1)
+            noisy_action_distribution = softmax(
+                noisy_action_distribution, axis=1)
             self.sess.run(self.remove_noise_op)
             clean_action_distribution = self.sess.run(
                 self.q_values, feed_dict={self.cur_observations: states})
-            clean_action_distribution = softmax(clean_action_distribution, axis=1)
-            distance_in_action_space = np.mean(entropy(clean_action_distribution.T, noisy_action_distribution.T))
+            clean_action_distribution = softmax(
+                clean_action_distribution, axis=1)
+            distance_in_action_space = np.mean(
+                entropy(clean_action_distribution.T,
+                        noisy_action_distribution.T))
             self.pi_distance = distance_in_action_space
-            if distance_in_action_space < -np.log(1-self.cur_epsilon+self.cur_epsilon/self.num_actions):
+            if distance_in_action_space < -np.log(
+                    1 - self.cur_epsilon +
+                    self.cur_epsilon / self.num_actions):
                 self.parameter_noise_sigma_val *= 1.01
             else:
                 self.parameter_noise_sigma_val /= 1.01
-            self.parameter_noise_sigma.load(self.parameter_noise_sigma_val, session=self.sess)
+            self.parameter_noise_sigma.load(
+                self.parameter_noise_sigma_val, session=self.sess)
 
         return _postprocess_dqn(self, sample_batch)
 
@@ -490,7 +501,8 @@ class DQNPolicyGraph(TFPolicyGraph):
     def _build_parameter_noise(self, pnet_params):
         self.parameter_noise_sigma_val = 1.0
         self.parameter_noise_sigma = tf.get_variable(
-            initializer=tf.constant_initializer(self.parameter_noise_sigma_val),
+            initializer=tf.constant_initializer(
+                self.parameter_noise_sigma_val),
             name="parameter_noise_sigma",
             shape=(),
             trainable=False,
@@ -499,7 +511,7 @@ class DQNPolicyGraph(TFPolicyGraph):
         # No need to add any noise on LayerNorm parameters
         for var in pnet_params:
             noise_var = tf.get_variable(
-                name=var.name.split(':')[0]+"_noise",
+                name=var.name.split(':')[0] + "_noise",
                 shape=var.shape,
                 initializer=tf.constant_initializer(.0),
                 trainable=False)
@@ -510,7 +522,12 @@ class DQNPolicyGraph(TFPolicyGraph):
         self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
         generate_noise_ops = list()
         for var_noise in self.parameter_noise:
-            generate_noise_ops.append(tf.assign(var_noise, tf.random_normal(shape=var_noise.shape, stddev=self.parameter_noise_sigma)))
+            generate_noise_ops.append(
+                tf.assign(
+                    var_noise,
+                    tf.random_normal(
+                        shape=var_noise.shape,
+                        stddev=self.parameter_noise_sigma)))
         with tf.control_dependencies(generate_noise_ops):
             add_noise_ops = list()
             for var, var_noise in zip(pnet_params, self.parameter_noise):

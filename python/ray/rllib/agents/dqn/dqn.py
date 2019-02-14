@@ -168,8 +168,10 @@ class DQNAgent(Agent):
                 self.config["optimizer"][k] = self.config[k]
 
         if self.config["parameter_noise"]:
-            self.config["callbacks"]["on_episode_start"] = tune.function(on_episode_start)
-            self.config["callbacks"]["on_episode_end"] = tune.function(on_episode_end)
+            self.config["callbacks"]["on_episode_start"] = tune.function(
+                on_episode_start)
+            self.config["callbacks"]["on_episode_end"] = tune.function(
+                on_episode_end)
 
         self.local_evaluator = self.make_local_evaluator(
             self.env_creator, self._policy_graph)
@@ -232,8 +234,8 @@ class DQNAgent(Agent):
             # Only collect metrics from the third of workers with lowest eps
             result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"],
-                selected_evaluators=self.remote_evaluators[
-                    -len(self.remote_evaluators) // 3:])
+                selected_evaluators=self.
+                remote_evaluators[-len(self.remote_evaluators) // 3:])
         else:
             result = self.optimizer.collect_metrics(
                 timeout_seconds=self.config["collect_metrics_timeout"])
@@ -312,10 +314,12 @@ class DQNAgent(Agent):
         if self.config["parameter_noise"]:
             if self.config["batch_mode"] != "complete_episodes":
                 raise ValueError(
-                    "Exploration with parameter space noise requires batch_mode to be complete_episodes.")
+                    "Exploration with parameter space noise requires batch_mode to be complete_episodes."
+                )
             if self.config.get("noisy", False):
                 raise ValueError(
-                    "Exploration with parameter space noise and noisy network can NOT be used at the same time.")
+                    "Exploration with parameter space noise and noisy network can NOT be used at the same time."
+                )
 
 
 def on_episode_start(info):
@@ -324,6 +328,7 @@ def on_episode_start(info):
     policies = info["policy"]
     for pi in policies.values():
         pi.add_parameter_noise()
+
 
 def on_episode_end(info):
     # as a callback function to monitor the distance
