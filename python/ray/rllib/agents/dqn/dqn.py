@@ -167,7 +167,7 @@ class DQNAgent(Agent):
             if k not in self.config["optimizer"]:
                 self.config["optimizer"][k] = self.config[k]
 
-        if self.config["parameter_noise"]:
+        if self.config.get("parameter_noise", False):
             self.config["callbacks"]["on_episode_start"] = tune.function(
                 on_episode_start)
             self.config["callbacks"]["on_episode_end"] = tune.function(
@@ -311,7 +311,7 @@ class DQNAgent(Agent):
         self.last_target_update_ts = state["last_target_update_ts"]
 
     def _validate_config(self):
-        if self.config["parameter_noise"]:
+        if self.config.get("parameter_noise", False):
             if self.config["batch_mode"] != "complete_episodes":
                 raise ValueError(
                     "Exploration with parameter space noise requires batch_mode to be complete_episodes."
