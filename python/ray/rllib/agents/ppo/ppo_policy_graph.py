@@ -234,6 +234,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=obs_ph,
             action_sampler=self.sampler,
+            action_prob=curr_action_dist.sampled_action_prob(),
             loss=self.model.loss() + self.loss_obj.loss,
             loss_inputs=self.loss_in,
             state_inputs=self.model.state_in,
@@ -307,7 +308,11 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
-        return {"vf_preds": self.value_function, "logits": self.logits}
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self), **{
+                "vf_preds": self.value_function,
+                "logits": self.logits
+            })
 
     @override(TFPolicyGraph)
     def extra_compute_grad_fetches(self):

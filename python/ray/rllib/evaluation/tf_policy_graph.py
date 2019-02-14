@@ -52,6 +52,7 @@ class TFPolicyGraph(PolicyGraph):
                  action_sampler,
                  loss,
                  loss_inputs,
+                 action_prob=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -77,6 +78,7 @@ class TFPolicyGraph(PolicyGraph):
                 and has shape [BATCH_SIZE, data...]. These keys will be read
                 from postprocessed sample batches and fed into the specified
                 placeholders during loss computation.
+            action_prob (Tensor): probability of the sampled action.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -104,6 +106,7 @@ class TFPolicyGraph(PolicyGraph):
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()
+        self._action_prob = action_prob
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         for i, ph in enumerate(self._state_inputs):
@@ -231,8 +234,14 @@ class TFPolicyGraph(PolicyGraph):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self):
-        """Extra values to fetch and return from compute_actions()."""
-        return {}  # e.g, value function
+        """Extra values to fetch and return from compute_actions().
+
+        By default we only return action probability info (if present).
+        """
+        if self._action_prob is not None:
+            return {"action_prob": self._action_prob}
+        else:
+            return {}
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):

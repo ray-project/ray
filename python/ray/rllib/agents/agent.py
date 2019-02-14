@@ -13,7 +13,8 @@ import tensorflow as tf
 from types import FunctionType
 
 import ray
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter
+from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
+    ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
@@ -145,18 +146,22 @@ COMMON_CONFIG = {
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
     #  - a function that returns a rllib.offline.InputReader
     "input": "sampler",
-    # Specify how to evaluate the current policy. This only makes sense to set
-    # when the input is not already generating simulation data:
-    #  - None: don't evaluate the policy. The episode reward and other
-    #    metrics will be NaN if using offline data.
+    # Specify how to evaluate the current policy. This only has an effect when
+    # reading offline experiences. Available options:
+    #  - "wis": the weighted step-wise importance sampling estimator.
+    #  - "is": the step-wise importance sampling estimator.
     #  - "simulation": run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    "input_evaluation": None,
+    "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behaviour* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
+    # If positive, input batches will be shuffled via a sliding window buffer
+    # of this number of batches. Use this if the input data is not in random
+    # enough order. Input is delayed until the shuffle buffer is filled.
+    "shuffle_buffer_size": 0,
     # __sphinx_doc_input_end__
     # __sphinx_doc_output_begin__
     # Specify where experiences should be saved:
@@ -552,10 +557,10 @@ class Agent(Trainable):
             raise ValueError(
                 "The `use_gpu_for_workers` config is deprecated, please use "
                 "`num_gpus_per_worker=1` instead.")
-        if (config["input"] == "sampler"
-                and config["input_evaluation"] is not None):
+        if type(config["input_evaluation"]) != list:
             raise ValueError(
-                "`input_evaluation` should not be set when input=sampler")
+                "`input_evaluation` must be a list of strings, got {}".format(
+                    config["input_evaluation"]))
 
     def _make_evaluator(self,
                         cls,
@@ -575,9 +580,13 @@ class Agent(Trainable):
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: MixedInput(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                MixedInput(config["input"], ioctx),
+                config["shuffle_buffer_size"]))
         else:
-            input_creator = (lambda ioctx: JsonReader(config["input"], ioctx))
+            input_creator = (lambda ioctx: ShuffledInput(
+                JsonReader(config["input"], ioctx),
+                config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -595,6 +604,11 @@ class Agent(Trainable):
                 ioctx,
                 max_file_size=config["output_max_file_size"],
                 compress_columns=config["output_compress_columns"]))
+
+        if config["input"] == "sampler":
+            input_evaluation = []
+        else:
+            input_evaluation = config["input_evaluation"]
 
         return cls(
             env_creator,
@@ -622,7 +636,7 @@ class Agent(Trainable):
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            input_evaluation_method=config["input_evaluation"],
+            input_evaluation=input_evaluation,
             output_creator=output_creator,
             remote_worker_envs=remote_worker_envs)
 
