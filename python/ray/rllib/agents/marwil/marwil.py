@@ -19,8 +19,8 @@ DEFAULT_CONFIG = with_common_config({
     "postprocess_inputs": True,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "complete_episodes",
-    # Read data from historic data and evaluate by a sampler
-    "input_evaluation": "simulation",
+    # Use importance sampling estimators for reward
+    "input_evaluation": ["is", "wis"],
     # Learning rate for adam optimizer
     "lr": 1e-4,
     # Number of timesteps collected for each SGD round

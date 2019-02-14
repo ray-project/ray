@@ -97,6 +97,7 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.sess,
             obs_input=self.observations,
             action_sampler=action_dist.sample(),
+            action_prob=action_dist.sampled_action_prob(),
             loss=self.model.loss() + self.loss.total_loss,
             loss_inputs=loss_in,
             state_inputs=self.model.state_in,
@@ -153,7 +154,9 @@ class A3CPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def extra_compute_action_fetches(self):
-        return {"vf_preds": self.vf}
+        return dict(
+            TFPolicyGraph.extra_compute_action_fetches(self),
+            **{"vf_preds": self.vf})
 
     def _value(self, ob, *args):
         feed_dict = {self.observations: [ob], self.model.seq_lens: [1]}

@@ -44,14 +44,46 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
+            "input_evaluation": [],
             "exploration_final_eps": 0,
             "exploration_fraction": 0}'
 
-Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value:
+**Off-policy estimation:** Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__ can be used, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). For DQN, this means enabling soft Q learning so that actions are sampled from a probability distribution:
+
+.. code-block:: bash
+
+    $ rllib train \
+        --run=DQN \
+        --env=CartPole-v0 \
+        --config='{
+            "input": "/tmp/cartpole-out",
+            "input_evaluation": ["is", "wis"],
+            "soft_q": true,
+            "softmax_temp": 1.0}'
+
+This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
 .. image:: offline-q.png
 
-In offline input mode, no simulations are run, though you still need to specify the environment in order to define the action and observation spaces. If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": "simulation"`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning.
+**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(episode_batch)`` to perform counterfactual estimation as needed. The estimators take in a policy graph object and gamma value for the environment:
+
+.. code-block:: python
+
+    agent = DQNAgent(...)
+    ...  # train agent offline
+
+    from ray.rllib.offline.json_reader import JsonReader
+    from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+
+    estimator = WeightedImportanceSamplingEstimator(agent.get_policy(), gamma=0.99)
+    reader = JsonReader("/path/to/data")
+    for _ in range(1000):
+        batch = reader.next()
+        for episode in batch.split_by_episode():
+            print(estimator.estimate(episode))
+
+
+**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

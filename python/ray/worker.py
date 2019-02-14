@@ -117,6 +117,25 @@ class RayTaskError(Exception):
         return "\n".join(out)
 
 
+class ActorCheckpointInfo(object):
+    """Information used to maintain actor checkpoints."""
+
+    __slots__ = [
+        # Number of tasks executed since last checkpoint.
+        "num_tasks_since_last_checkpoint",
+        # Timestamp of the last checkpoint, in milliseconds.
+        "last_checkpoint_timestamp",
+        # IDs of the previous checkpoints.
+        "checkpoint_ids",
+    ]
+
+    def __init__(self, num_tasks_since_last_checkpoint,
+                 last_checkpoint_timestamp, checkpoint_ids):
+        self.num_tasks_since_last_checkpoint = num_tasks_since_last_checkpoint
+        self.last_checkpoint_timestamp = last_checkpoint_timestamp
+        self.checkpoint_ids = checkpoint_ids
+
+
 class Worker(object):
     """A class used to define the control flow of a worker process.
 
@@ -141,6 +160,8 @@ class Worker(object):
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
+        # Information used to maintain actor checkpoints.
+        self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
         # The number of threads Plasma should use when putting an object in the
         # object store.
@@ -515,7 +536,6 @@ class Worker(object):
                     actor_id=None,
                     actor_handle_id=None,
                     actor_counter=0,
-                    is_actor_checkpoint_method=False,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
                     max_actor_reconstructions=0,
@@ -538,8 +558,6 @@ class Worker(object):
                 be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
-            is_actor_checkpoint_method: True if this is an actor checkpoint
-                task and false otherwise.
             actor_creation_id: The ID of the actor to create, if this is an
                 actor creation task.
             actor_creation_dummy_object_id: If this task is an actor method,
@@ -900,6 +918,11 @@ class Worker(object):
             self.actor_creation_task_id = task.task_id()
             self.function_actor_manager.load_actor(driver_id,
                                                    function_descriptor)
+            self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
+                num_tasks_since_last_checkpoint=0,
+                last_checkpoint_timestamp=int(1000 * time.time()),
+                checkpoint_ids=[],
+            )
 
         execution_info = self.function_actor_manager.get_execution_info(
             driver_id, function_descriptor)
@@ -1849,18 +1872,18 @@ def connect(info,
         if (not worker.redis_client.exists("webui")
                 and info["webui_url"] is not None):
             worker.redis_client.hmset("webui", {"url": info["webui_url"]})
-        is_worker = False
     elif mode == WORKER_MODE:
+        # Register the worker with Redis.
+        worker_dict = {
+            "node_ip_address": worker.node_ip_address,
+            "plasma_store_socket": info["store_socket_name"],
+        }
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
         if (redirect_worker_output_val is not None
                 and int(redirect_worker_output_val) == 1):
-            redirect_worker_output = 1
-        else:
-            redirect_worker_output = 0
-        if redirect_worker_output:
             log_stdout_file, log_stderr_file = (
                 _global_node.new_worker_redirected_log_file(worker.worker_id))
             # Redirect stdout/stderr at the file descriptor level. If we simply
@@ -1876,24 +1899,15 @@ def connect(info,
             sys.stdout.flush()
             sys.stderr.flush()
 
-        # Register the worker with Redis.
-        worker_dict = {
-            "node_ip_address": worker.node_ip_address,
-            "plasma_store_socket": info["store_socket_name"],
-        }
-        if redirect_worker_output:
             worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
-        is_worker = True
     else:
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(info["store_socket_name"], None, 0, 300))
-
-    raylet_socket = info["raylet_socket_name"]
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1951,9 +1965,9 @@ def connect(info,
         worker.task_context.current_task_id = driver_task.task_id()
 
     worker.raylet_client = ray._raylet.RayletClient(
-        raylet_socket,
+        info["raylet_socket_name"],
         ClientID(worker.worker_id),
-        is_worker,
+        (mode == WORKER_MODE),
         DriverID(worker.current_task_id.binary()),
     )
 
@@ -2395,16 +2409,12 @@ def make_decorator(num_return_vals=None,
                    num_gpus=None,
                    resources=None,
                    max_calls=None,
-                   checkpoint_interval=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
-            if checkpoint_interval is not None:
-                raise Exception("The keyword 'checkpoint_interval' is not "
-                                "allowed for remote functions.")
             if max_reconstructions is not None:
                 raise Exception("The keyword 'max_reconstructions' is not "
                                 "allowed for remote functions.")
@@ -2437,7 +2447,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, cpus_to_use, num_gpus,
                                      resources, actor_method_cpus,
-                                     checkpoint_interval, max_reconstructions)
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2509,7 +2519,7 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', 'checkpoint_interval',"
+                    "'resources', 'max_calls', "
                     "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
@@ -2517,7 +2527,7 @@ def remote(*args, **kwargs):
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "checkpoint_interval", "max_reconstructions"
+            "max_calls", "max_reconstructions"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2534,7 +2544,6 @@ def remote(*args, **kwargs):
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
-    checkpoint_interval = kwargs.get("checkpoint_interval")
     max_reconstructions = kwargs.get("max_reconstructions")
 
     return make_decorator(
@@ -2543,6 +2552,5 @@ def remote(*args, **kwargs):
         num_gpus=num_gpus,
         resources=resources,
         max_calls=max_calls,
-        checkpoint_interval=checkpoint_interval,
         max_reconstructions=max_reconstructions,
         worker=worker)

@@ -19,6 +19,8 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.policy_graph import PolicyGraph
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
+from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
+from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
@@ -116,7 +118,7 @@ class PolicyEvaluator(EvaluatorInterface):
                  log_level=None,
                  callbacks=None,
                  input_creator=lambda ioctx: ioctx.default_sampler_input(),
-                 input_evaluation_method=None,
+                 input_evaluation=frozenset([]),
                  output_creator=lambda ioctx: NoopOutput(),
                  remote_worker_envs=False):
         """Initialize a policy evaluator.
@@ -184,11 +186,11 @@ class PolicyEvaluator(EvaluatorInterface):
             callbacks (dict): Dict of custom debug callbacks.
             input_creator (func): Function that returns an InputReader object
                 for loading previous generated experiences.
-            input_evaluation_method (str): How to evaluate the current policy.
-                This only applies when the input is reading offline data.
-                Options are:
-                  - None: don't evaluate the policy. The episode reward and
-                    other metrics will be NaN.
+            input_evaluation (list): How to evaluate the policy performance.
+                This only makes sense to set when the input is reading offline
+                data. The possible values include:
+                  - "is": the step-wise importance sampling estimator.
+                  - "wis": the weighted step-wise is estimator.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
             output_creator (func): Function that returns an OutputWriter object
@@ -316,16 +318,24 @@ class PolicyEvaluator(EvaluatorInterface):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
-        if input_evaluation_method == "simulation":
-            logger.warning(
-                "Requested 'simulation' input evaluation method: "
-                "will discard all sampler outputs and keep only metrics.")
-            sample_async = True
-        elif input_evaluation_method is None:
-            pass
-        else:
-            raise ValueError("Unknown evaluation method: {}".format(
-                input_evaluation_method))
+        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
+        self.reward_estimators = []
+        for method in input_evaluation:
+            if method == "simulation":
+                logger.warning(
+                    "Requested 'simulation' input evaluation method: "
+                    "will discard all sampler outputs and keep only metrics.")
+                sample_async = True
+            elif method == "is":
+                ise = ImportanceSamplingEstimator.create(self.io_context)
+                self.reward_estimators.append(ise)
+            elif method == "wis":
+                wise = WeightedImportanceSamplingEstimator.create(
+                    self.io_context)
+                self.reward_estimators.append(wise)
+            else:
+                raise ValueError(
+                    "Unknown evaluation method: {}".format(method))
 
         if sample_async:
             self.sampler = AsyncSampler(
@@ -341,7 +351,7 @@ class PolicyEvaluator(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                blackhole_outputs=input_evaluation_method == "simulation")
+                blackhole_outputs="simulation" in input_evaluation)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -358,7 +368,6 @@ class PolicyEvaluator(EvaluatorInterface):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions)
 
-        self.io_context = IOContext(log_dir, policy_config, worker_index, self)
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
         self.output_writer = output_creator(self.io_context)
@@ -401,6 +410,12 @@ class PolicyEvaluator(EvaluatorInterface):
         # Always do writes prior to compression for consistency and to allow
         # for better compression inside the writer.
         self.output_writer.write(batch)
+
+        # Do off-policy estimation if needed
+        if self.reward_estimators:
+            for sub_batch in batch.split_by_episode():
+                for estimator in self.reward_estimators:
+                    estimator.process(sub_batch)
 
         if self.compress_observations:
             if isinstance(batch, MultiAgentBatch):
@@ -503,6 +518,15 @@ class PolicyEvaluator(EvaluatorInterface):
             grad_fetch, apply_fetch = (
                 self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(samples))
             return grad_fetch
+
+    @DeveloperAPI
+    def get_metrics(self):
+        """Returns a list of new RolloutMetric objects from evaluation."""
+
+        out = self.sampler.get_metrics()
+        for m in self.reward_estimators:
+            out.extend(m.get_metrics())
+        return out
 
     @DeveloperAPI
     def foreach_env(self, func):
