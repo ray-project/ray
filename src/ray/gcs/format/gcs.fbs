@@ -350,11 +350,17 @@ table ActorCheckpointIdData {
 
 // This enum type is used as object's metadata to indicate the object's creating
 // task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may want
+// to distinguish between intentional and expected actor failures, and between
+// worker process failure and node failure.
 enum ErrorType:int {
-  // Indicates that a task failed because the worker died.
+  // Indicates that a task failed because the worker died unexpectedly while executing it.
   WORKER_DIED = 1,
-  // Indicates that a task failed because the actor died.
+  // Indicates that a task failed because the actor died unexpectedly before finish
+  // executing it.
   ACTOR_DIED = 2,
-  // Indicates that an object is lost and cannot be reconstructed.
+  // Indicates that an object is lost and cannot be reconstructed. Note, this should
+  // only happen to actor objects, because normal task objects can always be
+  // reconstructed.
   OBJECT_UNRECONSTRUCTABLE = 3,
 }

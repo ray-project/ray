@@ -74,7 +74,12 @@ class RayActorError(RayError):
 
 
 class UnreconstructableError(RayError):
-    """Indicates that an object is lost and cannot be reconstructed.
+    """Indicates that an object is lost (evicted or manually deleted) and cannot
+    be reconstructed.
+
+    Note, this exception only happens for actor objects. If actor's current
+    state is after object's creating task, the actor cannot re-run the task to
+    reconstruct the object.
 
     Attributes:
         object_id: ID of the object.
