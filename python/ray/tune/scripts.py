@@ -10,6 +10,7 @@ import os
 import pandas as pd
 # from ray.tune.trial_runner import TrialRunner
 import sys
+from tabulate import tabulate
 
 
 def _flatten_dict(dt):
@@ -47,9 +48,8 @@ def _list_trials(experiment_path):
     with open(filename) as f:
         experiment_state = json.load(f)
 
-    for trial_state in experiment_state["checkpoints"]:
-        print("{trial_name}\t{trial_id}\t{status}\t{num_failures}\t{logdir}".format(
-            **trial_state))
+    checkpoints_df = pd.DataFrame(experiment_state["checkpoints"])[["trial_name", "trial_id", "status", "num_failures", "logdir"]]
+    print(tabulate(checkpoints_df, headers="keys", tablefmt="psql"))
 
 @cli.command()
 @click.argument("project_path", required=True, type=str)
