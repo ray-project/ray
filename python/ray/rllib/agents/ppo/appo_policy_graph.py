@@ -1,4 +1,5 @@
 """Adapted from VTracePolicyGraph to use the PPO surrogate loss.
+
 Keep in sync with changes to VTracePolicyGraph."""
 
 from __future__ import absolute_import
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
+
     Arguments:
         prev_actions_logp: A float32 tensor of shape [T, B].
         actions_logp: A float32 tensor of shape [T, B].
@@ -93,9 +95,11 @@ class VTraceSurrogateLoss(object):
                  clip_pg_rho_threshold=1.0,
                  clip_param=0.3):
         """PPO surrogate loss with vtrace importance weighting.
+
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
         batch_size. The reason we need to know `B` is for V-trace to properly
         handle episode cut boundaries.
+
         Arguments:
             actions: An int32 tensor of shape [T, B, NUM_ACTIONS].
             prev_actions_logp: A float32 tensor of shape [T, B].
