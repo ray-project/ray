@@ -42,15 +42,23 @@ Ray currently has support for the following debuggers:
 * Valgrind
 * Valgrind Profiler
 * Perftools Profiler
-* gdb
+* `gdb`
 * tmux
 
 To use any of these debuggers, please make sure that you have them installed on
-your machine first (`gdb` and `valgrind` on MacOS are known to have issues). Then,
-you can launch a subset of ray processes by adding the environment variable
-``RAY_{PROCESS_NAME}_{DEBUGGER}=1``. For instance, if you wanted to start
-``raylet`` with ``valgrind``, then you simply need to set the environment variable
-``RAY_RAYLET_VALGRIND=1``.
+your machine first (`gdb` and `valgrind` on MacOS are known to have issues).
+Then, you can launch a subset of ray processes by adding the environment
+variable ``RAY_{PROCESS_NAME}_{DEBUGGER}=1``. For instance, if you wanted to
+start ``raylet`` with ``valgrind``, then you simply need to set the environment
+variable ``RAY_RAYLET_VALGRIND=1``.
+
+For `gdb`, we currently only support using `gdb` only if `tmux` is also used.
+For instance, if you wanted to use `gdb` for `raylet` while running `ray` from
+a `ipython` instance, you would run
+
+.. code-block:: bash
+
+ RAY_RAYLET_GDB=1 RAY_RAYLET_TMUX=1 ipython
 
 You can also get a core dump of the ``raylet`` process, which is especially
 useful when filing `issues`_. The process to obtain a core dump is OS-specific,
