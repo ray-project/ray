@@ -8,6 +8,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 RESULT_FILE=$ROOT_DIR/results-$(date '+%Y-%m-%d_%H-%M-%S').log
 echo "Logging to" $RESULT_FILE
 echo $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem || true
+chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem
 
 touch $RESULT_FILE
 
