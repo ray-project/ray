@@ -579,7 +579,7 @@ class Worker(object):
         Returns:
             The return object IDs for this task.
         """
-        with profiling.profile("submit_task", worker=self):
+        with profiling.profile("submit_task"):
             if actor_id is None:
                 assert actor_handle_id is None
                 actor_id = ActorID.nil()
@@ -828,7 +828,7 @@ class Worker(object):
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
             self.memory_monitor.raise_if_low_memory()
-            with profiling.profile("task:deserialize_arguments", worker=self):
+            with profiling.profile("task:deserialize_arguments"):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
         except RayTaskError as e:
@@ -844,7 +844,7 @@ class Worker(object):
 
         # Execute the task.
         try:
-            with profiling.profile("task:execute", worker=self):
+            with profiling.profile("task:execute"):
                 if (task.actor_id().is_nil()
                         and task.actor_creation_id().is_nil()):
                     outputs = function_executor(*arguments)
@@ -867,7 +867,7 @@ class Worker(object):
 
         # Store the outputs in the local object store.
         try:
-            with profiling.profile("task:store_outputs", worker=self):
+            with profiling.profile("task:store_outputs"):
                 # If this is an actor task, then the last object ID returned by
                 # the task is a dummy output, not returned by the function
                 # itself. Decrement to get the correct number of return values.
@@ -952,7 +952,7 @@ class Worker(object):
                 title = "ray_{}:{}()".format(actor.__class__.__name__,
                                              function_name)
                 next_title = "ray_{}".format(actor.__class__.__name__)
-            with profiling.profile("task", extra_data=extra_data, worker=self):
+            with profiling.profile("task", extra_data=extra_data):
                 with _changeproctitle(title, next_title):
                     self._process_task(task, execution_info)
                 # Reset the state fields so the next task can run.
@@ -981,7 +981,7 @@ class Worker(object):
         Returns:
             A task from the local scheduler.
         """
-        with profiling.profile("worker_idle", worker=self):
+        with profiling.profile("worker_idle"):
             task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
@@ -993,7 +993,7 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def exit(signum, frame):
-            shutdown(worker=self)
+            shutdown()
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, exit)
@@ -1109,8 +1109,9 @@ def print_failed_task(task_status):
                task_status["error_message"]))
 
 
-def error_info(worker=global_worker):
+def error_info():
     """Return information about failed tasks."""
+    worker = global_worker
     worker.check_connected()
     return (global_state.error_messages(job_id=worker.task_driver_id) +
             global_state.error_messages(job_id=DriverID.nil()))
@@ -1554,7 +1555,7 @@ def cleanup(worker=global_worker):
         "please call ray.shutdown().")
 
 
-def shutdown(worker=global_worker):
+def shutdown():
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -1567,7 +1568,7 @@ def shutdown(worker=global_worker):
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
     """
-    disconnect(worker)
+    disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -1575,7 +1576,7 @@ def shutdown(worker=global_worker):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
-    worker.set_mode(None)
+    global_worker.set_mode(None)
 
 
 atexit.register(shutdown)
@@ -2037,12 +2038,13 @@ def connect(info,
     worker.cached_functions_to_run = None
 
 
-def disconnect(worker=global_worker):
+def disconnect():
     """Disconnect this worker from the scheduler and object store."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
     # the remote functions will be exported. This is mostly relevant for the
     # tests.
+    worker = global_worker
     if worker.connected:
         # Shutdown all of the threads that we've started. TODO(rkn): This
         # should be handled cleanly in the worker object's destructor and not
@@ -2129,8 +2131,7 @@ def register_custom_serializer(cls,
                                deserializer=None,
                                local=False,
                                driver_id=None,
-                               class_id=None,
-                               worker=global_worker):
+                               class_id=None):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
@@ -2159,6 +2160,7 @@ def register_custom_serializer(cls,
             be efficiently serialized by Ray. This can also raise an exception
             if use_dict is true and cls is not pickleable.
     """
+    worker = global_worker
     assert (serializer is None) == (deserializer is None), (
         "The serializer/deserializer arguments must both be provided or "
         "both not be provided.")
@@ -2225,7 +2227,7 @@ def register_custom_serializer(cls,
         register_class_for_serialization({"worker": worker})
 
 
-def get(object_ids, worker=global_worker):
+def get(object_ids):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -2245,8 +2247,9 @@ def get(object_ids, worker=global_worker):
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
+    worker = global_worker
     worker.check_connected()
-    with profiling.profile("ray.get", worker=worker):
+    with profiling.profile("ray.get"):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
@@ -2270,7 +2273,7 @@ def get(object_ids, worker=global_worker):
             return value
 
 
-def put(value, worker=global_worker):
+def put(value):
     """Store an object in the object store.
 
     Args:
@@ -2279,8 +2282,9 @@ def put(value, worker=global_worker):
     Returns:
         The object ID assigned to this value.
     """
+    worker = global_worker
     worker.check_connected()
-    with profiling.profile("ray.put", worker=worker):
+    with profiling.profile("ray.put"):
         if worker.mode == LOCAL_MODE:
             # In LOCAL_MODE, ray.put is the identity operation.
             return value
@@ -2293,7 +2297,7 @@ def put(value, worker=global_worker):
         return object_id
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
+def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     .. warning::
@@ -2327,6 +2331,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         A list of object IDs that are ready and a list of the remaining object
         IDs.
     """
+    worker = global_worker
 
     if isinstance(object_ids, ObjectID):
         raise TypeError(
@@ -2356,7 +2361,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     worker.check_connected()
     # TODO(swang): Check main thread.
-    with profiling.profile("ray.wait", worker=worker):
+    with profiling.profile("ray.wait"):
         # When Ray is run in LOCAL_MODE, all functions are run immediately,
         # so all objects in object_id are ready.
         if worker.mode == LOCAL_MODE:

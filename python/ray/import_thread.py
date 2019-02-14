@@ -91,21 +91,18 @@ class ImportThread(object):
         # Handle the driver case first.
         if self.mode != ray.WORKER_MODE:
             if key.startswith(b"FunctionsToRun"):
-                with profiling.profile(
-                        "fetch_and_run_function", worker=self.worker):
+                with profiling.profile("fetch_and_run_function"):
                     self.fetch_and_execute_function_to_run(key)
             # Return because FunctionsToRun are the only things that
             # the driver should import.
             return
 
         if key.startswith(b"RemoteFunction"):
-            with profiling.profile(
-                    "register_remote_function", worker=self.worker):
+            with profiling.profile("register_remote_function"):
                 (self.worker.function_actor_manager.
                  fetch_and_register_remote_function(key))
         elif key.startswith(b"FunctionsToRun"):
-            with profiling.profile(
-                    "fetch_and_run_function", worker=self.worker):
+            with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)
         elif key.startswith(b"ActorClass"):
             # Keep track of the fact that this actor class has been

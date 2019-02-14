@@ -6,7 +6,7 @@ import ray
 import numpy as np
 
 
-def get(object_ids, worker=None):
+def get(object_ids):
     """Get a single or a collection of remote objects from the object store.
 
     This method is identical to `ray.get` except it adds support for tuples,
@@ -21,7 +21,7 @@ def get(object_ids, worker=None):
     """
     # There is a dependency on ray.worker which prevents importing
     # global_worker at the top of this file
-    worker = ray.worker.global_worker if worker is None else worker
+    worker = ray.worker.global_worker
     if isinstance(object_ids, (tuple, np.ndarray)):
         return ray.get(list(object_ids), worker)
     elif isinstance(object_ids, dict):
@@ -41,7 +41,7 @@ def get(object_ids, worker=None):
         return ray.get(object_ids, worker)
 
 
-def wait(object_ids, num_returns=1, timeout=None, worker=None):
+def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     This method is identical to `ray.wait` except it adds support for tuples
@@ -59,13 +59,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=None):
         A list of object IDs that are ready and a list of the remaining object
             IDs.
     """
-    worker = ray.worker.global_worker if worker is None else worker
     if isinstance(object_ids, (tuple, np.ndarray)):
         return ray.wait(
-            list(object_ids),
-            num_returns=num_returns,
-            timeout=timeout,
-            worker=worker)
+            list(object_ids), num_returns=num_returns, timeout=timeout)
 
-    return ray.wait(
-        object_ids, num_returns=num_returns, timeout=timeout, worker=worker)
+    return ray.wait(object_ids, num_returns=num_returns, timeout=timeout)
