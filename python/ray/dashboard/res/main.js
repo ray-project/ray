@@ -7,6 +7,7 @@ let dashboard = new Vue({
         last_update: undefined,
         clients: undefined,
         totals: undefined,
+        tasks: undefined,
         ray_config: undefined,
     },
     methods: {
@@ -58,6 +59,14 @@ let dashboard = new Vue({
             this.now = (new Date()).getTime() / 1000;
         }
     },
+    computed: {
+        outdated_cls: function(ts) {
+            if ((dashboard.now - dashboard.last_update) > 5) {
+                return "outdated";
+            }
+            return "";
+        },
+    },
     filters: {
         age(ts) {
             return (dashboard.now - ts | 0) + "s";
@@ -90,26 +99,41 @@ Vue.component("worker-usage", {
     },
     template: `
         <td class="workers" :class="cls">
-            {{workers}}/{{cores}} ({{(frac*100).toFixed(0)}}%)
+            {{workers}}/{{cores}} {{(frac*100).toFixed(0)}}%
         </td>
     `,
 });
 
 Vue.component("node", {
-    props: ['v', 'ip', 'now'],
+    props: [
+        "now",
+        "hostname",
+        "boot_time",
+        "n_workers",
+        "n_cores",
+        "m_avail",
+        "m_total",
+        "d_avail",
+        "d_total",
+        "load",
+        "n_sent",
+        "n_recv",
+        "workers",
+    ],
     data: function() {
         return {
             hidden: true,
         };
     },
     computed: {
-        n_workers: function() {
-            if (this.v.workers) { return this.v.workers.length; }
-            return 0;
-        },
         age: function() {
-            if (this.v.boot_time) {
-                let rs = this.now - this.v.boot_time | 0;
+            if (this.boot_time) {
+                let n = this.now;
+                if (this.boot_time > 2840140800) {
+                    // Hack. It's a sum of multiple nodes.
+                    n *= this.hostname;
+                }
+                let rs = n - this.boot_time | 0;
                 let s = rs % 60;
                 let m = ((rs / 60) % 60) | 0;
                 let h = (rs / 3600) | 0;
@@ -130,41 +154,51 @@ Vue.component("node", {
         }
     },
     filters: {
+        mib(x) {
+            return `${(x/(1024**2)).toFixed(3)}M`;
+        },
+        hostnamefilter(x) {
+            if (isNaN(x)) {
+                return x;
+            }
+            return `Totals: ${x} nodes`;
+        },
     },
     template: `
     <tbody v-on:click="toggleHide()">
         <tr class="ray_node">
-            <td class="ip">{{ip}}</td>
+            <td class="hostname">{{hostname | hostnamefilter}}</td>
             <td class="uptime">{{age}}</td>
             <worker-usage
-                :cores="v.cpus[0]"
                 :workers="n_workers"
+                :cores="n_cores"
             ></worker-usage>
-            <usagebar v-if="v.mem"
-                :avail="v.mem[1]" :total="v.mem[0]"
+            <usagebar
+                :avail="m_avail" :total="m_total"
                 stat="mem"
             ></usagebar>
-            <usagebar v-if="v.disk"
-                :avail="v.disk['/'].free" :total="v.disk['/'].total"
+            <usagebar
+                :avail="d_avail" :total="d_total"
                 stat="storage"
             ></usagebar>
             <loadbar
-                v-if="v.load_avg"
-                :cores="v.cpus[0]"
-                :onem="v.load_avg[0][0]"
-                :fivem="v.load_avg[0][1]"
-                :fifteenm="v.load_avg[0][2]"
+                :cores="n_cores"
+                :onem="load[0]"
+                :fivem="load[1]"
+                :fifteenm="load[2]"
             >
             </loadbar>
+            <td class="netsent">{{n_sent | mib}}/s</td>
+            <td class="netrecv">{{n_recv | mib}}/s</td>
         </tr>
-        <template v-if="!hidden && v.workers">
+        <template v-if="!hidden && workers">
             <tr class="workerlist">
                 <th>time</th>
                 <th>name</th>
                 <th>pid</th>
                 <th>uss</th>
             </tr>
-            <tr class="workerlist" v-for="x in v.workers">
+            <tr class="workerlist" v-for="x in workers">
                 <td>user: {{x.cpu_times.user}}s</td>
                 <td>{{x.name}}</td>
                 <td>{{x.pid}}</td>
@@ -192,14 +226,8 @@ Vue.component("usagebar", {
         }
     },
     filters: {
-        si(x) {
-            let prefixes = ["B", "K", "M", "G", "T"]
-            let i = 0;
-            while (x > 1024) {
-                x /= 1024;
-                i += 1;
-            }
-            return `${x.toFixed(1)}${prefixes[i]}`;
+        gib(x) {
+            return `${(x/(1024**3)).toFixed(1)}G`;
         },
         pct(x) {
             return `${(x*100).toFixed(0)}%`;
@@ -207,7 +235,7 @@ Vue.component("usagebar", {
     },
     template: `
     <td class="usagebar" :class="tcls">
-        {{used | si}}/{{total | si}} ({{ frac | pct }})
+        {{used | gib}}/{{total | gib}} {{ frac | pct }}
     </td>
     `,
 });
@@ -226,7 +254,7 @@ Vue.component("loadbar", {
     },
     template: `
     <td class="load loadbar" :class="cls">
-        {{onem}} ({{frac.toFixed(2)}}), {{fivem}}, {{fifteenm}}
+        {{onem.toFixed(2)}}, {{fivem.toFixed(2)}}, {{fifteenm.toFixed(2)}}
     </td>
     `,
 });

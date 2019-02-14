@@ -64,6 +64,8 @@ class Reporter(object):
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
+        self.network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+
     @staticmethod
     def get_cpu_percent():
         return psutil.cpu_percent()
@@ -113,8 +115,19 @@ class Reporter(object):
         return load, per_cpu_load
 
     def get_all_stats(self):
+        now = to_posix_time(datetime.datetime.utcnow())
+        network_stats = self.get_network_stats()
+
+        self.network_stats_hist.append((now, network_stats))
+        self.network_stats_hist = self.network_stats_hist[-7:]
+        then, prev_network_stats = self.network_stats_hist[0]
+        netstats = (
+            (network_stats[0]-prev_network_stats[0])/(now - then),
+            (network_stats[1]-prev_network_stats[1])/(now - then)
+        )
+
         return {
-            "now": to_posix_time(datetime.datetime.utcnow()),
+            "now": now,
             "hostname": self.hostname,
             "ip": self.ip_addr,
             "cpu": self.get_cpu_percent(),
@@ -124,6 +137,7 @@ class Reporter(object):
             "boot_time": self.get_boot_time(),
             "load_avg": self.get_load_avg(),
             "disk": self.get_disk_usage(),
+            "net": netstats,
         }
 
     def perform_iteration(self):
@@ -140,7 +154,7 @@ class Reporter(object):
         while True:
             try:
                 self.perform_iteration()
-            except:
+            except Exception:
                 traceback.print_exc()
                 pass
 

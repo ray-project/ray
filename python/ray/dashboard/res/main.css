@@ -1,45 +1,58 @@
-* { font-family: sans-serif; margin: 0; padding: 0; }
+* { font-family: monospace; margin: 0; padding: 0; }
 h1, h2 { text-align: center; margin: 1rem 0; }
 h1 { font-size: 3rem; margin: 0.5rem auto; text-align: center; }
-h2 { font-size: 2rem; margin: 0.3rem auto; text-align: center; }
+h2 { font-size: 2rem; margin: 1rem auto; text-align: center; }
 div#dashboard {
-    width: 80rem; margin: 1rem auto; border-radius: 1rem;
+    width: 116rem; margin: 1rem auto;
 }
 
-pre, li, h2.totals { font-family: monospace; }
-
-h3, h4, h5 { text-align: center; }
-h3 { margin: 1rem 0; font-size: 2.3rem; }
-
+table, tbody, thead {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
 tr {
     cursor: pointer;
 }
 tr.workerlist td, tr.workerlist th {
-    height: 0.5rem;
-    font-size: 0.7rem;
-    padding: 0.3rem;
+    font-size: 0.8rem;
 }
 tr:hover {
     filter: brightness(0.85);
 }
 td, th {
-    border: 0.2rem solid white;
     padding: 0.3rem;
-    font-size: 1rem;
+    font-size: 1.4rem;
     font-family: monospace;
     text-align: center;
     background-color: white;
 }
+th {
+    background-color: #eeeeee;
+    border: 1px solid black;
+}
 
-.ip { width: 7rem; font-weight: bold; }
-.uptime { width: 8rem; }
-.workers { width: 12rem; }
-.mem { width: 14rem; }
-.storage { width: 14rem; }
-.load { width: 20rem; }
+tbody.totals {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+ul { list-style-position: inside; }
 
 .critical { background-color: magenta; }
 .bad { background-color: red; }
 .high { background-color: orange; }
 .average { background-color: limegreen; }
 .low { background-color: aquamarine; }
+
+div.cols {
+    width: 100%;
+    margin: 1rem 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+div.cols div {
+    padding: 1rem 0;
+}
+
+.outdated { background-color: red; }

@@ -16,6 +16,7 @@ import yaml
 
 from pathlib import Path
 from collections import Counter
+from operator import itemgetter
 from typing import Dict
 
 import ray.ray_constants as ray_constants
@@ -188,31 +189,42 @@ class NodeStats(threading.Thread):
         super().__init__()
 
     def calculate_totals(self) -> Dict:
+        total_boot_time = 0
         total_cpus = 0
         total_workers = 0
-        total_load = 0
-        total_storage_used = 0
+        total_load = [0.0,0.0,0.0]
+        total_storage_avail = 0
         total_storage_total = 0
-        total_ram_used = 0
+        total_ram_avail = 0
         total_ram_total = 0
+        total_sent = 0
+        total_recv = 0
 
         for v in self._node_stats.values():
+            total_boot_time += v["boot_time"]
             total_cpus += v["cpus"][0]
             total_workers += len(v["workers"])
-            total_load += v["load_avg"][0][0]
-            total_storage_used += v["disk"]["/"]["used"]
+            total_load[0] += v["load_avg"][0][0]
+            total_load[1] += v["load_avg"][0][1]
+            total_load[2] += v["load_avg"][0][2]
+            total_storage_avail += v["disk"]["/"]["free"]
             total_storage_total += v["disk"]["/"]["total"]
-            total_ram_used += (v["mem"][0] - v["mem"][1])
+            total_ram_avail += v["mem"][1]
             total_ram_total += v["mem"][0]
+            total_sent += v["net"][0]
+            total_recv += v["net"][1]
 
         return {
-            "cpus": total_cpus,
-            "workers": total_workers,
+            "boot_time": total_boot_time,
+            "n_workers": total_workers,
+            "n_cores": total_cpus,
+            "m_avail": total_ram_avail,
+            "m_total": total_ram_total,
+            "d_avail": total_storage_avail,
+            "d_total": total_storage_total,
             "load": total_load,
-            "storage_used": total_storage_used,
-            "storage_total": total_storage_total,
-            "ram_used": total_ram_used,
-            "ram_total": total_ram_total,
+            "n_sent": total_sent,
+            "n_recv": total_recv,
         }
 
     def calculate_tasks(self) -> Counter:
@@ -237,10 +249,14 @@ class NodeStats(threading.Thread):
     def get_node_stats(self) -> Dict:
         with self._node_stats_lock:
             self.purge_outdated_stats()
+            node_stats = sorted(
+                (v for v in self._node_stats.values()),
+                key=itemgetter("boot_time")
+            )
             return {
                 "totals": self.calculate_totals(),
                 "tasks": self.calculate_tasks(),
-                "clients": self._node_stats,
+                "clients": node_stats,
             }
 
     def run(self):
