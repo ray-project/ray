@@ -501,9 +501,10 @@ def start_redis(node_ip_address,
             started.
     """
 
-    assert len(redirect_files) == 1 + num_redis_shards, (
-        "The number of redirect file pairs should be equal to the number of"
-        "redis shards (including the primary shard) we will start.")
+    if len(redirect_files) != 1 + num_redis_shards:
+        raise ValueError("The number of redirect file pairs should be equal "
+                         "to the number of redis shards (including the "
+                         "primary shard) we will start.")
     if redis_shard_ports is None:
         redis_shard_ports = num_redis_shards * [None]
     elif len(redis_shard_ports) != num_redis_shards:
