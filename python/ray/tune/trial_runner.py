@@ -395,15 +395,13 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
+            self._checkpoint_trial_if_needed(trial)
+
             if decision == TrialScheduler.CONTINUE:
-                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
                 self.trial_executor.pause_trial(trial)
             elif decision == TrialScheduler.STOP:
-                # Checkpoint before ending the trial
-                # if checkpoint_at_end experiment option is set to True
-                self._checkpoint_trial_if_needed(trial)
                 self.trial_executor.export_trial_if_needed(trial)
                 self.trial_executor.stop_trial(trial)
             else:
