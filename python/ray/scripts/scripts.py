@@ -384,11 +384,15 @@ def stop():
         ["killall plasma_store_server raylet raylet_monitor"], shell=True)
 
     # Kill lingering gdb processes if they still exist
-    ray_processes = ["monitor", "raylet_monitor", "log_monitor", "worker", "raylet", "plasma_store", "redis_server", "web_ui"]
+    ray_processes = [
+        "monitor", "raylet_monitor", "log_monitor", "worker", "raylet",
+        "plasma_store", "redis_server", "web_ui"
+    ]
     for ray_process in ray_processes:
         subprocess.call(
             [
-                "kill $(ps aux | grep {} | grep -v grep | awk '{{ print $2 }}') 2> /dev/null".format(ray_process)
+                "kill $(ps aux | grep {} | grep -v grep | awk '{{ print $2 }}') 2> /dev/null".
+                format(ray_process)
             ],
             shell=True)
 
