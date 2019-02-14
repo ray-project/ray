@@ -73,6 +73,13 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --run PPO \
+    --stop '{"training_iteration": 2}' \
+    --config '{"remote_worker_envs": true, "num_envs_per_worker": 2, "num_workers": 1, "train_batch_size": 100, "sgd_minibatch_size": 50}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env Pendulum-v0 \
     --run ES \
     --stop '{"training_iteration": 2}' \
@@ -214,14 +221,14 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --env CartPole-v0 \
     --run IMPALA \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_data_loader_buffers": 2, "replay_proportion": 1.0}'
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_data_loader_buffers": 2, "replay_buffer_num_slots": 100, "replay_proportion": 1.0}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
     --run IMPALA \
     --stop '{"training_iteration": 2}' \
-    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_data_loader_buffers": 2, "replay_proportion": 1.0, "model": {"use_lstm": true}}'
+    --config '{"num_gpus": 0, "num_workers": 2, "min_iter_time_s": 1, "num_data_loader_buffers": 2, "replay_buffer_num_slots": 100, "replay_proportion": 1.0, "model": {"use_lstm": true}}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -362,20 +369,28 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} -e SIGOPT_KEY $DO
     python /ray/python/ray/tune/examples/sigopt_example.py \
     --smoke-test
 
+# Runs only on Python3
+# docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+#     python /ray/python/ray/tune/examples/nevergrad_example.py \
+#     --smoke-test
+
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_keras.py \
     --smoke-test
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/mnist_pytorch.py \
-    --smoke-test
+    python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test --no-cuda
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/mnist_pytorch_trainable.py \
-    --smoke-test
+    --smoke-test --no-cuda
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/genetic_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/skopt_example.py \
     --smoke-test
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -448,6 +463,14 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --run A3C \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v4 \
+    --run IMPALA \
+    --stop='{"timesteps_total": 40000}' \
+    --ray-object-store-memory=500000000 \
+    --config '{"num_workers": 1, "num_gpus": 0, "num_envs_per_worker": 64, "sample_batch_size": 50, "train_batch_size": 50, "learner_queue_size": 1}'
 
 python3 $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \

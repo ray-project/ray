@@ -93,7 +93,7 @@ class RayParams(object):
                  num_workers=None,
                  local_mode=False,
                  driver_mode=None,
-                 redirect_worker_output=False,
+                 redirect_worker_output=True,
                  redirect_output=True,
                  num_redis_shards=None,
                  redis_max_clients=None,

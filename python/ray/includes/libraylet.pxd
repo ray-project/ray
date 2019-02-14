@@ -8,9 +8,21 @@ from libcpp.vector cimport vector as c_vector
 
 
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, CRayStatus)
+    CActorCheckpointID,
+    CActorClassID,
+    CActorHandleID,
+    CActorID,
+    CClientID,
+    CConfigID,
+    CDriverID,
+    CFunctionID,
+    CLanguage,
+    CObjectID,
+    CRayStatus,
+    CTaskID,
+    CUniqueID,
+    CWorkerID,
+)
 from ray.includes.task cimport CTaskSpecification
 
 
@@ -57,6 +69,10 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus PushProfileEvents(const GCSProfileTableDataT &profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
                               c_bool local_only)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID &checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CLanguage GetLanguage() const
         CClientID GetClientID() const
         CDriverID GetDriverID() const

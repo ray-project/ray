@@ -20,6 +20,7 @@ initial_workers: 0
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
+    run_options: []  # Extra options to pass into "docker run"
 
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -66,9 +67,9 @@ head_node:
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
 
-    # If the network interface is specified as below in both head and worker 
+    # If the network interface is specified as below in both head and worker
     # nodes, the manual network config is used.  Otherwise an existing subnet is
-    # used.  To use a shared subnet, ask the subnet owner to grant permission 
+    # used.  To use a shared subnet, ask the subnet owner to grant permission
     # for 'compute.subnetworks.use' to the ray autoscaler account...
     # networkInterfaces:
     #   - kind: compute#networkInterface
@@ -100,17 +101,17 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-
-    - >-
-      sudo apt-get update
-      && sudo apt-get install -y
-      psmisc
 
     # Install Anaconda.
     - >-
@@ -121,9 +122,9 @@ setup_commands:
       && echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.profile
 
     # Install ray
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.3-cp36-cp36m-manylinux1_x86_64.whl
 
 
 # Custom commands that will be run on the head node after common setup.

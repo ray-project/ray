@@ -4,6 +4,7 @@
 
 <suppressions>
   <suppress checks="OperatorWrap" files=".*" />
+  <suppress checks="JavadocParagraph" files=".*" />
   <suppress checks="MemberNameCheck" files="PathConfig.java"/>
   <suppress checks="MemberNameCheck" files="RayParameters.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>

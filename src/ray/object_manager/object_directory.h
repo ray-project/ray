@@ -48,9 +48,9 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                              const std::unordered_set<ray::ClientID> &,
-                                              bool has_been_created)>;
+  using OnLocationsFound = std::function<void(
+      const ray::ObjectID &object_id, const std::unordered_set<ray::ClientID> &, bool,
+      const std::vector<uint8_t> &, const std::string &, bool has_been_created)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -99,10 +99,15 @@ class ObjectDirectoryInterface {
   /// \param object_id The object id that was put into the store.
   /// \param client_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
+  /// \param inline_object_flag Flag specifying whether object is inlined.
+  /// \param inline_object_data Object data. Only for inlined objects.
+  /// \param inline_object_metadata Object metadata. Only for inlined objects.
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+      const object_manager::protocol::ObjectInfoT &object_info, bool inline_object_flag,
+      const std::vector<uint8_t> &inline_object_data,
+      const std::string &inline_object_metadata) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -154,9 +159,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const ClientID &client_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
+  ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
+                                const object_manager::protocol::ObjectInfoT &object_info,
+                                bool inline_object_flag,
+                                const std::vector<uint8_t> &inline_object_data,
+                                const std::string &inline_object_metadata) override;
+
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
 
@@ -174,6 +182,15 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
+    /// Specify whether the object is inlined. The data and the metadata of
+    /// an inlined object are stored in the object's GCS entry. In this flag
+    /// (i.e., the object is inlined) the content of current_object_locations
+    /// can be ignored.
+    bool inline_object_flag;
+    /// Inlined object data, if inline_object_flag == true.
+    std::vector<uint8_t> inline_object_data;
+    /// Inlined object metadata, if inline_object_flag == true.
+    std::string inline_object_metadata;
     /// This flag will get set to true if the object has ever been created. It
     /// should never go back to false once set to true. If this is true, and
     /// the current_object_locations is empty, then this means that the object
@@ -188,9 +205,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
-  /// Map from object ID to the number of times it's been evicted on this
-  /// node before.
-  std::unordered_map<ObjectID, int> object_evictions_;
 };
 
 }  // namespace ray

@@ -1,4 +1,4 @@
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 
@@ -8,7 +8,7 @@ cdef extern from "ray/ray_config.h" nogil:
         @staticmethod
         RayConfig &instance()
 
-        int64_t ray_protocol_version() const
+        int64_t ray_cookie() const
 
         int64_t handler_warning_timeout_ms() const
 
@@ -79,5 +79,7 @@ cdef extern from "ray/ray_config.h" nogil:
         int num_workers_per_process() const
 
         int64_t max_task_lease_timeout_ms() const
+
+        uint32_t num_actor_checkpoints_to_keep() const
 
         void initialize(const unordered_map[c_string, int] &config_map)

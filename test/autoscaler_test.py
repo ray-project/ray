@@ -121,6 +121,7 @@ SMALL_CLUSTER = {
         "TestProp": 2,
     },
     "file_mounts": {},
+    "initialization_commands": ["cmd0"],
     "setup_commands": ["cmd1"],
     "head_setup_commands": ["cmd2"],
     "worker_setup_commands": ["cmd3"],

@@ -56,10 +56,12 @@ class NodeManager {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
+  /// \param reference to the local object store.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              plasma::PlasmaClient &store_client);
 
   /// Process a new client connection.
   ///
@@ -184,6 +186,10 @@ class NodeManager {
   /// \param worker The worker that finished the task.
   /// \return Void.
   void FinishAssignedTask(Worker &worker);
+  /// Helper function to produce actor table data for a newly created actor.
+  ///
+  /// \param task The actor creation task that created the actor.
+  ActorTableDataT CreateActorTableDataFromCreationTask(const Task &task);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creationt ask.
@@ -280,9 +286,11 @@ class NodeManager {
   /// old state transition.
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
-  /// \param data Data associated with this notification.
+  /// \param actor_registration The ActorRegistration object that represents actor's
+  /// new state.
   /// \return Void.
-  void HandleActorStateTransition(const ActorID &actor_id, const ActorTableDataT &data);
+  void HandleActorStateTransition(const ActorID &actor_id,
+                                  ActorRegistration &&actor_registration);
 
   /// Publish an actor's state transition to all other nodes.
   ///
@@ -383,6 +391,25 @@ class NodeManager {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
+  /// Process client message of PrepareActorCheckpointRequest.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  void ProcessPrepareActorCheckpointRequest(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of NotifyActorResumedFromCheckpoint.
+  ///
+  /// \param message_data A pointer to the message data.
+  void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
+
+  /// Update actor frontier when a task finishes.
+  /// If the task is an actor creation task and the actor was resumed from a checkpoint,
+  /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
+  ///
+  /// \param task The task that just finished.
+  void UpdateActorFrontier(const Task &task);
+
   /// Handle the case where an actor is disconnected, determine whether this
   /// actor needs to be reconstructed and then update actor table.
   /// This function needs to be called either when actor process dies or when
@@ -395,12 +422,24 @@ class NodeManager {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// connect to a remote node manager.
+  ///
+  /// \param client_id The client ID for the remote node manager.
+  /// \param client_address The IP address for the remote node manager.
+  /// \param client_port The listening port for the remote node manager.
+  /// \return True if the connect succeeds.
+  ray::Status ConnectRemoteNodeManager(const ClientID &client_id,
+                                       const std::string &client_address,
+                                       int32_t client_port);
+
+  // GCS client ID for this node.
+  ClientID client_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
   /// objects in the object store (e.g., for actor tasks that can't be run
   /// because the actor died).
-  plasma::PlasmaClient store_client_;
+  plasma::PlasmaClient &store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
@@ -444,6 +483,10 @@ class NodeManager {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
+
+  /// This map stores actor ID to the ID of the checkpoint that will be used to
+  /// restore the actor.
+  std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 };
 
 }  // namespace raylet
