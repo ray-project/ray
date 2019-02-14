@@ -10,11 +10,11 @@ COPTS = ["-DRAY_USE_GLOG"]
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
+    copts = COPTS,
     deps = [
         ":ray_util",
         ":raylet_lib",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
@@ -24,25 +24,29 @@ cc_binary(
         "src/ray/raylet/monitor.h",
         "src/ray/raylet/monitor_main.cc",
     ],
+    copts = COPTS,
     deps = [
         ":gcs",
         ":ray_util",
     ],
-    copts = COPTS,
 )
 
 cc_library(
     name = "raylet_lib",
-    srcs = glob([
-        "src/ray/raylet/*.cc"
-    ], exclude = [
-        "src/ray/raylet/mock_gcs_client.cc",
-        "src/ray/raylet/monitor_main.cc",
-        "src/ray/raylet/*_test.cc",
-    ]),
+    srcs = glob(
+        [
+            "src/ray/raylet/*.cc",
+        ],
+        exclude = [
+            "src/ray/raylet/mock_gcs_client.cc",
+            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/*_test.cc",
+        ],
+    ),
     hdrs = glob([
         "src/ray/raylet/*.h",
     ]),
+    copts = COPTS,
     deps = [
         ":gcs",
         ":gcs_fbs",
@@ -51,73 +55,72 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
-        "@plasma//:plasma_client",
         "@com_google_googletest//:gtest",
+        "@plasma//:plasma_client",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "lineage_cache_test",
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
+    copts = COPTS,
     deps = [
-        "@com_google_googletest//:gtest_main",
         ":node_manager_fbs",
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "reconstruction_policy_test",
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
+    copts = COPTS,
     deps = [
-        "@com_google_googletest//:gtest_main",
         ":node_manager_fbs",
         ":object_manager",
-        ":raylet_lib"
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
 
 cc_test(
     name = "worker_pool_test",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":raylet_lib",
-    ],
     copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_test(
     name = "logging_test",
     srcs = ["src/ray/util/logging_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":ray_util",
-    ],
     copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":raylet_lib"
-    ],
     copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_test(
     name = "task_test",
     srcs = ["src/ray/raylet/task_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":raylet_lib",
-    ],
     copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -128,6 +131,7 @@ cc_library(
     hdrs = glob([
         "src/ray/object_manager/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src",
     ],
@@ -137,67 +141,70 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
-        "@plasma//:plasma_client"
+        "@plasma//:plasma_client",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
     name = "object_manager_test",
     testonly = 1,
     srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":object_manager",
-    ],
     copts = COPTS,
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_binary(
     name = "object_manager_stress_test",
     testonly = 1,
     srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
-    deps = [
-        "@com_google_googletest//:gtest_main",
-        ":object_manager",
-    ],
     copts = COPTS,
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
     name = "ray_util",
-    srcs = glob([
-        "src/ray/*.cc",
-        "src/ray/util/*.cc",
-    ], exclude = [
-        "src/ray/util/logging_test.cc",
-        "src/ray/util/signal_test.cc"
-    ]),
+    srcs = glob(
+        [
+            "src/ray/*.cc",
+            "src/ray/util/*.cc",
+        ],
+        exclude = [
+            "src/ray/util/logging_test.cc",
+            "src/ray/util/signal_test.cc",
+        ],
+    ),
     hdrs = glob([
         "src/ray/*.h",
         "src/ray/util/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src",
     ],
     deps = [
-      "@plasma//:plasma_client",
-      "@com_github_google_glog//:glog",
-      ":sha256"
+        ":sha256",
+        "@com_github_google_glog//:glog",
+        "@plasma//:plasma_client",
     ],
-    copts = COPTS,
 )
 
 cc_library(
     name = "ray_common",
     srcs = [
         "src/ray/common/client_connection.cc",
-        "src/ray/common/common_protocol.cc"
+        "src/ray/common/common_protocol.cc",
     ],
     hdrs = [
         "src/ray/common/client_connection.h",
-        "src/ray/common/common_protocol.h"
+        "src/ray/common/common_protocol.h",
     ],
+    copts = COPTS,
     includes = [
         "src/ray/gcs/format",
     ],
@@ -207,7 +214,6 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
     ],
-    copts = COPTS,
 )
 
 cc_library(
@@ -223,12 +229,15 @@ cc_library(
 
 cc_library(
     name = "hiredis",
-    srcs = glob([
-        "src/ray/thirdparty/ae/ae.c",
-        "src/ray/thirdparty/hiredis/*.c",
-    ], exclude = [
-        "src/ray/thirdparty/hiredis/test.c"
-    ]),
+    srcs = glob(
+        [
+            "src/ray/thirdparty/ae/ae.c",
+            "src/ray/thirdparty/hiredis/*.c",
+        ],
+        exclude = [
+            "src/ray/thirdparty/hiredis/test.c",
+        ],
+    ),
     hdrs = glob([
         "src/ray/thirdparty/ae/*.h",
         "src/ray/thirdparty/hiredis/*.h",
@@ -238,57 +247,60 @@ cc_library(
         "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
     includes = [
-        "src/ray/thirdparty/hiredis",
         "src/ray/thirdparty/ae",
+        "src/ray/thirdparty/hiredis",
     ],
 )
 
 cc_library(
     name = "gcs",
-    srcs = glob([
-        "src/ray/gcs/*.cc"
-    ], exclude = [
-        "src/ray/gcs/*_test.cc"
-    ]),
+    srcs = glob(
+        [
+            "src/ray/gcs/*.cc",
+        ],
+        exclude = [
+            "src/ray/gcs/*_test.cc",
+        ],
+    ),
     hdrs = glob([
         "src/ray/gcs/*.h",
         "src/ray/gcs/format/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src/ray/gcs/format",
     ],
     deps = [
         ":gcs_fbs",
-        ":node_manager_fbs",
-        ":ray_util",
-        ":ray_common",
         ":hiredis",
+        ":node_manager_fbs",
+        ":ray_common",
+        ":ray_util",
         "@boost//:asio",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
     name = "gcs_client_test",
     testonly = 1,
     srcs = ["src/ray/gcs/client_test.cc"],
+    copts = COPTS,
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
     name = "asio_test",
     testonly = 1,
     srcs = ["src/ray/gcs/asio_test.cc"],
+    copts = COPTS,
     deps = [
         ":gcs",
-        "@com_google_googletest//:gtest_main",
         ":ray_util",
+        "@com_google_googletest//:gtest_main",
     ],
-    copts = COPTS,
 )
 
 FLATC_ARGS = [
@@ -308,7 +320,7 @@ flatbuffer_cc_library(
     name = "common_fbs",
     srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
     flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/common/"
+    out_prefix = "src/ray/common/",
 )
 
 flatbuffer_cc_library(
@@ -333,31 +345,34 @@ pyx_library(
         "python/ray/__init__.py",
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi"
+        "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"]
+    deps = ["//:raylet_lib"],
 )
 
 cc_binary(
     name = "raylet_library_java.so",
     srcs = [
-        "@bazel_tools//tools/jdk:current_java_runtime",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
         "src/ray/id.h",
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/raylet_client.h",
-        "src/ray/util/logging.h"
-        ],
+        "src/ray/util/logging.h",
+        "@bazel_tools//tools/jdk:current_java_runtime",
+    ],
     includes = [
         "src",
-        "external/local_jdk/include"] + select({
-            "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
-            "//conditions:default": ["external/local_jdk/include/linux"]
-        }),
+        "external/local_jdk/include",
+    ] + select({
+        "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
+        "//conditions:default": ["external/local_jdk/include/linux"],
+    }),
     linkshared = 1,
     linkstatic = 1,
-    deps = ["@plasma//:plasma_client",
-            "//:raylet_lib"],
+    deps = [
+        "//:raylet_lib",
+        "@plasma//:plasma_client",
+    ],
 )
 
 genrule(
@@ -370,17 +385,17 @@ genrule(
 
 filegroup(
     name = "raylet_library_java",
-    visibility = ["//visibility:public"],
     srcs = select({
         "@bazel_tools//src/conditions:darwin": [":raylet_library_java.dylib"],
         "//conditions:default": [":raylet_library_java.so"],
-    })
+    }),
+    visibility = ["//visibility:public"],
 )
 
 flatbuffer_py_library(
     name = "python_gcs_fbs",
     srcs = [
-        "src/ray/gcs/format/gcs.fbs"
+        "src/ray/gcs/format/gcs.fbs",
     ],
     outs = [
         "ActorState.py",
@@ -417,7 +432,7 @@ flatbuffer_py_library(
 flatbuffer_py_library(
     name = "python_node_manager_fbs",
     srcs = [
-        "src/ray/raylet/format/node_manager.fbs"
+        "src/ray/raylet/format/node_manager.fbs",
     ],
     outs = [
         "ray/protocol/DisconnectClient.py",
@@ -436,13 +451,13 @@ flatbuffer_py_library(
         "ray/protocol/Task.py",
         "ray/protocol/TaskExecutionSpecification.py",
         "ray/protocol/WaitReply.py",
-        "ray/protocol/WaitRequest.py"
+        "ray/protocol/WaitRequest.py",
     ],
-    out_prefix = "python/ray/core/generated/",
     include_paths = [
-        "src/ray/gcs/format/"
+        "src/ray/gcs/format/",
     ],
-    includes = ["src/ray/gcs/format/gcs.fbs"]
+    includes = ["src/ray/gcs/format/gcs.fbs"],
+    out_prefix = "python/ray/core/generated/",
 )
 
 filegroup(
@@ -458,34 +473,34 @@ filegroup(
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
         "python/ray/WebUI.ipynb",
-        "python/ray/workers/default_worker.py"
-    ])
+        "python/ray/workers/default_worker.py",
+    ]),
 )
 
 genrule(
     name = "redis",
+    outs = ["redis-server"],
     cmd = """
         set -x &&
         curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
         make &&
         mv ./src/redis-server $(location redis-server)
     """,
-    outs = ["redis-server"]
 )
 
 cc_library(
     name = "ray_redis_module",
-    hdrs = [
-        "src/ray/gcs/redis_module/redismodule.h",
-        "src/ray/gcs/redis_module/redis_string.h"
-    ],
     srcs = [
         "src/ray/gcs/redis_module/ray_redis_module.cc",
-        "src/ray/util/logging.cc"
+        "src/ray/util/logging.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/redis_module/redis_string.h",
+        "src/ray/gcs/redis_module/redismodule.h",
     ],
     deps = [
-      ":ray_common"
-    ]
+        ":ray_common",
+    ],
 )
 
 genrule(
@@ -521,5 +536,5 @@ genrule(
         mkdir -p $(location ray_pkg)/java_lib &&
         cp $(location @plasma//:plasma_client_java) $(location ray_pkg)/java_lib &&
         cp $(location //:raylet_library_java) $(location ray_pkg)/java_lib
-        """
+        """,
 )
