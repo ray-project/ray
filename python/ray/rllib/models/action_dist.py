@@ -119,8 +119,12 @@ class MultiCategorical(ActionDistribution):
 
     def __init__(self, inputs):
         self.cats = [Categorical(input_) for input_ in inputs]
+        self.sample_op = self._build_sample_op()
 
     def logp(self, actions):
+        # If tensor is provided, unstack it into list
+        if isinstance(actions, tf.Tensor):
+            actions = tf.unstack(actions, axis=1)
         logps = tf.stack([cat.logp(act)
                           for cat, act in zip(self.cats, actions)])
         return tf.reduce_sum(logps, axis=0)
@@ -132,7 +136,7 @@ class MultiCategorical(ActionDistribution):
         return [cat.kl(oth_cat)
                 for cat, oth_cat in zip(self.cats, other.cats)]
 
-    def sample(self):
+    def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
 
