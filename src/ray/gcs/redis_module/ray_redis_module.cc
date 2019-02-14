@@ -39,6 +39,17 @@ extern RedisChainModule module;
     }                                                            \
   }
 
+// Wrap a Redis command with automatic memory management.
+#define AUTO_MEMORY(FUNC) \
+  int FUNC(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) { \
+   RedisModule_AutoMemory(ctx); \
+   return redis_commands::FUNC(ctx, argv, argc); \
+  }
+
+/// Commands in this namespace can be wrapped with AUTO_MEMORY in the
+/// auto_memory_redis_commands namespace to enable automatic memory management.
+namespace redis_commands {
+
 /// Map from pub sub channel to clients that are waiting on that channel.
 std::unordered_map<std::string, std::vector<std::string>> notification_map;
 
@@ -272,14 +283,12 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 /// \param data The data to insert at the key.
 /// \return The current value at the key, or OK if there is no value.
 int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  RedisModule_AutoMemory(ctx);
   TableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
   return TableAdd_DoPublish(ctx, argv, argc);
 }
 
 #if RAY_USE_NEW_GCS
 int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  RedisModule_AutoMemory(ctx);
   return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
                                /*tail_func=*/TableAdd_DoPublish);
 }
@@ -388,7 +397,6 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 #if RAY_USE_NEW_GCS
 int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                   int argc) {
-  RedisModule_AutoMemory(ctx);
   return module.ChainReplicate(ctx, argv, argc,
                                /*node_func=*/TableAppend_DoWrite,
                                /*tail_func=*/TableAppend_DoPublish);
@@ -471,8 +479,6 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
 /// \return nil if the key is empty, the current value if the key type is a
 ///         string, or an array of the current values if the key type is a set.
 int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  RedisModule_AutoMemory(ctx);
-
   if (argc < 4) {
     return RedisModule_WrongArity(ctx);
   }
@@ -515,8 +521,6 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 ///         string, or an array of the current values if the key type is a set.
 int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                            int argc) {
-  RedisModule_AutoMemory(ctx);
-
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -569,8 +573,6 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
 /// \return OK.
 int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                           int argc) {
-  RedisModule_AutoMemory(ctx);
-
   if (argc < 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -620,8 +622,6 @@ Status is_nil(bool *out, const std::string &data) {
 // Be careful, this only supports Task Table payloads.
 int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
                                     int argc) {
-  RedisModule_AutoMemory(ctx);
-
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -675,7 +675,6 @@ std::string DebugString() {
 
 int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argv);
-  RedisModule_AutoMemory(ctx);
 
   if (argc != 1) {
     return RedisModule_WrongArity(ctx);
@@ -684,7 +683,27 @@ int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   return RedisModule_ReplyWithStringBuffer(ctx, debug_string.data(), debug_string.size());
 }
 
+};
+
+
+namespace auto_memory_redis_commands {
+  // Wrap all Redis commands with Redis' auto memory management.
+  AUTO_MEMORY(TableAdd_RedisCommand);
+  AUTO_MEMORY(TableAppend_RedisCommand);
+  AUTO_MEMORY(TableLookup_RedisCommand);
+  AUTO_MEMORY(TableRequestNotifications_RedisCommand);
+  AUTO_MEMORY(TableCancelNotifications_RedisCommand);
+  AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
+  AUTO_MEMORY(DebugString_RedisCommand);
+#if RAY_USE_NEW_GCS
+  AUTO_MEMORY(ChainTableAdd_RedisCommand);
+  AUTO_MEMORY(ChainTableAppend_RedisCommand);
+#endif
+};
+
 extern "C" {
+  // Only use commands that have auto memory management.
+  using namespace auto_memory_redis_commands;
 
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
