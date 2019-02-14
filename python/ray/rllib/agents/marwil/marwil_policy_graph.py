@@ -113,6 +113,7 @@ class MARWILPolicyGraph(TFPolicyGraph):
             self.sess,
             obs_input=self.obs_t,
             action_sampler=self.output_actions,
+            action_prob=action_dist.sampled_action_prob(),
             loss=self.model.loss() + objective,
             loss_inputs=self.loss_inputs,
             state_inputs=self.model.state_in,

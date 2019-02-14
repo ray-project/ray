@@ -269,6 +269,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
             q_t, self.q_model = self._build_q_network(
                 self.obs_t, observation_space, self.act_t)
             self.q_func_vars = _scope_vars(scope.name)
+        self.stats = {
+            "mean_q": tf.reduce_mean(q_t),
+            "max_q": tf.reduce_max(q_t),
+            "min_q": tf.reduce_min(q_t),
+        }
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_tp0, _ = self._build_q_network(self.obs_t, observation_space,
                                              output_actions)
@@ -416,6 +421,7 @@ class DDPGPolicyGraph(TFPolicyGraph):
     def extra_compute_grad_fetches(self):
         return {
             "td_error": self.loss.td_error,
+            "stats": self.stats,
         }
 
     @override(PolicyGraph)

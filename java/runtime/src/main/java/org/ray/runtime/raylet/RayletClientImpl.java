@@ -127,6 +127,17 @@ public class RayletClientImpl implements RayletClient {
     nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
   }
 
+  @Override
+  public UniqueId prepareCheckpoint(UniqueId actorId) {
+    return new UniqueId(nativePrepareCheckpoint(client, actorId.getBytes()));
+  }
+
+  @Override
+  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
+  }
+
+
   private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
@@ -142,7 +153,7 @@ public class RayletClientImpl implements RayletClient {
 
     // Deserialize new actor handles
     UniqueId[] newActorHandles = UniqueIdUtil.getUniqueIdsFromByteBuffer(
-      info.newActorHandlesAsByteBuffer());
+        info.newActorHandlesAsByteBuffer());
 
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
@@ -208,7 +219,7 @@ public class RayletClientImpl implements RayletClient {
       int dataOffset = 0;
       if (task.args[i].id != null) {
         objectIdOffset = fbb.createString(
-          UniqueIdUtil.concatUniqueIds(new UniqueId[] {task.args[i].id}));
+            UniqueIdUtil.concatUniqueIds(new UniqueId[]{task.args[i].id}));
       } else {
         objectIdOffset = fbb.createString("");
       }
@@ -258,7 +269,6 @@ public class RayletClientImpl implements RayletClient {
         actorIdOffset,
         actorHandleIdOffset,
         actorCounter,
-        false,
         newActorHandlesOffset,
         argsOffset,
         returnsOffset,
@@ -271,8 +281,8 @@ public class RayletClientImpl implements RayletClient {
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
       LOGGER.error(
-          "Allocated buffer is not enough to transfer the task specification: {}vs {}",
-              TASK_SPEC_BUFFER_SIZE, buffer.remaining());
+          "Allocated buffer is not enough to transfer the task specification: {} vs {}",
+          TASK_SPEC_BUFFER_SIZE, buffer.remaining());
       throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
@@ -323,4 +333,8 @@ public class RayletClientImpl implements RayletClient {
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
       boolean localOnly) throws RayException;
 
+  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
+
+  private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
+      byte[] checkpointId);
 }

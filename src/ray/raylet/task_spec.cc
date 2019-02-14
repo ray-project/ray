@@ -99,7 +99,7 @@ TaskSpecification::TaskSpecification(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
       to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
       to_flatbuf(fbb, actor_creation_dummy_object_id), max_actor_reconstructions,
-      to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter, false,
+      to_flatbuf(fbb, actor_id), to_flatbuf(fbb, actor_handle_id), actor_counter,
       object_ids_to_flatbuf(fbb, new_actor_handles), fbb.CreateVector(arguments),
       object_ids_to_flatbuf(fbb, returns), map_to_flatbuf(fbb, required_resources),
       map_to_flatbuf(fbb, required_placement_resources), language,

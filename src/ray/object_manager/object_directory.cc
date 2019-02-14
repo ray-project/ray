@@ -123,7 +123,6 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
-  data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
   data->inline_object_flag = inline_object_flag;
   if (inline_object_flag) {
@@ -144,14 +143,8 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = true;
-  data->num_evictions = object_evictions_[object_id];
   ray::Status status =
       gcs_client_->object_table().Append(JobID::nil(), object_id, data, nullptr);
-  // Increment the number of times we've evicted this object. NOTE(swang): This
-  // is only necessary because the Ray redis module expects unique entries in a
-  // log. We track the number of evictions so that the next eviction, if there
-  // is one, is unique.
-  object_evictions_[object_id]++;
   return status;
 };
 
@@ -305,7 +298,6 @@ std::string ObjectDirectory::DebugString() const {
   std::stringstream result;
   result << "ObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
-  result << "\n- num eviction entries: " << object_evictions_.size();
   return result.str();
 }
 

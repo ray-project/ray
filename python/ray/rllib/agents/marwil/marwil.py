@@ -12,8 +12,8 @@ from ray.rllib.utils.annotations import override
 DEFAULT_CONFIG = with_common_config({
     # You should override this to point to an offline dataset (see agent.py).
     "input": "sampler",
-    # You should set this as well when overriding `input` (see agent.py).
-    "input_evaluation": None,
+    # Use importance sampling estimators for reward
+    "input_evaluation": ["is", "wis"],
 
     # Scaling of advantages in exponential terms
     # When beta is 0, MARWIL is reduced to imitation learning

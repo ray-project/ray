@@ -144,3 +144,7 @@ cdef class Config:
     @staticmethod
     def max_task_lease_timeout_ms():
         return RayConfig.instance().max_task_lease_timeout_ms()
+
+    @staticmethod
+    def num_actor_checkpoints_to_keep():
+        return RayConfig.instance().num_actor_checkpoints_to_keep()
