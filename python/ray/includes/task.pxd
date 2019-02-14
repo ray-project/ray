@@ -6,9 +6,16 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, ResourceSet)
+    CLanguage,
+    ResourceSet,
+)
+from ray.includes.unique_ids cimport (
+    CActorHandleID,
+    CActorID,
+    CDriverID,
+    CObjectID,
+    CTaskID,
+)
 
 
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:

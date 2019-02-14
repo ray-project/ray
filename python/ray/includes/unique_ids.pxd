@@ -22,14 +22,14 @@ cdef extern from "ray/id.h" namespace "ray" nogil:
         c_string binary() const;
         c_string hex() const;
 
-    ctypedef CUniqueID TaskID
-    ctypedef CUniqueID ObjectID
-    ctypedef CUniqueID FunctionID
-    ctypedef CUniqueID ActorID
-    ctypedef CUniqueID ActorClassID
-    ctypedef CUniqueID ActorHandleID
-    ctypedef CUniqueID ActorCheckpointID
-    ctypedef CUniqueID WorkerID
-    ctypedef CUniqueID DriverID
-    ctypedef CUniqueID ConfigID
-    ctypedef CUniqueID ClientID
+ctypedef CUniqueID CActorCheckpointID
+ctypedef CUniqueID CActorClassID
+ctypedef CUniqueID CActorHandleID
+ctypedef CUniqueID CActorID
+ctypedef CUniqueID CClientID
+ctypedef CUniqueID CConfigID
+ctypedef CUniqueID CDriverID
+ctypedef CUniqueID CFunctionID
+ctypedef CUniqueID CObjectID
+ctypedef CUniqueID CTaskID
+ctypedef CUniqueID CWorkerID

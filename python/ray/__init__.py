@@ -61,7 +61,6 @@ from ray._raylet import (
     ObjectID,
     TaskID,
     UniqueID,
-    _ID_TYPES,
 )  # noqa: E402
 
 _config = _Config()
@@ -89,7 +88,6 @@ __all__ = [
     "get_webui_url", "register_custom_serializer", "shutdown",
     "is_initialized", "SCRIPT_MODE", "WORKER_MODE", "LOCAL_MODE",
     "PYTHON_MODE", "global_state", "_config", "__version__", "internal",
-    "_ID_TYPES"
 ]
 
 __all__ += [
