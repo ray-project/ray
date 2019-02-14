@@ -39,6 +39,7 @@ Starting processes in a debugger
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When processes are crashing, it is often useful to start them in a debugger.
 Ray currently has support for the following debuggers:
+
 * Valgrind
 * Valgrind Profiler
 * Perftools Profiler
