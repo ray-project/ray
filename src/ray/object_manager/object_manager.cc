@@ -75,29 +75,23 @@ void ObjectManager::HandleObjectAdded(
     std::vector<uint8_t> inline_object_data;
     std::string inline_object_metadata;
     bool inline_object_flag = false;
+    plasma::ObjectBuffer object_buffer;
     if (object_info.data_size <= RayConfig::instance().inline_object_max_size_bytes()) {
       // Inline object. Try to get the data from the object store.
-      plasma::ObjectBuffer object_buffer;
       plasma::ObjectID plasma_id = object_id.to_plasma_id();
       RAY_ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
       if (object_buffer.data != nullptr) {
-        // The object exists. Store the object data in the GCS entry.
+        // The object exists. Set inline_object_flag so that the object data
+        // will be stored in the GCS entry.
         inline_object_flag = true;
-        inline_object_data.assign(
-            object_buffer.data->data(),
-            object_buffer.data->data() + object_buffer.data->size());
-        inline_object_metadata.assign(
-            object_buffer.metadata->data(),
-            object_buffer.metadata->data() + object_buffer.metadata->size());
         // Mark this object as inlined, so that if this object is later
         // evicted, we do not report it to the GCS.
         local_inlined_objects_.insert(object_id);
       }
     }
 
-    RAY_CHECK_OK(object_directory_->ReportObjectAdded(
-        object_id, client_id_, object_info, inline_object_flag, inline_object_data,
-        inline_object_metadata));
+    RAY_CHECK_OK(object_directory_->ReportObjectAdded(object_id, client_id_, object_info,
+                                                      inline_object_flag, object_buffer));
   }
   // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
