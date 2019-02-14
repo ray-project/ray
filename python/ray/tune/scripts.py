@@ -61,15 +61,18 @@ def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     with open(filename) as f:
         experiment_state = json.load(f)
 
-    checkpoints_df = pd.DataFrame(experiment_state["checkpoints"])[["trial_name", "trial_id", "status", "num_failures", "logdir"]]
+    checkpoints_df = pd.DataFrame(experiment_state["checkpoints"])[list(info_keys)]
+    if "logdir" in checkpoints_df.columns:
+        checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
+            experiment_path, '')
     print(tabulate(checkpoints_df, headers="keys", tablefmt="psql"))
     
-#     TODO(hartikainen): The logdir is often too verbose to be viewed in a
-#     table.
-#     checkpoints = pd.DataFrame.from_records(experiment_state['checkpoints'])
-#     checkpoints['logdir'] = checkpoints['logdir'].str.replace(
-#         experiment_path, '')
-#     print(checkpoints[list(info_keys)].to_string())
+    # TODO(hartikainen): The logdir is often too verbose to be viewed in a
+    # table.
+    # checkpoints = pd.DataFrame.from_records(experiment_state['checkpoints'])
+    # checkpoints['logdir'] = checkpoints['logdir'].str.replace(
+    #     experiment_path, '')
+    # print(checkpoints[list(info_keys)].to_string())
 
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
