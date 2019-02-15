@@ -25,7 +25,7 @@ def easy_objective(config, reporter):
         time.sleep(0.02)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     from hyperopt import hp
 
