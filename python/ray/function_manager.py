@@ -123,7 +123,9 @@ class FunctionDescriptor(object):
         try:
             # If we are running a script or are in IPython, include the source
             # code in the hash.
-            source = inspect.getsource(function).encode("ascii")
+            source = inspect.getsource(function)
+            if sys.version_info[0] >= 3:
+                source = source.encode()
             function_source_hasher.update(source)
             function_source_hash = function_source_hasher.digest()
         except (IOError, OSError, TypeError):
