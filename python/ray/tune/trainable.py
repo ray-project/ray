@@ -10,6 +10,7 @@ import io
 import logging
 import os
 import pickle
+from six import string_types
 import shutil
 import tempfile
 import time
@@ -102,6 +103,10 @@ class Trainable(object):
         """Returns a help string for configuring this trainable's resources."""
 
         return ""
+
+    def current_ip(self):
+        self._local_ip = ray.services.get_node_ip_address()
+        return self._local_ip
 
     def train(self):
         """Runs one logical iteration of training.
@@ -197,7 +202,7 @@ class Trainable(object):
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
 
-        self._result_logger.on_result(result)
+        self._log_result(result)
 
         return result
 
@@ -216,10 +221,11 @@ class Trainable(object):
 
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
-        os.makedirs(checkpoint_dir)
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
-        if isinstance(checkpoint, str):
+        if isinstance(checkpoint, string_types):
             if (not checkpoint.startswith(checkpoint_dir)
                     or checkpoint == checkpoint_dir):
                 raise ValueError(
@@ -237,7 +243,9 @@ class Trainable(object):
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
-            raise ValueError("Return value from `_save` must be dict or str.")
+            raise ValueError(
+                "`_save` must return a dict or string type: {}".format(
+                    str(type(checkpoint))))
         pickle.dump({
             "experiment_id": self._experiment_id,
             "iteration": self._iteration,
@@ -323,6 +331,23 @@ class Trainable(object):
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    def export_model(self, export_formats, export_dir=None):
+        """Exports model based on export_formats.
+
+        Subclasses should override _export_model() to actually
+        export model to local directory.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Optional dir to place the exported model.
+                Defaults to self.logdir.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        export_dir = export_dir or self.logdir
+        return self._export_model(export_formats, export_dir)
+
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
@@ -390,9 +415,30 @@ class Trainable(object):
         """
         pass
 
+    def _log_result(self, result):
+        """Subclasses can optionally override this to customize logging.
+
+        Args:
+            result (dict): Training result returned by _train().
+        """
+
+        self._result_logger.on_result(result)
+
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
+
+    def _export_model(self, export_formats, export_dir):
+        """Subclasses should override this to export model.
+
+        Args:
+            export_formats (list): List of formats that should be exported.
+            export_dir (str): Directory to place exported models.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        return {}
 
 
 def wrap_function(train_func):

@@ -104,6 +104,17 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         env = agent.local_evaluator.env
     else:
         env = gym.make(env_name)
+
+    if hasattr(agent, "local_evaluator"):
+        state_init = agent.local_evaluator.policy_map[
+            "default"].get_initial_state()
+    else:
+        state_init = []
+    if state_init:
+        use_lstm = True
+    else:
+        use_lstm = False
+
     if out is not None:
         rollouts = []
     steps = 0
@@ -114,7 +125,11 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
         done = False
         reward_total = 0.0
         while not done and steps < (num_steps or steps + 1):
-            action = agent.compute_action(state)
+            if use_lstm:
+                action, state_init, logits = agent.compute_action(
+                    state, state=state_init)
+            else:
+                action = agent.compute_action(state)
             next_state, reward, done, _ = env.step(action)
             reward_total += reward
             if not no_render:

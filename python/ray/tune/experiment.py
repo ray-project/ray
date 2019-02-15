@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import copy
 import logging
+import os
 import six
 import types
 
 from ray.tune.error import TuneError
-from ray.tune.log_sync import validate_sync_function
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -72,9 +72,12 @@ class Experiment(object):
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        export_formats (list): List of formats that exported at the end of
+            the experiment. Default is None.
         max_failures (int): Try to recover a trial from its last
             checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Defaults to 3.
+            checkpointing is enabled. Setting to -1 will lead to infinite
+            recovery retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         repeat: Deprecated and will be removed in future versions of
@@ -118,11 +121,11 @@ class Experiment(object):
                  sync_function=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 export_formats=None,
                  max_failures=3,
                  restore=None,
                  repeat=None,
                  trial_resources=None):
-        validate_sync_function(sync_function)
         if sync_function:
             assert upload_dir, "Need `upload_dir` if sync_function given."
 
@@ -134,18 +137,19 @@ class Experiment(object):
             resources_per_trial = trial_resources
 
         spec = {
-            "run": self._register_if_needed(run),
+            "run": Experiment._register_if_needed(run),
             "stop": stop or {},
             "config": config or {},
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": local_dir or DEFAULT_RESULTS_DIR,
+            "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
             "custom_loggers": custom_loggers,
-            "sync_function": sync_function or "",  # See `upload_dir`.
+            "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": restore
         }
@@ -180,7 +184,8 @@ class Experiment(object):
             raise TuneError("Improper argument from JSON: {}.".format(spec))
         return exp
 
-    def _register_if_needed(self, run_object):
+    @classmethod
+    def _register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string. Does not

@@ -11,38 +11,8 @@ from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Resources, Trial
+from ray.tune.trial import Trial, json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
-
-
-def json_to_resources(data):
-    if data is None or data == "null":
-        return None
-    if isinstance(data, string_types):
-        data = json.loads(data)
-    for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
-            raise TuneError(
-                "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k))
-        if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
-                    k, Resources._fields))
-    return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
-
-
-def resources_to_json(resources):
-    if resources is None:
-        return None
-    return {
-        "cpu": resources.cpu,
-        "gpu": resources.gpu,
-        "extra_cpu": resources.extra_cpu,
-        "extra_gpu": resources.extra_gpu,
-    }
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -133,6 +103,12 @@ def make_parser(parser_creator=None, **kwargs):
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
     parser.add_argument(
+        "--export-formats",
+        default=None,
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
+    parser.add_argument(
         "--max-failures",
         default=3,
         type=int,
@@ -211,6 +187,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
+        export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,

@@ -10,9 +10,10 @@ import six.moves.queue as queue
 import threading
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
-from ray.rllib.evaluation.sample_batch import MultiAgentSampleBatchBuilder
+from ray.rllib.evaluation.sample_batch_builder import \
+    MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph
-from ray.rllib.env.async_vector_env import AsyncVectorEnv
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -44,7 +45,7 @@ class SyncSampler(object):
                  pack=False,
                  tf_sess=None,
                  clip_actions=True):
-        self.async_vector_env = AsyncVectorEnv.wrap_async(env)
+        self.base_env = BaseEnv.to_base_env(env)
         self.unroll_length = unroll_length
         self.horizon = horizon
         self.policies = policies
@@ -53,7 +54,7 @@ class SyncSampler(object):
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.rollout_provider = _env_runner(
-            self.async_vector_env, self.extra_batches.put, self.policies,
+            self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess)
@@ -104,7 +105,7 @@ class AsyncSampler(threading.Thread):
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
-        self.async_vector_env = AsyncVectorEnv.wrap_async(env)
+        self.base_env = BaseEnv.to_base_env(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.extra_batches = queue.Queue()
@@ -140,7 +141,7 @@ class AsyncSampler(threading.Thread):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
-            self.async_vector_env, extra_batches_putter, self.policies,
+            self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess)
@@ -182,7 +183,7 @@ class AsyncSampler(threading.Thread):
         return extra
 
 
-def _env_runner(async_vector_env,
+def _env_runner(base_env,
                 extra_batch_callback,
                 policies,
                 policy_mapping_fn,
@@ -198,7 +199,7 @@ def _env_runner(async_vector_env,
     """This implements the common experience collection logic.
 
     Args:
-        async_vector_env (AsyncVectorEnv): env implementing AsyncVectorEnv.
+        base_env (BaseEnv): env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
         policies (dict): Map of policy ids to PolicyGraph instances.
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
@@ -226,8 +227,7 @@ def _env_runner(async_vector_env,
 
     try:
         if not horizon:
-            horizon = (
-                async_vector_env.get_unwrapped()[0].spec.max_episode_steps)
+            horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
         logger.debug("no episode horizon specified, assuming inf")
     if not horizon:
@@ -248,7 +248,7 @@ def _env_runner(async_vector_env,
                                     get_batch_builder, extra_batch_callback)
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
-                "env": async_vector_env,
+                "env": base_env,
                 "episode": episode
             })
         return episode
@@ -258,11 +258,11 @@ def _env_runner(async_vector_env,
     while True:
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
-            async_vector_env.poll()
+            base_env.poll()
 
         # Process observations and prepare for policy evaluation
         active_envs, to_eval, outputs = _process_observations(
-            async_vector_env, policies, batch_builder_pool, active_episodes,
+            base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, unroll_length, pack, callbacks)
         for o in outputs:
@@ -279,10 +279,10 @@ def _env_runner(async_vector_env,
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        async_vector_env.send_actions(actions_to_send)
+        base_env.send_actions(actions_to_send)
 
 
-def _process_observations(async_vector_env, policies, batch_builder_pool,
+def _process_observations(base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
                           obs_filters, unroll_length, pack, callbacks):
@@ -325,7 +325,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
             all_done = True
-            atari_metrics = _fetch_atari_metrics(async_vector_env)
+            atari_metrics = _fetch_atari_metrics(base_env)
             if atari_metrics is not None:
                 for m in atari_metrics:
                     outputs.append(
@@ -379,10 +379,7 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
 
         # Invoke the step callback after the step is logged to the episode
         if callbacks.get("on_episode_step"):
-            callbacks["on_episode_step"]({
-                "env": async_vector_env,
-                "episode": episode
-            })
+            callbacks["on_episode_step"]({"env": base_env, "episode": episode})
 
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
@@ -399,11 +396,11 @@ def _process_observations(async_vector_env, policies, batch_builder_pool,
             batch_builder_pool.append(episode.batch_builder)
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
-                    "env": async_vector_env,
+                    "env": base_env,
                     "episode": episode
                 })
             del active_episodes[env_id]
-            resetted_obs = async_vector_env.try_reset(env_id)
+            resetted_obs = base_env.try_reset(env_id)
             if resetted_obs is None:
                 # Reset not supported, drop this env from the ready list
                 if horizon != float("inf"):
@@ -526,12 +523,12 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
     return actions_to_send
 
 
-def _fetch_atari_metrics(async_vector_env):
+def _fetch_atari_metrics(base_env):
     """Atari games have multiple logical episodes, one per life.
 
     However for metrics reporting we count full episodes all lives included.
     """
-    unwrapped = async_vector_env.get_unwrapped()
+    unwrapped = base_env.get_unwrapped()
     if not unwrapped:
         return None
     atari_out = []

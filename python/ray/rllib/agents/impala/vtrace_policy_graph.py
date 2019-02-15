@@ -1,6 +1,6 @@
 """Adapted from A3CPolicyGraph to add V-trace.
 
-Keep in sync with changes to A3CPolicyGraph."""
+Keep in sync with changes to A3CPolicyGraph and VtraceSurrogatePolicyGraph."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -199,6 +199,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.max_KL = tf.reduce_max(self.KLs)
         self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
 
+        # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
             ("dones", dones),
@@ -211,21 +212,14 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Initialize RND network and loss
         if self.config["rnd"]:
-            self.rnd_norm_obs = tf.placeholder(tf.float32, [None] + list(observation_space.shape))
-            loss_in.append(("norm_obs", self.rnd_norm_obs))
+            self.rnd = RND(self._get_is_training_placeholder(), observation_space, logit_dim, self.config["model"])
+            loss_in.append(("norm_obs", self.rnd.norm_obs))
+            self.loss.total_loss += self.rnd.loss
 
-            self.rnd = RND(self.rnd_norm_obs)
-            self.rnd_loss = self.rnd.loss
-            self.loss.total_loss += self.rnd_loss
-            self.rnd_bonus = self.rnd.intr_rew
-
-            self.rnd_bonus_filter = get_filter("MeanStdFilter", (1,))
             self.rnd_obs_filter = get_filter("MeanStdFilter", observation_space.shape)
 
         LearningRateSchedule.__init__(self, self.config["lr"],
                                       self.config["lr_schedule"])
-
-        # Initialize TFPolicyGraph
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -281,7 +275,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     @override(TFPolicyGraph)
     def gradients(self, optimizer):
-        grads = tf.gradients(self.loss.total_loss, self.var_list)
+        grads = tf.gradients(self._loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
@@ -305,9 +299,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             sample_batch["norm_obs"] = self.rnd_obs_filter(sample_batch["obs"])
 
             # add rnd bonus
-            bonus = self.sess.run(self.rnd_bonus, feed_dict={self.rnd_norm_obs: self.rnd_obs_filter(sample_batch["obs"], update=False)})
+            bonus = self.rnd.compute_intr_rew(sample_batch["norm_obs"])
             sample_batch["rewards"] = sample_batch["rewards"] * 1.0
-            sample_batch["rewards"] += np.squeeze(self.rnd_bonus_filter(bonus))
+            sample_batch["rewards"] += bonus
+
         return sample_batch
 
     @override(PolicyGraph)

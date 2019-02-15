@@ -17,6 +17,7 @@ from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,6 @@ MODEL_DEFAULTS = {
     "framestack": True,
     # Final resized frame dimension
     "dim": 84,
-    # Pytorch conv requires images to be channel-major
-    "channel_major": False,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
     "grayscale": False,
     # (deprecated) Changes frame to range from [-1, 1] if true
@@ -71,6 +70,7 @@ MODEL_DEFAULTS = {
 # yapf: enable
 
 
+@PublicAPI
 class ModelCatalog(object):
     """Registry of models, preprocessors, and action distributions for envs.
 
@@ -86,6 +86,7 @@ class ModelCatalog(object):
     """
 
     @staticmethod
+    @DeveloperAPI
     def get_action_dist(action_space, config, dist_type=None):
         """Returns action distribution class and size for the given action space.
 
@@ -136,6 +137,7 @@ class ModelCatalog(object):
             action_space, dist_type))
 
     @staticmethod
+    @DeveloperAPI
     def get_action_placeholder(action_space):
         """Returns an action placeholder that is consistent with the action space
 
@@ -168,6 +170,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
+    @DeveloperAPI
     def get_model(input_dict,
                   obs_space,
                   num_outputs,
@@ -232,14 +235,18 @@ class ModelCatalog(object):
                                      options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options=None):
-        """Returns a PyTorch suitable model. This is currently only supported
-        in A3C.
+    @DeveloperAPI
+    def get_torch_model(obs_space,
+                        num_outputs,
+                        options=None,
+                        default_model_cls=None):
+        """Returns a custom model for PyTorch algorithms.
 
         Args:
-            input_shape (tuple): The input shape to the model.
+            obs_space (Space): The input observation space.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
+            default_model_cls (cls): Optional class to use if no custom model.
 
         Returns:
             model (models.Model): Neural network model.
@@ -250,23 +257,32 @@ class ModelCatalog(object):
                                                         PyTorchVisionNet)
 
         options = options or MODEL_DEFAULTS
+
         if options.get("custom_model"):
             model = options["custom_model"]
-            logger.info("Using custom torch model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(
-                input_shape, num_outputs, options)
+            logger.debug("Using custom torch model {}".format(model))
+            return _global_registry.get(RLLIB_MODEL,
+                                        model)(obs_space, num_outputs, options)
 
-        # TODO(alok): fix to handle Discrete(n) state spaces
-        obs_rank = len(input_shape) - 1
+        if options.get("use_lstm"):
+            raise NotImplementedError(
+                "LSTM auto-wrapping not implemented for torch")
+
+        if default_model_cls:
+            return default_model_cls(obs_space, num_outputs, options)
+
+        if isinstance(obs_space, gym.spaces.Discrete):
+            obs_rank = 1
+        else:
+            obs_rank = len(obs_space.shape)
 
         if obs_rank > 1:
-            return PyTorchVisionNet(input_shape, num_outputs, options)
+            return PyTorchVisionNet(obs_space, num_outputs, options)
 
-        # TODO(alok): overhaul PyTorchFCNet so it can just
-        # take input shape directly
-        return PyTorchFCNet(input_shape[0], num_outputs, options)
+        return PyTorchFCNet(obs_space, num_outputs, options)
 
     @staticmethod
+    @DeveloperAPI
     def get_preprocessor(env, options=None):
         """Returns a suitable preprocessor for the given env.
 
@@ -277,6 +293,7 @@ class ModelCatalog(object):
                                                        options)
 
     @staticmethod
+    @DeveloperAPI
     def get_preprocessor_for_space(observation_space, options=None):
         """Returns a suitable preprocessor for the given observation space.
 
@@ -308,6 +325,7 @@ class ModelCatalog(object):
         return prep
 
     @staticmethod
+    @PublicAPI
     def register_custom_preprocessor(preprocessor_name, preprocessor_class):
         """Register a custom preprocessor class by name.
 
@@ -322,6 +340,7 @@ class ModelCatalog(object):
                                   preprocessor_class)
 
     @staticmethod
+    @PublicAPI
     def register_custom_model(model_name, model_class):
         """Register a custom model class by name.
 

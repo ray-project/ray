@@ -93,6 +93,21 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
+def resolve_nested_dict(nested_dict):
+    """Flattens a nested dict by joining keys into tuple of paths.
+
+    Can then be passed into `format_vars`.
+    """
+    res = {}
+    for k, v in nested_dict.items():
+        if isinstance(v, dict):
+            for k_, v_ in resolve_nested_dict(v).items():
+                res[(k, ) + k_] = v_
+        else:
+            res[(k, )] = v
+    return res
+
+
 def format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
@@ -223,8 +238,8 @@ def _is_resolved(v):
 
 def _try_resolve(v):
     if isinstance(v, types.FunctionType):
-        logger.warning(
-            "Deprecation warning: Function values are ambiguous in Tune "
+        raise DeprecationWarning(
+            "Function values are ambiguous in Tune "
             "configuations. Either wrap the function with "
             "`tune.function(func)` to specify a function literal, or "
             "`tune.sample_from(func)` to tell Tune to "

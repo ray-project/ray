@@ -16,29 +16,33 @@ except ImportError:
     smart_open = None
 
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.evaluation.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.offline.io_context import IOContext
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch, SampleBatch, \
+    DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class JsonReader(InputReader):
     """Reader object that loads experiences from JSON file chunks.
 
     The input files will be read from in an random order."""
 
-    def __init__(self, ioctx, inputs):
+    @PublicAPI
+    def __init__(self, inputs, ioctx=None):
         """Initialize a JsonReader.
 
         Arguments:
-            ioctx (IOContext): current IO context object.
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
+            ioctx (IOContext): current IO context object.
         """
 
-        self.ioctx = ioctx
+        self.ioctx = ioctx or IOContext()
         if isinstance(inputs, six.string_types):
             if os.path.isdir(inputs):
                 inputs = os.path.join(inputs, "*.json")
@@ -74,7 +78,23 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return batch
+        return self._postprocess_if_needed(batch)
+
+    def _postprocess_if_needed(self, batch):
+        if not self.ioctx.config.get("postprocess_inputs"):
+            return batch
+
+        if isinstance(batch, SampleBatch):
+            out = []
+            for sub_batch in batch.split_by_episode():
+                out.append(self.ioctx.evaluator.policy_map[DEFAULT_POLICY_ID]
+                           .postprocess_trajectory(sub_batch))
+            return SampleBatch.concat_samples(out)
+        else:
+            # TODO(ekl) this is trickier since the alignments between agent
+            # trajectories in the episode are not available any more.
+            raise NotImplementedError(
+                "Postprocessing of multi-agent data not implemented yet.")
 
     def _try_parse(self, line):
         line = line.strip()
@@ -121,6 +141,25 @@ def _from_json(batch):
     if isinstance(batch, bytes):  # smart_open S3 doesn't respect "r"
         batch = batch.decode("utf-8")
     data = json.loads(batch)
-    for k, v in data.items():
-        data[k] = [unpack_if_needed(x) for x in unpack_if_needed(v)]
-    return SampleBatch(data)
+
+    if "type" in data:
+        data_type = data.pop("type")
+    else:
+        raise ValueError("JSON record missing 'type' field")
+
+    if data_type == "SampleBatch":
+        for k, v in data.items():
+            data[k] = unpack_if_needed(v)
+        return SampleBatch(data)
+    elif data_type == "MultiAgentBatch":
+        policy_batches = {}
+        for policy_id, policy_batch in data["policy_batches"].items():
+            inner = {}
+            for k, v in policy_batch.items():
+                inner[k] = unpack_if_needed(v)
+            policy_batches[policy_id] = SampleBatch(inner)
+        return MultiAgentBatch(policy_batches, data["count"])
+    else:
+        raise ValueError(
+            "Type field must be one of ['SampleBatch', 'MultiAgentBatch']",
+            data_type)

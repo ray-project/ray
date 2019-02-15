@@ -21,7 +21,7 @@ if __name__ == '__main__':
         print(yaml.dump(experiments))
 
         for i in range(3):
-            trials = run_experiments(experiments)
+            trials = run_experiments(experiments, resume=False)
 
             num_failures = 0
             for t in trials:

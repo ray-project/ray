@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 "train_batch_size": 500,
                 "num_workers": 1,
                 "num_envs_per_worker": 10,
-                "rnd": 1
+                "rnd": 0
             },
         },
     })

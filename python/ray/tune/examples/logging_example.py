@@ -69,8 +69,9 @@ if __name__ == "__main__":
         custom_loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
-            "width": lambda spec: 10 + int(90 * random.random()),
-            "height": lambda spec: int(100 * random.random())
+            "width": tune.sample_from(
+                lambda spec: 10 + int(90 * random.random())),
+            "height": tune.sample_from(lambda spec: int(100 * random.random()))
         })
 
     trials = run_experiments(exp)

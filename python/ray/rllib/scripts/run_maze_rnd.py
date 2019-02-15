@@ -23,10 +23,10 @@ if __name__ == "__main__":
 
         os.environ["SDL_VIDEODRIVER"] = "dummy"
 
-        return gym.make("maze-random-10x10-plus-v0")
+        return gym.make("maze-random-100x100-v0")
 
 #    register_env("maze-random-10x10-plus-v0", lambda config: gym.make("maze-random-10x10-plus-v0"))
-    register_env("maze-random-10x10-plus-v0", create_env)
+    register_env("maze", create_env)
     ray.init()
     run_experiments({
         "without-rnd-test": {
@@ -34,7 +34,7 @@ if __name__ == "__main__":
             "stop": {
                 "episode_reward_mean": 1
             },
-            "env": "maze-random-10x10-plus-v0",
+            "env": "maze",
             "config": {
                 "sample_batch_size": 50,
                 "train_batch_size": 500,

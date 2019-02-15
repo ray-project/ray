@@ -167,7 +167,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                    for b in self.batch_buffer) >= self.train_batch_size:
                 train_batch = self.batch_buffer[0].concat_samples(
                     self.batch_buffer)
-                self.learner.inqueue.put(train_batch)
+                # defensive copy against plasma ref count bugs, see #3884
+                self.learner.inqueue.put(train_batch.copy())
                 self.batch_buffer = []
 
             # If the batch was replayed, skip the update below.
@@ -292,6 +293,9 @@ class TFMultiGPULearner(LearnerThread):
         logger.info("TFMultiGPULearner devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
+
+        if set(self.local_evaluator.policy_map.keys()) != {"default"}:
+            raise NotImplementedError("Multi-gpu mode for multi-agent")
         self.policy = self.local_evaluator.policy_map["default"]
 
         # per-GPU graph copies created below must share vars with the policy

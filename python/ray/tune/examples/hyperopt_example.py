@@ -17,7 +17,7 @@ def easy_objective(config, reporter):
     time.sleep(0.2)
     assert type(config["activation"]) == str, \
         "Config is incorrect: {}".format(type(config["activation"]))
-    for i in range(100):
+    for i in range(config["iterations"]):
         reporter(
             timesteps_total=i,
             neg_mean_loss=-(config["height"] - 14)**2 +
@@ -47,6 +47,9 @@ if __name__ == '__main__':
         "my_exp": {
             "run": "exp",
             "num_samples": 10 if args.smoke_test else 1000,
+            "config": {
+                "iterations": 100,
+            },
             "stop": {
                 "timesteps_total": 100
             },
