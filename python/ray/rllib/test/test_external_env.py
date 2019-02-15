@@ -195,6 +195,6 @@ class TestExternalEnv(unittest.TestCase):
         self.assertRaises(ValueError, lambda: ev.sample())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init()
     unittest.main(verbosity=2)

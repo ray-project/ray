@@ -27,7 +27,7 @@ def michalewicz_function(config, reporter):
     reporter(timesteps_total=1, neg_mean_loss=-y)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
