@@ -20,6 +20,10 @@ echo "Logging to" $RESULT_FILE
 echo -e $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem || true
 chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem
 
+# Show explicitly which commands are currently running. This should only be AFTER
+# the private key is placed.
+set -x
+
 touch $RESULT_FILE
 
 # This function identifies the right string for the Ray wheel.
