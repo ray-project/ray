@@ -170,7 +170,7 @@ class Dashboard(object):
         url = "http://{}:{}?token={}".format(self.ip, self.port, self.token)
         with open("/tmp/ray/dashboard_url", "w") as f:
             f.write(url)
-        print("Dashboard running on {}".format(url))
+        logger.info("Dashboard running on {}".format(url))
 
     def run(self):
         self.log_dashboard_url()
@@ -262,10 +262,9 @@ class NodeStats(threading.Thread):
     def run(self):
         p = self.redis_client.pubsub()
         p.psubscribe(self.redis_key)
-        print("NodeStats: subscribed to {}".format(self.redis_key))
+        logger.info("NodeStats: subscribed to {}".format(self.redis_key))
 
         for x in p.listen():
-            print(x)
             if x["type"] != "pmessage":
                 continue
 
@@ -274,7 +273,7 @@ class NodeStats(threading.Thread):
                 with self._node_stats_lock:
                     self._node_stats[D["hostname"]] = D
             except Exception:
-                traceback.print_exc()
+                logger.exception(traceback.format_exc())
                 continue
 
 
