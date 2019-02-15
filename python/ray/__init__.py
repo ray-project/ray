@@ -86,6 +86,7 @@ from ray.worker import (
     remote,
     shutdown,
     wait,
+    runtime_context
 )  # noqa: E402
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -122,6 +123,7 @@ __all__ = [
     "remote",
     "shutdown",
     "wait",
+    "runtime_context",
 ]
 
 # ID types

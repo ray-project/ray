@@ -44,6 +44,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+<<<<<<< HEAD
 from ray.core.generated.ErrorType import ErrorType
 from ray.exceptions import (
     RayActorError,
@@ -64,6 +65,7 @@ from ray.utils import (
     setup_logger,
     thread_safe_client,
 )
+from ray.runtime_context import RuntimeContext
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1080,6 +1082,8 @@ per worker process.
 """
 
 global_state = state.GlobalState()
+
+runtime_context = RuntimeContext(worker=global_worker)
 
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
