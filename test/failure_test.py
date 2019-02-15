@@ -343,7 +343,7 @@ def test_actor_worker_dying(ray_start_regular):
     [obj], _ = ray.wait([a.kill.remote()], timeout=5.0)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(obj)
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(consume.remote(obj))
     wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
