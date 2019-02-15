@@ -7,6 +7,10 @@ See https://github.com/ray-project/ray/issues/3721.
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
 from ray.includes.common cimport (
+    ComputePutId,
+    ComputeTaskId,
+)
+from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
     CActorHandleID,
@@ -19,8 +23,6 @@ from ray.includes.common cimport (
     CTaskID,
     CUniqueID,
     CWorkerID,
-    ComputePutId,
-    ComputeTaskId,
 )
 
 from ray.utils import decode
@@ -317,5 +319,15 @@ cdef class ActorClassID(UniqueID):
         return "ActorClassID(" + self.hex() + ")"
 
 
-_ID_TYPES = [UniqueID, ObjectID, TaskID, ClientID, DriverID, ActorID,
-             ActorHandleID, FunctionID, ActorClassID]
+_ID_TYPES = [
+    ActorCheckpointID,
+    ActorClassID,
+    ActorHandleID,
+    ActorID,
+    ClientID,
+    DriverID,
+    FunctionID,
+    ObjectID,
+    TaskID,
+    UniqueID,
+]
