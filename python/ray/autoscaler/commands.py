@@ -12,6 +12,7 @@ import logging
 import sys
 import click
 import random
+import uuid
 
 import yaml
 try:  # py3
@@ -272,6 +273,37 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
               "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
                                            config["auth"]["ssh_user"],
                                            provider.external_ip(head_node)))
+
+        def print_dashboard_url():
+            # Random temporary file
+            fn = "/tmp/ray_dashboard_url-{}".format(uuid.uuid4())
+            try:
+                os.unlink(fn)  # In case it's already there
+            except Exception:
+                pass
+            updater.rsync_down(
+                "/tmp/ray/dashboard_url", fn,
+                redirect=open("/dev/null", "w")
+            )
+            with open(fn, "r") as f:
+                print("To view the dashboard, go to:\n\n   {}\n".format(f.read()))
+            os.unlink(fn)
+
+        # Wait a bit to grab the dashboard URL.
+        success = False
+        for _ in range(15):
+            try:
+                print_dashboard_url()
+                success = True
+                break
+            except Exception:
+                logger.info("Failed to get the dashboard URL, trying again...")
+                pass
+            time.sleep(1)
+
+        if not success:
+            logger.error("Failed to get the dashboard URL, gave up.")
+
     finally:
         provider.cleanup()
 
