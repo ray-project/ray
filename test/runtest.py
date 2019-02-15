@@ -2502,7 +2502,7 @@ def test_not_logging_to_driver(shutdown_only):
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
-    ray.init(redirect_worker_output=True, num_cpus=num_workers)
+    ray.init(num_cpus=num_workers)
 
     @ray.remote
     def f():

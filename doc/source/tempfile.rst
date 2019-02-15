@@ -47,7 +47,7 @@ A typical layout of temporary files could look like this:
           │   ├── monitor.out
           │   ├── plasma_store_0.err  # array of plasma stores' outputs
           │   ├── plasma_store_0.out
-          │   ├── raylet_0.err  # array of raylets' outputs. Control it with `--no-redirect-worker-output` (in Ray's command line) or `redirect_worker_output` (in ray.init())
+          │   ├── raylet_0.err
           │   ├── raylet_0.out
           │   ├── redis-shard_0.err   # array of redis shards' outputs
           │   ├── redis-shard_0.out
