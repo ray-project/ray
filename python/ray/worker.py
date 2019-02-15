@@ -1128,7 +1128,7 @@ def _initialize_serialization(driver_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
-    for id_type in ray._ID_TYPES:
+    for id_type in ray._raylet._ID_TYPES:
         serialization_context.register_type(
             id_type,
             "{}.{}".format(id_type.__module__, id_type.__name__),

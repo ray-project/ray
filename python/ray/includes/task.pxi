@@ -1,6 +1,16 @@
 from libc.stdint cimport uint8_t
-from libcpp.memory cimport shared_ptr, make_shared, static_pointer_cast
-from ray.includes.task cimport CTaskSpecification, CTaskArgument, CTaskArgumentByValue, CTaskArgumentByReference, SerializeTaskAsString
+from libcpp.memory cimport (
+    make_shared,
+    shared_ptr,
+    static_pointer_cast,
+)
+from ray.includes.task cimport (
+    CTaskArgument,
+    CTaskArgumentByReference,
+    CTaskArgumentByValue,
+    CTaskSpecification,
+    SerializeTaskAsString,
+)
 
 from ray.utils import _random_string
 

@@ -6,18 +6,9 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
-    ActorCheckpointID as CActorCheckpointID,
-    ActorClassID as CActorClassID,
-    ActorHandleID as CActorHandleID,
-    ActorID as CActorID,
-    CUniqueID,
-    ClientID as CClientID,
-    ConfigID as CConfigID,
-    DriverID as CDriverID,
-    FunctionID as CFunctionID,
-    ObjectID as CObjectID,
-    TaskID as CTaskID,
-    WorkerID as CWorkerID,
+    CDriverID,
+    CObjectID,
+    CTaskID,
 )
 
 
