@@ -441,7 +441,7 @@ class FunctionActorManager(object):
         # we spend too long in this loop.
         # The driver function may not be found in sys.path. Try to load
         # the function from GCS.
-        with profiling.profile("wait_for_function", worker=self._worker):
+        with profiling.profile("wait_for_function"):
             self._wait_for_function(function_descriptor, driver_id)
         try:
             info = self._function_execution_info[driver_id][function_id]

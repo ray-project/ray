@@ -204,7 +204,6 @@ def ray_start_reconstruction(request):
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
-            "redirect_output": True,
             "_internal_config": json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             })
@@ -213,7 +212,6 @@ def ray_start_reconstruction(request):
         cluster.add_node(
             num_cpus=1,
             object_store_memory=plasma_store_memory // num_nodes,
-            redirect_output=True,
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             }))

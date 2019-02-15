@@ -197,7 +197,7 @@ class Node(object):
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def new_log_files(self, name, redirect_output=None):
+    def new_log_files(self, name, redirect_output=True):
         """Generate partially randomized filenames for log files.
 
         Args:
@@ -262,7 +262,7 @@ class Node(object):
              redis_shard_ports=self._ray_params.redis_shard_ports,
              num_redis_shards=self._ray_params.num_redis_shards,
              redis_max_clients=self._ray_params.redis_max_clients,
-             redirect_worker_output=self._ray_params.redirect_worker_output,
+             redirect_worker_output=True,
              password=self._ray_params.redis_password,
              redis_max_memory=self._ray_params.redis_max_memory)
         assert (
@@ -272,7 +272,7 @@ class Node(object):
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.new_log_files("log_monitor", True)
+        stdout_file, stderr_file = self.new_log_files("log_monitor")
         process_info = ray.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
@@ -286,7 +286,7 @@ class Node(object):
 
     def start_ui(self):
         """Start the web UI."""
-        stdout_file, stderr_file = self.new_log_files("webui", True)
+        stdout_file, stderr_file = self.new_log_files("webui")
         notebook_name = self._make_inc_temp(
             suffix=".ipynb", prefix="ray_ui", directory_name=self._temp_dir)
         self._webui_url, process_info = ray.services.start_ui(
