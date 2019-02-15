@@ -1234,8 +1234,21 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (int64_t i = 0; i < num_returns; i++) {
-    const ObjectID object_id = spec.ReturnId(i);
-    RAY_IGNORE_EXPR(store_client_.CreateAndSeal(object_id.to_plasma_id(), "", meta));
+    const auto object_id = spec.ReturnId(i).to_plasma_id();
+    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    if (!status.ok() && !status.IsPlasmaObjectExists()) {
+      // If we failed to save the error code, log a warning and push an error message
+      // to the driver.
+      std::ostringstream stream;
+      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
+             << " error code to object " << object_id << ". Anyone who's getting this"
+             << " object may hang forever.";
+      std::string error_message = stream.str();
+      RAY_LOG(WARNING) << error_message;
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          task.GetTaskSpecification().DriverId(), "task", error_message,
+          current_time_ms()));
+    }
   }
   // A task failing is equivalent to assigning and finishing the task, so clean
   // up any leftover state as for any task dispatched and removed from the

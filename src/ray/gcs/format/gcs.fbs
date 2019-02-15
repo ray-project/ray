@@ -356,11 +356,14 @@ table ActorCheckpointIdData {
 enum ErrorType:int {
   // Indicates that a task failed because the worker died unexpectedly while executing it.
   WORKER_DIED = 1,
-  // Indicates that a task failed because the actor died unexpectedly before finish
-  // executing it.
+  // Indicates that a task failed because the actor died unexpectedly before finishing it.
   ACTOR_DIED = 2,
-  // Indicates that an object is lost and cannot be reconstructed. Note, this should
-  // only happen to actor objects, because normal task objects can always be
-  // reconstructed.
+  // Indicates that an object is lost and cannot be reconstructed.
+  // Note, this currently only happens to actor objects. When the actor's state is already
+  // after the object's creating task, the actor cannot re-run the task.
+  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
+  // 1) A object that was put by the driver.
+  // 2) The object's creating task is already cleaned up from GCS (this currently
+  //    crashes raylet).
   OBJECT_UNRECONSTRUCTABLE = 3,
 }

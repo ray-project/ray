@@ -1,4 +1,5 @@
 import os
+
 import colorama
 
 try:
@@ -66,16 +67,14 @@ class RayWorkerError(RayError):
 
 
 class RayActorError(RayError):
-    """Indicates that the actor died unexpectedly before finish executing a
-    task."""
+    """Indicates that the actor died unexpectedly before finishing a task."""
 
     def __str__(self):
-        return "The actor died unexpectedly before finish executing this task."
+        return "The actor died unexpectedly before finishing this task."
 
 
 class UnreconstructableError(RayError):
-    """Indicates that an object is lost (either evicted or explicitly deleted)
-    and cannot be reconstructed.
+    """Indicates that an object is lost and cannot be reconstructed.
 
     Note, this exception only happens for actor objects. If actor's current
     state is after object's creating task, the actor cannot re-run the task to
