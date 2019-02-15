@@ -322,10 +322,11 @@ class GlobalState(object):
             "ActorCreationDummyObjectID": (
                 task.actor_creation_dummy_object_id().hex()),
             "ActorCounter": task.actor_counter(),
-            # For Java task, pickle will fail to loads a data
-            #  to Java object in `task.arguments()`.
+            # For Java task, pickle will fail to load a data
+            # to Java object in `task.arguments()`.
             "Args": (task.arguments()
-                     if task.language() == ray.gcs_utils.Language.PYTHON else None),
+                     if task.language() == ray.gcs_utils.Language.PYTHON else
+                     "<java-argument>"),
             "ReturnObjectIDs": task.returns(),
             "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
