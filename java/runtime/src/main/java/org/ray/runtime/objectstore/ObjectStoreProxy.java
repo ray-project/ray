@@ -75,8 +75,8 @@ public class ObjectStoreProxy {
    * @return A list of GetResult objects.
    */
   public <T> List<GetResult<T>> get(List<UniqueId> ids, int timeoutMs) {
-    byte[][] binary_ids = UniqueIdUtil.getIdBytes(ids);
-    List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binary_ids, timeoutMs);
+    byte[][] binaryIds = UniqueIdUtil.getIdBytes(ids);
+    List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binaryIds, timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
@@ -94,7 +94,8 @@ public class ObjectStoreProxy {
         // If data is not null, deserialize the Java object.
         Object object = Serializer.decode(data, runtime.getWorkerContext().getCurrentClassLoader());
         if (object instanceof RayException) {
-          // If the object is a `RayException`, it means that an error occurred during task execution.
+          // If the object is a `RayException`, it means that an error occurred during task
+          // execution.
           result = new GetResult<>(true, null, (RayException) object);
         } else {
           // Otherwise, the object is valid.
@@ -107,7 +108,7 @@ public class ObjectStoreProxy {
 
       if (meta != null || data != null) {
         // Release the object from object store..
-        objectStore.get().release(binary_ids[i]);
+        objectStore.get().release(binaryIds[i]);
       }
 
       results.add(result);

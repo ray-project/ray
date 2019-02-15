@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from contextlib import contextmanager
 import atexit
-import colorama
 import faulthandler
 import hashlib
 import inspect
