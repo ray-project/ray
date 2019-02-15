@@ -55,8 +55,9 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        assert not (shutdown_at_exit and connect_only), (
-            "'shutdown_at_exit' and 'connect_only' cannot be both true.")
+        if shutdown_at_exit and connect_only:
+            raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
+                             "be both true.")
         self.all_processes = {}
 
         ray_params.update_if_absent(

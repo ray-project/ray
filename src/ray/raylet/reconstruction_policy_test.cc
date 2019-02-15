@@ -60,10 +60,10 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
                            const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
-  MOCK_METHOD6(ReportObjectAdded,
+  MOCK_METHOD5(ReportObjectAdded,
                ray::Status(const ObjectID &, const ClientID &,
                            const object_manager::protocol::ObjectInfoT &, bool,
-                           const std::vector<uint8_t> &, const std::string &));
+                           const plasma::ObjectBuffer &));
 
   MOCK_METHOD2(ReportObjectRemoved, ray::Status(const ObjectID &, const ClientID &));
 
