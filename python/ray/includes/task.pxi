@@ -178,6 +178,10 @@ cdef class Task:
             postincrement(iterator)
         return required_resources
 
+    def language(self):
+        """Return the language of the task."""
+        return Language.from_native(self.task_spec.get().GetLanguage())
+
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
         return ActorID.from_native(self.task_spec.get().ActorCreationId())

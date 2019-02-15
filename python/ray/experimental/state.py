@@ -311,6 +311,7 @@ class GlobalState(object):
         function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
+
         task_spec_info = {
             "DriverID": task.driver_id().hex(),
             "TaskID": task.task_id().hex(),
@@ -321,7 +322,10 @@ class GlobalState(object):
             "ActorCreationDummyObjectID": (
                 task.actor_creation_dummy_object_id().hex()),
             "ActorCounter": task.actor_counter(),
-            "Args": task.arguments(),
+            # For Java task, pickle will fail to loads a data
+            #  to Java object in `task.arguments()`.
+            "Args": (task.arguments()
+                     if task.language() == ray.gcs_utils.Language.PYTHON else None),
             "ReturnObjectIDs": task.returns(),
             "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
