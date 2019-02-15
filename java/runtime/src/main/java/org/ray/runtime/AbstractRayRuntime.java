@@ -175,7 +175,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
             ids += ", etc";
           }
           String msg = String.format("Attempted %d times to reconstruct objects,"
-                  + " but some objects are still available. If this message continues to print,"
+                  + " but some objects are still unavailable. If this message continues to print,"
                   + " it may indicate that object's creating task is hanging, or something wrong"
                   + " happened in raylet backend. %d object(s) pending: %s.", numAttempts,
               unreadyIds.size(), ids);

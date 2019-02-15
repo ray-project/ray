@@ -67,7 +67,11 @@ class RayWorkerError(RayError):
 
 
 class RayActorError(RayError):
-    """Indicates that the actor died unexpectedly before finishing a task."""
+    """Indicates that the actor died unexpectedly before finishing a task.
+
+    This exception could happen either because the actor process dies while
+    executing a task, or because a task is submitted to a dead actor.
+    """
 
     def __str__(self):
         return "The actor died unexpectedly before finishing this task."

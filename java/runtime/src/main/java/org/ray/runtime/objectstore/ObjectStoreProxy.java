@@ -87,20 +87,21 @@ public class ObjectStoreProxy {
 
       GetResult<T> result;
       if (meta != null) {
-        // if meta is not null, deserialize the exception object.
+        // If meta is not null, deserialize the exception.
         RayException exception = deserializeRayExceptionFromMeta(meta, ids.get(i));
         result = new GetResult<>(true, null, exception);
       } else if (data != null) {
-        // if data is not null, deserialize the object.
+        // If data is not null, deserialize the Java object.
         Object object = Serializer.decode(data, runtime.getWorkerContext().getCurrentClassLoader());
         if (object instanceof RayException) {
-          // if the object is a `RayException`, it means that an error occurred during task execution.
+          // If the object is a `RayException`, it means that an error occurred during task execution.
           result = new GetResult<>(true, null, (RayException) object);
         } else {
+          // Otherwise, the object is valid.
           result = new GetResult<>(true, (T) object, null);
         }
       } else {
-        // Both meta and data are null, the object doesn't exist in object store.
+        // If both meta and data are null, the object doesn't exist in object store.
         result = new GetResult<>(false, null, null);
       }
 
@@ -116,11 +117,11 @@ public class ObjectStoreProxy {
 
   private RayException deserializeRayExceptionFromMeta(byte[] meta, UniqueId objectId) {
     if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-      throw RayWorkerException.INSTANCE;
+      return RayWorkerException.INSTANCE;
     } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-      throw RayActorException.INSTANCE;
+      return RayActorException.INSTANCE;
     } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
-      throw new UnreconstructableException(objectId);
+      return new UnreconstructableException(objectId);
     }
     throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
   }
