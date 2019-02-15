@@ -61,7 +61,6 @@ from ray._raylet import (
     ObjectID,
     TaskID,
     UniqueID,
-    _ID_TYPES,
 )  # noqa: E402
 
 _config = _Config()
@@ -125,8 +124,19 @@ __all__ = [
     "wait",
 ]
 
-for id_type in _ID_TYPES:
-    __all__ += id_type.__name__
+# ID types
+__all__ += [
+    "ActorCheckpointID",
+    "ActorClassID",
+    "ActorHandleID",
+    "ActorID",
+    "ClientID",
+    "DriverID",
+    "FunctionID",
+    "ObjectID",
+    "TaskID",
+    "UniqueID",
+]
 
 import ctypes  # noqa: E402
 # Windows only
