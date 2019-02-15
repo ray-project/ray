@@ -261,11 +261,6 @@ def test_complex_serialization(ray_start):
         Bar(),
         Baz(),  # Qux(), SubQux(),
         NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3]),
-        collections.Counter([np.random.randint(0, 10) for _ in range(100)]),
-        collections.OrderedDict([("hello", 1), ("world", 2)]),
-        collections.defaultdict(lambda: 0, [("hello", 1), ("world", 2)]),
-        collections.defaultdict(lambda: [], [("hello", 1), ("world", 2)]),
-        collections.deque([1, 2, 3, "a", "b", "c", 3.5])
     ]
 
     # Test dataclasses in Python 3.7.
