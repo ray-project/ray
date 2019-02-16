@@ -3,20 +3,18 @@ from gym.spaces import Space
 
 
 class Simplex(Space):
-    """
-    A d-1 dimsional Simplex in R^d.
-    i.e., all coordinates are in [0,1] and sum to 1
+    """Represents a d - 1 dimensional Simplex in R^d.
 
-    The dimension d of the simplex is assumed to be shape[-1]
+    That is, all coordinates are in [0, 1] and sum to 1.
+    The dimension d of the simplex is assumed to be shape[-1].
 
     Additionally one can specify the underlying distribution of
     the simplex as a Dirichlet distribution by providing concentration
     parameters. By default, sampling is uniform, i.e. concentration is
     all 1s.
 
-
     Example usage:
-    self.action_space = spaces.Simplex(shape=(3,4))
+    self.action_space = spaces.Simplex(shape=(3, 4))
         --> 3 independent 4d Dirichlet with uniform concentration
     """
 
@@ -42,7 +40,7 @@ class Simplex(Space):
             self.concentration, size=self.shape[:-1]).astype(self.dtype)
 
     def contains(self, x):
-        assert x.shape == self.shape, f"{x.shape}, {self.shape}"
+        assert x.shape == self.shape, (x.shape, self.shape)
         assert np.allclose(np.sum(x, axis=-1), np.ones_like(x[..., 0]))
         return True
 
@@ -53,7 +51,7 @@ class Simplex(Space):
         return [np.asarray(sample) for sample in sample_n]
 
     def __repr__(self):
-        return f"Simplex({self.shape};{self.concentration})"
+        return "Simplex({}; {})".format(self.shape, self.concentration)
 
     def __eq__(self, other):
         return np.allclose(self.concentration,
