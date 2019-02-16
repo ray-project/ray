@@ -20,7 +20,6 @@ RESULT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
-MAX_THREAD_STOP_WAIT_TIME = 5
 
 
 class StatusReporter(object):
@@ -32,10 +31,9 @@ class StatusReporter(object):
         >>>     reporter(timesteps_total=1)
     """
 
-    def __init__(self, result_queue, stop_event, continue_semaphore):
+    def __init__(self, result_queue, continue_semaphore):
         self._queue = result_queue
         self._last_report_time = None
-        self._stop_event = stop_event
         self._continue_semaphore = continue_semaphore
 
     def __call__(self, **kwargs):
@@ -70,27 +68,13 @@ class StatusReporter(object):
         # add results to a thread-safe queue
         self._queue.put(kwargs, block=True)
 
-        # don't wait if the thread should stop
-        if self.should_stop():
-            raise StopIteration()
-
-        # this ensures the FunctionRunner's _train method was called and that
-        # the next results are requested
+        # This blocks until notification from the FunctionRunner that the last
+        # result has been returned to Tune and that the function is safe to
+        # resume training.
         self._continue_semaphore.acquire()
-
-        # check if the stop signal was sent during the semaphore wait
-        if self.should_stop():
-            raise StopIteration()
 
     def _start(self):
         self._last_report_time = time.time()
-
-    def should_stop(self):
-        """ Returns True if the trial should stop running.
-
-        This method is safe to use within the training function.
-        """
-        return self._stop_event.is_set()
 
 
 class _RunnerThread(threading.Thread):
@@ -109,7 +93,6 @@ class _RunnerThread(threading.Thread):
             logger.debug((
                     "Thread runner raised StopIteration. Interperting it as a "
                     "signal to terminate the thread without error."))
-            pass
         except Exception as e:
             logger.exception("Runner Thread raised error.")
             try:
@@ -137,9 +120,6 @@ class FunctionRunner(Trainable):
     _name = "func"
 
     def _setup(self, config):
-        # a thread-safe event to notify the status reporter to stop
-        self._stop_event = threading.Event()
-
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next result.
         self._continue_semaphore = threading.Semaphore(0)
@@ -153,7 +133,6 @@ class FunctionRunner(Trainable):
         self._error_queue = queue.Queue(1)
 
         self._status_reporter = StatusReporter(self._results_queue,
-                                               self._stop_event,
                                                self._continue_semaphore)
 
         config = config.copy()
@@ -163,7 +142,6 @@ class FunctionRunner(Trainable):
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
-        self._started = False
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -171,15 +149,19 @@ class FunctionRunner(Trainable):
         raise NotImplementedError
 
     def _train(self):
-        if not self._started:
-            # if not started, start
-            self._status_reporter._start()
-            self._runner.start()
-            self._started = True
-        elif self._runner.is_alive():
+        if self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
             # generate the next result
             self._continue_semaphore.release()
+        else:
+            # if not alive, try to start
+            self._status_reporter._start()
+            try:
+                self._runner.start()
+            except RuntimeError:
+                # If this is reached, it means the thread was started and is
+                # now done or has raised an exception.
+                pass
 
         result = None
         while result is None and self._runner.is_alive():
@@ -225,18 +207,6 @@ class FunctionRunner(Trainable):
         return result
 
     def _stop(self):
-        # notify the status reporter to stop if still running
-        self._stop_event.set()
-
-        # Allow the reporter to proceed, this should cause a StopIteration
-        # exception if the reporter was waiting for this signal.
-        self._continue_semaphore.release()
-
-        # Give some time for the runner to stop.
-        self._runner.join(timeout=MAX_THREAD_STOP_WAIT_TIME)
-        if self._runner.is_alive():
-            logger.warning("Thread runner still running after stop event.")
-
         # If everything stayed in synch properly, this should never happen.
         if not self._results_queue.empty():
             logger.warning((
