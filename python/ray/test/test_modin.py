@@ -12,5 +12,5 @@ def test_modin_import():
     assert frame.sum().squeeze() == sum(frame_data)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_modin_import()
