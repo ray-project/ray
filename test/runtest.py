@@ -1,3 +1,4 @@
+# coding: utf-8
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -2764,6 +2765,15 @@ def test_raylet_is_robust_to_random_messages(shutdown_only):
 
     @ray.remote
     def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
+
+
+def test_non_ascii_comment(ray_start):
+    @ray.remote
+    def f():
+        # 日本語 Japanese comment
         return 1
 
     assert ray.get(f.remote()) == 1
