@@ -11,7 +11,7 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
-from ray.rllib.models.spaces import Simplex
+from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (Categorical, Deterministic,
                                           DiagGaussian,
                                           MultiActionDistribution, Dirichlet)
