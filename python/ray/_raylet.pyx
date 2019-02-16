@@ -19,20 +19,8 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 
 from ray.includes.common cimport (
-    CActorCheckpointID,
-    CActorClassID,
-    CActorHandleID,
-    CActorID,
-    CClientID,
-    CConfigID,
-    CDriverID,
-    CFunctionID,
     CLanguage,
-    CObjectID,
     CRayStatus,
-    CTaskID,
-    CUniqueID,
-    CWorkerID,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
@@ -43,6 +31,10 @@ from ray.includes.libraylet cimport (
     GCSProfileTableDataT,
     ResourceMappingType,
     WaitResultPair,
+)
+from ray.includes.unique_ids cimport (
+    CActorCheckpointID,
+    CObjectID,
 )
 from ray.includes.task cimport CTaskSpecification
 from ray.includes.ray_config cimport RayConfig

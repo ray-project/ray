@@ -1,3 +1,4 @@
+# coding: utf-8
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -2502,7 +2503,7 @@ def test_not_logging_to_driver(shutdown_only):
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
-    ray.init(redirect_worker_output=True, num_cpus=num_workers)
+    ray.init(num_cpus=num_workers)
 
     @ray.remote
     def f():
@@ -2621,7 +2622,7 @@ def test_inline_objects(shutdown_only):
             value = ray.get(inline_object)
             assert value == "inline"
             inlined += 1
-        except ray.worker.RayTaskError:
+        except ray.exceptions.UnreconstructableError:
             pass
     # Make sure some objects were inlined. Some of them may not get inlined
     # because we evict the object soon after creating it.
@@ -2638,7 +2639,7 @@ def test_inline_objects(shutdown_only):
             ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Objects created by an actor that were evicted and larger than the
         # maximum inline object size cannot be retrieved or reconstructed.
-        with pytest.raises(ray.worker.RayTaskError):
+        with pytest.raises(ray.exceptions.UnreconstructableError):
             ray.get(non_inline_object) == 10000 * [1]
 
 
@@ -2764,6 +2765,15 @@ def test_raylet_is_robust_to_random_messages(shutdown_only):
 
     @ray.remote
     def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
+
+
+def test_non_ascii_comment(ray_start):
+    @ray.remote
+    def f():
+        # 日本語 Japanese comment
         return 1
 
     assert ray.get(f.remote()) == 1

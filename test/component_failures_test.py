@@ -279,7 +279,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     for object_id in object_ids:
         try:
             ray.get(object_id)
-        except ray.worker.RayTaskError:
+        except (ray.exceptions.RayTaskError, ray.exceptions.RayWorkerError):
             pass
 
 
@@ -424,7 +424,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             for i, out in enumerate(children_out):
                 try:
                     ray.get(out)
-                except ray.worker.RayTaskError:
+                except ray.exceptions.RayActorError:
                     children[i] = Child.remote(death_probability)
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be reconstructed.

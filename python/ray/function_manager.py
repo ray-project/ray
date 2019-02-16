@@ -123,7 +123,9 @@ class FunctionDescriptor(object):
         try:
             # If we are running a script or are in IPython, include the source
             # code in the hash.
-            source = inspect.getsource(function).encode("ascii")
+            source = inspect.getsource(function)
+            if sys.version_info[0] >= 3:
+                source = source.encode()
             function_source_hasher.update(source)
             function_source_hash = function_source_hasher.digest()
         except (IOError, OSError, TypeError):
@@ -441,7 +443,7 @@ class FunctionActorManager(object):
         # we spend too long in this loop.
         # The driver function may not be found in sys.path. Try to load
         # the function from GCS.
-        with profiling.profile("wait_for_function", worker=self._worker):
+        with profiling.profile("wait_for_function"):
             self._wait_for_function(function_descriptor, driver_id)
         try:
             info = self._function_execution_info[driver_id][function_id]

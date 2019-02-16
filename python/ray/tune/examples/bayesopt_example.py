@@ -23,14 +23,14 @@ def easy_objective(config, reporter):
         time.sleep(0.02)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(redirect_output=True)
+    ray.init()
 
     register_trainable("exp", easy_objective)
 
