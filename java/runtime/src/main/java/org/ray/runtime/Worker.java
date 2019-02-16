@@ -6,7 +6,7 @@ import java.util.List;
 import org.ray.api.Checkpointable;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.Checkpointable.CheckpointContext;
-import org.ray.api.exception.RayException;
+import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.RayFunction;
@@ -118,7 +118,7 @@ public class Worker {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + spec, e);
       if (!spec.isActorCreationTask()) {
-        runtime.put(returnId, new RayException("Error executing task " + spec, e));
+        runtime.put(returnId, new RayTaskException("Error executing task " + spec, e));
       } else {
         actorCreationException = e;
         currentActorId = returnId;
