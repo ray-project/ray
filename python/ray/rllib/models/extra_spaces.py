@@ -40,9 +40,8 @@ class Simplex(gym.Space):
             self.concentration, size=self.shape[:-1]).astype(self.dtype)
 
     def contains(self, x):
-        assert x.shape == self.shape, (x.shape, self.shape)
-        assert np.allclose(np.sum(x, axis=-1), np.ones_like(x[..., 0]))
-        return True
+        return x.shape == self.shape and np.allclose(
+            np.sum(x, axis=-1), np.ones_like(x[..., 0]))
 
     def to_jsonable(self, sample_n):
         return np.array(sample_n).tolist()
