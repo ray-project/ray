@@ -15,7 +15,7 @@ from ray.tune.result import TIME_THIS_ITER_S
 logger = logging.getLogger(__name__)
 
 # Time between FunctionRunner checks when fetching
-# new results after signalling the reporter to continue
+# new results after signaling the reporter to continue
 RESULT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
