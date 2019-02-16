@@ -2849,7 +2849,7 @@ def test_runtime_context(shutdown_only):
     ray.init(num_cpus=1, driver_id=specified_driver_id)
 
     # in driver
-    assert_equal(specified_driver_id, ray.runtime_context.current_driver_id)
+    assert specified_driver_id == ray.runtime_context.current_driver_id
 
     # in worker
     @ray.remote
