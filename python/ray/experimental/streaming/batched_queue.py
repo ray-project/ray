@@ -2,12 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 import threading
 import time
 
 import ray
 from ray.experimental import internal_kv
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 
 
 def plasma_prefetch(object_id):
@@ -20,20 +24,20 @@ def plasma_prefetch(object_id):
 def plasma_get(object_id):
     """Get an object directly from plasma without going through object table.
 
-     Precondition: plasma_prefetch(object_id) has been called before.
+    Precondition: plasma_prefetch(object_id) has been called before.
     """
     client = ray.worker.global_worker.plasma_client
-    pid = ray.pyarrow.plasma.ObjectID(object_id)
-    while not client.contains(pid):
+    plasma_id = ray.pyarrow.plasma.ObjectID(object_id)
+    while not client.contains(plasma_id):
         pass
-    return client.get(pid)
+    return client.get(plasma_id)
 
 
 # TODO: doing the timer in Python land is a bit slow
 class FlushThread(threading.Thread):
     """A thread that flushes periodically to plasma.
 
-     Attributes:
+    Attributes:
          interval: The flush timeout per batch.
          flush_fn: The flush function.
     """
@@ -53,24 +57,32 @@ class FlushThread(threading.Thread):
 class BatchedQueue(object):
     """A batched queue for actor to actor communication.
 
-     Attributes:
-         max_size (int): The maximum size of the queue in number of batches (if exceeded, backpressure kicks in).
+    Attributes:
+         max_size (int): The maximum size of the queue in number of batches
+         (if exceeded, backpressure kicks in)
          max_batch_size (int): The size of each batch in number of records.
          max_batch_time (float): The flush timeout per batch.
          prefetch_depth (int): The  number of batches to prefetch from plasma.
-         background_flush (bool): Denotes whether a daemon flush thread should be used (True) to flush batches to plasma.
+         background_flush (bool): Denotes whether a daemon flush thread should
+         be used (True) to flush batches to plasma.
          base (ndarray): A unique signature for the queue.
          read_ack_key (bytes): The signature of the queue in bytes.
-         prefetch_batch_offset (int): The number of the last read prefetched batch.
+         prefetch_batch_offset (int): The number of the last read prefetched
+         batch.
          read_batch_offset (int): The number of the last read batch.
-         read_item_offset (int): The number of the last read record inside a batch.
+         read_item_offset (int): The number of the last read record inside a
+         batch.
          write_batch_offset (int): The number of the last written batch.
-         write_item_offset (int): The numebr of the last written item inside a batch.
+         write_item_offset (int): The numebr of the last written item inside a
+         batch.
          write_buffer (list): The write buffer, i.e. an in-memory batch.
-         last_flush_time (float): The time the last flushing to plasma took place.
-         cached_remote_offset (int): The number of the last read batch as recorded by the writer after the previous flush.
+         last_flush_time (float): The time the last flushing to plasma took
+         place.
+         cached_remote_offset (int): The number of the last read batch as
+         recorded by the writer after the previous flush.
          flush_lock (RLock): A python lock used for flushing batches to plasma.
-         flush_thread (Threading): The python thread used for flushing batches to plasma.
+         flush_thread (Threading): The python thread used for flushing batches
+         to plasma.
     """
 
     def __init__(self,
@@ -82,7 +94,7 @@ class BatchedQueue(object):
         self.max_size = max_size
         self.max_batch_size = max_batch_size
         self.max_batch_time = max_batch_time
-        self.prefetch_depth = prefetch_depth  # Number of consecutive batches to prefetch
+        self.prefetch_depth = prefetch_depth
         self.background_flush = background_flush
 
         # Common queue metadata -- This serves as the unique id of the queue
@@ -118,7 +130,8 @@ class BatchedQueue(object):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    # This is to enable writing functionality in case the queue is not created by the writer
+    # This is to enable writing functionality in
+    # case the queue is not created by the writer
     # The reason is that python locks cannot be serialized
     def enable_writes(self):
         """Restores the state of the batched queue for writing."""
@@ -142,9 +155,9 @@ class BatchedQueue(object):
             batch_id = self._batch_id(self.write_batch_offset)
             ray.worker.global_worker.put_object(
                 ray.ObjectID(batch_id), self.write_buffer)
-            #print("[writer] Flush batch {} offset {} size {}".format(
-            #    self.write_batch_offset, self.write_item_offset,
-            #    len(self.write_buffer)))
+            logger.debug("[writer] Flush batch {} offset {} size {}".format(
+                self.write_batch_offset, self.write_item_offset,
+                len(self.write_buffer)))
             self.write_buffer = []
             self.write_batch_offset += 1
             self._wait_for_reader()
@@ -154,18 +167,19 @@ class BatchedQueue(object):
         """Checks for backpressure by the downstream reader."""
         if self.max_size <= 0:  # Unlimited queue
             return
-        if self.write_item_offset - self.cached_remote_offset <= self.max_size:  # Hasn't reached max size
-            return
+        if self.write_item_offset - self.cached_remote_offset <= self.max_size:
+            return  # Hasn't reached max size
         remote_offset = internal_kv._internal_kv_get(self.read_ack_key)
         if remote_offset is None:
-            #print("[writer] Waiting for reader to start...")
+            # logger.debug("[writer] Waiting for reader to start...")
             while remote_offset is None:
                 time.sleep(0.01)
                 remote_offset = internal_kv._internal_kv_get(self.read_ack_key)
         remote_offset = int(remote_offset)
         if self.write_item_offset - remote_offset > self.max_size:
-            #print("[writer] Waiting for reader to catch up {} to {} - {}".format(
-            #        remote_offset, self.write_item_offset, self.max_size))
+            logger.debug(
+                "[writer] Waiting for reader to catch up {} to {} - {}".format(
+                    remote_offset, self.write_item_offset, self.max_size))
             while self.write_item_offset - remote_offset > self.max_size:
                 time.sleep(0.01)
                 remote_offset = int(
@@ -179,9 +193,9 @@ class BatchedQueue(object):
             self.prefetch_batch_offset += 1
         self.read_buffer = plasma_get(self._batch_id(self.read_batch_offset))
         self.read_batch_offset += 1
-        #print("[reader] Fetched batch {} offset {} size {}".format(
-        #    self.read_batch_offset, self.read_item_offset,
-        #    len(self.read_buffer)))
+        logger.debug("[reader] Fetched batch {} offset {} size {}".format(
+            self.read_batch_offset, self.read_item_offset,
+            len(self.read_buffer)))
         self._ack_reads(self.read_item_offset + len(self.read_buffer))
 
     # Reader acks the key it reads so that writer knows reader's offset.
@@ -194,7 +208,7 @@ class BatchedQueue(object):
     def put_next(self, item):
         with self.flush_lock:
             if self.background_flush and not self.flush_thread.is_alive():
-                #print("[writer] Starting batch flush thread")
+                logger.debug("[writer] Starting batch flush thread")
                 self.flush_thread.start()
             self.write_buffer.append(item)
             self.write_item_offset += 1
