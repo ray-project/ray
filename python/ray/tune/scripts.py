@@ -99,11 +99,11 @@ def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
 
         checkpoints = pd.DataFrame(experiment_state["checkpoints"])
         runner_data = experiment_state["runner_data"]
-        timestamp = experiment_state["timestamp"]
+        timestamp = experiment_state.get("timestamp")
 
         experiment_data = {
             "name": experiment_path,
-            "start_time": runner_data["_start_time"],
+            "start_time": runner_data.get("_start_time"),
             "timestamp": datetime.fromtimestamp(timestamp),
             "total_trials": checkpoints.shape[0],
             "running_trials": (checkpoints["status"] == Trial.RUNNING).sum(),
@@ -115,7 +115,7 @@ def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
         experiment_data_collection.append(experiment_data)
 
     info_dataframe = pd.DataFrame(experiment_data_collection)
-    print(info_dataframe[list(info_keys)].to_string())
+    print(tabulate(info_dataframe, headers="keys", tablefmt="psql"))
 
 
 @cli.command()
