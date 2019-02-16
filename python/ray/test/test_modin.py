@@ -18,6 +18,6 @@ def test_modin_import():
     frame = pd.DataFrame(frame_data)
     assert frame.sum().squeeze() == sum(frame_data)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_modin_import_with_ray_init()
     # test_modin_import()
