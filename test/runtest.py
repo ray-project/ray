@@ -2846,7 +2846,7 @@ def test_non_ascii_comment(ray_start):
 
 def test_runtime_context(shutdown_only):
     specified_driver_id = ray.ObjectID(b"00112233445566778899")
-    ray.init(driver_id=specified_driver_id)
+    ray.init(num_cpus=1, driver_id=specified_driver_id)
 
     # in driver
     assert_equal(specified_driver_id, ray.runtime_context.current_driver_id)
