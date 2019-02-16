@@ -85,8 +85,6 @@ class TorchPolicyGraph(PolicyGraph):
             loss_out.backward()
             # Note that return values are just references;
             # calling zero_grad will modify the values
-
-            #TODO: add in numpy arrays or Nones
             grads = []
             for p in self._model.parameters():
                 if p.grad is not None:
