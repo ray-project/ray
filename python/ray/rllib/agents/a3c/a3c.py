@@ -5,7 +5,6 @@ from __future__ import print_function
 import time
 
 from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-
 from ray.rllib.agents.agent import Agent, with_common_config
 from ray.rllib.optimizers import AsyncGradientsOptimizer
 from ray.rllib.utils.annotations import override
@@ -69,8 +68,8 @@ class A3CAgent(Agent):
             self.optimizer.step()
         result = self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"])
-        result.update(
-            timesteps_this_iter=self.optimizer.num_steps_sampled - prev_steps)
+        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled
+                      - prev_steps)
         return result
 
     def _make_optimizer(self):
