@@ -44,7 +44,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
-<<<<<<< HEAD
+
 from ray.core.generated.ErrorType import ErrorType
 from ray.exceptions import (
     RayActorError,

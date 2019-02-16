@@ -4,17 +4,18 @@ from __future__ import print_function
 
 
 class RuntimeContext(object):
-    """A class used for getting runtime context.
-    """
+    """A class used for getting runtime context."""
+
     def __init__(self, worker=None):
         self.worker = worker
 
     @property
     def current_driver_id(self):
-        """Get current driver id for this worker or driver.
+        """Get current driver ID for this worker or driver.
+
         Returns:
-            Return the driver id in driver, and return the driver id of
-            current executing task in worker.
+            If called by a driver, this returns the driver ID. If called in
+                a task, return the driver ID of the associated driver.
         """
         assert self.worker is not None
         return self.worker.task_driver_id
