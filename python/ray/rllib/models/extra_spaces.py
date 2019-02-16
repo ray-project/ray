@@ -2,7 +2,7 @@ import numpy as np
 import gym
 
 
-class Simplex(gym.spaces.Space):
+class Simplex(gym.Space):
     """Represents a d - 1 dimensional Simplex in R^d.
 
     That is, all coordinates are in [0, 1] and sum to 1.
