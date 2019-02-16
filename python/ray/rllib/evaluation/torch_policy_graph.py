@@ -97,7 +97,6 @@ class TorchPolicyGraph(PolicyGraph):
 
     @override(PolicyGraph)
     def apply_gradients(self, gradients):
-        #TODO: filter out the nones
         with self.lock:
             for g, p in zip(gradients, self._model.parameters()):
                 if g is not None:
