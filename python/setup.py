@@ -84,11 +84,11 @@ class build_ext(_build_ext.build_ext):
             for name in filenames:
                 pyarrow_files.append(os.path.join(root, name))
 
-        # Copy the relevant files for modin.
+        # Make sure the relevant files for modin get copied.
         modin_files = []
         for (root, dirs, filenames) in os.walk("./ray/modin"):
             for name in filenames:
-                pyarrow_files.append(os.path.join(root, name))
+                modin_files.append(os.path.join(root, name))
 
         files_to_include = ray_files + pyarrow_files + modin_files
 
