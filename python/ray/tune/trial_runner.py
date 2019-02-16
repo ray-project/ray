@@ -305,6 +305,15 @@ class TrialRunner(object):
 
         for local_dir in sorted({t.local_dir for t in self._trials}):
             messages.append("Result logdir: {}".format(local_dir))
+
+        num_trials_per_state = {
+            state: len(trials) for state, trials in states.items()
+        }
+        total_number_of_trials = sum(num_trials_per_state.values())
+        messages.append(
+            "Number of trials: {} ({})"
+            "".format(total_number_of_trials, num_trials_per_state))
+
         for state, trials in sorted(states.items()):
             limit = limit_per_state[state]
             messages.append("{} trials:".format(state))
