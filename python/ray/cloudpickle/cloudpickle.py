@@ -44,7 +44,6 @@ from __future__ import print_function
 
 import dis
 from functools import partial
-import importlib
 import io
 import itertools
 import logging
@@ -56,12 +55,21 @@ import sys
 import traceback
 import types
 import weakref
+import uuid
+import threading
+from enum import Enum
 
 # cloudpickle is meant for inter process communication: we expect all
 # communicating processes to run the same Python version hence we favor
 # communication speed over compatibility:
 DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
+# Track the provenance of reconstructed dynamic classes to make it possible
+# to reconcyle instances with a singleton class definition when appropriate
+# and preserve the usual "isinstance" semantics of Python objects.
+_DYNAMIC_CLASS_TRACKER_BY_CLASS = weakref.WeakKeyDictionary()
+_DYNAMIC_CLASS_TRACKER_BY_ID = weakref.WeakValueDictionary()
+_DYNAMIC_CLASS_TRACKER_LOCK = threading.Lock()
 
 if sys.version_info[0] < 3:  # pragma: no branch
     from pickle import Pickler
@@ -77,6 +85,25 @@ else:
     from io import BytesIO as StringIO
     string_types = (str,)
     PY3 = True
+
+
+def _ensure_tracking(class_def):
+    with _DYNAMIC_CLASS_TRACKER_LOCK:
+        class_tracker_id = _DYNAMIC_CLASS_TRACKER_BY_CLASS.get(class_def)
+        if class_tracker_id is None:
+            class_tracker_id = uuid.uuid4().hex
+            _DYNAMIC_CLASS_TRACKER_BY_CLASS[class_def] = class_tracker_id
+            _DYNAMIC_CLASS_TRACKER_BY_ID[class_tracker_id] = class_def
+    return class_tracker_id
+
+
+def _lookup_class_or_track(class_tracker_id, class_def):
+    if class_tracker_id is not None:
+        with _DYNAMIC_CLASS_TRACKER_LOCK:
+            class_def = _DYNAMIC_CLASS_TRACKER_BY_ID.setdefault(
+                class_tracker_id, class_def)
+            _DYNAMIC_CLASS_TRACKER_BY_CLASS[class_def] = class_tracker_id
+    return class_def
 
 
 def _make_cell_set_template_code():
@@ -460,6 +487,33 @@ class CloudPickler(Pickler):
                             # then discards the reference to it
                             self.write(pickle.POP)
 
+    def _save_dynamic_enum(self, obj):
+        """Special handling for dynamic Enum subclasses
+
+        Use the Enum functional API (inherited from EnumMeta.__call__) as the
+        EnumMeta metaclass has complex initialization that makes the Enum
+        subclasses hold references to their own instances.
+        """
+        class_tracker_id = _ensure_tracking(obj)
+
+        # XXX: shall we pass type and start kwargs? If so how to retrieve the
+        # correct info from obj.
+        elements = dict((e.name, e.value) for e in obj)
+
+        if obj.__doc__ is not obj.__base__.__doc__:
+            doc = obj.__doc__
+        else:
+            doc = None
+
+        extra = {}
+        if hasattr(obj, "__qualname__"):
+            extra["qualname"] = obj.__qualname__
+
+        self.save_reduce(_make_dynamic_enum,
+                         (obj.__base__, obj.__name__, elements, doc,
+                          obj.__module__, class_tracker_id, extra),
+                         obj=obj)
+
     def save_dynamic_class(self, obj):
         """
         Save a class that can't be stored as module global.
@@ -468,6 +522,9 @@ class CloudPickler(Pickler):
         functions, or that otherwise can't be serialized as attribute lookups
         from global modules.
         """
+        if issubclass(obj, Enum):
+            return self._save_dynamic_enum(obj)
+
         clsdict = dict(obj.__dict__)  # copy dict proxy to a dict
         clsdict.pop('__weakref__', None)
 
@@ -524,8 +581,11 @@ class CloudPickler(Pickler):
         write(pickle.MARK)
 
         # Create and memoize an skeleton class with obj's name and bases.
+        extra = {"class_tracker_id": _ensure_tracking(obj)}
         tp = type(obj)
-        self.save_reduce(tp, (obj.__name__, obj.__bases__, type_kwargs), obj=obj)
+        self.save_reduce(_make_skeleton_class,
+                         (tp, obj.__name__, obj.__bases__, type_kwargs, extra),
+                         obj=obj)
 
         # Now save the rest of obj's __dict__. Any references to obj
         # encountered while saving will point to the skeleton class.
@@ -1143,12 +1203,20 @@ def _make_skel_func(code, cell_count, base_globals=None):
     return types.FunctionType(code, base_globals, None, None, closure)
 
 
+def _make_skeleton_class(type_constructor, name, bases, type_kwargs,
+                         extra):
+    class_tracker_id = extra.get("class_tracker_id")
+    skeleton_class = type_constructor(name, bases, type_kwargs)
+    return _lookup_class_or_track(class_tracker_id, skeleton_class)
+
+
 def _rehydrate_skeleton_class(skeleton_class, class_dict):
     """Put attributes from `class_dict` back on `skeleton_class`.
 
     See CloudPickler.save_dynamic_class for more info.
     """
     registry = None
+
     for attrname, attr in class_dict.items():
         if attrname == "_abc_impl":
             registry = attr
@@ -1159,6 +1227,14 @@ def _rehydrate_skeleton_class(skeleton_class, class_dict):
             skeleton_class.register(subclass)
 
     return skeleton_class
+
+
+def _make_dynamic_enum(base, name, elements, doc, module, class_tracker_id,
+                       extra):
+    class_def = base(name, elements, module=module, **extra)
+    if doc is not None:
+        class_def.__doc__ = doc
+    return _lookup_class_or_track(class_tracker_id, class_def)
 
 
 def _is_dynamic(module):
