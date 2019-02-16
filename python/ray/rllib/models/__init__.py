@@ -1,5 +1,5 @@
 from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.spaces import Simplex
+from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (
     ActionDistribution, Categorical, DiagGaussian, Deterministic, Dirichlet)
 from ray.rllib.models.model import Model
