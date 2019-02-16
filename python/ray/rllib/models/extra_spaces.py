@@ -1,8 +1,8 @@
 import numpy as np
-from gym.spaces import Space
+import gym
 
 
-class Simplex(Space):
+class Simplex(gym.spaces.Space):
     """Represents a d - 1 dimensional Simplex in R^d.
 
     That is, all coordinates are in [0, 1] and sum to 1.
