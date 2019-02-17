@@ -22,7 +22,6 @@ class PGLoss(nn.Module):
     def forward(self, observations, actions, advantages):
         logits, _, values, _ = self.policy_model({"obs": observations}, [])
         log_probs = F.log_softmax(logits, dim=1)
-        probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         pi_err = -advantages.dot(action_log_probs.reshape(-1))
         return pi_err
