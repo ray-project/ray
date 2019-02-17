@@ -2855,4 +2855,5 @@ def test_runtime_context(shutdown_only):
     @ray.remote
     def f():
         return ray.runtime_context.current_driver_id.id()
+
     assert specified_driver_id == ray.ObjectID(ray.get(f.remote()))
