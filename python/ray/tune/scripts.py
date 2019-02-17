@@ -8,7 +8,6 @@ import json
 import os
 from datetime import datetime
 
-
 import pandas as pd
 from ray.tune.trial import Trial
 import sys
@@ -53,7 +52,7 @@ DEFAULT_PROJECT_INFO_KEYS = (
 )
 
 
-def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
+def _list_trials(experiment_path, sort, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     experiment_path = os.path.expanduser(experiment_path)
     globs = glob.glob(os.path.join(experiment_path, "experiment_state*.json"))
     filename = max(list(globs))
@@ -65,6 +64,8 @@ def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
     if "logdir" in checkpoints_df.columns:
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, '')
+    if sort:
+        checkpoints_df = checkpoints_df.sort_values(by=sort)
     print(tabulate(checkpoints_df, headers="keys", tablefmt="psql"))
     
     # TODO(hartikainen): The logdir is often too verbose to be viewed in a
@@ -76,8 +77,9 @@ def _list_trials(experiment_path, info_keys=DEFAULT_EXPERIMENT_INFO_KEYS):
 
 @cli.command()
 @click.argument("experiment_path", required=True, type=str)
-def list_trials(experiment_path):
-    _list_trials(experiment_path)
+@click.option('--sort', default=None, type=str, help='Select which column to sort on.')
+def list_trials(experiment_path, sort):
+    _list_trials(experiment_path, sort)
 
 
 def _list_experiments(project_path, info_keys=DEFAULT_PROJECT_INFO_KEYS):
