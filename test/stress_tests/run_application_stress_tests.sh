@@ -17,8 +17,8 @@ RESULT_FILE=$ROOT_DIR/"results-$(date '+%Y-%m-%d_%H-%M-%S').log"
 
 echo "Testing on latest version of Ray: $RAY_VERSION"
 echo "Logging to" $RESULT_FILE
-echo -e $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem || true
-chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem
+echo -e $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem && chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem || true
+
 
 # Show explicitly which commands are currently running. This should only be AFTER
 # the private key is placed.
