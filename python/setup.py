@@ -150,6 +150,8 @@ requires = [
     "redis",
     # The six module is required by pyarrow.
     "six >= 1.0.0",
+    # The typing module is required by modin.
+    "typing",
     "flatbuffers",
     "faulthandler;python_version<'3.3'",
 ]

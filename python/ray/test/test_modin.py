@@ -20,4 +20,6 @@ def test_modin_import():
 
 if __name__ == "__main__":
     test_modin_import_with_ray_init()
+    # The following can be activated once we have a modin release that
+    # includes https://github.com/modin-project/modin/pull/472.
     # test_modin_import()
