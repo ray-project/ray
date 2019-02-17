@@ -326,7 +326,7 @@ class GlobalState(object):
             # to Java object in `task.arguments()`.
             "Args": (task.arguments()
                      if task.language() == ray.gcs_utils.Language.PYTHON else
-                     "<java-argument>"),
+                     ["<java-argument>"]),
             "ReturnObjectIDs": task.returns(),
             "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
