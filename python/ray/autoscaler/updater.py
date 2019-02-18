@@ -228,7 +228,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         if redirect is None:
-            if logger.level > logging.DEBUG:
+            if logger.getEffectiveLevel() > logging.DEBUG:
                 redirect = open("/dev/null", "w")
 
         self.get_caller(check_error)(
@@ -246,7 +246,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         if redirect is None:
-            if logger.level > logging.DEBUG:
+            if logger.getEffectiveLevel() > logging.DEBUG:
                 redirect = open("/dev/null", "w")
 
         self.get_caller(check_error)(
@@ -272,7 +272,7 @@ class NodeUpdater(object):
         self.set_ssh_ip_if_required()
 
         if redirect is None:
-            if logger.level > logging.DEBUG:
+            if logger.getEffectiveLevel() > logging.DEBUG:
                 redirect = open("/dev/null", "w")
 
         logger.info("NodeUpdater: Running {} on {}...".format(
