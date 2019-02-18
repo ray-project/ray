@@ -11,68 +11,69 @@ let dashboard = new Vue({
         ray_config: undefined,
     },
     methods: {
-        updateNodeInfo() {
+        updateNodeInfo: function() {
+            var self = this;
             fetch("/api/node_info").then(function (resp) {
                 return resp.json();
             }).then(function(data) {
-                dashboard.error = data.error;
-                dashboard.last_update = data.timestamp;
+                self.error = data.error;
                 if (data.error) {
-                    dashboard.clients = undefined;
-                    dashboard.tasks = undefined;
-                    dashboard.totals = undefined;
+                    self.clients = undefined;
+                    self.tasks = undefined;
+                    self.totals = undefined;
                     return;
                 }
-                dashboard.clients = data.result.clients;
-                dashboard.tasks = data.result.tasks;
-                dashboard.totals = data.result.totals;
+                self.last_update = data.timestamp;
+                self.clients = data.result.clients;
+                self.tasks = data.result.tasks;
+                self.totals = data.result.totals;
             }).catch(function() {
-                dashboard.error = "request error"
-                dashboard.clients = undefined;
-                dashboard.tasks = undefined;
-                dashboard.totals = undefined;
+                self.error = "request error"
+                self.clients = undefined;
+                self.tasks = undefined;
+                self.totals = undefined;
             }).finally(function() {
-                setTimeout(dashboard.updateNodeInfo, 500);
+                setTimeout(self.updateNodeInfo, 500);
             });
         },
-        updateRayConfig() {
+        updateRayConfig: function() {
+            var self = this;
             fetch("/api/ray_config").then(function (resp) {
                 return resp.json();
             }).then(function(data) {
                 if (data.error) {
-                    dashboard.ray_config = undefined;
+                    self.ray_config = undefined;
                     return;
                 }
-                dashboard.ray_config = data.result;
+                self.ray_config = data.result;
             }).catch(function() {
-                dashboard.error = "request error"
-                dashboard.ray_config = undefined;
+                self.error = "request error"
+                self.ray_config = undefined;
             }).finally(function() {
-                setTimeout(dashboard.updateRayConfig, 10000);
-
+                setTimeout(self.updateRayConfig, 10000);
             });
         },
-        updateAll() {
+        updateAll: function() {
             this.updateNodeInfo();
             this.updateRayConfig();
         },
-        tickClock() {
+        tickClock: function() {
             this.now = (new Date()).getTime() / 1000;
         }
     },
     computed: {
         outdated_cls: function(ts) {
-            if ((dashboard.now - dashboard.last_update) > 5) {
+            if ((this.now - this.last_update) > 5) {
                 return "outdated";
             }
             return "";
         },
+        age: function(ts) {
+            return (this.now - this.last_update | 0) + "s";
+        },
     },
     filters: {
-        age(ts) {
-            return (dashboard.now - ts | 0) + "s";
-        },
-        si(x) {
+        si: function(x) {
             let prefixes = ["B", "K", "M", "G", "T"]
             let i = 0;
             while (x > 1024) {
