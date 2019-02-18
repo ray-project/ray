@@ -50,9 +50,7 @@ class InputReader(object):
             ...                 self.scope, reuse=tf.AUTO_REUSE,
             ...                 auxiliary_name_scope=False):
             ...             logits, _ = self._build_layers_v2(
-            ...                 restore_original_dimensions({
-            ...                     "obs": input_ops["obs"]
-            ...                 }, self.obs_space),
+            ...                 {"obs": input_ops["obs"]},
             ...                 self.num_outputs, self.options)
             ...         il_loss = imitation_loss(logits, input_ops["action"])
             ...         return policy_loss + il_loss

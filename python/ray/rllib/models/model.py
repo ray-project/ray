@@ -74,9 +74,11 @@ class Model(object):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
         try:
+            restored = input_dict.copy()
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], obs_space)
             self.outputs, self.last_layer = self._build_layers_v2(
-                restore_original_dimensions(input_dict, obs_space),
-                num_outputs, options)
+                restored, num_outputs, options)
         except NotImplementedError:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
@@ -200,22 +202,24 @@ class Model(object):
 
 
 @DeveloperAPI
-def restore_original_dimensions(input_dict, obs_space, tensorlib=tf):
+def restore_original_dimensions(obs, obs_space, tensorlib=tf):
     """Unpacks Dict and Tuple space observations into their original form.
 
     This is needed since we flatten Dict and Tuple observations in transit.
     Before sending them to the model though, we should unflatten them into
     Dicts or Tuples of tensors.
+
+    Arguments:
+        obs: The flattened observation tensor.
+        obs_space: The flattened obs space. If this has the `original_space`
+            attribute, we will unflatten the tensor to that shape.
+        tensorlib: The library used to unflatten (reshape) the array/tensor.
     """
 
     if hasattr(obs_space, "original_space"):
-        return dict(
-            input_dict,
-            obs=_unpack_obs(
-                input_dict["obs"],
-                obs_space.original_space,
-                tensorlib=tensorlib))
-    return input_dict
+        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs
 
 
 def _unpack_obs(obs, space, tensorlib=tf):

@@ -51,11 +51,10 @@ class CustomLossModel(Model):
         # define a secondary loss by building a graph copy with weight sharing
         with tf.variable_scope(
                 self.scope, reuse=tf.AUTO_REUSE, auxiliary_name_scope=False):
-            logits, _ = self._build_layers_v2(
-                restore_original_dimensions(  # unflatten obs as needed
-                    {"obs": input_ops["obs"]}, self.obs_space),
-                self.num_outputs,
-                self.options)
+            logits, _ = self._build_layers_v2({
+                "obs": restore_original_dimensions(input_ops["obs"],
+                                                   self.obs_space)
+            }, self.num_outputs, self.options)
 
         # You can also add self-supervised losses easily by referencing tensors
         # created during _build_layers_v2(). For example, an autoencoder-style
