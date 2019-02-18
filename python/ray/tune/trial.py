@@ -217,8 +217,9 @@ class ExportFormat(object):
         Raises:
             ValueError if the format is unknown.
         """
-        for export_format in export_formats:
-            if export_format not in [
+        for i in range(len(export_formats)):
+            export_formats[i] = export_formats[i].strip().lower()
+            if export_formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL
             ]:
                 raise TuneError("Unsupported export format: " + export_format)
