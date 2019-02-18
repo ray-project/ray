@@ -111,6 +111,7 @@ __all__ = [
     "get",
     "get_gpu_ids",
     "get_resource_ids",
+    "get_runtime_context",
     "get_webui_url",
     "global_state",
     "init",
@@ -121,7 +122,6 @@ __all__ = [
     "put",
     "register_custom_serializer",
     "remote",
-    "get_runtime_context",
     "shutdown",
     "wait",
 ]
