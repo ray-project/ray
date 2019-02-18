@@ -82,9 +82,9 @@ Algorithms
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
-* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Custom Models (TensorFlow) <rllib-models.html#custom-models-tensorflow>`__
 * `Custom Models (PyTorch) <rllib-models.html#custom-models-pytorch>`__
+* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Customizing Policy Graphs <rllib-models.html#customizing-policy-graphs>`__

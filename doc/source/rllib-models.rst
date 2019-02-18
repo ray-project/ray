@@ -30,35 +30,6 @@ The following is a list of the built-in model hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Custom Preprocessors
---------------------
-
-Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
-
-.. code-block:: python
-
-    import ray
-    import ray.rllib.agents.ppo as ppo
-    from ray.rllib.models.preprocessors import Preprocessor
-
-    class MyPreprocessorClass(Preprocessor):
-        def _init_shape(self, obs_space, options):
-            return new_shape  # can vary depending on inputs
-
-        def transform(self, observation):
-            return ...  # return the preprocessed observation
-
-    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
-
-    ray.init()
-    agent = ppo.PPOAgent(env="CartPole-v0", config={
-        "model": {
-            "custom_preprocessor": "my_prep",
-            "custom_options": {},  # extra options to pass to your preprocessor
-        },
-    })
-
-
 Custom Models (TensorFlow)
 --------------------------
 
@@ -253,6 +224,34 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
         "model": {
             "custom_model": "my_model",
             "custom_options": {},  # extra options to pass to your model
+        },
+    })
+
+Custom Preprocessors
+--------------------
+
+Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+
+.. code-block:: python
+
+    import ray
+    import ray.rllib.agents.ppo as ppo
+    from ray.rllib.models.preprocessors import Preprocessor
+
+    class MyPreprocessorClass(Preprocessor):
+        def _init_shape(self, obs_space, options):
+            return new_shape  # can vary depending on inputs
+
+        def transform(self, observation):
+            return ...  # return the preprocessed observation
+
+    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
+
+    ray.init()
+    agent = ppo.PPOAgent(env="CartPole-v0", config={
+        "model": {
+            "custom_preprocessor": "my_prep",
+            "custom_options": {},  # extra options to pass to your preprocessor
         },
     })
 

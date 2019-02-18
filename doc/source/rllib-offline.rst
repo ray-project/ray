@@ -136,12 +136,16 @@ You can also define supervised model losses over offline data. This requires def
 
 .. code-block:: python
 
-    input_reader = JsonReader("/tmp/cartpole-out")
-    input_reader.next()  # access as iterator
+    def custom_loss(self, policy_loss):
+        input_reader = JsonReader("/tmp/cartpole-out")
+        # print(input_reader.next())  # if you want to access imperatively
 
-    input_ops = input_reader.tf_input_ops()
-    print(input_ops["obs"])  # -> output Tensor shape=[None, 4]
-    print(input_ops["actions"])  # -> output Tensor shape=[None]
+        input_ops = input_reader.tf_input_ops()
+        print(input_ops["obs"])  # -> output Tensor shape=[None, 4]
+        print(input_ops["actions"])  # -> output Tensor shape=[None]
+
+        supervised_loss = some_function_of(input_ops)
+        return policy_loss + supervised_loss
 
 See `custom_loss.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ for a runnable example of using these TF input ops in a custom loss.
 
