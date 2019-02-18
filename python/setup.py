@@ -154,8 +154,7 @@ requires = [
     "typing",
     "flatbuffers",
     "faulthandler;python_version<'3.3'",
-    # simplejson and psutil are required by the Reporter.
-    "simplejson",
+    # psutil is required by the Reporter.
     "psutil",
     # aiohttp is required by the Dashboard.
     "aiohttp",
