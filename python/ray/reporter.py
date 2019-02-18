@@ -21,6 +21,28 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+def recursive_asdict(o):
+    if isinstance(o, tuple) and hasattr(o, "_asdict"):
+        return recursive_asdict(o._asdict())
+
+    if isinstance(o, (tuple, list)):
+        L = []
+        for k in o:
+            L.append(recursive_asdict(k))
+        return L
+
+    if isinstance(o, dict):
+        D = {
+            k: recursive_asdict(v)
+            for k, v in o.items()
+        }
+        return D
+
+    return o
+
+def jsonify_asdict(o):
+    return json.dumps(recursive_asdict(o))
+
 def running_worker(s):
     if "ray_worker" not in s:
         return False
@@ -146,7 +168,7 @@ class Reporter(object):
 
         self.redis_client.publish(
             self.redis_key,
-            simplejson.dumps(stats, namedtuple_as_object=True),
+            jsonify_asdict(stats),
         )
 
     def run(self):
