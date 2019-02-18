@@ -11,7 +11,12 @@ import time
 import datetime
 from socket import AddressFamily
 
-import psutil
+try:
+    import psutil
+except ModuleNotFoundError:
+    print("The reporter requires psutil to run.")
+    import sys
+    sys.exit(1)
 
 import ray.ray_constants as ray_constants
 import ray.utils
