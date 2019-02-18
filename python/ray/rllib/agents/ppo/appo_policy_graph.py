@@ -230,7 +230,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                                           tf.get_variable_scope().name)
 
         def to_batches(tensor):
-            if self.config["model"]["use_lstm"] or self.model.state_init:
+            if self.model.state_init:
                 B = tf.shape(self.model.seq_lens)[0]
                 T = tf.shape(tensor)[0] // B
             else:
