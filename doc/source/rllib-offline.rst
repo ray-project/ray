@@ -132,7 +132,7 @@ Similar to scaling online training, you can scale offline I/O throughput by incr
 Input Pipeline for Supervised Losses
 ------------------------------------
 
-You can also define supervised model losses over offline data. This requires defining a `custom model loss <rllib-models.html#supervised-model-losses>`__. We provide a convenience function, ``InputReader.tf_input_ops()``, that can be used to convert any input specification to a TF input pipeline. For example:
+You can also define supervised model losses over offline data. This requires defining a `custom model loss <rllib-models.html#supervised-model-losses>`__. We provide a convenience function, ``InputReader.tf_input_ops()``, that can be used to convert any input reader to a TF input pipeline. For example:
 
 .. code-block:: python
 
@@ -143,7 +143,7 @@ You can also define supervised model losses over offline data. This requires def
     print(input_ops["obs"])  # -> output Tensor shape=[None, 4]
     print(input_ops["actions"])  # -> output Tensor shape=[None]
 
-See `custom_loss.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ for a runnable example.
+See `custom_loss.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ for a runnable example of using these TF input ops in a custom loss.
 
 
 Input API
