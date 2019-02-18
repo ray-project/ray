@@ -107,14 +107,12 @@ class TFPolicyGraph(PolicyGraph):
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
-        print("A")
         if self.model:
             self._loss = self.model.custom_loss(loss)
             self._stats_fetches = {"model": self.model.custom_stats()}
         else:
             self._loss = loss
             self._stats_fetches = {}
-        print("B")
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)
         self._is_training = self._get_is_training_placeholder()

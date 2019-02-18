@@ -318,10 +318,11 @@ class DDPGPolicyGraph(TFPolicyGraph):
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
         # Model self-supervised losses
-        self.loss.actor_loss += self.p_model.loss()
-        self.loss.critic_loss += self.q_model.loss()
+        self.loss.actor_loss = self.p_model.custom_loss(self.loss.actor_loss)
+        self.loss.critic_loss = self.q_model.custom_loss(self.loss.critic_loss)
         if self.config["twin_q"]:
-            self.loss.critic_loss += self.twin_q_model.loss()
+            self.loss.critic_loss = self.twin_q_model.custom_loss(
+                self.loss.critic_loss)
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network

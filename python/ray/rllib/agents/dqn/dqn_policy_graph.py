@@ -397,7 +397,8 @@ class DQNPolicyGraph(TFPolicyGraph):
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
             action_prob=self.action_prob,
-            loss=model.loss() + self.loss.loss,
+            loss=self.loss.loss,
+            model=model,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops)
         self.sess.run(tf.global_variables_initializer())
