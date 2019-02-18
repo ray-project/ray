@@ -274,8 +274,8 @@ void TestDeleteKey(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   }
   // Check that lookup returns the added object entries.
   auto lookup_callback = [object_id, managers](
-                             gcs::AsyncGcsClient *client, const ObjectID &id,
-                             const std::vector<ObjectTableDataT> &data) {
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_EQ(data.size(), managers.size());
     test->IncrementNumCallbacks();
@@ -284,8 +284,8 @@ void TestDeleteKey(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
   client->object_table().Delete(job_id, object_id);
   auto lookup_fail_callback = [object_id, managers](
-                                  gcs::AsyncGcsClient *client, const ObjectID &id,
-                                  const std::vector<ObjectTableDataT> &data) {
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_TRUE(data.size() == 0);
     test->IncrementNumCallbacks();
@@ -296,8 +296,7 @@ void TestDeleteKey(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   task_data->task_specification = "Test Specification.";
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, task_data, nullptr));
   auto task_lookup_callback = [task_id, task_data](gcs::AsyncGcsClient *client,
-                                                   const TaskID &id,
-                                                   const protocol::TaskT &data) {
+      const TaskID &id, const protocol::TaskT &data) {
     ASSERT_EQ(id, task_id);
     ASSERT_EQ(task_data->task_specification, data.task_specification);
     test->IncrementNumCallbacks();
@@ -335,8 +334,7 @@ void TestDeleteKeyInBatch(const JobID &job_id,
     ObjectID object_id = ObjectID::from_random();
     object_ids.push_back(object_id);
     auto add_callback = [object_id, object_data](gcs::AsyncGcsClient *client,
-                                                 const UniqueID &id,
-                                                 const ObjectTableDataT &d) {
+        const UniqueID &id, const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(object_data->manager, d.manager);
       test->IncrementNumCallbacks();
