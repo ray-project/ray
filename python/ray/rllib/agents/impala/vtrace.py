@@ -24,8 +24,8 @@ See https://arxiv.org/abs/1802.01561 for the full paper.
 In addition to the original paper's code, changes have been made
 to support MultiDiscrete action spaces. behaviour_policy_logits,
 target_policy_logits and actions parameters in the entry point
-from_logits method are now lists of tensors instead of just
-being tensors.
+multi_from_logits method accepts lists of tensors instead of just
+tensors.
 """
 
 from __future__ import absolute_import
@@ -100,7 +100,9 @@ def from_logits(behaviour_policy_logits,
                 clip_rho_threshold=1.0,
                 clip_pg_rho_threshold=1.0,
                 name='vtrace_from_logits'):
-    return multi_from_logits(
+    """multi_from_logits wrapper used only for tests"""
+
+    res = multi_from_logits(
         [behaviour_policy_logits],
         [target_policy_logits],
         [actions],
@@ -112,18 +114,26 @@ def from_logits(behaviour_policy_logits,
         clip_pg_rho_threshold=clip_pg_rho_threshold,
         name=name)
 
+    return VTraceFromLogitsReturns(
+      vs = res.vs,
+      pg_advantages = res.pg_advantages,
+      log_rhos=res.log_rhos,
+      behaviour_action_log_probs=tf.squeeze(res.behaviour_action_log_probs, axis=0),
+      target_action_log_probs=tf.squeeze(res.target_action_log_probs, axis=0),
+    )
+
 
 def multi_from_logits(
-                behaviour_policy_logits,
-                target_policy_logits,
-                actions,
-                discounts,
-                rewards,
-                values,
-                bootstrap_value,
-                clip_rho_threshold=1.0,
-                clip_pg_rho_threshold=1.0,
-                name='vtrace_from_logits'):
+        behaviour_policy_logits,
+        target_policy_logits,
+        actions,
+        discounts,
+        rewards,
+        values,
+        bootstrap_value,
+        clip_rho_threshold=1.0,
+        clip_pg_rho_threshold=1.0,
+        name='vtrace_from_logits'):
     r"""V-trace for softmax policies.
 
   Calculates V-trace actor critic targets for softmax polices as described in
@@ -209,7 +219,8 @@ def multi_from_logits(
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
             behaviour_policy_logits, actions)
 
-        log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)
+        log_rhos = get_log_rhos(target_action_log_probs,
+                                behaviour_action_log_probs)
 
         vtrace_returns = from_importance_weights(
             log_rhos=log_rhos,
@@ -307,15 +318,16 @@ def from_importance_weights(log_rhos,
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(
                 clip_rho_threshold, rhos, name='clipped_rhos')
+
+            tf.summary.histogram('clipped_rhos_1000', tf.minimum(1000.0, rhos))
+            tf.summary.scalar(
+                'num_of_clipped_rhos',
+                tf.reduce_sum(tf.cast(
+                    tf.equal(clipped_rhos, clip_rho_threshold), tf.int32))
+            )
+            tf.summary.scalar('size_of_clipped_rhos', tf.size(clipped_rhos))
         else:
             clipped_rhos = rhos
-
-        tf.summary.histogram('clipped_rhos_1000', tf.minimum(1000.0, rhos))
-        tf.summary.scalar(
-            'num_of_clipped_rhos',
-            tf.reduce_sum(tf.cast(tf.equal(clipped_rhos, clip_rho_threshold), tf.int32))
-        )
-        tf.summary.scalar('size_of_clipped_rhos', tf.size(clipped_rhos))
 
         cs = tf.minimum(1.0, rhos, name='cs')
         # Append bootstrapped value to get [v1, ..., v_t+1]
@@ -371,7 +383,8 @@ def from_importance_weights(log_rhos,
 def get_log_rhos(behaviour_action_log_probs, target_action_log_probs):
     """With the selected log_probs for multi-discrete actions of behaviour
     and target policies we compute the log_rhos for calculating the vtrace."""
-    log_rhos = [t - b for t, b in zip(target_action_log_probs, behaviour_action_log_probs)]
+    log_rhos = [t - b for t,
+                b in zip(target_action_log_probs, behaviour_action_log_probs)]
     log_rhos = [tf.convert_to_tensor(l, dtype=tf.float32) for l in log_rhos]
     log_rhos = tf.reduce_sum(tf.stack(log_rhos), axis=0)
 

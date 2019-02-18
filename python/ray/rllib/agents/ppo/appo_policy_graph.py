@@ -307,7 +307,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.loss = VTraceSurrogateLoss(
                 actions=make_time_major(loss_actions, drop_last=True),
                 prev_actions_logp=make_time_major(prev_action_dist.logp(
-                    logp_actions), drop_last=True),
+                    actions), drop_last=True),
                 actions_logp=make_time_major(action_dist.logp(actions),
                                              drop_last=True),
                 action_kl=prev_action_dist.kl(action_dist),
