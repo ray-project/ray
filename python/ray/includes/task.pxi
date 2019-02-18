@@ -142,15 +142,20 @@ cdef class Task:
             int64_t num_args = task_spec.NumArgs()
             int count
         arg_list = []
-        for i in range(num_args):
-            count = task_spec.ArgIdCount(i)
-            if count > 0:
-                assert count == 1
-                arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
-            else:
-                serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
-                obj = pickle.loads(serialized_str)
-                arg_list.append(obj)
+
+        if self.task_spec.get().GetLanguage() == LANGUAGE_PYTHON:
+            for i in range(num_args):
+                count = task_spec.ArgIdCount(i)
+                if count > 0:
+                    assert count == 1
+                    arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
+                else:
+                    serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
+                    obj = pickle.loads(serialized_str)
+                    arg_list.append(obj)
+        elif self.task_spec.get().GetLanguage() == LANGUAGE_JAVA:
+            arg_list = num_args * ["<java-argument>"]
+
         return arg_list
 
     def returns(self):
