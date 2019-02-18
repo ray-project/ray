@@ -229,6 +229,10 @@ class NodeUpdater(object):
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
+        if redirect is None:
+            if logger.getEffectiveLevel() > logging.DEBUG:
+                redirect = open("/dev/null", "w")
+
         self.get_caller(check_error)(
             [
                 "rsync", "-e",
@@ -242,6 +246,11 @@ class NodeUpdater(object):
 
     def rsync_down(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
+
+        if redirect is None:
+            if logger.getEffectiveLevel() > logging.DEBUG:
+                redirect = open("/dev/null", "w")
+
         self.get_caller(check_error)(
             [
                 "rsync", "-e",
@@ -263,6 +272,10 @@ class NodeUpdater(object):
                 port_forward=None):
 
         self.set_ssh_ip_if_required()
+
+        if redirect is None:
+            if logger.getEffectiveLevel() > logging.DEBUG:
+                redirect = open("/dev/null", "w")
 
         logger.info("NodeUpdater: Running {} on {}...".format(
             cmd, self.ssh_ip))
