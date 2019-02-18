@@ -1607,7 +1607,6 @@ def print_logs(redis_client, threads_stopped):
                 continue
             num_consecutive_messages_received += 1
 
-            # strip messages from localhost
             data = json.loads(ray.utils.decode(msg["data"]))
             if data["ip"] == localhost:
                 for line in data["lines"]:
