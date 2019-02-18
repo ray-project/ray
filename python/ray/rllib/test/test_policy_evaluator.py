@@ -416,6 +416,6 @@ class TestPolicyEvaluator(unittest.TestCase):
         return obs_f
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init(num_cpus=5)
     unittest.main(verbosity=2)

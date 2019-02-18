@@ -5,7 +5,6 @@ from __future__ import print_function
 from datetime import datetime
 
 import copy
-import gzip
 import io
 import logging
 import os
@@ -275,15 +274,13 @@ class Trainable(object):
                 data[os.path.basename(path)] = open(path, "rb").read()
 
         out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode="wb") as f:
-            compressed = pickle.dumps({
-                "checkpoint_name": os.path.basename(checkpoint_prefix),
-                "data": data,
-            })
-            if len(compressed) > 10e6:  # getting pretty large
-                logger.info("Checkpoint size is {} bytes".format(
-                    len(compressed)))
-            f.write(compressed)
+        data_dict = pickle.dumps({
+            "checkpoint_name": os.path.basename(checkpoint_prefix),
+            "data": data,
+        })
+        if len(data_dict) > 10e6:  # getting pretty large
+            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
+        out.write(data_dict)
 
         shutil.rmtree(tmpdir)
         return out.getvalue()
@@ -318,8 +315,7 @@ class Trainable(object):
         These checkpoints are returned from calls to save_to_object().
         """
 
-        out = io.BytesIO(obj)
-        info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
+        info = pickle.loads(obj)
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])

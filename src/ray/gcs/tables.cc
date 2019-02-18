@@ -42,6 +42,9 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   num_appends_++;
   auto callback = [this, id, dataT, done](const std::string &data) {
+    // If data is not empty, then Redis failed to append the entry.
+    RAY_CHECK(data.empty()) << "TABLE_APPEND command failed: " << data;
+
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }

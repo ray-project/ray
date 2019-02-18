@@ -90,11 +90,10 @@ class RayParams(object):
                  node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
-                 num_workers=None,
                  local_mode=False,
                  driver_mode=None,
-                 redirect_worker_output=True,
-                 redirect_output=True,
+                 redirect_worker_output=None,
+                 redirect_output=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=None,
@@ -124,7 +123,6 @@ class RayParams(object):
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
-        self.num_workers = num_workers
         self.local_mode = local_mode
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
@@ -186,10 +184,15 @@ class RayParams(object):
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
 
-        if self.num_workers is not None:
-            raise ValueError(
-                "The 'num_workers' argument is deprecated. Please use "
-                "'num_cpus' instead.")
+        if self.redirect_worker_output is not None:
+            raise DeprecationWarning(
+                "The redirect_worker_output argument is deprecated. To "
+                "control logging to the driver, use the 'log_to_driver' "
+                "argument to 'ray.init()'")
+
+        if self.redirect_output is not None:
+            raise DeprecationWarning(
+                "The redirect_output argument is deprecated.")
 
         if self.include_java is None and self.java_worker_options is not None:
             raise ValueError("Should not specify `java-worker-options` "

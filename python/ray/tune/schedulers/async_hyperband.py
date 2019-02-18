@@ -151,7 +151,7 @@ class _Bracket():
         return "Bracket: " + iters
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sched = AsyncHyperBandScheduler(
         grace_period=1, max_t=10, reduction_factor=2)
     print(sched.debug_string())

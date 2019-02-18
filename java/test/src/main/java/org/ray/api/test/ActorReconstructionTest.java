@@ -10,6 +10,7 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.exception.RayActorException;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
@@ -60,11 +61,8 @@ public class ActorReconstructionTest extends BaseTest {
     try {
       Ray.call(Counter::increase, actor).get();
       Assert.fail("The above task didn't fail.");
-    } catch (StringIndexOutOfBoundsException e) {
-      // Raylet backend will put invalid data in task's result to indicate the task has failed.
-      // Thus, Java deserialization will fail and throw `StringIndexOutOfBoundsException`.
-      // TODO(hchen): we should use object's metadata to indicate task failure,
-      // instead of throwing this exception.
+    } catch (RayActorException e) {
+      // We should receive a RayActorException because the actor is dead.
     }
   }
 

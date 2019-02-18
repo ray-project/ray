@@ -259,3 +259,30 @@ class MultiActionDistribution(ActionDistribution):
 
 
 TupleActions = namedtuple("TupleActions", ["batches"])
+
+
+class Dirichlet(ActionDistribution):
+    """Dirichlet distribution for countinuous actions that are between
+    [0,1] and sum to 1.
+
+    e.g. actions that represent resource allocation."""
+
+    def __init__(self, inputs):
+        self.dist = tf.distributions.Dirichlet(concentration=inputs)
+        ActionDistribution.__init__(self, inputs)
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        return self.dist.log_prob(x)
+
+    @override(ActionDistribution)
+    def entropy(self):
+        return self.dist.entropy()
+
+    @override(ActionDistribution)
+    def kl(self, other):
+        return self.dist.kl_divergence(other.dist)
+
+    @override(ActionDistribution)
+    def _build_sample_op(self):
+        return self.dist.sample()

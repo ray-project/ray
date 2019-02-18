@@ -87,7 +87,7 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init()
     X = pin_in_object_store("hello")
     print(X)
