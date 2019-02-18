@@ -446,7 +446,6 @@ class FunctionActorManager(object):
             A FunctionExecutionInfo object.
         """
         function_id = function_descriptor.function_id
-        print("get_execution_info load_code_from_local=", self._worker.load_code_from_local)
         if self._worker.load_code_from_local:
             # For local code driver id is not necessary.
             driver_id = ray.DriverID.nil()
@@ -476,7 +475,6 @@ class FunctionActorManager(object):
                        "driver_id: %s, function_descriptor: %s. Message: %s" %
                        (driver_id, function_descriptor, e))
             raise KeyError(message)
-        print("Finish get_execution_info2: %s" % function_descriptor)
         return info
 
     def _load_function_from_local(self, function_descriptor):
@@ -606,10 +604,8 @@ class FunctionActorManager(object):
         if actor_class is None:
             if self._worker.load_code_from_local:
                 try:
-                    print("load_actor called: %s" % (function_descriptor))
                     cls = self._load_actor_from_local(driver_id,
                                                       function_descriptor)
-                    print("_load_actor_from_local called: %s" % (function_descriptor))                    
                     self._loaded_actor_classes[function_id] = cls
                     self._worker.actor_class = cls
                     self._worker.actor_checkpoint_interval = 0
@@ -621,7 +617,8 @@ class FunctionActorManager(object):
                                    " with message: {} turn to GCS".format(
                                        function_descriptor.function_name, e))
 
-            key = (b"ActorClass:" + driver_id.binary() + b":" + function_id_bytes)
+            key = (b"ActorClass:" + driver_id.binary() + b":" +
+                   function_id.binary())
             # Wait for the actor class key to have been imported by the
             # import thread. TODO(rkn): It shouldn't be possible to end
             # up in an infinite loop here, but we should push an error to
@@ -636,6 +633,22 @@ class FunctionActorManager(object):
             actor_id_str = self._worker.actor_id
             self._worker.actors[actor_id] = cls.__new__(cls)
 
+    def _make_actor_method_executors_for_actor(self, driver_id, module_name,
+                                               class_name, actor_methods,
+                                               actor_imported):
+        for actor_method_name, actor_method in actor_methods:
+            function_descriptor = FunctionDescriptor(
+                module_name, actor_method_name, class_name)
+            function_id = function_descriptor.function_id
+            executor = self._make_actor_method_executor(
+                actor_method_name, actor_method, actor_imported=actor_imported)
+            self._function_execution_info[driver_id][
+                function_id] = FunctionExecutionInfo(
+                    function=executor,
+                    function_name=actor_method_name,
+                    max_calls=0)
+            self._num_task_executions[driver_id][function_id] = 0
+
     def _load_actor_from_local(self, driver_id, function_descriptor):
         # For local code, driver id is not necessary.
         driver_id = ray.DriverID.nil()
@@ -645,18 +658,12 @@ class FunctionActorManager(object):
         cls = getattr(module, class_name)._modified_class
         actor_methods = inspect.getmembers(
             cls, predicate=is_function_or_method)
-        for actor_method_name, actor_method in actor_methods:
-            function_descriptor = FunctionDescriptor(
-                module_name, actor_method_name, class_name)
-            function_id = function_descriptor.function_id
-            executor = self._make_actor_method_executor(
-                actor_method_name, actor_method, actor_imported=True)
-            self._function_execution_info[driver_id][
-                function_id] = FunctionExecutionInfo(
-                    function=executor,
-                    function_name=actor_method_name,
-                    max_calls=0)
-            self._num_task_executions[driver_id][function_id] = 0
+        self._make_actor_method_executors_for_actor(
+            driver_id,
+            module_name,
+            class_name,
+            actor_methods,
+            actor_imported=True)
         return cls
 
     def fetch_and_register_actor(self, actor_class_key):
@@ -678,7 +685,7 @@ class FunctionActorManager(object):
              ])
 
         class_name = decode(class_name)
-        module = decode(module)
+        module_name = decode(module)
         driver_id = ray.DriverID(driver_id_str)
         actor_method_names = json.loads(decode(actor_method_names))
 
@@ -704,21 +711,14 @@ class FunctionActorManager(object):
                 "The actor with name {} failed to be imported, "
                 "and so cannot execute this method".format(class_name))
 
-        # Register the actor method executors.
-        for actor_method_name in actor_method_names:
-            function_descriptor = FunctionDescriptor(module, actor_method_name,
-                                                     class_name)
-            function_id = function_descriptor.function_id
-            temporary_executor = self._make_actor_method_executor(
-                actor_method_name,
-                temporary_actor_method,
-                actor_imported=False)
-            self._function_execution_info[driver_id][function_id] = (
-                FunctionExecutionInfo(
-                    function=temporary_executor,
-                    function_name=actor_method_name,
-                    max_calls=0))
-            self._num_task_executions[driver_id][function_id] = 0
+        fake_actor_methods = [(name, temporary_actor_method)
+                              for name in actor_method_names]
+        self._make_actor_method_executors_for_actor(
+            driver_id,
+            module_name,
+            class_name,
+            fake_actor_methods,
+            actor_imported=False)
 
         try:
             unpickled_class = pickle.loads(pickled_class)
@@ -739,26 +739,18 @@ class FunctionActorManager(object):
             # someone calls ray.get on a method invoked on the actor.
         else:
             # TODO(pcm): Why is the below line necessary?
-            unpickled_class.__module__ = module
+            unpickled_class.__module__ = module_name
             self._worker.actors[actor_id] = unpickled_class.__new__(
                 unpickled_class)
 
             actor_methods = inspect.getmembers(
                 unpickled_class, predicate=is_function_or_method)
-            for actor_method_name, actor_method in actor_methods:
-                function_descriptor = FunctionDescriptor(
-                    module, actor_method_name, class_name)
-                function_id = function_descriptor.function_id
-                executor = self._make_actor_method_executor(
-                    actor_method_name, actor_method, actor_imported=True)
-                self._function_execution_info[driver_id][function_id] = (
-                    FunctionExecutionInfo(
-                        function=executor,
-                        function_name=actor_method_name,
-                        max_calls=0))
-                # We do not set function_properties[driver_id][function_id]
-                # because we currently do need the actor worker to submit new
-                # tasks for the actor.
+            self._make_actor_method_executors_for_actor(
+                driver_id,
+                module_name,
+                class_name,
+                actor_methods,
+                actor_imported=True)
 
     def _make_actor_method_executor(self, method_name, method, actor_imported):
         """Make an executor that wraps a user-defined actor method.

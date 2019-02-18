@@ -59,11 +59,10 @@ parser.add_argument(
     help="Specify the path of the temporary directory use by Ray process.")
 parser.add_argument(
     "--load-code-from-local",
-    required=False,
-    type=bool,
     default=False,
-    #action='store_true',
-    help="Specify whether load code from local file or GCS serialization.")
+    action='store_true',
+    help=
+    "True if code should be loaded from a local module as opposed to the GCS.")
 
 if __name__ == "__main__":
     args = parser.parse_args()

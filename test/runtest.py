@@ -2889,7 +2889,7 @@ def do_one_local_actor_test(class_name):
         resources=resources)
     assert len(object_ids) == 2
     assert ray.get(object_ids[0]) == args[0]
-    print("Finish test: %s" % function_descriptor)
+    logger.info("Finish test: %s" % function_descriptor)
 
     if class_name == "WithConstructor":
         function_descriptor = FunctionDescriptor("local_code_test",
@@ -2905,7 +2905,7 @@ def do_one_local_actor_test(class_name):
             resources=resources)
         assert len(object_ids) == 2
         assert ray.get(object_ids[0]) == creation_args[0]
-        print("Finish test: %s" % function_descriptor)
+        logger.info("Finish test: %s" % function_descriptor)
     elif class_name == "DerivedClass":
         function_descriptor = FunctionDescriptor("local_code_test",
                                                  "get_new_data", class_name)
@@ -2920,7 +2920,7 @@ def do_one_local_actor_test(class_name):
             resources=resources)
         assert len(object_ids) == 2
         assert ray.get(object_ids[0]) == ("DerivedClass" + creation_args[0])
-        print("Finish test: %s" % function_descriptor)
+        logger.info("Finish test: %s" % function_descriptor)
 
 
 def test_load_code_from_local(shutdown_only):
@@ -2930,10 +2930,10 @@ def test_load_code_from_local(shutdown_only):
     resources = {"CPU": 1}
     object_ids = ray.worker.global_worker.submit_task(
         function_descriptor1, args, num_return_vals=1, resources=resources)
-    print("Finish submit_task")
+    logger.info("Finish submit_task")
     assert len(object_ids) == 1
     assert ray.get(object_ids[0]) == args[0]
-    print("Finish function remote call in local mode")
+    logger.info("Finish function remote call in local mode")
     do_one_local_actor_test("WithConstructor")
     do_one_local_actor_test("WithoutConstructor")
     do_one_local_actor_test("DerivedClass")

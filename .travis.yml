@@ -166,7 +166,6 @@ script:
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
-  - RAY_BACKEND_LOG_LEVEL=DEBUG python -m pytest -v --durations=10 test/runtest.py::test_load_code_from_local -s
   - python -m pytest -v --durations=10 python/ray/tune/test/trial_runner_test.py
   - python -m pytest -v --durations=10 python/ray/tune/test/trial_scheduler_test.py
   - python -m pytest -v --durations=10 python/ray/tune/test/experiment_test.py

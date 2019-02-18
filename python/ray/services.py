@@ -1070,7 +1070,7 @@ def start_raylet(redis_address,
         node_manager_port = 0
 
     if load_code_from_local:
-        start_worker_command += " --load-code-from-local=True "
+        start_worker_command += " --load-code-from-local "
 
     command = [
         RAYLET_EXECUTABLE,

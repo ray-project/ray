@@ -1345,7 +1345,8 @@ def init(redis_address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
-        load_code_from_local: Whether load code from local file or from GCS.
+        load_code_from_local: Whether code should be loaded from a local module
+            or from the GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
