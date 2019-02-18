@@ -407,6 +407,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         values_batched = make_time_major(
             values, drop_last=self.config["vtrace"])
         self.stats_fetches = {
+            "kl": self.loss.mean_kl,
             "stats": dict({
                 "model_loss": self.model.loss(),
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
@@ -418,8 +419,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1])),
-                "kl": self.loss.mean_kl,
-            }, **self.KL_stats)
+            }, **self.KL_stats),
         }
 
     def optimizer(self):
