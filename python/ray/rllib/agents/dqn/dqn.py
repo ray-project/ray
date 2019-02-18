@@ -168,8 +168,32 @@ class DQNAgent(Agent):
                 self.config["optimizer"][k] = self.config[k]
 
         if self.config.get("parameter_noise", False):
+            if self.config["callbacks"]["on_episode_start"]:
+                start_callback = self.config["callbacks"]["on_episode_start"].func
+            else:
+                start_callback= None
+            def on_episode_start(info):
+                # as a callback function to sample and pose parameter space noise
+                # on the parameters of network
+                policies = info["policy"]
+                for pi in policies.values():
+                    pi.add_parameter_noise()
+                if start_callback:
+                    start_callback(info)
             self.config["callbacks"]["on_episode_start"] = tune.function(
                 on_episode_start)
+            if self.config["callbacks"]["on_episode_end"]:
+                end_callback = self.config["callbacks"]["on_episode_end"]
+            else:
+                end_callback = None
+            def on_episode_end(info):
+                # as a callback function to monitor the distance
+                # between noisy policy and original policy
+                policies = info["policy"]
+                episode = info["episode"]
+                episode.custom_metrics["policy_distance"] = policies["default"].pi_distance
+                if end_callback:
+                    end_callback(info)
             self.config["callbacks"]["on_episode_end"] = tune.function(
                 on_episode_end)
 
@@ -320,19 +344,3 @@ class DQNAgent(Agent):
                 raise ValueError(
                     "Exploration with parameter space noise and noisy network can NOT be used at the same time."
                 )
-
-
-def on_episode_start(info):
-    # as a callback function to sample and pose parameter space noise
-    # on the parameters of network
-    policies = info["policy"]
-    for pi in policies.values():
-        pi.add_parameter_noise()
-
-
-def on_episode_end(info):
-    # as a callback function to monitor the distance
-    # between noisy policy and original policy
-    policies = info["policy"]
-    episode = info["episode"]
-    episode.custom_metrics["policy_distance"] = policies["default"].pi_distance
