@@ -17,7 +17,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.models.action_dist import Categorical
+from ray.rllib.models.action_dist import MultiCategorical
 from ray.rllib.evaluation.postprocessing import compute_advantages
 
 logger = logging.getLogger(__name__)
@@ -199,8 +199,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 output_hidden_shape = action_space.nvec
             elif self.config["vtrace"]:
                 raise UnsupportedSpaceException(
-                    "Action space {} is not supported for IMPALA.".format(
-                        action_space))
+                    "Action space {} is not supported for APPO with VTrace.".format(action_space))
 
             actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
@@ -349,12 +348,28 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 clip_param=self.config["clip_param"])
 
         # KL divergence between worker and learner logits for debugging
-        model_dist = Categorical(self.model.outputs)
-        behaviour_dist = Categorical(behaviour_logits)
-        self.KLs = model_dist.kl(behaviour_dist)
-        self.mean_KL = tf.reduce_mean(self.KLs)
-        self.max_KL = tf.reduce_max(self.KLs)
-        self.median_KL = tf.contrib.distributions.percentile(self.KLs, 50.0)
+        model_dist = MultiCategorical(unpacked_outputs)
+        behaviour_dist = MultiCategorical(unpacked_behaviour_logits)
+
+        kls = model_dist.kl(behaviour_dist)
+        if len(kls) > 1:
+            self.KL_stats = {}
+
+            for i, kl in enumerate(kls):
+                self.KL_stats.update({
+                    f"mean_KL_{i}": tf.reduce_mean(kl),
+                    f"max_KL_{i}": tf.reduce_max(kl),
+                    f"median_KL_{i}": tf.contrib.distributions.percentile(
+                        kl, 50.0),
+                })
+        else:
+            self.KL_stats = {
+                "mean_KL": tf.reduce_mean(kls[0]),
+                "max_KL": tf.reduce_max(kls[0]),
+                "median_KL": tf.contrib.distributions.percentile(
+                    kls[0], 50.0),
+            }
+
         # Initialize TFPolicyGraph
         loss_in = [
             ("actions", actions),
@@ -390,10 +405,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-        if self.config["vtrace"]:
-            values_batched = make_time_major(values, drop_last=True)
-        else:
-            values_batched = make_time_major(values)
+        values_batched = make_time_major(values, drop_last=self.config["vtrace"])
         self.stats_fetches = {"stats": {
             "model_loss": self.model.loss(),
             "cur_lr": tf.cast(self.cur_lr, tf.float64),
@@ -405,9 +417,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             "vf_explained_var": explained_variance(
                 tf.reshape(self.loss.value_targets, [-1]),
                 tf.reshape(values_batched, [-1])),
-            "mean_KL": self.mean_KL,
-            "max_KL": self.max_KL,
-            "median_KL": self.median_KL,
+            **self.KL_stats,
         }, "kl": self.loss.mean_kl}
 
     def optimizer(self):
