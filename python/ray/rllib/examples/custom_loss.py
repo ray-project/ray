@@ -52,7 +52,7 @@ class CustomLossModel(Model):
         with tf.variable_scope(
                 self.scope, reuse=tf.AUTO_REUSE, auxiliary_name_scope=False):
             logits, _ = self._build_layers_v2(
-                restore_original_dimensions({
+                restore_original_dimensions({  # unflatten obs as needed
                     "obs": input_ops["obs"]
                 }, self.obs_space), self.num_outputs, self.options)
 
@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 "training_iteration": args.iters,
             },
             "config": {
-                "num_workers": 0,
+                "num_workers": 2,
                 "model": {
                     "custom_model": "custom_loss",
                     "custom_options": {

@@ -8,8 +8,11 @@ The following diagram provides a conceptual overview of data flow between differ
 The components highlighted in green can be replaced with custom user-defined implementations, as described in the next sections. The purple components are RLlib internal, which means they can only be modified by changing the algorithm source code.
 
 
+Default Behaviours
+------------------
+
 Built-in Models and Preprocessors
----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib picks default models based on a simple heuristic: a `vision network <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/visionnet.py>`__ for image observations, and a `fully connected network <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/fcnet.py>`__ for everything else. These models can be configured via the ``model`` config key, documented in the model `catalog <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/catalog.py>`__. Note that you'll probably have to configure ``conv_filters`` if your environment observations have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 
@@ -27,10 +30,39 @@ The following is a list of the built-in model hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+Custom Preprocessors
+--------------------
+
+Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+
+.. code-block:: python
+
+    import ray
+    import ray.rllib.agents.ppo as ppo
+    from ray.rllib.models.preprocessors import Preprocessor
+
+    class MyPreprocessorClass(Preprocessor):
+        def _init_shape(self, obs_space, options):
+            return new_shape  # can vary depending on inputs
+
+        def transform(self, observation):
+            return ...  # return the preprocessed observation
+
+    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
+
+    ray.init()
+    agent = ppo.PPOAgent(env="CartPole-v0", config={
+        "model": {
+            "custom_preprocessor": "my_prep",
+            "custom_options": {},  # extra options to pass to your preprocessor
+        },
+    })
+
+
 Custom Models (TensorFlow)
 --------------------------
 
-Custom TF models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. A self-supervised loss can be defined via the ``loss`` method. The model can then be registered and used in place of a built-in model:
+Custom TF models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. Additional supervised / self-supervised losses can be added via the ``custom_loss`` method. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -87,17 +119,38 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             return tf.reshape(
                 linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
-        def loss(self):
-            """Builds any built-in (self-supervised) loss for the model.
+        def custom_loss(self, policy_loss):
+            """Override to customize the loss function used to optimize this model.
 
-            For example, this can be used to incorporate auto-encoder style losses.
-            Note that this loss has to be included in the policy graph loss to have
-            an effect (done for built-in algorithms).
+            This can be used to incorporate self-supervised losses (by defining
+            a loss over existing input and output tensors of this model), and
+            supervised losses (by defining losses over a variable-sharing copy of
+            this model's layers).
+
+            You can find an runnable example in examples/custom_loss.py.
+
+            Arguments:
+                policy_loss (Tensor): scalar policy loss from the policy graph.
 
             Returns:
-                Scalar tensor for the self-supervised loss.
+                Scalar tensor for the customized loss for this model.
             """
-            return tf.constant(0.0)
+            return policy_loss
+
+        def custom_stats(self):
+            """Override to return custom metrics from your model.
+
+            The stats will be reported as part of the learner stats, i.e.,
+                info:
+                    learner:
+                        model:
+                            key1: metric1
+                            key2: metric2
+
+            Returns:
+                Dict of string keys to scalar tensors.
+            """
+            return {}
 
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
@@ -203,34 +256,61 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
         },
     })
 
-Custom Preprocessors
---------------------
+Supervised Model Losses
+-----------------------
 
-Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/preprocessors.py>`__ and be registered in the model catalog. Note that you can alternatively use `gym wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+You can mix supervised losses into any RLlib algorithm through custom models. For example, you can add an imitation learning loss on expert experiences, or a self-supervised autoencoder loss within the model. These losses can be defined over either policy evaluation inputs, or batches of data read from `offline storage <rllib-offline.html#offline-data-for-supervised-losses>`__.
+
+**TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``custom_metrics()`` method. Here is a `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ of adding an imitation loss to CartPole training that is defined over a `offline dataset <rllib-offline.html#offline-data-for-supervised-losses>`__.
+
+**PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy graph definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
+
+
+Variable-length / Parametric Action Spaces
+------------------------------------------
+
+Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
+
+1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
 
 .. code-block:: python
 
-    import ray
-    import ray.rllib.agents.ppo as ppo
-    from ray.rllib.models.preprocessors import Preprocessor
+   class MyParamActionEnv(gym.Env):
+       def __init__(self, max_avail_actions):
+           self.action_space = Discrete(max_avail_actions)
+           self.observation_space = Dict({
+               "action_mask": Box(0, 1, shape=(max_avail_actions, )),
+               "avail_actions": Box(-1, 1, shape=(max_avail_actions, action_embedding_sz)),
+               "real_obs": ...,
+           })
 
-    class MyPreprocessorClass(Preprocessor):
-        def _init_shape(self, obs_space, options):
-            return new_shape  # can vary depending on inputs
+2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits via the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
 
-        def transform(self, observation):
-            return ...  # return the preprocessed observation
+.. code-block:: python
 
-    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
+    class MyParamActionModel(Model):
+        def _build_layers_v2(self, input_dict, num_outputs, options):
+            avail_actions = input_dict["obs"]["avail_actions"]
+            action_mask = input_dict["obs"]["action_mask"]
 
-    ray.init()
-    agent = ppo.PPOAgent(env="CartPole-v0", config={
-        "model": {
-            "custom_preprocessor": "my_prep",
-            "custom_options": {},  # extra options to pass to your preprocessor
-        },
-    })
+            output = FullyConnectedNetwork(
+                input_dict["obs"]["real_obs"], num_outputs=action_embedding_sz)
 
+            # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
+            # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
+            intent_vector = tf.expand_dims(output, 1)
+
+            # Shape of logits is [BATCH, MAX_ACTIONS].
+            action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
+
+            # Mask out invalid actions (use tf.float32.min for stability)
+            inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+            masked_logits = inf_mask + action_logits
+
+            return masked_logits, last_layer
+
+
+Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.
 
 Customizing Policy Graphs
 -------------------------
@@ -281,55 +361,8 @@ Then, you can create an agent with your custom policy graph by:
 
 In this example we overrode existing methods of the existing DDPG policy graph, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
 
-Variable-length / Parametric Action Spaces
-------------------------------------------
-
-Custom models can be used to work with environments where (1) the set of valid actions varies per step, and/or (2) the number of valid actions is very large, as in `OpenAI Five <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/>`__ and `Horizon <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
-
-1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
-
-.. code-block:: python
-
-   class MyParamActionEnv(gym.Env):
-       def __init__(self, max_avail_actions):
-           self.action_space = Discrete(max_avail_actions)
-           self.observation_space = Dict({
-               "action_mask": Box(0, 1, shape=(max_avail_actions, )),
-               "avail_actions": Box(-1, 1, shape=(max_avail_actions, action_embedding_sz)),
-               "real_obs": ...,
-           })
-
-2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits via the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
-
-.. code-block:: python
-
-    class MyParamActionModel(Model):
-        def _build_layers_v2(self, input_dict, num_outputs, options):
-            avail_actions = input_dict["obs"]["avail_actions"]
-            action_mask = input_dict["obs"]["action_mask"]
-
-            output = FullyConnectedNetwork(
-                input_dict["obs"]["real_obs"], num_outputs=action_embedding_sz)
-
-            # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
-            # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
-            intent_vector = tf.expand_dims(output, 1)
-
-            # Shape of logits is [BATCH, MAX_ACTIONS].
-            action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
-
-            # Mask out invalid actions (use tf.float32.min for stability)
-            inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
-            masked_logits = inf_mask + action_logits
-
-            return masked_logits, last_layer
-
-
-Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.
-
-
 Model-Based Rollouts
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 With a custom policy graph, you can also perform model-based rollouts and optionally incorporate the results of those rollouts as training data. For example, suppose you wanted to extend PGPolicyGraph for model-based rollouts. This involves overriding the ``compute_actions`` method of that policy graph:
 

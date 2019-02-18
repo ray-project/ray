@@ -170,11 +170,11 @@ class Model(object):
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
-        info:
-            learner:
-                model:
-                    key1: metric1
-                    key2: metric2
+            info:
+                learner:
+                    model:
+                        key1: metric1
+                        key2: metric2
 
         Returns:
             Dict of string keys to scalar tensors.

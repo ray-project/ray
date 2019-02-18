@@ -129,6 +129,23 @@ Scaling I/O throughput
 
 Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
+Input Pipeline for Supervised Losses
+------------------------------------
+
+You can also define supervised model losses over offline data. This requires defining a `custom model loss <rllib-models.html#supervised-model-losses>`__. We provide a convenience function, ``InputReader.tf_input_ops()``, that can be used to convert any input specification to a TF input pipeline. For example:
+
+.. code-block:: python
+
+    input_reader = JsonReader("/tmp/cartpole-out")
+    input_reader.next()  # access as iterator
+
+    input_ops = input_reader.tf_input_ops()
+    print(input_ops["obs"])  # -> output Tensor shape=[None, 4]
+    print(input_ops["actions"])  # -> output Tensor shape=[None]
+
+See `custom_loss.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ for a runnable example.
+
+
 Input API
 ---------
 
