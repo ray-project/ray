@@ -1,20 +1,15 @@
 """
 This class is defined to override standard pickle functionality
-
 The goals of it follow:
 -Serialize lambdas and nested functions to compiled byte code
 -Deal with main module correctly
 -Deal with other non-serializable objects
-
 It does not include an unpickler, as standard python unpickling suffices.
-
 This module was extracted from the `cloud` package, developed by `PiCloud, Inc.
 <https://web.archive.org/web/20140626004012/http://www.picloud.com/>`_.
-
 Copyright (c) 2012, Regents of the University of California.
 Copyright (c) 2009 `PiCloud, Inc. <https://web.archive.org/web/20140626004012/http://www.picloud.com/>`_.
 All rights reserved.
-
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
 are met:
@@ -27,7 +22,6 @@ are met:
       names of its contributors may be used to endorse or promote
       products derived from this software without specific prior written
       permission.
-
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
 LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -57,16 +51,21 @@ import types
 import weakref
 import uuid
 import threading
-from enum import Enum
+
+
+try:
+    from enum import Enum
+except ImportError:
+    Enum = None
 
 # cloudpickle is meant for inter process communication: we expect all
 # communicating processes to run the same Python version hence we favor
 # communication speed over compatibility:
 DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
-# Track the provenance of reconstructed dynamic classes to make it possible
-# to reconcyle instances with a singleton class definition when appropriate
-# and preserve the usual "isinstance" semantics of Python objects.
+# Track the provenance of reconstructed dynamic classes to make it possible to
+# recontruct instances from the matching singleton class definition when
+# appropriate and preserve the usual "isinstance" semantics of Python objects.
 _DYNAMIC_CLASS_TRACKER_BY_CLASS = weakref.WeakKeyDictionary()
 _DYNAMIC_CLASS_TRACKER_BY_ID = weakref.WeakValueDictionary()
 _DYNAMIC_CLASS_TRACKER_LOCK = threading.Lock()
@@ -108,24 +107,17 @@ def _lookup_class_or_track(class_tracker_id, class_def):
 
 def _make_cell_set_template_code():
     """Get the Python compiler to emit LOAD_FAST(arg); STORE_DEREF
-
     Notes
     -----
     In Python 3, we could use an easier function:
-
     .. code-block:: python
-
        def f():
            cell = None
-
            def _stub(value):
                nonlocal cell
                cell = value
-
            return _stub
-
         _cell_set_template_code = f().__code__
-
     This function is _only_ a LOAD_FAST(arg); STORE_DEREF, but that is
     invalid syntax on Python 2. If we use this function we also don't need
     to do the weird freevars/cellvars swap below
@@ -345,7 +337,6 @@ class CloudPickler(Pickler):
 
     def save_function(self, obj, name=None):
         """ Registered with the dispatch to handle all function types.
-
         Determines what kind of function obj is (e.g. lambda, defined at
         interactive prompt, etc) and handles the pickling appropriately.
         """
@@ -443,26 +434,18 @@ class CloudPickler(Pickler):
     def _save_subimports(self, code, top_level_dependencies):
         """
         Save submodules used by a function but not listed in its globals.
-
         In the example below:
-
         ```
         import concurrent.futures
         import cloudpickle
-
-
         def func():
             x = concurrent.futures.ThreadPoolExecutor
-
-
         if __name__ == '__main__':
             cloudpickle.dumps(func)
         ```
-
         the globals extracted by cloudpickle in the function's state include
         the concurrent module, but not its submodule (here,
         concurrent.futures), which is the module used by func.
-
         To ensure that calling the depickled function does not raise an
         AttributeError, this function looks for any currently loaded submodule
         that the function uses and whose parent is present in the function
@@ -489,7 +472,6 @@ class CloudPickler(Pickler):
 
     def _save_dynamic_enum(self, obj):
         """Special handling for dynamic Enum subclasses
-
         Use the Enum functional API (inherited from EnumMeta.__call__) as the
         EnumMeta metaclass has complex initialization that makes the Enum
         subclasses hold references to their own instances.
@@ -517,12 +499,11 @@ class CloudPickler(Pickler):
     def save_dynamic_class(self, obj):
         """
         Save a class that can't be stored as module global.
-
         This method is used to serialize classes that are defined inside
         functions, or that otherwise can't be serialized as attribute lookups
         from global modules.
         """
-        if issubclass(obj, Enum):
+        if Enum is not None and issubclass(obj, Enum):
             return self._save_dynamic_enum(obj)
 
         clsdict = dict(obj.__dict__)  # copy dict proxy to a dict
@@ -581,10 +562,10 @@ class CloudPickler(Pickler):
         write(pickle.MARK)
 
         # Create and memoize an skeleton class with obj's name and bases.
-        extra = {"class_tracker_id": _ensure_tracking(obj)}
         tp = type(obj)
         self.save_reduce(_make_skeleton_class,
-                         (tp, obj.__name__, obj.__bases__, type_kwargs, extra),
+                         (tp, obj.__name__, obj.__bases__, type_kwargs,
+                          _ensure_tracking(obj), {}),
                          obj=obj)
 
         # Now save the rest of obj's __dict__. Any references to obj
@@ -599,7 +580,6 @@ class CloudPickler(Pickler):
 
     def save_function_tuple(self, func):
         """  Pickles an actual func object.
-
         A func comprises: code, globals, defaults, closure, and dict.  We
         extract and save these, injecting reducing functions at certain points
         to recreate the func object.  Keep in mind that some of these pieces
@@ -738,7 +718,6 @@ class CloudPickler(Pickler):
     def save_global(self, obj, name=None, pack=struct.pack):
         """
         Save a "global".
-
         The name of this method is somewhat misleading: all types get
         dispatched here.
         """
@@ -985,11 +964,9 @@ def _rebuild_tornado_coroutine(func):
 
 def dump(obj, file, protocol=None):
     """Serialize obj as bytes streamed into file
-
     protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
     pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
     between processes running the same Python version.
-
     Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
     compatibility with older versions of Python.
     """
@@ -998,11 +975,9 @@ def dump(obj, file, protocol=None):
 
 def dumps(obj, protocol=None):
     """Serialize obj as a string of bytes allocated in memory
-
     protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
     pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
     between processes running the same Python version.
-
     Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
     compatibility with older versions of Python.
     """
@@ -1094,12 +1069,10 @@ def _get_cell_contents(cell):
 
 def instance(cls):
     """Create a new instance of a class.
-
     Parameters
     ----------
     cls : type
         The class to create an instance of.
-
     Returns
     -------
     instance : cls
@@ -1119,7 +1092,6 @@ class _empty_cell_value(object):
 
 def _fill_function(*args):
     """Fills in the rest of function data into the skeleton function object
-
     The skeleton itself is create by _make_skel_func().
     """
     if len(args) == 2:
@@ -1204,19 +1176,24 @@ def _make_skel_func(code, cell_count, base_globals=None):
 
 
 def _make_skeleton_class(type_constructor, name, bases, type_kwargs,
-                         extra):
-    class_tracker_id = extra.get("class_tracker_id")
+                         class_tracker_id, extra):
+    """Build dynamic class with an empty __dict__ to be filled once memoized
+    If class_tracker_id is not None, try to lookup an existing class definition
+    matching that id. If none is found, track a newly reconstructed class
+    definition under that id so that other instances stemming from the same
+    class id will also reuse this class definition.
+    The extra variable is meant to be a dict use for forward compatibility
+    shall the need arise.
+    """
     skeleton_class = type_constructor(name, bases, type_kwargs)
     return _lookup_class_or_track(class_tracker_id, skeleton_class)
 
 
 def _rehydrate_skeleton_class(skeleton_class, class_dict):
     """Put attributes from `class_dict` back on `skeleton_class`.
-
     See CloudPickler.save_dynamic_class for more info.
     """
     registry = None
-
     for attrname, attr in class_dict.items():
         if attrname == "_abc_impl":
             registry = attr
