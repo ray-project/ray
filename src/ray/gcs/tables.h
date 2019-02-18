@@ -184,6 +184,18 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id);
 
+  /// Delete an entire key from redis.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is deleted from the GCS.
+  void Delete(const JobID &job_id, const ID &id);
+
+  /// Delete several keys from redis.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param ids The vector of IDs that are deleted from the GCS.
+  void Delete(const JobID &job_id, const std::vector<ID> &ids);
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -303,6 +315,12 @@ class Table : private Log<ID, Data>,
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
+
+  void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
+
+  void Delete(const JobID &job_id, const std::vector<ID> &ids) {
+    Log<ID, Data>::Delete(job_id, ids);
+  }
 
   /// Returns debug string for class.
   ///

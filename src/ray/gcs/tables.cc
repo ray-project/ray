@@ -173,6 +173,36 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
+  RAY_IGNORE_EXPR(GetRedisContext(id)->RunAsync("RAY.TABLE_DELETE", id, /*data=*/nullptr,
+                                                /*length=*/0, prefix_, pubsub_channel_,
+                                                /*redisCallback=*/nullptr));
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
+  if (ids.empty()) {
+    return;
+  }
+  std::unordered_map<RedisContext *, std::ostringstream> sharded_data;
+  for (const auto &id : ids) {
+    sharded_data[GetRedisContext(id).get()] << id.binary();
+  }
+  const size_t batch_size = 1000 * kUniqueIDSize;
+  for (const auto &pair : sharded_data) {
+    std::string current_data = pair.second.str();
+    // Make sure the sending buffer is not too big.
+    for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
+      RAY_IGNORE_EXPR(pair.first->RunAsync(
+          "RAY.TABLE_BATCH_DELETE", UniqueID::nil(),
+          reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
+          std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
+          /*redisCallback=*/nullptr));
+    }
+  }
+}
+
+template <typename ID, typename Data>
 std::string Log<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num appends: " << num_appends_;

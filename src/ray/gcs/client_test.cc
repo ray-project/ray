@@ -255,6 +255,118 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   TestLogAppendAt(job_id_, client_);
 }
 
+// Test delete function for a key of Log or Table.
+void TestDeleteKey(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Append some entries to the log at an object ID.
+  ObjectID object_id = ObjectID::from_random();
+  std::vector<std::string> managers = {"abc", "def", "ghi"};
+  for (auto &manager : managers) {
+    auto data = std::make_shared<ObjectTableDataT>();
+    data->manager = manager;
+    // Check that we added the correct object entries.
+    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                          const ObjectTableDataT &d) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_EQ(data->manager, d.manager);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->object_table().Append(job_id, object_id, data, add_callback));
+  }
+  // Check that lookup returns the added object entries.
+  auto lookup_callback = [object_id, managers](
+                             gcs::AsyncGcsClient *client, const ObjectID &id,
+                             const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(id, object_id);
+    ASSERT_EQ(data.size(), managers.size());
+    test->IncrementNumCallbacks();
+  };
+  // Do a lookup at the object ID.
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+  client->object_table().Delete(job_id, object_id);
+  auto lookup_fail_callback = [object_id, managers](
+                                  gcs::AsyncGcsClient *client, const ObjectID &id,
+                                  const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(id, object_id);
+    ASSERT_TRUE(data.size() == 0);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_fail_callback));
+  TaskID task_id = ObjectID::from_random();
+  auto task_data = std::make_shared<protocol::TaskT>();
+  task_data->task_specification = "Test Specification.";
+  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, task_data, nullptr));
+  auto task_lookup_callback = [task_id, task_data](gcs::AsyncGcsClient *client,
+                                                   const TaskID &id,
+                                                   const protocol::TaskT &data) {
+    ASSERT_EQ(id, task_id);
+    ASSERT_EQ(task_data->task_specification, data.task_specification);
+    test->IncrementNumCallbacks();
+  };
+  RAY_CHECK_OK(
+      client->raylet_task_table().Lookup(job_id, task_id, task_lookup_callback, nullptr));
+  client->raylet_task_table().Delete(job_id, task_id);
+  auto failure_callback = [](AsyncGcsClient *client, const TaskID &id) {
+    ASSERT_TRUE(true);
+    test->IncrementNumCallbacks();
+    test->Stop();
+  };
+  auto undisired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
+                               const protocol::TaskT &data) { ASSERT_TRUE(false); };
+  RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, undisired_callback,
+                                                  failure_callback));
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), managers.size() + 4);
+}
+
+TEST_F(TestGcsWithAsio, TestDeleteKey) {
+  test = this;
+  TestDeleteKey(job_id_, client_);
+}
+
+// Test delete function for a key of Log or Table.
+void TestDeleteKeyInBatch(const JobID &job_id,
+                          std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Test delete in batch mode.
+  const int num = 10;
+  auto object_data = std::make_shared<ObjectTableDataT>();
+  object_data->manager = "batch_object_manager";
+  std::vector<ObjectID> object_ids;
+  for (int i = 0; i < num; ++i) {
+    ObjectID object_id = ObjectID::from_random();
+    object_ids.push_back(object_id);
+    auto add_callback = [object_id, object_data](gcs::AsyncGcsClient *client,
+                                                 const UniqueID &id,
+                                                 const ObjectTableDataT &d) {
+      ASSERT_EQ(id, object_id);
+      ASSERT_EQ(object_data->manager, d.manager);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(
+        client->object_table().Append(job_id, object_id, object_data, add_callback));
+  }
+  client->object_table().Delete(job_id, object_ids);
+  for (int i = 0; i < num; ++i) {
+    auto lookup_callback = [i](gcs::AsyncGcsClient *client, const ObjectID &id,
+                               const std::vector<ObjectTableDataT> &data) {
+      ASSERT_TRUE(data.size() == 0);
+      test->IncrementNumCallbacks();
+      if (i == num - 1) {
+        test->Stop();
+      }
+    };
+    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_ids[i], lookup_callback));
+  }
+  // It is fine to delete non-existing objects.
+  client->object_table().Delete(job_id, object_ids);
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), 2 * num);
+}
+
+TEST_F(TestGcsWithAsio, TestDeleteKeyInBatch) {
+  test = this;
+  TestDeleteKeyInBatch(job_id_, client_);
+}
+
 // Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                const TaskTableDataT &data) {
