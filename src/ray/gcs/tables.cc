@@ -173,13 +173,6 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
-  RAY_IGNORE_EXPR(GetRedisContext(id)->RunAsync("RAY.TABLE_DELETE", id, /*data=*/nullptr,
-                                                /*length=*/0, prefix_, pubsub_channel_,
-                                                /*redisCallback=*/nullptr));
-}
-
-template <typename ID, typename Data>
 void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
   if (ids.empty()) {
     return;
@@ -194,12 +187,17 @@ void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
     // Make sure the sending buffer is not too big.
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
       RAY_IGNORE_EXPR(pair.first->RunAsync(
-          "RAY.TABLE_BATCH_DELETE", UniqueID::nil(),
+          "RAY.TABLE_DELETE", UniqueID::nil(),
           reinterpret_cast<const uint8_t *>(current_data.c_str() + cur),
           std::min(batch_size, current_data.size() - cur), prefix_, pubsub_channel_,
           /*redisCallback=*/nullptr));
     }
   }
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::Delete(const JobID &job_id, const ID &id) {
+  Delete(job_id, std::vector<ID>({id}));
 }
 
 template <typename ID, typename Data>

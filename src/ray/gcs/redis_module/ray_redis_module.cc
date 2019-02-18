@@ -534,44 +534,18 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
   return Status::OK();
 }
 
-/// Delete the redis table associated with a key.
-///
-/// This is called from a client with the command:
-//
-///    RAY.TABLE_DELETE <table_prefix> <pubsub_channel> <id>
-///
-/// \param table_prefix The prefix string for keys in this table.
-/// \param pubsub_channel Unused but follow the interface.
-/// \param id The ID of the key to delete.
-/// \return OK if the deletion succeeds, or an error message string if the
-///         deletion fails.
-int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc != 4) {
-    return RedisModule_WrongArity(ctx);
-  }
-  RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
-  Status status = DeleteKeyHelper(ctx, prefix_str, id);
-  if (status.ok()) {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
-  } else {
-    return RedisModule_ReplyWithError(ctx, status.message().c_str());
-  }
-}
-
 /// Delete the redis table associated with a list of keys in batch mode.
 ///
 /// This is called from a client with the command:
 //
-///    RAY.TABLE_BATCH_DELETE <table_prefix> <pubsub_channel> <id> <data>
+///    RAY.TABLE_DELETE <table_prefix> <pubsub_channel> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel Unused but follow the interface.
 /// \param id This id will be ignored but follow the interface.
 /// \param data The list of Unique Ids, kUniqueIDSize bytes for each.
 /// \return Always return OK, empty key will be ignored.
-int TableBatchDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
-                                  int argc) {
+int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -778,7 +752,6 @@ AUTO_MEMORY(TableAppend_RedisCommand);
 AUTO_MEMORY(TableLookup_RedisCommand);
 AUTO_MEMORY(TableRequestNotifications_RedisCommand);
 AUTO_MEMORY(TableDelete_RedisCommand);
-AUTO_MEMORY(TableBatchDelete_RedisCommand);
 AUTO_MEMORY(TableCancelNotifications_RedisCommand);
 AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
 AUTO_MEMORY(DebugString_RedisCommand);
@@ -816,12 +789,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
   if (RedisModule_CreateCommand(ctx, "ray.table_delete", TableDelete_RedisCommand,
                                 "write", 0, 0, 0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-
-  if (RedisModule_CreateCommand(ctx, "ray.table_batch_delete",
-                                TableBatchDelete_RedisCommand, "write", 0, 0,
-                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
