@@ -165,7 +165,20 @@ class Model(object):
                 "self.loss() is deprecated, use self.custom_loss() instead.")
         return policy_loss
 
+    @PublicAPI
     def custom_stats(self):
+        """Override to return custom metrics from your model.
+
+        The stats will be reported as part of the learner stats, i.e.,
+        info:
+            learner:
+                model:
+                    key1: metric1
+                    key2: metric2
+
+        Returns:
+            Dict of string keys to scalar tensors.
+        """
         return {}
 
     def loss(self):

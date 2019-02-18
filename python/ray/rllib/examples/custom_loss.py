@@ -38,8 +38,7 @@ class CustomLossModel(Model):
     def _build_layers_v2(self, input_dict, num_outputs, options):
         self.obs_in = input_dict["obs"]
         self.fcnet = FullyConnectedNetwork(
-            self.obs_in, self.obs_space, num_outputs, options)
-        assert False
+            input_dict, self.obs_space, num_outputs, options)
         return self.fcnet.outputs, self.fcnet.last_layer
 
     def custom_loss(self, policy_loss):
@@ -55,15 +54,17 @@ class CustomLossModel(Model):
                     {"obs": input_ops["obs"]}, self.obs_space),
                     self.num_outputs, self.options)
 
-        # compute the IL loss
-        action_dist = Categorical(logits)
-        self.imitation_loss = -action_dist.logp(input_ops["actions"])
-
         # You can also add self-supervised losses easily by referencing tensors
         # created during _build_layers_v2(). For example, an autoencoder-style
         # loss can be added as follows:
         # ae_loss = squared_diff(self.obs_in, Decoder(self.fcnet.last_layer))
-        return policy_loss + self.imitation_loss
+
+        # compute the IL loss
+        action_dist = Categorical(logits)
+        self.policy_loss = policy_loss
+        self.imitation_loss = tf.reduce_mean(
+            -action_dist.logp(input_ops["actions"]))
+        return policy_loss + 10 * self.imitation_loss
 
     def custom_stats(self):
         return {
