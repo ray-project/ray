@@ -1,7 +1,10 @@
+# coding: utf-8
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
@@ -16,8 +19,6 @@ import sys
 import tempfile
 import threading
 import time
-from collections import defaultdict, namedtuple, OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pickle
@@ -29,206 +30,6 @@ import ray.test.test_utils
 from ray.utils import _random_string
 
 logger = logging.getLogger(__name__)
-
-
-def assert_equal(obj1, obj2):
-    module_numpy = (type(obj1).__module__ == np.__name__
-                    or type(obj2).__module__ == np.__name__)
-    if module_numpy:
-        empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ())
-                       or (hasattr(obj2, "shape") and obj2.shape == ()))
-        if empty_shape:
-            # This is a special case because currently np.testing.assert_equal
-            # fails because we do not properly handle different numerical
-            # types.
-            assert obj1 == obj2, ("Objects {} and {} are "
-                                  "different.".format(obj1, obj2))
-        else:
-            np.testing.assert_equal(obj1, obj2)
-    elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
-        special_keys = ["_pytype_"]
-        assert (set(list(obj1.__dict__.keys()) + special_keys) == set(
-            list(obj2.__dict__.keys()) + special_keys)), ("Objects {} "
-                                                          "and {} are "
-                                                          "different.".format(
-                                                              obj1, obj2))
-        for key in obj1.__dict__.keys():
-            if key not in special_keys:
-                assert_equal(obj1.__dict__[key], obj2.__dict__[key])
-    elif type(obj1) is dict or type(obj2) is dict:
-        assert_equal(obj1.keys(), obj2.keys())
-        for key in obj1.keys():
-            assert_equal(obj1[key], obj2[key])
-    elif type(obj1) is list or type(obj2) is list:
-        assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
-                                        "different lengths.".format(
-                                            obj1, obj2))
-        for i in range(len(obj1)):
-            assert_equal(obj1[i], obj2[i])
-    elif type(obj1) is tuple or type(obj2) is tuple:
-        assert len(obj1) == len(obj2), ("Objects {} and {} are tuples with "
-                                        "different lengths.".format(
-                                            obj1, obj2))
-        for i in range(len(obj1)):
-            assert_equal(obj1[i], obj2[i])
-    elif (ray.serialization.is_named_tuple(type(obj1))
-          or ray.serialization.is_named_tuple(type(obj2))):
-        assert len(obj1) == len(obj2), ("Objects {} and {} are named tuples "
-                                        "with different lengths.".format(
-                                            obj1, obj2))
-        for i in range(len(obj1)):
-            assert_equal(obj1[i], obj2[i])
-    else:
-        assert obj1 == obj2, "Objects {} and {} are different.".format(
-            obj1, obj2)
-
-
-if sys.version_info >= (3, 0):
-    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
-else:
-
-    long_extras = [
-        long(0),  # noqa: E501,F821
-        np.array([
-            ["hi", u"hi"],
-            [1.3, long(1)]  # noqa: E501,F821
-        ])
-    ]
-
-PRIMITIVE_OBJECTS = [
-    0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
-    string.printable, "\u262F", u"hello world", u"\xff\xfe\x9c\x001\x000\x00",
-    None, True, False, [], (), {},
-    np.int8(3),
-    np.int32(4),
-    np.int64(5),
-    np.uint8(3),
-    np.uint32(4),
-    np.uint64(5),
-    np.float32(1.9),
-    np.float64(1.9),
-    np.zeros([100, 100]),
-    np.random.normal(size=[100, 100]),
-    np.array(["hi", 3]),
-    np.array(["hi", 3], dtype=object)
-] + long_extras
-
-COMPLEX_OBJECTS = [
-    [[[[[[[[[[[[]]]]]]]]]]]],
-    {"obj{}".format(i): np.random.normal(size=[100, 100])
-     for i in range(10)},
-    # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
-    #      (): {(): {}}}}}}}}}}}}},
-    (
-        (((((((((), ), ), ), ), ), ), ), ), ),
-    {
-        "a": {
-            "b": {
-                "c": {
-                    "d": {}
-                }
-            }
-        }
-    }
-]
-
-
-class Foo(object):
-    def __init__(self, value=0):
-        self.value = value
-
-    def __hash__(self):
-        return hash(self.value)
-
-    def __eq__(self, other):
-        return other.value == self.value
-
-
-class Bar(object):
-    def __init__(self):
-        for i, val in enumerate(PRIMITIVE_OBJECTS + COMPLEX_OBJECTS):
-            setattr(self, "field{}".format(i), val)
-
-
-class Baz(object):
-    def __init__(self):
-        self.foo = Foo()
-        self.bar = Bar()
-
-    def method(self, arg):
-        pass
-
-
-class Qux(object):
-    def __init__(self):
-        self.objs = [Foo(), Bar(), Baz()]
-
-
-class SubQux(Qux):
-    def __init__(self):
-        Qux.__init__(self)
-
-
-class CustomError(Exception):
-    pass
-
-
-Point = namedtuple("Point", ["x", "y"])
-NamedTupleExample = namedtuple("Example",
-                               "field1, field2, field3, field4, field5")
-
-CUSTOM_OBJECTS = [
-    Exception("Test object."),
-    CustomError(),
-    Point(11, y=22),
-    Foo(),
-    Bar(),
-    Baz(),  # Qux(), SubQux(),
-    NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])
-]
-
-# Test dataclasses in Python 3.7.
-if sys.version_info >= (3, 7):
-    from dataclasses import make_dataclass
-
-    DataClass0 = make_dataclass("DataClass0", [("number", int)])
-
-    CUSTOM_OBJECTS.append(DataClass0(number=3))
-
-    class CustomClass(object):
-        def __init__(self, value):
-            self.value = value
-
-    DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
-
-    class DataClass2(DataClass1):
-        @classmethod
-        def from_custom(cls, data):
-            custom = CustomClass(data)
-            return cls(custom)
-
-        def __reduce__(self):
-            return (self.from_custom, (self.custom.value, ))
-
-    CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
-
-BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
-
-LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
-TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
-# The check that type(obj).__module__ != "numpy" should be unnecessary, but
-# otherwise this seems to fail on Mac OS X on Travis.
-DICT_OBJECTS = (
-    [{
-        obj: obj
-    } for obj in PRIMITIVE_OBJECTS
-     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-         0: obj
-     } for obj in BASE_OBJECTS] + [{
-         Foo(123): Foo(456)
-     }])
-
-RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
 
 @pytest.fixture
@@ -247,7 +48,265 @@ def shutdown_only():
     ray.shutdown()
 
 
-def test_passing_arguments_by_value(ray_start):
+def test_simple_serialization(ray_start):
+    primitive_objects = [
+        # Various primitive types.
+        0,
+        0.0,
+        0.9,
+        1 << 62,
+        1 << 999,
+        "a",
+        string.printable,
+        "\u262F",
+        u"hello world",
+        u"\xff\xfe\x9c\x001\x000\x00",
+        None,
+        True,
+        False,
+        [],
+        (),
+        {},
+        type,
+        int,
+        set(),
+        # Collections types.
+        collections.Counter([np.random.randint(0, 10) for _ in range(100)]),
+        collections.OrderedDict([("hello", 1), ("world", 2)]),
+        collections.defaultdict(lambda: 0, [("hello", 1), ("world", 2)]),
+        collections.defaultdict(lambda: [], [("hello", 1), ("world", 2)]),
+        collections.deque([1, 2, 3, "a", "b", "c", 3.5]),
+        # Numpy dtypes.
+        np.int8(3),
+        np.int32(4),
+        np.int64(5),
+        np.uint8(3),
+        np.uint32(4),
+        np.uint64(5),
+        np.float32(1.9),
+        np.float64(1.9),
+    ]
+
+    if sys.version_info < (3, 0):
+        primitive_objects.append(long(0))  # noqa: E501,F821
+
+    composite_objects = (
+        [[obj]
+         for obj in primitive_objects] + [(obj, )
+                                          for obj in primitive_objects] + [{
+                                              (): obj
+                                          } for obj in primitive_objects])
+
+    @ray.remote
+    def f(x):
+        return x
+
+    # Check that we can pass arguments by value to remote functions and
+    # that they are uncorrupted.
+    for obj in primitive_objects + composite_objects:
+        new_obj_1 = ray.get(f.remote(obj))
+        new_obj_2 = ray.get(ray.put(obj))
+        assert obj == new_obj_1
+        assert obj == new_obj_2
+        # TODO(rkn): The numpy dtypes currently come back as regular integers
+        # or floats.
+        if type(obj).__module__ != "numpy":
+            assert type(obj) == type(new_obj_1)
+            assert type(obj) == type(new_obj_2)
+
+
+def test_complex_serialization(ray_start):
+    def assert_equal(obj1, obj2):
+        module_numpy = (type(obj1).__module__ == np.__name__
+                        or type(obj2).__module__ == np.__name__)
+        if module_numpy:
+            empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ())
+                           or (hasattr(obj2, "shape") and obj2.shape == ()))
+            if empty_shape:
+                # This is a special case because currently
+                # np.testing.assert_equal fails because we do not properly
+                # handle different numerical types.
+                assert obj1 == obj2, ("Objects {} and {} are "
+                                      "different.".format(obj1, obj2))
+            else:
+                np.testing.assert_equal(obj1, obj2)
+        elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
+            special_keys = ["_pytype_"]
+            assert (set(list(obj1.__dict__.keys()) + special_keys) == set(
+                list(obj2.__dict__.keys()) + special_keys)), (
+                    "Objects {} and {} are different.".format(obj1, obj2))
+            for key in obj1.__dict__.keys():
+                if key not in special_keys:
+                    assert_equal(obj1.__dict__[key], obj2.__dict__[key])
+        elif type(obj1) is dict or type(obj2) is dict:
+            assert_equal(obj1.keys(), obj2.keys())
+            for key in obj1.keys():
+                assert_equal(obj1[key], obj2[key])
+        elif type(obj1) is list or type(obj2) is list:
+            assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
+                                            "different lengths.".format(
+                                                obj1, obj2))
+            for i in range(len(obj1)):
+                assert_equal(obj1[i], obj2[i])
+        elif type(obj1) is tuple or type(obj2) is tuple:
+            assert len(obj1) == len(obj2), ("Objects {} and {} are tuples "
+                                            "with different lengths.".format(
+                                                obj1, obj2))
+            for i in range(len(obj1)):
+                assert_equal(obj1[i], obj2[i])
+        elif (ray.serialization.is_named_tuple(type(obj1))
+              or ray.serialization.is_named_tuple(type(obj2))):
+            assert len(obj1) == len(obj2), ("Objects {} and {} are named "
+                                            "tuples with different lengths."
+                                            .format(obj1, obj2))
+            for i in range(len(obj1)):
+                assert_equal(obj1[i], obj2[i])
+        else:
+            assert obj1 == obj2, "Objects {} and {} are different.".format(
+                obj1, obj2)
+
+    if sys.version_info >= (3, 0):
+        long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    else:
+
+        long_extras = [
+            long(0),  # noqa: E501,F821
+            np.array([
+                ["hi", u"hi"],
+                [1.3, long(1)]  # noqa: E501,F821
+            ])
+        ]
+
+    PRIMITIVE_OBJECTS = [
+        0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
+        string.printable, "\u262F", u"hello world",
+        u"\xff\xfe\x9c\x001\x000\x00", None, True, False, [], (), {},
+        np.int8(3),
+        np.int32(4),
+        np.int64(5),
+        np.uint8(3),
+        np.uint32(4),
+        np.uint64(5),
+        np.float32(1.9),
+        np.float64(1.9),
+        np.zeros([100, 100]),
+        np.random.normal(size=[100, 100]),
+        np.array(["hi", 3]),
+        np.array(["hi", 3], dtype=object)
+    ] + long_extras
+
+    COMPLEX_OBJECTS = [
+        [[[[[[[[[[[[]]]]]]]]]]]],
+        {
+            "obj{}".format(i): np.random.normal(size=[100, 100])
+            for i in range(10)
+        },
+        # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
+        #      (): {(): {}}}}}}}}}}}}},
+        (
+            (((((((((), ), ), ), ), ), ), ), ), ),
+        {
+            "a": {
+                "b": {
+                    "c": {
+                        "d": {}
+                    }
+                }
+            }
+        },
+    ]
+
+    class Foo(object):
+        def __init__(self, value=0):
+            self.value = value
+
+        def __hash__(self):
+            return hash(self.value)
+
+        def __eq__(self, other):
+            return other.value == self.value
+
+    class Bar(object):
+        def __init__(self):
+            for i, val in enumerate(PRIMITIVE_OBJECTS + COMPLEX_OBJECTS):
+                setattr(self, "field{}".format(i), val)
+
+    class Baz(object):
+        def __init__(self):
+            self.foo = Foo()
+            self.bar = Bar()
+
+        def method(self, arg):
+            pass
+
+    class Qux(object):
+        def __init__(self):
+            self.objs = [Foo(), Bar(), Baz()]
+
+    class SubQux(Qux):
+        def __init__(self):
+            Qux.__init__(self)
+
+    class CustomError(Exception):
+        pass
+
+    Point = collections.namedtuple("Point", ["x", "y"])
+    NamedTupleExample = collections.namedtuple(
+        "Example", "field1, field2, field3, field4, field5")
+
+    CUSTOM_OBJECTS = [
+        Exception("Test object."),
+        CustomError(),
+        Point(11, y=22),
+        Foo(),
+        Bar(),
+        Baz(),  # Qux(), SubQux(),
+        NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3]),
+    ]
+
+    # Test dataclasses in Python 3.7.
+    if sys.version_info >= (3, 7):
+        from dataclasses import make_dataclass
+
+        DataClass0 = make_dataclass("DataClass0", [("number", int)])
+
+        CUSTOM_OBJECTS.append(DataClass0(number=3))
+
+        class CustomClass(object):
+            def __init__(self, value):
+                self.value = value
+
+        DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
+
+        class DataClass2(DataClass1):
+            @classmethod
+            def from_custom(cls, data):
+                custom = CustomClass(data)
+                return cls(custom)
+
+            def __reduce__(self):
+                return (self.from_custom, (self.custom.value, ))
+
+        CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
+
+    BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
+
+    LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
+    TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
+    # The check that type(obj).__module__ != "numpy" should be unnecessary, but
+    # otherwise this seems to fail on Mac OS X on Travis.
+    DICT_OBJECTS = ([{
+        obj: obj
+    } for obj in PRIMITIVE_OBJECTS if (
+        obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+            0: obj
+        } for obj in BASE_OBJECTS] + [{
+            Foo(123): Foo(456)
+        }])
+
+    RAY_TEST_OBJECTS = (
+        BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS)
+
     @ray.remote
     def f(x):
         return x
@@ -256,6 +315,7 @@ def test_passing_arguments_by_value(ray_start):
     # that they are uncorrupted.
     for obj in RAY_TEST_OBJECTS:
         assert_equal(obj, ray.get(f.remote(obj)))
+        assert_equal(obj, ray.get(ray.put(obj)))
 
 
 def test_ray_recursive_objects(ray_start):
@@ -420,23 +480,20 @@ def test_register_class(shutdown_only):
 
     ray.get(ray.put(TempClass()))
 
-    # Test subtypes of dictionaries.
-    value_before = OrderedDict([("hello", 1), ("world", 2)])
-    object_id = ray.put(value_before)
-    assert value_before == ray.get(object_id)
-
-    value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
-    object_id = ray.put(value_before)
-    assert value_before == ray.get(object_id)
-
-    value_before = defaultdict(lambda: [], [("hello", 1), ("world", 2)])
-    object_id = ray.put(value_before)
-    assert value_before == ray.get(object_id)
-
     # Test passing custom classes into remote functions from the driver.
     @ray.remote
     def f(x):
         return x
+
+    class Foo(object):
+        def __init__(self, value=0):
+            self.value = value
+
+        def __hash__(self):
+            return hash(self.value)
+
+        def __eq__(self, other):
+            return other.value == self.value
 
     foo = ray.get(f.remote(Foo(7)))
     assert foo == Foo(7)
@@ -449,13 +506,22 @@ def test_register_class(shutdown_only):
     # Instead, we do this:
     assert regex.pattern == new_regex.pattern
 
+    class TempClass1(object):
+        def __init__(self):
+            self.value = 1
+
     # Test returning custom classes created on workers.
     @ray.remote
     def g():
-        return SubQux(), Qux()
+        class TempClass2(object):
+            def __init__(self):
+                self.value = 2
 
-    subqux, qux = ray.get(g.remote())
-    assert subqux.objs[2].foo.value == 0
+        return TempClass1(), TempClass2()
+
+    object_1, object_2 = ray.get(g.remote())
+    assert object_1.value == 1
+    assert object_2.value == 2
 
     # Test exporting custom class definitions from one worker to another
     # when the worker is blocked in a get.
@@ -734,7 +800,7 @@ def test_defining_remote_functions(shutdown_only):
     def h():
         return np.zeros([3, 5])
 
-    assert_equal(ray.get(h.remote()), np.zeros([3, 5]))
+    assert np.alltrue(ray.get(h.remote()) == np.zeros([3, 5]))
 
     @ray.remote
     def j():
@@ -1450,21 +1516,21 @@ def test_local_mode(shutdown_only):
 
     xref = f.remote()
     # Remote functions should return by value.
-    assert_equal(xref, np.ones([3, 4, 5]))
+    assert np.alltrue(xref == np.ones([3, 4, 5]))
     # Check that ray.get is the identity.
-    assert_equal(xref, ray.get(xref))
+    assert np.alltrue(xref == ray.get(xref))
     y = np.random.normal(size=[11, 12])
     # Check that ray.put is the identity.
-    assert_equal(y, ray.put(y))
+    assert np.alltrue(y == ray.put(y))
 
     # Make sure objects are immutable, this example is why we need to copy
     # arguments before passing them into remote functions in python mode
     aref = local_mode_f.remote()
-    assert_equal(aref, np.array([0, 0]))
+    assert np.alltrue(aref == np.array([0, 0]))
     bref = local_mode_g.remote(aref)
     # Make sure local_mode_g does not mutate aref.
-    assert_equal(aref, np.array([0, 0]))
-    assert_equal(bref, np.array([1, 0]))
+    assert np.alltrue(aref == np.array([0, 0]))
+    assert np.alltrue(bref == np.array([1, 0]))
 
     # wait should return the first num_returns values passed in as the
     # first list and the remaining values as the second list
@@ -1472,8 +1538,8 @@ def test_local_mode(shutdown_only):
     object_ids = [ray.put(i) for i in range(20)]
     ready, remaining = ray.wait(
         object_ids, num_returns=num_returns, timeout=None)
-    assert_equal(ready, object_ids[:num_returns])
-    assert_equal(remaining, object_ids[num_returns:])
+    assert ready == object_ids[:num_returns]
+    assert remaining == object_ids[num_returns:]
 
     # Test actors in LOCAL_MODE.
 
@@ -1494,15 +1560,15 @@ def test_local_mode(shutdown_only):
 
     test_actor = LocalModeTestClass.remote(np.arange(10))
     # Remote actor functions should return by value
-    assert_equal(test_actor.get_array.remote(), np.arange(10))
+    assert np.alltrue(test_actor.get_array.remote() == np.arange(10))
 
     test_array = np.arange(10)
     # Remote actor functions should not mutate arguments
     test_actor.modify_and_set_array.remote(test_array)
-    assert_equal(test_array, np.arange(10))
+    assert np.alltrue(test_array == np.arange(10))
     # Remote actor functions should keep state
     test_array[0] = -1
-    assert_equal(test_array, test_actor.get_array.remote())
+    assert np.alltrue(test_array == test_actor.get_array.remote())
 
     # Check that actor handles work in Python mode.
 
@@ -2502,7 +2568,7 @@ def test_not_logging_to_driver(shutdown_only):
     reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
-    ray.init(redirect_worker_output=True, num_cpus=num_workers)
+    ray.init(num_cpus=num_workers)
 
     @ray.remote
     def f():
@@ -2530,10 +2596,10 @@ def test_specific_driver_id():
     def f():
         return ray.worker.global_worker.task_driver_id.binary()
 
-    assert_equal(dummy_driver_id.binary(), ray.worker.global_worker.worker_id)
+    assert dummy_driver_id.binary() == ray.worker.global_worker.worker_id
 
     task_driver_id = ray.get(f.remote())
-    assert_equal(dummy_driver_id.binary(), task_driver_id)
+    assert dummy_driver_id.binary() == task_driver_id
 
     ray.shutdown()
 
@@ -2621,7 +2687,7 @@ def test_inline_objects(shutdown_only):
             value = ray.get(inline_object)
             assert value == "inline"
             inlined += 1
-        except ray.worker.RayTaskError:
+        except ray.exceptions.UnreconstructableError:
             pass
     # Make sure some objects were inlined. Some of them may not get inlined
     # because we evict the object soon after creating it.
@@ -2638,7 +2704,7 @@ def test_inline_objects(shutdown_only):
             ray.worker.global_worker.plasma_client.delete([plasma_id])
         # Objects created by an actor that were evicted and larger than the
         # maximum inline object size cannot be retrieved or reconstructed.
-        with pytest.raises(ray.worker.RayTaskError):
+        with pytest.raises(ray.exceptions.UnreconstructableError):
             ray.get(non_inline_object) == 10000 * [1]
 
 
@@ -2764,6 +2830,15 @@ def test_raylet_is_robust_to_random_messages(shutdown_only):
 
     @ray.remote
     def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
+
+
+def test_non_ascii_comment(ray_start):
+    @ray.remote
+    def f():
+        # 日本語 Japanese comment
         return 1
 
     assert ray.get(f.remote()) == 1

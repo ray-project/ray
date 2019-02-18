@@ -27,17 +27,17 @@ def shutdown_only():
 @pytest.fixture
 def ray_start_cluster():
     node_args = {
-        "num_cpus": 8,
+        "num_cpus": 4,
         "_internal_config": json.dumps({
             "initial_reconstruction_timeout_milliseconds": 1000,
             "num_heartbeats_timeout": 10
         })
     }
-    # Start with 4 worker nodes and 8 cores each.
+    # Start with 3 worker nodes and 4 cores each.
     cluster = Cluster(
         initialize_head=True, connect=True, head_node_args=node_args)
     workers = []
-    for _ in range(4):
+    for _ in range(3):
         workers.append(cluster.add_node(**node_args))
     cluster.wait_for_nodes()
     yield cluster
@@ -279,7 +279,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     for object_id in object_ids:
         try:
             ray.get(object_id)
-        except ray.worker.RayTaskError:
+        except (ray.exceptions.RayTaskError, ray.exceptions.RayWorkerError):
             pass
 
 
@@ -403,13 +403,13 @@ def test_actor_creation_node_failure(ray_start_cluster):
             if exit_chance < self.death_probability:
                 sys.exit(-1)
 
-    num_children = 100
+    num_children = 50
     # Children actors will die about half the time.
     death_probability = 0.5
 
     children = [Child.remote(death_probability) for _ in range(num_children)]
     while len(cluster.list_all_nodes()) > 1:
-        for j in range(3):
+        for j in range(2):
             # Submit some tasks on the actors. About half of the actors will
             # fail.
             children_out = [child.ping.remote() for child in children]
@@ -424,7 +424,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             for i, out in enumerate(children_out):
                 try:
                     ray.get(out)
-                except ray.worker.RayTaskError:
+                except ray.exceptions.RayActorError:
                     children[i] = Child.remote(death_probability)
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be reconstructed.

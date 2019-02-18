@@ -165,7 +165,7 @@ def create_parser():
     return parser
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
     mnist.load_data()  # we do this because it's not threadsafe

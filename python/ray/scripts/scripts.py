@@ -124,15 +124,6 @@ def cli(logging_level, logging_format):
     "applies to the sharded redis tables (task, object, and profile tables). "
     "By default this is capped at 10GB but can be set higher.")
 @click.option(
-    "--num-workers",
-    required=False,
-    type=int,
-    help=("The initial number of workers to start on this node, "
-          "note that the local scheduler may start additional "
-          "workers. If you wish to control the total number of "
-          "concurent tasks, then use --resources instead and "
-          "specify the CPU field."))
-@click.option(
     "--num-cpus",
     required=False,
     type=int,
@@ -220,8 +211,8 @@ def cli(logging_level, logging_format):
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_workers, num_cpus, num_gpus, resources, head,
-          no_ui, block, plasma_directory, huge_pages, autoscaling_config,
+          redis_max_memory, num_cpus, num_gpus, resources, head, no_ui, block,
+          plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, internal_config):
@@ -239,15 +230,16 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
+    redirect_worker_output = None if not no_redirect_worker_output else True
+    redirect_output = None if not no_redirect_output else True
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
-        num_workers=num_workers,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
-        redirect_worker_output=not no_redirect_worker_output,
-        redirect_output=not no_redirect_output,
+        redirect_worker_output=redirect_worker_output,
+        redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -430,8 +422,8 @@ def stop():
         ]
         subprocess.call(
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
-    except ImportError:
-        pass
+    except Exception:
+        logger.exception("Error shutting down jupyter")
 
 
 @cli.command()

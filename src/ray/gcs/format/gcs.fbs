@@ -347,3 +347,23 @@ table ActorCheckpointIdData {
   // A list of the timestamps for each of the above `checkpoint_ids`.
   timestamps: [long];
 }
+
+// This enum type is used as object's metadata to indicate the object's creating
+// task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may want
+// to distinguish between intentional and expected actor failures, and between
+// worker process failure and node failure.
+enum ErrorType:int {
+  // Indicates that a task failed because the worker died unexpectedly while executing it.
+  WORKER_DIED = 1,
+  // Indicates that a task failed because the actor died unexpectedly before finishing it.
+  ACTOR_DIED = 2,
+  // Indicates that an object is lost and cannot be reconstructed.
+  // Note, this currently only happens to actor objects. When the actor's state is already
+  // after the object's creating task, the actor cannot re-run the task.
+  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
+  // 1) A object that was put by the driver.
+  // 2) The object's creating task is already cleaned up from GCS (this currently
+  //    crashes raylet).
+  OBJECT_UNRECONSTRUCTABLE = 3,
+}

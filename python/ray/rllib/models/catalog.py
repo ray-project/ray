@@ -11,9 +11,10 @@ from functools import partial
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _global_registry
 
-from ray.rllib.models.action_dist import (
-    Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution)
+from ray.rllib.models.extra_spaces import Simplex
+from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
+                                          Deterministic, DiagGaussian,
+                                          MultiActionDistribution, Dirichlet)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
@@ -135,6 +136,8 @@ class ModelCatalog(object):
                 child_distributions=child_dist,
                 action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
+        elif isinstance(action_space, Simplex):
+            return Dirichlet, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             return MultiCategorical, sum(action_space.nvec)
 
@@ -172,6 +175,9 @@ class ModelCatalog(object):
                 tf.int64 if all_discrete else tf.float32,
                 shape=(None, size),
                 name="action")
+        elif isinstance(action_space, Simplex):
+            return tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]), name="action")
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             return tf.placeholder(
                 tf.as_dtype(action_space.dtype),

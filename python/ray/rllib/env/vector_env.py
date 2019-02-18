@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import numpy as np
 
 import ray
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -111,9 +112,16 @@ class _VectorizedGymEnv(VectorEnv):
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
-            obs, rew, done, info = self.envs[i].step(actions[i])
+            obs, r, done, info = self.envs[i].step(actions[i])
+            if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
+                raise ValueError(
+                    "Reward should be finite scalar, got {} ({})".format(
+                        r, type(r)))
+            if type(info) is not dict:
+                raise ValueError("Info should be a dict, got {} ({})".format(
+                    info, type(info)))
             obs_batch.append(obs)
-            rew_batch.append(rew)
+            rew_batch.append(r)
             done_batch.append(done)
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch

@@ -46,7 +46,12 @@ VTraceFromLogitsReturns = collections.namedtuple('VTraceFromLogitsReturns', [
 VTraceReturns = collections.namedtuple('VTraceReturns', 'vs pg_advantages')
 
 
-def select_policy_values_using_actions(policy_logits, actions):
+def log_probs_from_logits_and_actions(policy_logits, actions):
+    return multi_log_probs_from_logits_and_actions(
+        [policy_logits], [actions])[0]
+
+
+def multi_log_probs_from_logits_and_actions(policy_logits, actions):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -86,6 +91,30 @@ def select_policy_values_using_actions(policy_logits, actions):
 
 
 def from_logits(behaviour_policy_logits,
+                target_policy_logits,
+                actions,
+                discounts,
+                rewards,
+                values,
+                bootstrap_value,
+                clip_rho_threshold=1.0,
+                clip_pg_rho_threshold=1.0,
+                name='vtrace_from_logits'):
+    return multi_from_logits(
+        [behaviour_policy_logits],
+        [target_policy_logits],
+        [actions],
+        discounts,
+        rewards,
+        values,
+        bootstrap_value,
+        clip_rho_threshold=clip_rho_threshold,
+        clip_pg_rho_threshold=clip_pg_rho_threshold,
+        name=name)
+
+
+def multi_from_logits(
+                behaviour_policy_logits,
                 target_policy_logits,
                 actions,
                 discounts,
@@ -175,9 +204,9 @@ def from_logits(behaviour_policy_logits,
     with tf.name_scope(name, values=[behaviour_policy_logits, target_policy_logits, actions,
                                      discounts, rewards, values,
                                      bootstrap_value]):
-        target_action_log_probs = select_policy_values_using_actions(
+        target_action_log_probs = multi_log_probs_from_logits_and_actions(
             target_policy_logits, actions)
-        behaviour_action_log_probs = select_policy_values_using_actions(
+        behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
             behaviour_policy_logits, actions)
 
         log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)

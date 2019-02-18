@@ -40,5 +40,5 @@ class DQNTest(unittest.TestCase):
         self.assertNotEqual(r3["evaluation"], r4["evaluation"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(verbosity=2)
