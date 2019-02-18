@@ -490,7 +490,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                      << actor_id;
       copy->timestamps.erase(copy->timestamps.begin());
       copy->checkpoint_ids.erase(0, kUniqueIDSize);
-      // TODO(hchen): also delete checkpoint data from GCS.
+      client_->actor_checkpoint_table().Delete(job_id, checkpoint_id);
     }
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
