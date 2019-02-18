@@ -2845,15 +2845,15 @@ def test_non_ascii_comment(ray_start):
 
 
 def test_runtime_context(shutdown_only):
-    specified_driver_id = ray.ObjectID(b"00112233445566778899")
+    specified_driver_id = ray.DriverID(b"00112233445566778899")
     ray.init(num_cpus=1, driver_id=specified_driver_id)
 
     # in driver
-    assert specified_driver_id == ray.runtime_context.current_driver_id
+    assert specified_driver_id == ray.get_runtime_context().current_driver_id
 
     # in worker
     @ray.remote
     def f():
-        return ray.runtime_context.current_driver_id.id()
+        return ray.get_runtime_context().current_driver_id
 
-    assert specified_driver_id == ray.ObjectID(ray.get(f.remote()))
+    assert specified_driver_id == ray.get(f.remote())

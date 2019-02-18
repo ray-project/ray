@@ -86,13 +86,13 @@ from ray.worker import (
     remote,
     shutdown,
     wait,
-    runtime_context,
 )  # noqa: E402
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
+from ray.runtime_context import get_runtime_context  # noqa: E402
 
 # Ray version string.
 __version__ = "0.7.0.dev0"
@@ -121,9 +121,9 @@ __all__ = [
     "put",
     "register_custom_serializer",
     "remote",
+    "get_runtime_context",
     "shutdown",
     "wait",
-    "runtime_context",
 ]
 
 # ID types

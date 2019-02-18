@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray.worker
+
 
 class RuntimeContext(object):
     """A class used for getting runtime context."""
@@ -19,3 +21,14 @@ class RuntimeContext(object):
         """
         assert self.worker is not None
         return self.worker.task_driver_id
+
+
+_runtime_context = None
+
+
+def get_runtime_context():
+    global _runtime_context
+    if _runtime_context is None:
+        _runtime_context = RuntimeContext(ray.worker.get_global_worker())
+
+    return _runtime_context
