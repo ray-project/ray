@@ -261,14 +261,11 @@ class NodeStats(threading.Thread):
             }
 
     def run(self):
-        p = self.redis_client.pubsub()
+        p = self.redis_client.pubsub(ignore_subscribe_messages=True)
         p.psubscribe(self.redis_key)
         logger.info("NodeStats: subscribed to {}".format(self.redis_key))
 
         for x in p.listen():
-            if x["type"] != "pmessage":
-                continue
-
             try:
                 D = json.loads(x["data"])
                 with self._node_stats_lock:
