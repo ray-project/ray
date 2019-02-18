@@ -2593,12 +2593,12 @@ def test_specific_driver_id():
     ray.init(num_cpus=1, driver_id=dummy_driver_id)
 
     # in driver
-    assert dummy_driver_id == ray.get_runtime_context().current_driver_id
+    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
 
     # in worker
     @ray.remote
     def f():
-        return ray.get_runtime_context().current_driver_id
+        return ray._get_runtime_context().current_driver_id
 
     assert dummy_driver_id == ray.get(f.remote())
 

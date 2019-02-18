@@ -26,7 +26,7 @@ class RuntimeContext(object):
 _runtime_context = None
 
 
-def get_runtime_context():
+def _get_runtime_context():
     global _runtime_context
     if _runtime_context is None:
         _runtime_context = RuntimeContext(ray.worker.get_global_worker())

@@ -92,7 +92,7 @@ import ray.internal  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
-from ray.runtime_context import get_runtime_context  # noqa: E402
+from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
 __version__ = "0.7.0.dev0"
@@ -111,7 +111,7 @@ __all__ = [
     "get",
     "get_gpu_ids",
     "get_resource_ids",
-    "get_runtime_context",
+    "_get_runtime_context",
     "get_webui_url",
     "global_state",
     "init",
