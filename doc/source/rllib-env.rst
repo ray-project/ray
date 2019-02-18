@@ -64,6 +64,10 @@ You can also register a custom env creator function with a string name. This fun
 
 For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__.
 
+.. warning::
+
+   Please do **not** try to use gym registration to register custom environments. The gym registry is not compatible with Ray. Instead, always use the registration flows documented above.
+
 Configuring Environments
 ------------------------
 
