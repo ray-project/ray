@@ -4,13 +4,13 @@ from __future__ import print_function
 
 import argparse
 import logging
+import json
 import os
 import traceback
 import time
 import datetime
 from socket import AddressFamily
 
-import simplejson
 import psutil
 
 import ray.ray_constants as ray_constants
