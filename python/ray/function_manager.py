@@ -449,17 +449,13 @@ class FunctionActorManager(object):
         if self._worker.load_code_from_local:
             # For local code driver id is not necessary.
             driver_id = ray.DriverID.nil()
-            try:
-                if len(function_descriptor.class_name) == 0:
-                    # This is a normal remote function.
-                    self._load_function_from_local(function_descriptor)
-                    self._num_task_executions[driver_id][function_id] = 0
+            if len(function_descriptor.class_name) == 0:
+                # This is a normal remote function.
+                self._load_function_from_local(function_descriptor)
+                self._num_task_executions[driver_id][function_id] = 0
+            else:
                 # For actor, it should be loaded before this function.
                 return self._function_execution_info[driver_id][function_id]
-            except AttributeError as e:
-                logger.warning("Cannot find function {} in local files,"
-                               " with message: {} turn to GCS".format(
-                                   function_descriptor.function_name, e))
 
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
@@ -478,12 +474,10 @@ class FunctionActorManager(object):
         return info
 
     def _load_function_from_local(self, function_descriptor):
-        print("_load_function_from_local: %s" % function_descriptor)
         driver_id = ray.DriverID.nil()
         function_id = function_descriptor.function_id
         if (driver_id in self._function_execution_info
                 and function_id in self._function_execution_info[function_id]):
-            print("skip _load_function_from_local: %s" % function_descriptor)
             return
         module_name, function_name, class_name = (
             function_descriptor.module_name,
