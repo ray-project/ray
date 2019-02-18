@@ -1,8 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-"""Exapmle of using custom_loss() with an imitation learning loss.
+"""Example of using custom_loss() with an imitation learning loss.
 
 The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
@@ -20,14 +19,17 @@ import tensorflow as tf
 
 import ray
 from ray.tune import run_experiments
-from ray.rllib.models import (
-    Categorical, FullyConnectedNetwork, Model, ModelCatalog)
+from ray.rllib.models import (Categorical, FullyConnectedNetwork, Model,
+                              ModelCatalog)
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.offline import JsonReader
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--iters", type=int, default=200)
 parser.add_argument(
-    "--input-files", type=str, default=os.path.join(
+    "--input-files",
+    type=str,
+    default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "../test/data/cartpole_small"))
 
@@ -37,8 +39,8 @@ class CustomLossModel(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         self.obs_in = input_dict["obs"]
-        self.fcnet = FullyConnectedNetwork(
-            input_dict, self.obs_space, num_outputs, options)
+        self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
+                                           num_outputs, options)
         return self.fcnet.outputs, self.fcnet.last_layer
 
     def custom_loss(self, policy_loss):
@@ -50,9 +52,9 @@ class CustomLossModel(Model):
         with tf.variable_scope(
                 self.scope, reuse=tf.AUTO_REUSE, auxiliary_name_scope=False):
             logits, _ = self._build_layers_v2(
-                restore_original_dimensions(
-                    {"obs": input_ops["obs"]}, self.obs_space),
-                    self.num_outputs, self.options)
+                restore_original_dimensions({
+                    "obs": input_ops["obs"]
+                }, self.obs_space), self.num_outputs, self.options)
 
         # You can also add self-supervised losses easily by referencing tensors
         # created during _build_layers_v2(). For example, an autoencoder-style
@@ -82,6 +84,9 @@ if __name__ == "__main__":
         "custom_loss": {
             "run": "PG",
             "env": "CartPole-v0",
+            "stop": {
+                "training_iteration": args.iters,
+            },
             "config": {
                 "num_workers": 0,
                 "model": {

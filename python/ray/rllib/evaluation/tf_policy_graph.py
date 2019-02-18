@@ -416,9 +416,8 @@ class TFPolicyGraph(PolicyGraph):
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()
         if self._stats_fetches:
-            fetches["stats"] = dict(
-                self._stats_fetches,
-                **fetches.get("stats", {}))
+            fetches["stats"] = dict(self._stats_fetches,
+                                    **fetches.get("stats", {}))
         return fetches
 
     def _get_loss_inputs_dict(self, batch):

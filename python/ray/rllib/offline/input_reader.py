@@ -3,9 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import numpy as np
 import tensorflow as tf
 import threading
 
+from ray.rllib.evaluation.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -51,12 +53,11 @@ class InputReader(object):
             ...                 self.num_outputs, self.options)
             ...         il_loss = imitation_loss(logits, input_ops["action"])
             ...         return policy_loss + il_loss
-            
+
         You can find a runnable version of this in examples/custom_loss.py.
-        
+
         Returns:
-            dict of Tensors (single-agent), or dict keyed by policy ids of
-            these Tensors (multi-agent mode).
+            dict of Tensors, one for each column of the read SampleBatch.
         """
 
         if hasattr(self, "_queue_runner"):
@@ -66,11 +67,17 @@ class InputReader(object):
 
         logger.info("Reading initial batch of data from input reader.")
         batch = self.next()
-#        keys = sorted(list(batch.keys()))
-        keys = ["obs", "actions"]
+        if isinstance(batch, MultiAgentBatch):
+            raise NotImplementedError(
+                "tf_input_ops() is not implemented for multi agent batches")
+
+        keys = [
+            k for k in sorted(list(batch.keys()))
+            if np.issubdtype(batch[k].dtype, np.number)
+        ]
         dtypes = [batch[k].dtype for k in keys]
         shapes = {
-            k: (-1,) + s[1:]
+            k: (-1, ) + s[1:]
             for (k, s) in [(k, batch[k].shape) for k in keys]
         }
         queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
@@ -81,14 +88,13 @@ class InputReader(object):
         self._queue_runner.enqueue(batch)
         self._queue_runner.start()
 
-        out = {
-            k: tf.reshape(t, shapes[k])
-            for k, t in tensors.items()
-        }
+        out = {k: tf.reshape(t, shapes[k]) for k, t in tensors.items()}
         return out
 
 
 class _QueueRunner(threading.Thread):
+    """Thread that feeds a TF queue from a InputReader."""
+
     def __init__(self, input_reader, queue, keys, dtypes):
         threading.Thread.__init__(self)
         self.sess = tf.get_default_session()
@@ -97,15 +103,15 @@ class _QueueRunner(threading.Thread):
         self.keys = keys
         self.queue = queue
         self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
-        self.enqueue_op = queue.enqueue({
-            k: ph for k, ph in zip(keys, self.placeholders)
-        })
+        self.enqueue_op = queue.enqueue(
+            {k: ph
+             for k, ph in zip(keys, self.placeholders)})
 
     def enqueue(self, batch):
         data = {
-                self.placeholders[i]: batch[self.keys[i]]
-                for i in range(len(self.keys))
-            }
+            self.placeholders[i]: batch[self.keys[i]]
+            for i in range(len(self.keys))
+        }
         self.sess.run(self.enqueue_op, feed_dict=data)
 
     def run(self):
@@ -113,5 +119,5 @@ class _QueueRunner(threading.Thread):
             try:
                 batch = self.input_reader.next()
                 self.enqueue(batch)
-            except:
+            except Exception:
                 logger.exception("Error reading from input")

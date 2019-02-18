@@ -153,7 +153,7 @@ class Model(object):
         this model's layers).
 
         You can find an runnable example in examples/custom_loss.py.
-        
+
         Arguments:
             policy_loss (Tensor): scalar policy loss from the policy graph.
 
