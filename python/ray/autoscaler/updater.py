@@ -206,12 +206,9 @@ class NodeUpdater(object):
             m = "{}: Synced {} to {}".format(self.node_id, local_path,
                                              remote_path)
             with LogTimer("NodeUpdater {}".format(m)):
-                self.ssh_cmd(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    redirect=open("/dev/null", "w"),
-                )
-                self.rsync_up(
-                    local_path, remote_path, redirect=open("/dev/null", "w"))
+                self.ssh_cmd("mkdir -p {}".format(
+                    os.path.dirname(remote_path)))
+                self.rsync_up(local_path, remote_path)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
@@ -220,12 +217,12 @@ class NodeUpdater(object):
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.initialization_commands:
-                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.setup_commands:
-                self.ssh_cmd(cmd, redirect=open("/dev/null", "w"))
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         self.set_ssh_ip_if_required()
