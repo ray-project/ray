@@ -10,6 +10,7 @@ import os
 import traceback
 
 import ray.ray_constants as ray_constants
+import ray.services as services
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -67,7 +68,7 @@ class LogMonitor(object):
 
     def __init__(self, logs_dir, redis_address, redis_password=None):
         """Initialize the log monitor object."""
-        self.host = os.uname()[1]
+        self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
@@ -192,7 +193,7 @@ class LogMonitor(object):
                 self.redis_client.publish(
                     ray.gcs_utils.LOG_FILE_CHANNEL,
                     json.dumps({
-                        "host": self.host,
+                        "ip": self.ip,
                         "pid": file_info.worker_pid,
                         "lines": lines_to_publish
                     }))

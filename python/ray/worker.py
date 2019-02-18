@@ -1588,7 +1588,7 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
-    localhost = os.uname()[1]
+    localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
         # received with no break in between. If this number grows continually,
@@ -1609,16 +1609,16 @@ def print_logs(redis_client, threads_stopped):
 
             # strip messages from localhost
             data = json.loads(ray.utils.decode(msg["data"]))
-            if data["host"] == localhost:
+            if data["ip"] == localhost:
                 for line in data["lines"]:
                     print("{}{}(pid={}){} {}".format(
                         colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
                         colorama.Style.RESET_ALL, line))
             else:
                 for line in data["lines"]:
-                    print("{}{}(pid={}, host={}){} {}".format(
+                    print("{}{}(pid={}, ip={}){} {}".format(
                         colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
-                        data["host"], colorama.Style.RESET_ALL, line))
+                        data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
                     and num_consecutive_messages_received > 0):
