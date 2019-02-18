@@ -5,7 +5,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 
-from ray.rllib.models.model import _restore_original_dimensions
+from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.utils.annotations import PublicAPI
 
 
@@ -31,7 +31,7 @@ class TorchModel(nn.Module):
     def forward(self, input_dict, hidden_state):
         """Wraps _forward() to unpack flattened Dict and Tuple observations."""
         input_dict["obs"] = input_dict["obs"].float()  # TODO(ekl): avoid cast
-        input_dict = _restore_original_dimensions(
+        input_dict = restore_original_dimensions(
             input_dict, self.obs_space, tensorlib=torch)
         outputs, features, vf, h = self._forward(input_dict, hidden_state)
         return outputs, features, vf, h

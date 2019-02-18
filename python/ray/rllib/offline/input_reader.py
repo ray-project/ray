@@ -3,9 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import tensorflow as tf
 import threading
 
 from ray.rllib.utils.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,12 +25,19 @@ class InputReader(object):
         raise NotImplementedError
 
     @PublicAPI
-    def tf_input_ops(self, queue_size=1):
+    def tf_input_ops(self, queue_size=1, dequeue_n=1):
         """Returns TensorFlow queue ops for reading inputs from this reader.
 
         The main use of these ops is for integration into custom model losses.
         For example, you can use tf_input_ops() to read from files of external
         experiences to add an imitation learning loss to your model.
+
+        This method creates a queue runner thread that will call next() on this
+        reader repeatedly to feed the TensorFlow queue.
+
+        Arguments:
+            queue_size (int): Max elements to allow in the TF queue.
+            dequeue_n (int): `n` to pass to tf.io.QueueBase.dequeue_many().
 
         Example:
             >>> class MyModel(rllib.model.Model):
@@ -37,13 +46,13 @@ class InputReader(object):
             ...         input_ops = reader.tf_input_ops()
             ...         self.scope.reuse_variables()
             ...         logits, _ = self._build_layers_v2(
-            ...             _restore_original_dimensions(
+            ...             restore_original_dimensions(
             ...                 {"obs": input_ops["obs"]}, self.obs_space),
             ...                 self.num_outputs, self.options)
             ...         il_loss = imitation_loss(logits, input_ops["action"])
             ...         return policy_loss + il_loss
             
-        You can find a runnable version of this in examples/supervised_loss.py.
+        You can find a runnable version of this in examples/custom_loss.py.
         
         Returns:
             dict of Tensors (single-agent), or dict keyed by policy ids of
@@ -54,37 +63,55 @@ class InputReader(object):
             raise ValueError(
                 "A queue runner already exists for this input reader. "
                 "You can only call tf_input_ops() once per reader.")
+
+        logger.info("Reading initial batch of data from input reader.")
         batch = self.next()
-        keys = sorted(list(batch.keys()))
+#        keys = sorted(list(batch.keys()))
+        keys = ["obs", "actions"]
         dtypes = [batch[k].dtype for k in keys]
+        shapes = {
+            k: (-1,) + s[1:]
+            for (k, s) in [(k, batch[k].shape) for k in keys]
+        }
         queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
         tensors = queue.dequeue()
+
+        logger.info("Creating TF queue runner for {}".format(self))
         self._queue_runner = _QueueRunner(self, queue, keys, dtypes)
+        self._queue_runner.enqueue(batch)
         self._queue_runner.start()
-        return {
-            k: tensors[i] for i, k in enumerate(keys)
+
+        out = {
+            k: tf.reshape(t, shapes[k])
+            for k, t in tensors.items()
         }
+        return out
 
 
 class _QueueRunner(threading.Thread):
-    def __init__(self, input_reader, queue, keys, dtypes)
+    def __init__(self, input_reader, queue, keys, dtypes):
         threading.Thread.__init__(self)
         self.sess = tf.get_default_session()
         self.daemon = True
         self.input_reader = input_reader
         self.keys = keys
         self.queue = queue
-        self.placeholders = [tf.Placeholder(dtype) for dtype in dtypes]
-        self.enqueue_op = queue.enqueue(self.placeholders)
+        self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
+        self.enqueue_op = queue.enqueue({
+            k: ph for k, ph in zip(keys, self.placeholders)
+        })
+
+    def enqueue(self, batch):
+        data = {
+                self.placeholders[i]: batch[self.keys[i]]
+                for i in range(len(self.keys))
+            }
+        self.sess.run(self.enqueue_op, feed_dict=data)
 
     def run(self):
         while True:
             try:
                 batch = self.input_reader.next()
-                self.sess.run(
-                    self.enqueue_op, feed_dict={
-                        self.placeholders[i]: batch[keys[i]]
-                        for i in range(self.keys)
-                    })
+                self.enqueue(batch)
             except:
                 logger.exception("Error reading from input")

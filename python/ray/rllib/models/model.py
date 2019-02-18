@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 
 
 @PublicAPI
@@ -75,7 +75,7 @@ class Model(object):
             num_outputs = num_outputs // 2
         try:
             self.outputs, self.last_layer = self._build_layers_v2(
-                _restore_original_dimensions(input_dict, obs_space),
+                restore_original_dimensions(input_dict, obs_space),
                 num_outputs, options)
         except NotImplementedError:
             self.outputs, self.last_layer = self._build_layers(
@@ -152,7 +152,7 @@ class Model(object):
         supervised losses (by defining losses over a variable-sharing copy of
         this model's layers).
 
-        You can find an runnable example in examples/supervised_loss.py.
+        You can find an runnable example in examples/custom_loss.py.
         
         Arguments:
             policy_loss (Tensor): scalar policy loss from the policy graph.
@@ -164,6 +164,9 @@ class Model(object):
             raise DeprecationWarning(
                 "self.loss() is deprecated, use self.custom_loss() instead.")
         return policy_loss
+
+    def custom_stats(self):
+        return {}
 
     def loss(self):
         """Deprecated: use self.custom_loss()."""
@@ -183,7 +186,15 @@ class Model(object):
                         self._num_outputs, shape))
 
 
-def _restore_original_dimensions(input_dict, obs_space, tensorlib=tf):
+@DeveloperAPI
+def restore_original_dimensions(input_dict, obs_space, tensorlib=tf):
+    """Unpacks Dict and Tuple space observations into their original form.
+
+    This is needed since we flatten Dict and Tuple observations in transit.
+    Before sending them to the model though, we should unflatten them into
+    Dicts or Tuples of tensors.
+    """
+
     if hasattr(obs_space, "original_space"):
         return dict(
             input_dict,
