@@ -12,10 +12,15 @@ from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.utils import binary_to_hex, hex_to_binary
 
+from sys import version as python_version
+from cgi import parse_header, parse_multipart
+
 if sys.version_info[0] == 2:
+    from urlparse import parse_qs
     from SimpleHTTPServer import SimpleHTTPRequestHandler
     from SocketServer import TCPServer as HTTPServer
 elif sys.version_info[0] == 3:
+    from urllib.parse import parse_qs
     from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
@@ -27,6 +32,7 @@ except ImportError:
     logger.exception("Couldn't import `requests` library. "
                      "Be sure to install it on the client side.")
 
+import pdb
 
 def load_trial_info(trial_info):
     trial_info["config"] = cloudpickle.loads(
@@ -51,38 +57,65 @@ class TuneClient(object):
 
     def get_all_trials(self):
         """Returns a list of all trials (trial_id, config, status)."""
-        return self._get_response({"command": TuneClient.GET_LIST})
+        response = requests.get(self._path + "/trials")
+        parsed = response.json()
+
+        if "trial" in parsed:
+            load_trial_info(parsed["trial"])
+        elif "trials" in parsed:
+            for trial_info in parsed["trials"]:
+                load_trial_info(trial_info)
+
+        return parsed
 
     def get_trial(self, trial_id):
         """Returns the last result for queried trial."""
-        return self._get_response({
-            "command": TuneClient.GET_TRIAL,
-            "trial_id": trial_id
-        })
+        response = requests.get(self._path + "/trials/{}".format(trial_id))
+        parsed = response.json()
+
+        if "trial" in parsed:
+            load_trial_info(parsed["trial"])
+        elif "trials" in parsed:
+            for trial_info in parsed["trials"]:
+                load_trial_info(trial_info)
+
+        return parsed
 
     def add_trial(self, name, trial_spec):
         """Adds a trial of `name` with configurations."""
-        # TODO(rliaw): have better way of specifying a new trial
-        return self._get_response({
-            "command": TuneClient.ADD,
+        response = requests.post(self._path + "/trials", data=json.dumps({
             "name": name,
             "spec": trial_spec
-        })
+        }).encode())
+        parsed = response.json()
+
+        if "trial" in parsed:
+            load_trial_info(parsed["trial"])
+        elif "trials" in parsed:
+            for trial_info in parsed["trials"]:
+                load_trial_info(trial_info)
+
+        return parsed
 
     def stop_trial(self, trial_id):
         """Requests to stop trial."""
-        return self._get_response({
-            "command": TuneClient.STOP,
-            "trial_id": trial_id
-        })
-
-    def _get_response(self, data):
-        payload = json.dumps(data).encode()
-        response = requests.get(self._path, data=payload)
+        response = requests.put(self._path + "/trials/{}".format(trial_id))
         parsed = response.json()
 
-        if "trial_info" in parsed:
-            load_trial_info(parsed["trial_info"])
+        if "trial" in parsed:
+            load_trial_info(parsed["trial"])
+        elif "trials" in parsed:
+            for trial_info in parsed["trials"]:
+                load_trial_info(trial_info)
+
+        return parsed
+
+    def _get_response(self, path, data=None):
+        response = requests.get(path, data=json.dumps(data).encode()) if data else requests.get(path)
+        parsed = response.json()
+
+        if "trial" in parsed:
+            load_trial_info(parsed["trial"])
         elif "trials" in parsed:
             for trial_info in parsed["trials"]:
                 load_trial_info(trial_info)
@@ -92,18 +125,89 @@ class TuneClient(object):
 
 def RunnerHandler(runner):
     class Handler(SimpleHTTPRequestHandler):
+        # Send HTTP Response header, using response code and headers (tuples)
+        def _do_header(self, 
+                       response_code=200, 
+                       headers=[('Content-type', 'application/json')]):
+            self.send_response(response_code)
+            for h in headers:
+                self.send_header(h[0], h[1])
+            self.end_headers()
+
+        def do_HEAD(self):
+            self._do_header()
+
+        # GET trial(s) information
         def do_GET(self):
+            response_code = 200
+            resource, message = {}, ""
+            try:
+                result = self._get_trial_by_uri(self.path)
+                if result:
+                    if isinstance(result, list):
+                        resource["trials"] = [self.trial_info(t) for t in result]
+                    else:
+                        resource["trial"] = self.trial_info(result)
+            except TuneError as e:
+                response_code = 404
+                message = str(e)
+
+            self._do_header(response_code=response_code)
+            if response_code == 200:
+                self.wfile.write(json.dumps(resource).encode())
+            else:
+                self.wfile.write(message.encode())
+
+        # STOP trial(s)
+        def do_PUT(self):
+            response_code = 200
+            resource, message = {}, ""
+            try:
+                result = self._get_trial_by_uri(self.path)
+                if result:
+                    if isinstance(result, list):
+                        resource["trials"] = [self.trial_info(t) for t in result]
+                        for t in result:
+                            runner.request_stop_trial(t)
+                    else:
+                        resource["trial"] = self.trial_info(result)
+                        runner.request_stop_trial(result)
+            except TuneError as e:
+                response_code = 404
+                message = str(e)
+
+            self._do_header(response_code=response_code)
+            if response_code == 200:
+                self.wfile.write(json.dumps(resource).encode())
+            else:
+                self.wfile.write(message.encode())
+
+        """def parse_POST(self):
+            ctype, pdict = parse_header(self.headers['content-type'])
+            if ctype == 'multipart/form-data':
+                postvars = parse_multipart(self.rfile, pdict)
+            elif ctype == 'application/x-www-form-urlencoded':
+                length = int(self.headers['content-length'])
+                postvars = parse_qs(
+                        self.rfile.read(length), 
+                        keep_blank_values=1)
+            else:
+                postvars = {}
+            return postvars"""
+        
+        # ADD trial
+        def do_POST(self):
+            response_code = 201
+
             content_len = int(self.headers.get('Content-Length'), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
-            status, response = self.execute_command(parsed_input)
-            if status:
-                self.send_response(200)
-            else:
-                self.send_response(400)
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode())
+            resource = self._add_trials(parsed_input["name"], parsed_input["spec"])
 
+            self._do_header(response_code=response_code, headers=[('Content-type', 'application/json'), ('Location', '/trials/')])
+            self.wfile.write(json.dumps(resource).encode())
+
+        # Representation of trial information
         def trial_info(self, trial):
             if trial.last_result:
                 result = trial.last_result.copy()
@@ -117,44 +221,45 @@ def RunnerHandler(runner):
                 "result": binary_to_hex(cloudpickle.dumps(result))
             }
             return info_dict
+        
+        def _get_trial_by_id(self, trial_id):
+            trial = runner.get_trial(trial_id)
+            if trial is None:
+                error = "Trial ({}) not found.".format(trial_id)
+                raise TuneManagerError(error)
+            else:
+                return trial
 
-        def execute_command(self, args):
-            def get_trial():
-                trial = runner.get_trial(args["trial_id"])
-                if trial is None:
-                    error = "Trial ({}) not found.".format(args["trial_id"])
-                    raise TuneManagerError(error)
-                else:
-                    return trial
+        def _get_trial_by_uri(self, uri):
+            from urllib.parse import urlparse, parse_qs
+            parts = urlparse(uri)
+            path, query = parts.path, parse_qs(parts.query)
+            result = None
 
-            command = args["command"]
-            response = {}
-            try:
-                if command == TuneClient.GET_LIST:
-                    response["trials"] = [
-                        self.trial_info(t) for t in runner.get_trials()
-                    ]
-                elif command == TuneClient.GET_TRIAL:
-                    trial = get_trial()
-                    response["trial_info"] = self.trial_info(trial)
-                elif command == TuneClient.STOP:
-                    trial = get_trial()
-                    runner.request_stop_trial(trial)
-                elif command == TuneClient.ADD:
-                    name = args["name"]
-                    spec = args["spec"]
-                    trial_generator = BasicVariantGenerator()
-                    trial_generator.add_configurations({name: spec})
-                    for trial in trial_generator.next_trials():
-                        runner.add_trial(trial)
-                else:
-                    raise TuneManagerError("Unknown command.")
-                status = True
-            except TuneError as e:
-                status = False
-                response["message"] = str(e)
-
-            return status, response
+            if path == "/trials":
+                # GET ALL TRIALS
+                trials = [t for t in runner.get_trials()]
+                result = trials
+            else:
+                # GET ONE TRIAL
+                trial_id = path.split("/")[-1]
+                try:
+                    trial = self._get_trial_by_id(trial_id)
+                except TuneError as e:
+                    return None
+                result = trial
+            
+            return result
+        
+        def _add_trials(self, name, spec):
+            resource = {}
+            resource["trials"] = []
+            trial_generator = BasicVariantGenerator()
+            trial_generator.add_configurations({name: spec})
+            for trial in trial_generator.next_trials():
+                runner.add_trial(trial)
+                resource["trials"].append(self.trial_info(trial))
+            return resource
 
     return Handler
 
@@ -177,3 +282,7 @@ class TuneServer(threading.Thread):
 
     def shutdown(self):
         self._server.shutdown()
+
+if __name__ == "__main__":
+    s = TuneServer(RunnerHandler(runner))
+    s.run()
