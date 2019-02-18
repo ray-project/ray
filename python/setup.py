@@ -143,7 +143,7 @@ requires = [
     "pyyaml",
     "redis",
     # The six module is required by pyarrow.
-    "six >= 1.0.0",
+    "six >= 1.12.0",
     "flatbuffers",
     "faulthandler;python_version<'3.3'",
 ]

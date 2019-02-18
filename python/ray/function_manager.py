@@ -3,9 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import hashlib
+import importlib
 import inspect
 import json
 import logging
+import six
 import sys
 import time
 import traceback
@@ -87,9 +89,9 @@ class FunctionDescriptor(object):
             return FunctionDescriptor.for_driver_task()
         elif (len(function_descriptor_list) == 3
               or len(function_descriptor_list) == 4):
-            module_name = function_descriptor_list[0].decode()
-            class_name = function_descriptor_list[1].decode()
-            function_name = function_descriptor_list[2].decode()
+            module_name = six.ensure_str(function_descriptor_list[0])
+            class_name = six.ensure_str(function_descriptor_list[1])
+            function_name = six.ensure_str(function_descriptor_list[2])
             if len(function_descriptor_list) == 4:
                 return cls(module_name, function_name, class_name,
                            function_descriptor_list[3])
@@ -289,13 +291,18 @@ class FunctionActorManager(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
+        self._loaded_actor_classes = {}
 
     def increase_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id
+        if self._worker.load_code_from_local:
+            driver_id = ray.DriverID.nil()
         self._num_task_executions[driver_id][function_id] += 1
 
     def get_task_counter(self, driver_id, function_descriptor):
         function_id = function_descriptor.function_id
+        if self._worker.load_code_from_local:
+            driver_id = ray.DriverID.nil()
         return self._num_task_executions[driver_id][function_id]
 
     def export_cached(self):
@@ -336,6 +343,8 @@ class FunctionActorManager(object):
         Args:
             remote_function: the RemoteFunction object.
         """
+        if self._worker.load_code_from_local:
+            return
         # Work around limitations of Python pickling.
         function = remote_function._function
         function_name_global_valid = function.__name__ in function.__globals__
@@ -437,6 +446,21 @@ class FunctionActorManager(object):
             A FunctionExecutionInfo object.
         """
         function_id = function_descriptor.function_id
+        print("get_execution_info load_code_from_local=", self._worker.load_code_from_local)
+        if self._worker.load_code_from_local:
+            # For local code driver id is not necessary.
+            driver_id = ray.DriverID.nil()
+            try:
+                if len(function_descriptor.class_name) == 0:
+                    # This is a normal remote function.
+                    self._load_function_from_local(function_descriptor)
+                    self._num_task_executions[driver_id][function_id] = 0
+                # For actor, it should be loaded before this function.
+                return self._function_execution_info[driver_id][function_id]
+            except AttributeError as e:
+                logger.warning("Cannot find function {} in local files,"
+                               " with message: {} turn to GCS".format(
+                                   function_descriptor.function_name, e))
 
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
@@ -452,7 +476,28 @@ class FunctionActorManager(object):
                        "driver_id: %s, function_descriptor: %s. Message: %s" %
                        (driver_id, function_descriptor, e))
             raise KeyError(message)
+        print("Finish get_execution_info2: %s" % function_descriptor)
         return info
+
+    def _load_function_from_local(self, function_descriptor):
+        print("_load_function_from_local: %s" % function_descriptor)
+        driver_id = ray.DriverID.nil()
+        function_id = function_descriptor.function_id
+        if (driver_id in self._function_execution_info
+                and function_id in self._function_execution_info[function_id]):
+            print("skip _load_function_from_local: %s" % function_descriptor)
+            return
+        module_name, function_name, class_name = (
+            function_descriptor.module_name,
+            function_descriptor.function_name,
+            function_descriptor.class_name,
+        )
+        module = importlib.import_module(module_name)
+        assert len(class_name) == 0
+        function = getattr(module, function_name)._function
+        self._function_execution_info[driver_id][function_id] = (
+            FunctionExecutionInfo(
+                function=function, function_name=function_name, max_calls=0))
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -513,6 +558,8 @@ class FunctionActorManager(object):
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_method_names):
+        if self._worker.load_code_from_local:
+            return
         function_descriptor = FunctionDescriptor.from_class(Class)
         # `task_driver_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
@@ -554,16 +601,63 @@ class FunctionActorManager(object):
             # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor(self, driver_id, function_descriptor):
-        key = (b"ActorClass:" + driver_id.binary() + b":" +
-               function_descriptor.function_id.binary())
-        # Wait for the actor class key to have been imported by the
-        # import thread. TODO(rkn): It shouldn't be possible to end
-        # up in an infinite loop here, but we should push an error to
-        # the driver if too much time is spent here.
-        while key not in self.imported_actor_classes:
-            time.sleep(0.001)
-        with self._worker.lock:
-            self.fetch_and_register_actor(key)
+        function_id = function_descriptor.function_id
+        actor_class = self._loaded_actor_classes.get(function_id, None)
+        if actor_class is None:
+            if self._worker.load_code_from_local:
+                try:
+                    print("load_actor called: %s" % (function_descriptor))
+                    cls = self._load_actor_from_local(driver_id,
+                                                      function_descriptor)
+                    print("_load_actor_from_local called: %s" % (function_descriptor))                    
+                    self._loaded_actor_classes[function_id] = cls
+                    self._worker.actor_class = cls
+                    self._worker.actor_checkpoint_interval = 0
+                    actor_id = self._worker.actor_id
+                    self._worker.actors[actor_id] = cls.__new__(cls)
+                    return
+                except AttributeError as e:
+                    logger.warning("Cannot find function {} in local files,"
+                                   " with message: {} turn to GCS".format(
+                                       function_descriptor.function_name, e))
+
+            key = (b"ActorClass:" + driver_id.binary() + b":" + function_id_bytes)
+            # Wait for the actor class key to have been imported by the
+            # import thread. TODO(rkn): It shouldn't be possible to end
+            # up in an infinite loop here, but we should push an error to
+            # the driver if too much time is spent here.
+            while key not in self.imported_actor_classes:
+                time.sleep(0.001)
+            with self._worker.lock:
+                self.fetch_and_register_actor(key)
+        else:
+            self._worker.actor_class = cls
+            self._worker.actor_checkpoint_interval = 0
+            actor_id_str = self._worker.actor_id
+            self._worker.actors[actor_id] = cls.__new__(cls)
+
+    def _load_actor_from_local(self, driver_id, function_descriptor):
+        # For local code, driver id is not necessary.
+        driver_id = ray.DriverID.nil()
+        module_name, class_name = (function_descriptor.module_name,
+                                   function_descriptor.class_name)
+        module = importlib.import_module(module_name)
+        cls = getattr(module, class_name)._modified_class
+        actor_methods = inspect.getmembers(
+            cls, predicate=is_function_or_method)
+        for actor_method_name, actor_method in actor_methods:
+            function_descriptor = FunctionDescriptor(
+                module_name, actor_method_name, class_name)
+            function_id = function_descriptor.function_id
+            executor = self._make_actor_method_executor(
+                actor_method_name, actor_method, actor_imported=True)
+            self._function_execution_info[driver_id][
+                function_id] = FunctionExecutionInfo(
+                    function=executor,
+                    function_name=actor_method_name,
+                    max_calls=0)
+            self._num_task_executions[driver_id][function_id] = 0
+        return cls
 
     def fetch_and_register_actor(self, actor_class_key):
         """Import an actor.
