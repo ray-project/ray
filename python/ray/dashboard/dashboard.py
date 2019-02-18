@@ -27,8 +27,6 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-HTTP_PORT = 8080
-
 
 def to_unix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
@@ -45,10 +43,10 @@ class Dashboard(object):
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, redis_password=None):
+    def __init__(self, redis_address, http_port, redis_password=None):
         """Initialize the dashboard object."""
         self.ip = socket.gethostbyname(socket.gethostname())
-        self.port = HTTP_PORT
+        self.port = http_port
         # 256-bit random token
         self.token = format(random.SystemRandom().getrandbits(256), 'x')
         self.node_stats = NodeStats(redis_address, redis_password)
@@ -280,6 +278,11 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
     parser.add_argument(
+        "--http-port",
+        required=True,
+        type=int,
+        help="The port to use for the HTTP server.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -307,7 +310,10 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     dashboard = Dashboard(
-        args.redis_address, redis_password=args.redis_password)
+        args.redis_address,
+        args.http_port,
+        redis_password=args.redis_password,
+    )
 
     try:
         dashboard.run()

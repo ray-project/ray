@@ -877,11 +877,22 @@ def start_dashboard(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
+    port = 8080
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
+
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
         sys.executable, "-u", dashboard_filepath,
-        "--redis-address={}".format(redis_address)
+        "--redis-address={}".format(redis_address),
+        "--http-port={}".format(port),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
