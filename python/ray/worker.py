@@ -1083,7 +1083,6 @@ per worker process.
 
 global_state = state.GlobalState()
 
-
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
