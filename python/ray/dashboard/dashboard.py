@@ -107,7 +107,7 @@ class Dashboard(object):
             except KeyError:
                 return forbidden()
 
-            if path not in ["main.css", "main.js"]:
+            if path not in ["main.css", "main.js", "vue.js", "vue.min.js"]:
                 return forbidden()
 
             return aiohttp.web.FileResponse(os.path.join(
