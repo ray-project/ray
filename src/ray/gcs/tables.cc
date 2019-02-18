@@ -181,10 +181,10 @@ void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
   for (const auto &id : ids) {
     sharded_data[GetRedisContext(id).get()] << id.binary();
   }
+  // Breaking really large deletion commands into batches of size 1000.
   const size_t batch_size = 1000 * kUniqueIDSize;
   for (const auto &pair : sharded_data) {
     std::string current_data = pair.second.str();
-    // Make sure the sending buffer is not too big.
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
       RAY_IGNORE_EXPR(pair.first->RunAsync(
           "RAY.TABLE_DELETE", UniqueID::nil(),

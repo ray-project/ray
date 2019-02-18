@@ -515,7 +515,6 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     return Status::RedisError("Non-existing key");
   }
   auto key_type = RedisModule_KeyType(delete_key);
-  RedisModule_CloseKey(delete_key);
   if (key_type == REDISMODULE_KEYTYPE_STRING || key_type == REDISMODULE_KEYTYPE_LIST) {
     // Current Table or Log only has this two types of entries.
     RAY_RETURN_NOT_OK(
@@ -528,13 +527,13 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     auto id_binary = std::string(redis_string_str, redis_string_size);
     ostream << "Undesired type for RAY.TableDelete: " << key_type
             << " id:" << ray::UniqueID::from_binary(id_binary);
-    RAY_LOG(ERROR) << ostream.str().c_str();
+    RAY_LOG(ERROR) << ostream.str();
     return Status::RedisError(ostream.str());
   }
   return Status::OK();
 }
 
-/// Delete the redis table associated with a list of keys in batch mode.
+/// Delete a list of redis keys in batch mode.
 ///
 /// This is called from a client with the command:
 //
@@ -544,7 +543,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
 /// \param pubsub_channel Unused but follow the interface.
 /// \param id This id will be ignored but follow the interface.
 /// \param data The list of Unique Ids, kUniqueIDSize bytes for each.
-/// \return Always return OK, empty key will be ignored.
+/// \return Always return OK unless the arguments are invalid.
 int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
@@ -555,6 +554,9 @@ int TableDelete_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   size_t len = 0;
   const char *data_ptr = nullptr;
   data_ptr = RedisModule_StringPtrLen(data, &len);
+  REPLY_AND_RETURN_IF_FALSE(
+      len % kUniqueIDSize == 0,
+      "deletion data lenghth should be multiples of UniqueID for TABLE_DELETE");
   size_t ids_to_delete = len / kUniqueIDSize;
   for (size_t i = 0; i < ids_to_delete; ++i) {
     RedisModuleString *id_data =
