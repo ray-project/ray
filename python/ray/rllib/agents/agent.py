@@ -679,3 +679,7 @@ def _register_if_needed(env_object):
         name = env_object.__name__
         register_env(name, lambda config: env_object(config))
         return name
+    raise ValueError(
+        "{} is an invalid env specification. ".format(env_object) +
+        "You can specify a custom env as either a class (e.g., YourEnvCls) "
+        "or a registered env id (e.g., \"your_env\").")

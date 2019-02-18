@@ -8,10 +8,12 @@ import pickle
 import tensorflow as tf
 
 import ray
-from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.sample_batch import MultiAgentBatch, \
     DEFAULT_POLICY_ID
@@ -222,7 +224,7 @@ class PolicyEvaluator(EvaluatorInterface):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
 
-        self.env = env_creator(env_context)
+        self.env = _validate_env(env_creator(env_context))
         if isinstance(self.env, MultiAgentEnv) or \
                 isinstance(self.env, BaseEnv):
 
@@ -699,6 +701,17 @@ def _validate_and_canonicalize(policy_graph, env):
             DEFAULT_POLICY_ID: (policy_graph, env.observation_space,
                                 env.action_space, {})
         }
+
+
+def _validate_env(env):
+    if type(env) not in [
+            gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv
+    ]:
+        raise ValueError(
+            "Returned env must be an instance of gym.Env, MultiAgentEnv, "
+            "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
+            "function returned {} ({}).".format(env, type(env)))
+    return env
 
 
 def _monitor(env, path):
