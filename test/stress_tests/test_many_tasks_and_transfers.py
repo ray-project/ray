@@ -10,6 +10,7 @@ import time
 
 import ray
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 ray.init(redis_address="localhost:6379")
