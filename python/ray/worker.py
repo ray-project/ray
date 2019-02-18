@@ -65,7 +65,6 @@ from ray.utils import (
     setup_logger,
     thread_safe_client,
 )
-from ray.runtime_context import RuntimeContext
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
