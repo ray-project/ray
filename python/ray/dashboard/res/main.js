@@ -12,43 +12,44 @@ let dashboard = new Vue({
     },
     methods: {
         updateNodeInfo() {
-            axios.get("/api/node_info").then(function (resp) {
-                setTimeout(dashboard.updateNodeInfo, 500);
-
-                dashboard.error = resp.data.error;
-                dashboard.last_update = resp.data.timestamp;
-                if (resp.data.error) {
+            fetch("/api/node_info").then(function (resp) {
+                return resp.json();
+            }).then(function(data) {
+                dashboard.error = data.error;
+                dashboard.last_update = data.timestamp;
+                if (data.error) {
                     dashboard.clients = undefined;
                     dashboard.tasks = undefined;
                     dashboard.totals = undefined;
                     return;
                 }
-                dashboard.clients = resp.data.result.clients;
-                dashboard.tasks = resp.data.result.tasks;
-                dashboard.totals = resp.data.result.totals;
+                dashboard.clients = data.result.clients;
+                dashboard.tasks = data.result.tasks;
+                dashboard.totals = data.result.totals;
             }).catch(function() {
-                setTimeout(dashboard.updateNodeInfo, 500);
-
                 dashboard.error = "request error"
                 dashboard.clients = undefined;
                 dashboard.tasks = undefined;
                 dashboard.totals = undefined;
+            }).finally(function() {
+                setTimeout(dashboard.updateNodeInfo, 500);
             });
         },
         updateRayConfig() {
-            axios.get("/api/ray_config").then(function (resp) {
-                setTimeout(dashboard.updateRayConfig, 10000);
-
-                if (resp.data.error) {
+            fetch("/api/ray_config").then(function (resp) {
+                return resp.json();
+            }).then(function(data) {
+                if (data.error) {
                     dashboard.ray_config = undefined;
                     return;
                 }
-                dashboard.ray_config = resp.data.result;
+                dashboard.ray_config = data.result;
             }).catch(function() {
-                setTimeout(dashboard.updateRayConfig, 10000);
-
                 dashboard.error = "request error"
                 dashboard.ray_config = undefined;
+            }).finally(function() {
+                setTimeout(dashboard.updateRayConfig, 10000);
+
             });
         },
         updateAll() {
