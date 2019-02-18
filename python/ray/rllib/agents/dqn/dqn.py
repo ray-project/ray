@@ -170,7 +170,7 @@ class DQNAgent(Agent):
         if self.config.get("parameter_noise", False):
             if self.config["callbacks"]["on_episode_start"]:
                 start_callback = self.config["callbacks"][
-                    "on_episode_start"].func
+                    "on_episode_start"]
             else:
                 start_callback = None
 
