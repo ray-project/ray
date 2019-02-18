@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 "training_iteration": args.iters,
             },
             "config": {
-                "num_workers": 2,
+                "num_workers": 0,
                 "model": {
                     "custom_model": "custom_loss",
                     "custom_options": {
