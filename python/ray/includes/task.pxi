@@ -12,7 +12,6 @@ from ray.includes.task cimport (
     SerializeTaskAsString,
 )
 
-from ray.gcs_utils import Language
 
 cdef class Task:
     cdef:
@@ -140,10 +139,11 @@ cdef class Task:
         cdef:
             CTaskSpecification *task_spec = self.task_spec.get()
             int64_t num_args = task_spec.NumArgs()
+            int32_t lang = <int32_t>task_spec.GetLanguage()
             int count
         arg_list = []
 
-        if self.language() == Language.PYTHON:
+        if lang == <int32_t>LANGUAGE_PYTHON:
             for i in range(num_args):
                 count = task_spec.ArgIdCount(i)
                 if count > 0:
@@ -153,7 +153,7 @@ cdef class Task:
                     serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
                     obj = pickle.loads(serialized_str)
                     arg_list.append(obj)
-        elif self.language() == LANGUAGE.JAVA:
+        elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]
 
         return arg_list
