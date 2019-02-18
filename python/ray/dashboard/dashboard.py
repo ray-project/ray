@@ -8,7 +8,7 @@ import datetime
 import json
 import logging
 import os
-import secrets
+import random
 import socket
 import threading
 import traceback
@@ -49,7 +49,8 @@ class Dashboard(object):
         """Initialize the dashboard object."""
         self.ip = socket.gethostbyname(socket.gethostname())
         self.port = HTTP_PORT
-        self.token = secrets.token_hex(32)  # 256-bit random token
+        # 256-bit random token
+        self.token = format(random.SystemRandom().getrandbits(256), 'x')
         self.node_stats = NodeStats(redis_address, redis_password)
 
         self.app = aiohttp.web.Application(middlewares=[self.auth_middleware])
