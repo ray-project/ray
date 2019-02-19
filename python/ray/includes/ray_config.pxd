@@ -82,4 +82,6 @@ cdef extern from "ray/ray_config.h" nogil:
 
         uint32_t num_actor_checkpoints_to_keep() const
 
+        uint32_t num_maximum_num_gcs_deletion() const
+
         void initialize(const unordered_map[c_string, int] &config_map)

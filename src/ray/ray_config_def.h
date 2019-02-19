@@ -150,3 +150,6 @@ RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000);
 /// checkpoint isn't atomic with saving the backend checkpoint, and it will break
 /// if this number is set to 1 and users save application checkpoints in place.
 RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20);
+
+/// Maximum number of ids in one batch to send to GCS to delete keys.
+RAY_CONFIG(uint32_t, num_maximum_num_gcs_deletion, 1000);
