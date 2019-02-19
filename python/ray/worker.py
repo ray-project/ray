@@ -1863,6 +1863,10 @@ def connect(info,
             # be redirected.
             os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
             os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            # We also manually set sys.stdout and sys.stderr because that seems
+            # to have an affect on the output buffering. Without doing this,
+            # stdout and stderr are heavily buffered resulting in seemingly
+            # lost logging statements.
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
