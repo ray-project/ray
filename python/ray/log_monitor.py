@@ -6,6 +6,7 @@ import argparse
 import errno
 import logging
 import os
+import time
 import traceback
 
 import colorama
@@ -159,7 +160,12 @@ class LogMonitor(object):
         self.closed_file_infos += files_with_no_updates
 
     def check_log_files_and_publish_updates(self):
-        """Get any changes to the log files and push updates to Redis."""
+        """Get any changes to the log files and push updates to Redis.
+
+        Returns:
+            True if anything was published and false otherwise.
+        """
+        anything_published = False
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
 
@@ -198,6 +204,9 @@ class LogMonitor(object):
 
                 self.redis_client.publish(ray.gcs_utils.LOG_FILE_CHANNEL,
                                           "\n".join(lines_to_publish))
+                anything_published = True
+
+        return anything_published
 
     def run(self):
         """Run the log monitor.
@@ -208,7 +217,11 @@ class LogMonitor(object):
         while True:
             self.update_log_filenames()
             self.open_closed_files()
-            self.check_log_files_and_publish_updates()
+            anything_published = self.check_log_files_and_publish_updates()
+            # If nothing was published, then wait a little bit before checking
+            # for logs to avoid using too much CPU.
+            if not anything_published:
+                time.sleep(0.05)
 
 
 if __name__ == "__main__":
