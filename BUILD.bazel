@@ -360,7 +360,7 @@ cc_binary(
         "src/ray/util/logging.h",
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
-        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"]        ,
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
@@ -368,7 +368,7 @@ cc_binary(
         "src",
         "external/bazel_tools/tools/jdk/include",
     ] + select({
-        "@bazel_tools//src/conditions:windows": ["external/bazel_tools/tools/jdk/include/windows"        ],
+        "@bazel_tools//src/conditions:windows": ["external/bazel_tools/tools/jdk/include/windows"],
         "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
