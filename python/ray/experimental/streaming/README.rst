@@ -9,6 +9,8 @@ Examples:
 
 - simple.py: A simple example with stateless operators and different parallelism per stage.
 
+Run ``python simple.py --input-file toy.txt``
+
 - wordcount.py: A streaming wordcount example with a stateful operator (rolling sum).
 
-Run ``python example_file.py --input-file toy.txt``
+Run ``python wordcount.py --titles-file articles.txt``

@@ -10,18 +10,20 @@ from ray.experimental.streaming.operator import PStrategy
 from ray.experimental.streaming.batched_queue import BatchedQueue
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logging.basicConfig(level=logging.INFO)
+
+# Forward and broadcast stream partitioning strategies
+forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
 
 
 # Used to choose output channel in case of hash-based shuffling
 def _hash(value):
     if type(value) is int:
         return value
-    return int(hashlib.sha1(value.encode("ascii")).hexdigest(), 16)
-
-
-# Forward and broadcast stream partitioning strategies
-forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
+    try:
+        return int(hashlib.sha1(value.encode("utf-8")).hexdigest(), 16)
+    except AttributeError:
+        return int(hashlib.sha1(value).hexdigest(), 16)
 
 
 # A data channel is a batched queue between two
@@ -140,9 +142,15 @@ class DataOutput(object):
     """
 
     def __init__(self, channels, partitioning_schemes):
+        self.key_selector = None
+        self.round_robin_indexes = [0]
         self.partitioning_schemes = partitioning_schemes
         # Prepare output -- collect channels by type
         self.forward_channels = []  # Forward and broadcast channels
+        slots = sum(1 for scheme in self.partitioning_schemes.values()
+                    if scheme.strategy == PStrategy.RoundRobin)
+        self.round_robin_channels = [[]] * slots  # RoundRobin channels
+        self.round_robin_indexes = [-1] * slots
         slots = sum(1 for scheme in self.partitioning_schemes.values()
                     if scheme.strategy == PStrategy.Shuffle)
         # Flag used to avoid hashing when there is no shuffling
@@ -157,8 +165,11 @@ class DataOutput(object):
         shuffle_destinations = {}
         # Distinct shuffle by key destinations
         shuffle_by_key_destinations = {}
+        # Distinct round robin destinations
+        round_robin_destinations = {}
         index_1 = 0
         index_2 = 0
+        index_3 = 0
         for channel in channels:
             p_scheme = self.partitioning_schemes[channel.dst_operator_id]
             strategy = p_scheme.strategy
@@ -176,6 +187,12 @@ class DataOutput(object):
                 self.shuffle_key_channels[pos].append(channel)
                 if pos == index_2:
                     index_2 += 1
+            elif strategy == PStrategy.RoundRobin:
+                pos = round_robin_destinations.setdefault(
+                    channel.dst_operator_id, index_3)
+                self.round_robin_channels[pos].append(channel)
+                if pos == index_3:
+                    index_3 += 1
             else:  # TODO (john): Add support for other strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
         # A KeyedDataStream can only be shuffled by key
@@ -209,6 +226,11 @@ class DataOutput(object):
                 if close is True:
                     channel.queue.put_next(None)
                 channel.queue._flush_writes()
+        for channels in self.round_robin_channels:
+            for channel in channels:
+                if close is True:
+                    channel.queue.put_next(None)
+                channel.queue._flush_writes()
         # TODO (john): Add more channel types
 
     # Returns all destination actor ids
@@ -225,6 +247,10 @@ class DataOutput(object):
             for channel in channels:
                 destinations.append((channel.dst_operator_id,
                                      channel.dst_instance_id))
+        for channels in self.round_robin_channels:
+            for channel in channels:
+                destinations.append((channel.dst_operator_id,
+                                     channel.dst_instance_id))
         # TODO (john): Add more channel types
         return destinations
 
@@ -237,6 +263,17 @@ class DataOutput(object):
             logger.debug("[writer] Push record '{}' to channel {}".format(
                 record, channel))
             channel.queue.put_next(record)
+        # Forward record
+        index = 0
+        for channels in self.round_robin_channels:
+            self.round_robin_indexes[index] += 1
+            if self.round_robin_indexes[index] == len(channels):
+                self.round_robin_indexes[index] = 0  # Reset index
+            channel = channels[self.round_robin_indexes[index]]
+            logger.debug("[writer] Push record '{}' to channel {}".format(
+                record, channel))
+            channel.queue.put_next(record)
+            index += 1
         # Hash-based shuffling by key
         if self.shuffle_key_exists:
             key, _ = record

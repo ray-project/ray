@@ -56,7 +56,8 @@ class Operator(object):
                  name="",
                  logic=None,
                  num_instances=1,
-                 other=None):
+                 other=None,
+                 state_actor=None):
         self.id = id
         self.type = type
         self.name = name
@@ -65,6 +66,7 @@ class Operator(object):
         # One partitioning strategy per downstream operator (default: forward)
         self.partitioning_strategies = {}
         self.other_args = other  # Depends on the type of the operator
+        self.state_actor = state_actor  # Actor to query state
 
     # Sets the partitioning scheme for an output stream of the operator
     def _set_partition_strategy(self,

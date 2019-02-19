@@ -12,7 +12,10 @@ from ray.experimental.streaming.batched_queue import BatchedQueue
 from ray.experimental.streaming.operator import OpType, PStrategy
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logging.basicConfig(level=logging.INFO)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input-file", required=True, help="the input text file")
 
 
 # Test functions
@@ -25,9 +28,6 @@ def filter_fn(word):
         return True
     return False
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--input-file", required=True, help="the input text file")
 
 if __name__ == "__main__":
 
@@ -49,9 +49,11 @@ if __name__ == "__main__":
                 .set_parallelism(4) \
                 .filter(filter_fn) \
                 .set_parallelism(2) \
-                .inspect(print)  # Prints the contents of the stream
-
+                .inspect(print)     # Prints the contents of the
+    # stream to stdout
     start = time.time()
-    env.execute()
+    env_handle = env.execute()
+    ray.get(env_handle)  # Stay alive until execution finishes
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
+    logger.debug("Output stream id: {}".format(stream.id))

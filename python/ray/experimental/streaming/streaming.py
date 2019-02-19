@@ -8,7 +8,6 @@ import uuid
 
 import networkx as nx
 
-import ray
 from ray.experimental.streaming.communication import DataChannel, DataInput
 from ray.experimental.streaming.communication import DataOutput, QueueConfig
 from ray.experimental.streaming.operator import Operator, OpType
@@ -31,7 +30,8 @@ def _sum(value_1, value_2):
 
 # Partitioning strategies that require all-to-all instance communication
 all_to_all_strategies = [
-    PStrategy.Shuffle, PStrategy.ShuffleByKey, PStrategy.Broadcast
+    PStrategy.Shuffle, PStrategy.ShuffleByKey, PStrategy.Broadcast,
+    PStrategy.RoundRobin
 ]
 
 
@@ -112,43 +112,57 @@ class Environment(object):
         if operator.type == OpType.Source:
             source = operator_instance.Source.remote(actor_id, operator, input,
                                                      output)
+            source.register_handle.remote(source)
             return source.start.remote()
         elif operator.type == OpType.Map:
             map = operator_instance.Map.remote(actor_id, operator, input,
                                                output)
+            map.register_handle.remote(map)
             return map.start.remote()
         elif operator.type == OpType.FlatMap:
             flatmap = operator_instance.FlatMap.remote(actor_id, operator,
                                                        input, output)
+            flatmap.register_handle.remote(flatmap)
             return flatmap.start.remote()
         elif operator.type == OpType.Filter:
             filter = operator_instance.Filter.remote(actor_id, operator, input,
                                                      output)
+            filter.register_handle.remote(filter)
             return filter.start.remote()
         elif operator.type == OpType.Reduce:
             reduce = operator_instance.Reduce.remote(actor_id, operator, input,
                                                      output)
+            reduce.register_handle.remote(reduce)
             return reduce.start.remote()
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
             keyby = operator_instance.KeyBy.remote(actor_id, operator, input,
                                                    output)
+            keyby.register_handle.remote(keyby)
             return keyby.start.remote()
         elif operator.type == OpType.Sum:
             sum = operator_instance.Reduce.remote(actor_id, operator, input,
                                                   output)
+            # Register target handle at state actor
+            state_actor = operator.state_actor
+            if state_actor is not None:
+                state_actor.register_target.remote(sum)
+            # Register own handle
+            sum.register_handle.remote(sum)
             return sum.start.remote()
         elif operator.type == OpType.Sink:
             pass
         elif operator.type == OpType.Inspect:
             inspect = operator_instance.Inspect.remote(actor_id, operator,
                                                        input, output)
+            inspect.register_handle.remote(inspect)
             return inspect.start.remote()
         elif operator.type == OpType.ReadTextFile:
             # TODO (john): Colocate the source with the input file
             read = operator_instance.ReadTextFile.remote(
                 actor_id, operator, input, output)
+            read.register_handle.remote(read)
             return read.start.remote()
         else:  # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(
@@ -314,9 +328,8 @@ class Environment(object):
             if handles:
                 self.actor_handles.extend(handles)
             upstream_channels.update(downstream_channels)
-        logger.info("Running...")
-        ray.get(self.actor_handles)  # Wait until everybody returns
-        logger.info("Done.")
+        logger.debug("Running...")
+        return self.actor_handles
 
     # Prints the logical dataflow graph
     def print_logical_graph(self):
@@ -537,9 +550,7 @@ class DataStream(object):
 
     # Registers keyBy operator to the environment
     # TODO (john): This should returned a KeyedDataStream
-    # TODO (john): Make key extraction more general by providing
-    # a key selector function
-    def key_by(self, key_attribute_index):
+    def key_by(self, key_selector):
         """Applies a key_by operator to the stream.
 
         Attributes:
@@ -550,12 +561,28 @@ class DataStream(object):
             _generate_uuid(),
             OpType.KeyBy,
             "KeyBy",
-            other=key_attribute_index,
+            other=key_selector,
+            num_instances=self.env.config.parallelism)
+        return self.__register(op)
+
+    # Registers Reduce operator to the environment
+    def reduce(self, reduce_fn):
+        """Applies a rolling sum operator to the stream.
+
+        Attributes:
+             sum_attribute_index (int): The index of the attribute to sum
+             (assuming tuple records).
+        """
+        op = Operator(
+            _generate_uuid(),
+            OpType.Reduce,
+            "Sum",
+            reduce_fn,
             num_instances=self.env.config.parallelism)
         return self.__register(op)
 
     # Registers Sum operator to the environment
-    def sum(self, sum_attribute_index):
+    def sum(self, attribute_selector, state_keeper=None):
         """Applies a rolling sum operator to the stream.
 
         Attributes:
@@ -567,7 +594,8 @@ class DataStream(object):
             OpType.Sum,
             "Sum",
             _sum,
-            other=sum_attribute_index,
+            other=attribute_selector,
+            state_actor=state_keeper,
             num_instances=self.env.config.parallelism)
         return self.__register(op)
 

@@ -2,16 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
+import pytest
 
 import ray
 from ray.experimental.streaming.batched_queue import BatchedQueue
 from ray.experimental.streaming.streaming import Environment
 from ray.experimental.streaming.operator import OpType, PStrategy
-
-logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
-
 
 def test_parallelism():
     """Tests operator parallelism."""
@@ -28,7 +24,7 @@ def test_parallelism():
             assert operator.num_instances == 2, (operator.num_instances, 2)
     # Check again after adding an operator with different parallelism
     stream.map(None, "Map1").shuffle().set_parallelism(3).map(
-        None, "Map2").set_parallelism(4)
+                                None, "Map2").set_parallelism(4)
     env._collect_garbage()
     for operator in env.operators.values():
         if operator.type == OpType.Source:
@@ -40,13 +36,12 @@ def test_parallelism():
         else:
             assert operator.num_instances == 4, (operator.num_instances, 4)
 
-
 def test_partitioning():
     """Tests stream partitioning."""
     env = Environment()
     # Try defining multiple partitioning strategies for the same stream
     stream = env.source(None).shuffle().rescale().broadcast().map(
-        None).broadcast().shuffle()
+                                        None).broadcast().shuffle()
     env._collect_garbage()
     for operator in env.operators.values():
         p_schemes = operator.partitioning_strategies
@@ -59,16 +54,15 @@ def test_partitioning():
                 assert scheme.strategy == PStrategy.Shuffle, (
                     scheme.strategy, PStrategy.Shuffle)
 
-
 def test_forking():
     """Tests stream forking."""
     env = Environment()
     # Try forking a stream
     stream = env.source(None).map(None).set_parallelism(2)
-    # First branch
-    stream_2 = stream.shuffle().key_by(0).sum(1)
-    # Second branch
-    stream_3 = stream.key_by(1).sum(2)
+    # First branch with a shuffle partitioning strategy
+    _ = stream.shuffle().key_by(0).sum(1)
+    # Second branch with the default partitioning strategy
+    _ = stream.key_by(1).sum(2)
     env._collect_garbage()
     # Operator ids
     source_id = None
@@ -95,7 +89,7 @@ def test_forking():
             else:
                 assert operator.other_args == 2, (operator.other_args, 2)
                 sum2_id = id
-    # Check dataflow edges and stream partitioning strategies
+    # Check generated streams and their partitioning
     for source, destination in env.logical_topo.edges:
         if source == source_id:
             assert destination == map_id, (destination, map_id)
@@ -130,91 +124,76 @@ def test_forking():
             operator = env.operators[source]
             assert operator.type == OpType.Sum, (operator.type, OpType.Sum)
 
-
-def test_channel_generation():
-    """Tests data channel generation."""
+def _test_shuffle_channels():
+    """Tests shuffling connectivity."""
     env = Environment()
-    # Try creating three stages with different connectivity
-    stream = env.source(None).shuffle().map(None).set_parallelism(4).filter(
-        None).set_parallelism(2).broadcast().flat_map(None).set_parallelism(3)
-    env._collect_garbage()
-    # Operator ids
-    source_id = None
+    # Try defining a shuffle
+    stream = env.source(None).shuffle().map(None).set_parallelism(4)
+    expected = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    _test_channels(env,expected)
+
+def _test_forward_channels():
+    """Tests forward connectivity."""
+    env = Environment()
+    # Try the default partitioning strategy
+    stream = env.source(None).set_parallelism(4).map(None).set_parallelism(2)
+    expected = [(0, 0), (1, 1), (2, 0), (3,1)]
+    _test_channels(env,expected)
+
+def _test_broadcast_channels():
+    """Tests broadcast connectivity."""
+    env = Environment()
+    # Try broadcasting
+    stream = env.source(None).set_parallelism(4
+             ).broadcast().map(None).set_parallelism(2)
+    expected = [(0, 0), (0, 1), (1, 0), (1,1), (2,0), (2,1), (3,0), (3,1)]
+    _test_channels(env,expected)
+
+def _test_round_robin_channels():
+    """Tests round-robin connectivity."""
+    env = Environment()
+    # Try broadcasting
+    stream = env.source(None).round_robin().map(None).set_parallelism(2)
+    expected = [(0,0),(0,1)]
+    _test_channels(env,expected)
+
+def _test_channels(environment,expected_channels):
+    """Tests operator connectivity."""
+    environment._collect_garbage()
     map_id = None
-    filter_id = None
-    flatmap_id = None
-    # Collect ids
-    for id, operator in env.operators.items():
-        if operator.type == OpType.Source:
-            source_id = id
-        elif operator.type == OpType.Map:
+    # Get id
+    for id, operator in environment.operators.items():
+        if operator.type == OpType.Map:
             map_id = id
-        elif operator.type == OpType.Filter:
-            filter_id = id
-        elif operator.type == OpType.FlatMap:
-            flatmap_id = id
     # Collect channels
-    channels_per_stage = []
-    for operator in env.operators.values():
-        channels_per_stage.append(env._generate_channels(operator))
-    # Check actual connections
-    expected_1 = [(0, 0), (0, 1), (0, 2), (0, 3)]
-    expected_2 = [(0, 0), (1, 1), (2, 0), (3, 1)]
-    expected_3 = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]
-    stage_1 = []
-    stage_2 = []
-    stage_3 = []
-    for stage in channels_per_stage:
-        for channels in stage.values():
+    channels_per_destination = []
+    for operator in environment.operators.values():
+        channels_per_destination.append(
+                            environment._generate_channels(operator))
+    # Check actual connectivity
+    actual = []
+    for destination in channels_per_destination:
+        for channels in destination.values():
             for channel in channels:
                 src_instance_id = channel.src_instance_id
                 dst_instance_id = channel.dst_instance_id
                 connection = (src_instance_id, dst_instance_id)
-                if channel.src_operator_id == source_id:
-                    assert channel.dst_operator_id == map_id, (
-                        channel.dst_operator_id, map_id)
-                    stage_1.append(connection)
-                if channel.src_operator_id == map_id:
-                    assert channel.dst_operator_id == filter_id, (
-                        channel.dst_operator_id, filter_id)
-                    stage_2.append(connection)
-                if channel.src_operator_id == filter_id:
-                    assert channel.dst_operator_id == flatmap_id, (
-                        channel.dst_operator_id, flatmap_id)
-                    stage_3.append(connection)
+                assert channel.dst_operator_id == map_id, (
+                                    channel.dst_operator_id, map_id)
+                actual.append(connection)
     # Make sure connections are as expected
-    for connection in expected_1:
-        assert connection in stage_1, (connection, stage_1)
-    for connection in stage_1:
-        assert connection in expected_1, (connection, expected_1)
-    for connection in expected_2:
-        assert connection in stage_2, (connection, stage_2)
-    for connection in stage_2:
-        assert connection in expected_2, (connection, expected_2)
-    for connection in expected_3:
-        assert connection in stage_3, (connection, stage_3)
-    for connection in stage_3:
-        assert connection in expected_3, (connection, expected_3)
+    set_1 = set(expected_channels)
+    set_2 = set(actual)
+    assert set_1 == set_2, (set_1, set_2)
 
+def test_channel_generation():
+    """Tests data channel generation."""
+    _test_shuffle_channels()
+    _test_broadcast_channels()
+    _test_round_robin_channels()
+    _test_forward_channels()
 
 # TODO (john): Add simple wordcount test
 def test_wordcount():
     """Tests a simple streaming wordcount."""
     pass
-
-
-if __name__ == "__main__":
-    ray.init()
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
-
-    logger.info("== Testing Logical Graph Construction ==")
-    # Test operator parallelism
-    test_parallelism()
-    # Test stream partitioning strategies
-    test_partitioning()
-    # Test stream forking
-    test_forking()
-    # Test data channel generation
-    test_channel_generation()
-    # Test streaming wordcount
-    test_wordcount()

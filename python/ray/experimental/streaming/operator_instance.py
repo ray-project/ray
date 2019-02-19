@@ -2,7 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+import sys
+import time
+import types
+
 import ray
+
+logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
 
 #
 # Each Ray actor corresponds to an operator instance in the physical dataflow
@@ -10,6 +18,10 @@ import ray
 # connections)
 # Currently, batched queues are based on Eric's implementation (see:
 # batched_queue.py)
+
+
+def _identity(element):
+    return element
 
 
 # TODO (john): Specify the interface of state keepers
@@ -26,17 +38,16 @@ class OperatorInstance(object):
         the operator instance.
     """
 
-    def __init__(self,
-                 instance_id,
-                 input_gate,
-                 output_gate,
-                 state_keepers=None):
+    def __init__(self, instance_id, input_gate, output_gate,
+                 state_keeper=None):
+        self.key_index = None  # Index for key selection
+        self.key_attribute = None  # Attribute name for key selection
         self.instance_id = instance_id
         self.input = input_gate
         self.output = output_gate
         # Handle(s) to one or more user-defined actors
         # that can retrieve actor's state
-        self.state_keepers = state_keepers
+        self.state_keeper = state_keeper
         # Enable writes
         for channel in self.output.forward_channels:
             channel.queue.enable_writes()
@@ -46,7 +57,22 @@ class OperatorInstance(object):
         for channels in self.output.shuffle_key_channels:
             for channel in channels:
                 channel.queue.enable_writes()
+        for channels in self.output.round_robin_channels:
+            for channel in channels:
+                channel.queue.enable_writes()
         # TODO (john): Add more channel types here
+
+    # Registers actor's handle so that the actor can schedule itself
+    def register_handle(self, actor_handle):
+        self.this_actor = actor_handle
+
+    # Used for index-based key extraction, e.g. for tuples
+    def index_based_selector(self, record):
+        return record[self.key_index]
+
+    # Used for attribute-based key extraction, e.g. for classes
+    def attribute_based_selector(self, record):
+        return vars(record)[self.key_attribute]
 
     # Starts the actor
     def start(self):
@@ -109,12 +135,17 @@ class Map(OperatorInstance):
     # Applies the mapper each record of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
+        start = time.time()
+        elements = 0
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
+                logger.debug("[map {}] read/writes per second: {}".format(
+                    self.instance_id, elements / (time.time() - start)))
                 return
             self.output._push(self.map_fn(record))
+            elements += 1
 
 
 # Flatmap actor
@@ -220,14 +251,26 @@ class Reduce(OperatorInstance):
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
+        OperatorInstance.__init__(self, instance_id, input_gate, output_gate,
+                                  operator_metadata.state_actor)
         self.reduce_fn = operator_metadata.logic
-        self.value_attribute = operator_metadata.other_args
+        # Set the attribute selector
+        self.attribute_selector = operator_metadata.other_args
+        if self.attribute_selector is None:
+            self.attribute_selector = _identity
+        elif isinstance(self.attribute_selector, int):
+            self.key_index = self.attribute_selector
+            self.attribute_selector = self.index_based_selector
+        elif isinstance(self.attribute_selector, str):
+            self.key_attribute = self.attribute_selector
+            self.attribute_selector = self.attribute_based_selector
+        elif not isinstance(self.attribute_selector, types.FunctionType):
+            sys.exit("Unrecognized or unsupported key selector.")
         self.state = {}  # key -> value
 
     # Combines the input value for a key with the last reduced
-    # value for that key to produce a new value and output the result
-    # as (key,new value)
+    # value for that key to produce a new value.
+    # Outputs the result as (key,new value)
     def start(self):
         while True:
             record = self.input._pull()
@@ -235,18 +278,21 @@ class Reduce(OperatorInstance):
                 self.output._flush(close=True)
                 del self.state
                 return
-            # TODO (john): General key extraction from objects
-            k, _ = record
-            new_value = record[self.value_attribute]
+            key, rest = record
+            new_value = self.attribute_selector(rest)
             # TODO (john): Is there a way to update state with
             # a single dictionary lookup?
             try:
-                old_value = self.state[k]
+                old_value = self.state[key]
                 new_value = self.reduce_fn(old_value, new_value)
-                self.state[k] = new_value
+                self.state[key] = new_value
             except KeyError:  # Key does not exist in state
-                self.state.setdefault(k, new_value)
-            self.output._push((k, new_value))
+                self.state.setdefault(key, new_value)
+            self.output._push((key, new_value))
+
+        # Returns the state of the actor
+        def get_state(self):
+            return self.state
 
 
 @ray.remote
@@ -262,19 +308,26 @@ class KeyBy(OperatorInstance):
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate):
         OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
-        self.key_attribute = operator_metadata.other_args
+        # Set the key selector
+        self.key_selector = operator_metadata.other_args
+        if isinstance(self.key_selector, int):
+            self.key_index = self.key_selector
+            self.key_selector = self.index_based_selector
+        elif isinstance(self.key_selector, str):
+            self.key_attribute = self.key_selector
+            self.key_selector = self.attribute_based_selector
+        elif not isinstance(self.key_selector, types.FunctionType):
+            sys.exit("Unrecognized or unsupported key selector.")
 
-    # Maps each input record to a tuple of the form (key,record)
-    # and shuffles output by hash(key)
+    # The actual partitioning is done by the output gate
     def start(self):
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
                 return
-            # TODO (john): General key extraction from objects
-            k, v = record
-            self.output._push((k, v))
+            key = self.key_selector(record)
+            self.output._push((key, record))
 
 
 # A custom source actor
@@ -288,12 +341,17 @@ class Source(OperatorInstance):
 
     # Starts the source by calling get_next() repeatedly
     def start(self):
+        start = time.time()
+        elements = 0
         while True:
             next = self.source.get_next()
             if next is None:
                 self.output._flush(close=True)
+                logger.debug("[writer {}] puts per second: {}".format(
+                    self.instance_id, elements / (time.time() - start)))
                 return
             self.output._push(next)
+            elements += 1
 
 
 # TODO(john): Time window actor (uses system time)
