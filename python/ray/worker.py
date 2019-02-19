@@ -1863,6 +1863,8 @@ def connect(info,
             # be redirected.
             os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
             os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            sys.stdout = log_stdout_file
+            sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.

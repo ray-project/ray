@@ -1046,9 +1046,8 @@ def start_raylet(redis_address,
     else:
         java_worker_command = ""
 
-    # Create the command that the Raylet will use to start workers. We use -u
-    # to prevent buffering of worker stdout/stderr.
-    start_worker_command = ("{} -u {} "
+    # Create the command that the Raylet will use to start workers.
+    start_worker_command = ("{} {} "
                             "--node-ip-address={} "
                             "--object-store-name={} "
                             "--raylet-name={} "
