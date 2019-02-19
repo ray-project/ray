@@ -2523,11 +2523,11 @@ def test_logging_to_driver(shutdown_only):
 
     @ray.remote
     def f():
+        # It's important to make sure that these print statements occur even
+        # without calling sys.stdout.flush() and sys.stderr.flush().
         for i in range(100):
             print(i)
             print(100 + i, file=sys.stderr)
-            sys.stdout.flush()
-            sys.stderr.flush()
 
     captured = {}
     with CaptureOutputAndError(captured):
