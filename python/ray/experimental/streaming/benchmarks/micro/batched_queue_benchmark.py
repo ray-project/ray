@@ -59,7 +59,7 @@ class Node(object):
         if self.out_queue is not None:
             self.out_queue.enable_writes()
             log += "[actor {}] Reads/Writes per second {}"
-        else:   # It's just a reader
+        else:  # It's just a reader
             log += "[actor {}] Reads per second {}"
         # Start spinning
         expected_value = 0
