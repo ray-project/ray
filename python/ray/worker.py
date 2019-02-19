@@ -913,8 +913,9 @@ class Worker(object):
             assert self.actor_id.is_nil()
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
-            self.function_actor_manager.load_actor(driver_id,
-                                                   function_descriptor)
+            actor_class = self.function_actor_manager.load_actor_class(
+                driver_id, function_descriptor)
+            self.actors[self.actor_id] = actor_class.__new__(actor_class)
             self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
                 num_tasks_since_last_checkpoint=0,
                 last_checkpoint_timestamp=int(1000 * time.time()),
