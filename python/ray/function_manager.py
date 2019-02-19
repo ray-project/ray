@@ -627,6 +627,8 @@ class FunctionActorManager(object):
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
                     driver_id, function_descriptor)
+            # Save the loaded actor class in cache.
+            self._loaded_actor_classes[function_id] = actor_class
 
             # Generate execution info for the methods of this actor class.
             module_name = function_descriptor.module_name
@@ -637,7 +639,6 @@ class FunctionActorManager(object):
                 method_descriptor = FunctionDescriptor(
                     module_name, actor_method_name, actor_class_name)
                 method_id = method_descriptor.function_id
-                logger.error("%s %s" % (method_descriptor, method_id))
                 executor = self._make_actor_method_executor(
                     actor_method_name,
                     actor_method,
@@ -651,13 +652,10 @@ class FunctionActorManager(object):
                     ))
                 self._num_task_executions[driver_id][method_id] = 0
             self._num_task_executions[driver_id][function_id] = 0
-            # Save the loaded actor class in cache.
-            self._loaded_actor_classes[function_id] = actor_class
         return actor_class
 
     def _load_actor_from_local(self, driver_id, function_descriptor):
         """Load actor class from local code."""
-        # For local code, driver id is not necessary.
         module_name, class_name = (function_descriptor.module_name,
                                    function_descriptor.class_name)
         try:
@@ -710,9 +708,8 @@ class FunctionActorManager(object):
             actor_class = pickle.loads(pickled_class)
         except Exception:
             # The actor class failed to be unpickled, create a fake actor
-            # class instead.
-            # (just to produce error messages and to prevent the driver from
-            # hanging).
+            # class instead (just to produce error messages and to prevent
+            # the driver from hanging).
             actor_class = self._create_fake_actor_class(
                 class_name, actor_method_names)
             # If an exception was thrown when the actor was imported, we record
