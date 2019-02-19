@@ -12,10 +12,8 @@
 
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-RAY_VERSION=$(git describe --tags --abbrev=0)
 RESULT_FILE=$ROOT_DIR/"results-$(date '+%Y-%m-%d_%H-%M-%S').log"
 
-echo "Testing on latest version of Ray: $RAY_VERSION"
 echo "Logging to" $RESULT_FILE
 echo -e $RAY_AWS_SSH_KEY > /root/.ssh/ray-autoscaler_us-west-2.pem && chmod 400 /root/.ssh/ray-autoscaler_us-west-2.pem || true
 
@@ -53,7 +51,6 @@ test_impala(){
         cat application_cluster_template.yaml |
             sed -e "
                 s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
-                s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/m5.24xlarge/;
                 s/<<<MIN_WORKERS>>>/5/;
@@ -96,7 +93,6 @@ test_sgd(){
         cat application_cluster_template.yaml |
             sed -e "
                 s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
-                s/<<<RAY_VERSION>>>/$RAY_VERSION/;
                 s/<<<HEAD_TYPE>>>/g3.16xlarge/;
                 s/<<<WORKER_TYPE>>>/g3.16xlarge/;
                 s/<<<MIN_WORKERS>>>/3/;
