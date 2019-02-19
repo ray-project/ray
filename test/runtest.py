@@ -2847,94 +2847,60 @@ def test_non_ascii_comment(ray_start):
     assert ray.get(f.remote()) == 1
 
 
-def do_one_local_actor_test(class_name):
-    # Create actor from local code.
-    resources = {"CPU": 1}
-    args = ["set_data function input"]
-    function_descriptor = FunctionDescriptor("local_code_test", "__init__",
-                                             class_name)
-    creation_args = ["The constructor data of WithConstructor"]
-    actor_id = ray.ActorID(_random_string())
-    actor_handle_id = ray.ActorHandleID(_random_string())
-    creation_dummy_object_id = ray.ObjectID(actor_id.binary())
-    [actor_cursor] = ray.worker.global_worker.submit_task(
-        function_descriptor, []
-        if class_name == "WithoutConstructor" else creation_args,
-        actor_creation_id=actor_id,
-        num_return_vals=1,
-        resources=resources)
+@ray.remote
+def echo(x):
+    return x
 
-    function_descriptor = FunctionDescriptor("local_code_test", "set_data",
-                                             class_name)
-    [actor_cursor] = ray.worker.global_worker.submit_task(
-        function_descriptor,
-        args,
-        actor_id=actor_id,
-        actor_handle_id=actor_handle_id,
-        actor_counter=0,
-        actor_creation_dummy_object_id=creation_dummy_object_id,
-        execution_dependencies=[actor_cursor],
-        num_return_vals=1,
-        resources=resources)
 
-    function_descriptor = FunctionDescriptor("local_code_test", "get_data",
-                                             class_name)
-    object_ids = ray.worker.global_worker.submit_task(
-        function_descriptor, [],
-        actor_id=actor_id,
-        actor_handle_id=actor_handle_id,
-        actor_counter=1,
-        actor_creation_dummy_object_id=creation_dummy_object_id,
-        execution_dependencies=[actor_cursor],
-        num_return_vals=2,
-        resources=resources)
-    assert len(object_ids) == 2
-    assert ray.get(object_ids[0]) == args[0]
-    logger.info("Finish test: %s" % function_descriptor)
+@ray.remote
+class WithConstructor(object):
 
-    if class_name == "WithConstructor":
-        function_descriptor = FunctionDescriptor("local_code_test",
-                                                 "get_init_data", class_name)
-        object_ids = ray.worker.global_worker.submit_task(
-            function_descriptor, [],
-            actor_id=actor_id,
-            actor_handle_id=actor_handle_id,
-            actor_counter=2,
-            actor_creation_dummy_object_id=creation_dummy_object_id,
-            execution_dependencies=[object_ids[1]],
-            num_return_vals=2,
-            resources=resources)
-        assert len(object_ids) == 2
-        assert ray.get(object_ids[0]) == creation_args[0]
-        logger.info("Finish test: %s" % function_descriptor)
-    elif class_name == "DerivedClass":
-        function_descriptor = FunctionDescriptor("local_code_test",
-                                                 "get_new_data", class_name)
-        object_ids = ray.worker.global_worker.submit_task(
-            function_descriptor, [],
-            actor_id=actor_id,
-            actor_handle_id=actor_handle_id,
-            actor_counter=2,
-            actor_creation_dummy_object_id=creation_dummy_object_id,
-            execution_dependencies=[object_ids[1]],
-            num_return_vals=2,
-            resources=resources)
-        assert len(object_ids) == 2
-        assert ray.get(object_ids[0]) == ("DerivedClass" + creation_args[0])
-        logger.info("Finish test: %s" % function_descriptor)
+    def __init__(self, data):
+        self.data = data
+
+    def get_data(self):
+        return self.data
+
+
+@ray.remote
+class WithoutConstructor(object):
+
+    def set_data(self, data):
+        self.data = data
+
+    def get_data(self):
+        return self.data
+
+
+class BaseClass(object):
+
+    def __init__(self, data):
+        self.data = data
+
+
+@ray.remote
+class DerivedClass(BaseClass):
+
+    def __init__(self, data):
+        # Due to different behaviors of super in Python 2 and Python 3,
+        # we use BaseClass directly here.
+        BaseClass.__init__(self, data)
+
+    def get_data(self):
+        return self.data
 
 
 def test_load_code_from_local(shutdown_only):
     ray.init(load_code_from_local=True, num_cpus=4)
-    function_descriptor1 = FunctionDescriptor("local_code_test", "echo")
-    args = ["echo function input"]
-    resources = {"CPU": 1}
-    object_ids = ray.worker.global_worker.submit_task(
-        function_descriptor1, args, num_return_vals=1, resources=resources)
-    logger.info("Finish submit_task")
-    assert len(object_ids) == 1
-    assert ray.get(object_ids[0]) == args[0]
-    logger.info("Finish function remote call in local mode")
-    do_one_local_actor_test("WithConstructor")
-    do_one_local_actor_test("WithoutConstructor")
-    do_one_local_actor_test("DerivedClass")
+    # Test normal function.
+    assert ray.get(echo.remote("foo")) == "foo"
+    # Test actor class with constructor.
+    actor = WithConstructor.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1
+    # # Test actor class without constructor.
+    # actor = WithConstructor.remote()
+    # actor.set_data.remote(1)
+    # assert ray.get(actor.get_data.remote()) == 1
+    # # Test derived actor class.
+    # actor = DerivedClass.remote(1)
+    # assert ray.get(actor.get_data.remote()) == 1
