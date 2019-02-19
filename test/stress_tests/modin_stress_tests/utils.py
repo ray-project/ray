@@ -269,12 +269,158 @@ def test_kaggle9(generate_dataset):
 
 
 def test_kaggle10(generate_dataset):
+    columns = ['pelvic_incidence', 'pelvic_tilt numeric', 'lumbar_lordosis_angle',
+       'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'class']
+    dtypes = [float, float, float, float, float, float, str]
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle10.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle12(generate_dataset):
+    columns = ['PassengerId', 'Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch',
+    'Ticket', 'Fare', 'Cabin', 'Embarked']
+    dtypes = [int, int, str, str, float, int, int, str, float, float, str]
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle12.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle13(generate_dataset):
+    columns = ['Id', 'SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm',
+    'PetalWidthCm', 'Species']
+    dtypes = [int, float, float, float, float, str]
+    generate_dataset("kaggle/Iris.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle13.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle14(generate_dataset):
+    columns = ['PassengerId', 'Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch',
+    'Ticket', 'Fare', 'Cabin', 'Embarked']
+    dtypes = [int, int, str, str, float, int, int, str, float, float, str]
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle14.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle17(generate_dataset):
+    columns = ['Suburb', 'Address', 'Rooms', 'Type', 'Price', 'Method', 'SellerG',
+       'Date', 'Distance', 'Postcode', 'Bedroom2', 'Bathroom', 'Car', 'Landsize',
+       'BuildingArea', 'YearBuilt', 'CouncilArea', 'Lattitude', 'Longtitude',
+       'Regionname', 'Propertycount']
+    dtypes = [str, str, int, str, float, str, str, str, float, float, float,
+    float, float, float, float, float, str, float, float, str, float]
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle17.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle18(generate_dataset):
+    columns = ['train_id', 'name', 'item_condition_id', 'category_name',
+       'brand_name', 'price', 'shipping', 'item_description']
+    dtypes = [int, str, int, str, float, float, int, str]
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle18.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle19(generate_dataset):
+    columns = ['Id', 'groupId', 'matchId', 'assists', 'boosts', 'damageDealt',
+       'DBNOs', 'headshotKills', 'heals', 'killPlace', 'killPoints',
+       'kills', 'killStreaks', 'longestKill', 'matchDuration',
+       'matchType', 'maxPlace', 'numGroups', 'rankPoints', 'revives',
+       'rideDistance', 'roadKills', 'swimDistance', 'teamKills',
+       'vehicleDestroys', 'walkDistance', 'weaponsAcquired', 'winPoints']
+    dtypes = [str, str, str, int, int, float, int, int, int, int, int, int, int,
+    float, int, str, int, int, int, int, float, int, float, int, int, float,
+    int, int]
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle19.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle20(generate_dataset):
+    columns = ['id', 'diagnosis', 'radius_mean', 'texture_mean', 'perimeter_mean',
+       'area_mean', 'smoothness_mean', 'compactness_mean',
+       'concavity_mean', 'concave points_mean', 'symmetry_mean',
+       'fractal_dimension_mean', 'radius_se', 'texture_se',
+       'perimeter_se', 'area_se', 'smoothness_se', 'compactness_se',
+       'concavity_se', 'concave points_se', 'symmetry_se',
+       'fractal_dimension_se', 'radius_worst', 'texture_worst',
+       'perimeter_worst', 'area_worst', 'smoothness_worst',
+       'compactness_worst', 'concavity_worst', 'concave points_worst',
+       'symmetry_worst', 'fractal_dimension_worst', 'Unnamed: 32']
+    dtypes = [int, str, float, float, float, float, float, float, float, float,
+    float, float, float, float, float, float, float, float, float, float, float,
+    float, float, float, float, float, float, float, float, float, float, float,
+    float]
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle20.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle21(generate_dataset):
     columns =
     dtypes =
     generate_dataset("kaggle/test.csv", columns, dtypes)
     generate_dataset("kaggle/train.csv", columns, dtypes)
 
-    ipynb = subprocess.Popen(["python", "kaggle/kaggle10.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle21.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle22(generate_dataset):
+    columns =
+    dtypes =
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle22.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    outs, errs = ipynb.communicate()
+
+    assert ipynb.returncode == 0, errs
+
+
+def test_kaggle23(generate_dataset):
+    columns =
+    dtypes =
+    generate_dataset("kaggle/test.csv", columns, dtypes)
+    generate_dataset("kaggle/train.csv", columns, dtypes)
+
+    ipynb = subprocess.Popen(["python", "kaggle/kaggle23.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     outs, errs = ipynb.communicate()
 
     assert ipynb.returncode == 0, errs
