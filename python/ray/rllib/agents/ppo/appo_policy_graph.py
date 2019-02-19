@@ -199,7 +199,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 output_hidden_shape = action_space.nvec
             elif self.config["vtrace"]:
                 raise UnsupportedSpaceException(
-                    "Action space {} is not supported for APPO with VTrace.".format(action_space))
+                    "Action space {} is not supported for APPO with VTrace.".
+                    format(action_space))
 
             actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
@@ -224,7 +225,8 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"],
+            action_space,
+            self.config["model"],
             dist_type=self.config["dist_type"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
@@ -306,18 +308,18 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
             self.loss = VTraceSurrogateLoss(
                 actions=make_time_major(loss_actions, drop_last=True),
-                prev_actions_logp=make_time_major(prev_action_dist.logp(
-                    actions), drop_last=True),
-                actions_logp=make_time_major(action_dist.logp(actions),
-                                             drop_last=True),
+                prev_actions_logp=make_time_major(
+                    prev_action_dist.logp(actions), drop_last=True),
+                actions_logp=make_time_major(
+                    action_dist.logp(actions), drop_last=True),
                 action_kl=prev_action_dist.kl(action_dist),
-                actions_entropy=make_time_major(action_dist.entropy(),
-                                                drop_last=True),
+                actions_entropy=make_time_major(
+                    action_dist.entropy(), drop_last=True),
                 dones=make_time_major(dones, drop_last=True),
-                behaviour_logits=make_time_major(unpacked_behaviour_logits,
-                                                 drop_last=True),
-                target_logits=make_time_major(unpacked_outputs,
-                                              drop_last=True),
+                behaviour_logits=make_time_major(
+                    unpacked_behaviour_logits, drop_last=True),
+                target_logits=make_time_major(
+                    unpacked_outputs, drop_last=True),
                 discount=config["gamma"],
                 rewards=make_time_major(rewards, drop_last=True),
                 values=make_time_major(values, drop_last=True),
@@ -334,11 +336,9 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             self.loss = PPOSurrogateLoss(
                 prev_actions_logp=make_time_major(
                     prev_action_dist.logp(actions)),
-                actions_logp=make_time_major(
-                    action_dist.logp(actions)),
+                actions_logp=make_time_major(action_dist.logp(actions)),
                 action_kl=prev_action_dist.kl(action_dist),
-                actions_entropy=make_time_major(
-                    action_dist.entropy()),
+                actions_entropy=make_time_major(action_dist.entropy()),
                 values=make_time_major(values),
                 valid_mask=make_time_major(mask),
                 advantages=make_time_major(adv_ph),
@@ -357,17 +357,16 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
             for i, kl in enumerate(kls):
                 self.KL_stats.update({
-                    f"mean_KL_{i}": tf.reduce_mean(kl),
-                    f"max_KL_{i}": tf.reduce_max(kl),
-                    f"median_KL_{i}": tf.contrib.distributions.percentile(
-                        kl, 50.0),
+                    "mean_KL_{}".format(i): tf.reduce_mean(kl),
+                    "max_KL_{}".format(i): tf.reduce_max(kl),
+                    "median_KL_{}".format(i): tf.contrib.distributions.
+                    percentile(kl, 50.0),
                 })
         else:
             self.KL_stats = {
                 "mean_KL": tf.reduce_mean(kls[0]),
                 "max_KL": tf.reduce_max(kls[0]),
-                "median_KL": tf.contrib.distributions.percentile(
-                    kls[0], 50.0),
+                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
             }
 
         # Initialize TFPolicyGraph
@@ -405,20 +404,23 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         self.sess.run(tf.global_variables_initializer())
 
-        values_batched = make_time_major(values, drop_last=self.config["vtrace"])
-        self.stats_fetches = {"stats": {
-            "model_loss": self.model.loss(),
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            "policy_loss": self.loss.pi_loss,
-            "entropy": self.loss.entropy,
-            "grad_gnorm": tf.global_norm(self._grads),
-            "var_gnorm": tf.global_norm(self.var_list),
-            "vf_loss": self.loss.vf_loss,
-            "vf_explained_var": explained_variance(
-                tf.reshape(self.loss.value_targets, [-1]),
-                tf.reshape(values_batched, [-1])),
-            **self.KL_stats,
-        }, "kl": self.loss.mean_kl}
+        values_batched = make_time_major(
+            values, drop_last=self.config["vtrace"])
+        self.stats_fetches = {
+            "kl": self.loss.mean_kl,
+            "stats": dict({
+                "model_loss": self.model.loss(),
+                "cur_lr": tf.cast(self.cur_lr, tf.float64),
+                "policy_loss": self.loss.pi_loss,
+                "entropy": self.loss.entropy,
+                "grad_gnorm": tf.global_norm(self._grads),
+                "var_gnorm": tf.global_norm(self.var_list),
+                "vf_loss": self.loss.vf_loss,
+                "vf_explained_var": explained_variance(
+                    tf.reshape(self.loss.value_targets, [-1]),
+                    tf.reshape(values_batched, [-1])),
+            }, **self.KL_stats),
+        }
 
     def optimizer(self):
         if self.config["opt_type"] == "adam":

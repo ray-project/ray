@@ -47,8 +47,8 @@ VTraceReturns = collections.namedtuple('VTraceReturns', 'vs pg_advantages')
 
 
 def log_probs_from_logits_and_actions(policy_logits, actions):
-    return multi_log_probs_from_logits_and_actions(
-        [policy_logits], [actions])[0]
+    return multi_log_probs_from_logits_and_actions([policy_logits],
+                                                   [actions])[0]
 
 
 def multi_log_probs_from_logits_and_actions(policy_logits, actions):
@@ -56,7 +56,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions):
 
   In the notation used throughout documentation and comments, T refers to the
   time dimension ranging from 0 to T-1. B refers to the batch size and
-  ACTION_SPACE refers to the list of numbers each representing a number of actions.
+  ACTION_SPACE refers to the list of numbers each representing a number of
+  actions.
 
   Args:
     policy_logits: A list with length of ACTION_SPACE of float32
@@ -103,9 +104,7 @@ def from_logits(behaviour_policy_logits,
     """multi_from_logits wrapper used only for tests"""
 
     res = multi_from_logits(
-        [behaviour_policy_logits],
-        [target_policy_logits],
-        [actions],
+        [behaviour_policy_logits], [target_policy_logits], [actions],
         discounts,
         rewards,
         values,
@@ -115,25 +114,26 @@ def from_logits(behaviour_policy_logits,
         name=name)
 
     return VTraceFromLogitsReturns(
-      vs = res.vs,
-      pg_advantages = res.pg_advantages,
-      log_rhos=res.log_rhos,
-      behaviour_action_log_probs=tf.squeeze(res.behaviour_action_log_probs, axis=0),
-      target_action_log_probs=tf.squeeze(res.target_action_log_probs, axis=0),
+        vs=res.vs,
+        pg_advantages=res.pg_advantages,
+        log_rhos=res.log_rhos,
+        behaviour_action_log_probs=tf.squeeze(
+            res.behaviour_action_log_probs, axis=0),
+        target_action_log_probs=tf.squeeze(
+            res.target_action_log_probs, axis=0),
     )
 
 
-def multi_from_logits(
-        behaviour_policy_logits,
-        target_policy_logits,
-        actions,
-        discounts,
-        rewards,
-        values,
-        bootstrap_value,
-        clip_rho_threshold=1.0,
-        clip_pg_rho_threshold=1.0,
-        name='vtrace_from_logits'):
+def multi_from_logits(behaviour_policy_logits,
+                      target_policy_logits,
+                      actions,
+                      discounts,
+                      rewards,
+                      values,
+                      bootstrap_value,
+                      clip_rho_threshold=1.0,
+                      clip_pg_rho_threshold=1.0,
+                      name='vtrace_from_logits'):
     r"""V-trace for softmax policies.
 
   Calculates V-trace actor critic targets for softmax polices as described in
@@ -148,7 +148,8 @@ def multi_from_logits(
 
   In the notation used throughout documentation and comments, T refers to the
   time dimension ranging from 0 to T-1. B refers to the batch size and
-  ACTION_SPACE refers to the list of numbers each representing a number of actions.
+  ACTION_SPACE refers to the list of numbers each representing a number of
+  actions.
 
   Args:
     behaviour_policy_logits: A list with length of ACTION_SPACE of float32
@@ -156,13 +157,15 @@ def multi_from_logits(
       [T, B, ACTION_SPACE[0]],
       ...,
       [T, B, ACTION_SPACE[-1]]
-      with un-normalized log-probabilities parameterizing the softmax behaviour policy.
+      with un-normalized log-probabilities parameterizing the softmax behaviour
+      policy.
     target_policy_logits: A list with length of ACTION_SPACE of float32
       tensors of shapes
       [T, B, ACTION_SPACE[0]],
       ...,
       [T, B, ACTION_SPACE[-1]]
-      with un-normalized log-probabilities parameterizing the softmax target policy.
+      with un-normalized log-probabilities parameterizing the softmax target
+      policy.
     actions: A list with length of ACTION_SPACE of int32
       tensors of shapes
       [T, B],
@@ -211,9 +214,12 @@ def multi_from_logits(
         target_policy_logits[i].shape.assert_has_rank(3)
         actions[i].shape.assert_has_rank(2)
 
-    with tf.name_scope(name, values=[behaviour_policy_logits, target_policy_logits, actions,
-                                     discounts, rewards, values,
-                                     bootstrap_value]):
+    with tf.name_scope(
+            name,
+            values=[
+                behaviour_policy_logits, target_policy_logits, actions,
+                discounts, rewards, values, bootstrap_value
+            ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
             target_policy_logits, actions)
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
@@ -322,9 +328,9 @@ def from_importance_weights(log_rhos,
             tf.summary.histogram('clipped_rhos_1000', tf.minimum(1000.0, rhos))
             tf.summary.scalar(
                 'num_of_clipped_rhos',
-                tf.reduce_sum(tf.cast(
-                    tf.equal(clipped_rhos, clip_rho_threshold), tf.int32))
-            )
+                tf.reduce_sum(
+                    tf.cast(
+                        tf.equal(clipped_rhos, clip_rho_threshold), tf.int32)))
             tf.summary.scalar('size_of_clipped_rhos', tf.size(clipped_rhos))
         else:
             clipped_rhos = rhos
@@ -383,8 +389,10 @@ def from_importance_weights(log_rhos,
 def get_log_rhos(behaviour_action_log_probs, target_action_log_probs):
     """With the selected log_probs for multi-discrete actions of behaviour
     and target policies we compute the log_rhos for calculating the vtrace."""
-    log_rhos = [t - b for t,
-                b in zip(target_action_log_probs, behaviour_action_log_probs)]
+    log_rhos = [
+        t - b
+        for t, b in zip(target_action_log_probs, behaviour_action_log_probs)
+    ]
     log_rhos = [tf.convert_to_tensor(l, dtype=tf.float32) for l in log_rhos]
     log_rhos = tf.reduce_sum(tf.stack(log_rhos), axis=0)
 
