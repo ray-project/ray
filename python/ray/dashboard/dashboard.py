@@ -14,7 +14,6 @@ import datetime
 import json
 import logging
 import os
-import socket
 import threading
 import traceback
 import yaml
@@ -48,11 +47,17 @@ class Dashboard(object):
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, http_port, token, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 http_port,
+                 token,
+                 temp_dir,
+                 redis_password=None):
         """Initialize the dashboard object."""
-        self.ip = socket.gethostbyname(socket.gethostname())
+        self.ip = ray.services.get_node_ip_address()
         self.port = http_port
         self.token = token
+        self.temp_dir = temp_dir
         self.node_stats = NodeStats(redis_address, redis_password)
 
         self.app = aiohttp.web.Application(middlewares=[self.auth_middleware])
@@ -89,19 +94,15 @@ class Dashboard(object):
 
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
-            return aiohttp.web.Response(
-                status=403,
-                text="403 Forbidden"
-            )
+            return aiohttp.web.Response(status=403, text="403 Forbidden")
 
         def get_forbidden(_) -> aiohttp.web.Response:
             return forbidden()
 
         async def get_index(req) -> aiohttp.web.Response:
-            return aiohttp.web.FileResponse(os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "index.html"
-            ))
+            return aiohttp.web.FileResponse(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "index.html"))
 
         async def get_resource(req) -> aiohttp.web.Response:
             try:
@@ -112,12 +113,13 @@ class Dashboard(object):
             if path not in ["main.css", "main.js", "vue.js", "vue.min.js"]:
                 return forbidden()
 
-            return aiohttp.web.FileResponse(os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "res/{}".format(path)
-            ))
+            return aiohttp.web.FileResponse(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "res/{}".format(path)))
 
-        async def json_response(result=None, error=None, ts=None) -> aiohttp.web.Response:
+        async def json_response(result=None, error=None,
+                                ts=None) -> aiohttp.web.Response:
             if ts is None:
                 ts = datetime.datetime.utcnow()
 
@@ -129,7 +131,8 @@ class Dashboard(object):
 
         async def ray_config(_) -> aiohttp.web.Response:
             try:
-                with open(Path("~/ray_bootstrap_config.yaml").expanduser()) as f:
+                with open(
+                        Path("~/ray_bootstrap_config.yaml").expanduser()) as f:
                     cfg = yaml.load(f)
             except Exception:
                 return await json_response(error="No config")
@@ -171,7 +174,7 @@ class Dashboard(object):
 
     def log_dashboard_url(self):
         url = "http://{}:{}?token={}".format(self.ip, self.port, self.token)
-        with open("/tmp/ray/dashboard_url", "w") as f:
+        with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
 
@@ -195,7 +198,7 @@ class NodeStats(threading.Thread):
         total_boot_time = 0
         total_cpus = 0
         total_workers = 0
-        total_load = [0.0,0.0,0.0]
+        total_load = [0.0, 0.0, 0.0]
         total_storage_avail = 0
         total_storage_total = 0
         total_ram_avail = 0
@@ -232,8 +235,9 @@ class NodeStats(threading.Thread):
 
     def calculate_tasks(self) -> Counter:
         return Counter(
-            (x["name"] for y in (v["workers"] for v in self._node_stats.values()) for x in y)
-        )
+            (x["name"]
+             for y in (v["workers"] for v in self._node_stats.values())
+             for x in y))
 
     def purge_outdated_stats(self):
         def current(then, now):
@@ -245,8 +249,7 @@ class NodeStats(threading.Thread):
         now = to_unix_time(datetime.datetime.utcnow())
         self._node_stats = {
             k: v
-            for k, v in self._node_stats.items()
-            if current(v["now"], now)
+            for k, v in self._node_stats.items() if current(v["now"], now)
         }
 
     def get_node_stats(self) -> Dict:
@@ -254,8 +257,7 @@ class NodeStats(threading.Thread):
             self.purge_outdated_stats()
             node_stats = sorted(
                 (v for v in self._node_stats.values()),
-                key=itemgetter("boot_time")
-            )
+                key=itemgetter("boot_time"))
             return {
                 "totals": self.calculate_totals(),
                 "tasks": self.calculate_tasks(),
@@ -315,6 +317,12 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--temp-dir",
+        required=False,
+        type=str,
+        default=None,
+        help="Specify the path of the temporary directory use by Ray process.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
@@ -322,6 +330,7 @@ if __name__ == "__main__":
         args.redis_address,
         args.http_port,
         args.token,
+        args.temp_dir,
         redis_password=args.redis_password,
     )
 

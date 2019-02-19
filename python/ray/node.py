@@ -306,6 +306,7 @@ class Node(object):
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._dashboard_url, process_info = ray.services.start_dashboard(
             self.redis_address,
+            self._temp_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password)
@@ -438,18 +439,16 @@ class Node(object):
             self.start_redis()
             self.start_monitor()
             self.start_raylet_monitor()
-            if PY3:
+            if PY3 and self._ray_params.include_webui:
                 self.start_dashboard()
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3:
+        if PY3 and self._ray_params.include_webui:
             self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
-        if self._ray_params.include_webui:
-            self.start_ui()
 
     def _kill_process_type(self,
                            process_type,

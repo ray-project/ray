@@ -12,7 +12,6 @@ import logging
 import sys
 import click
 import random
-import uuid
 
 import yaml
 try:  # py3
@@ -148,7 +147,7 @@ def kill_node(config_file, yes, override_cluster_name):
 
         time.sleep(5)
 
-        if config.get("provider", {}).get("use_internal_ips", False) == True:
+        if config.get("provider", {}).get("use_internal_ips", False) is True:
             node_ip = provider.internal_ip(node)
         else:
             node_ip = provider.external_ip(node)
@@ -251,19 +250,18 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         # Refresh the node cache so we see the external ip if available
         provider.nodes(head_node_tags)
 
-        if config.get("provider", {}).get("use_internal_ips", False) == True:
+        if config.get("provider", {}).get("use_internal_ips", False) is True:
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)
 
         if updater.exitcode != 0:
             logger.error("get_or_create_head_node: "
-                         "Updating {} failed".format(
-                             head_node_ip))
+                         "Updating {} failed".format(head_node_ip))
             sys.exit(1)
-        logger.info("get_or_create_head_node: "
-                    "Head node up-to-date, IP address is: {}".format(
-                        head_node_ip))
+        logger.info(
+            "get_or_create_head_node: "
+            "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
         use_docker = bool(config["docker"]["container_name"])
@@ -467,7 +465,7 @@ def get_head_node_ip(config_file, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
-        if config.get("provider", {}).get("use_internal_ips", False) == True:
+        if config.get("provider", {}).get("use_internal_ips", False) is True:
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)
@@ -488,12 +486,13 @@ def get_worker_node_ips(config_file, override_cluster_name):
     try:
         nodes = provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
 
-        if config.get("provider", {}).get("use_internal_ips", False) == True:
+        if config.get("provider", {}).get("use_internal_ips", False) is True:
             return [provider.internal_ip(node) for node in nodes]
         else:
             return [provider.external_ip(node) for node in nodes]
     finally:
         provider.cleanup()
+
 
 def _get_head_node(config,
                    config_file,

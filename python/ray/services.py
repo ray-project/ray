@@ -828,9 +828,9 @@ def start_log_monitor(redis_address,
 
 
 def start_reporter(redis_address,
-                      stdout_file=None,
-                      stderr_file=None,
-                      redis_password=None):
+                   stdout_file=None,
+                   stderr_file=None,
+                   redis_password=None):
     """Start a reporter process.
 
     Args:
@@ -861,13 +861,16 @@ def start_reporter(redis_address,
 
 
 def start_dashboard(redis_address,
-                      stdout_file=None,
-                      stderr_file=None,
-                      redis_password=None):
+                    temp_dir,
+                    stdout_file=None,
+                    stderr_file=None,
+                    redis_password=None):
     """Start a dashboard process.
 
     Args:
         redis_address (str): The address of the Redis instance.
+        temp_dir (str): The temporary directory used for log files and
+            information for this Ray session.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -892,32 +895,39 @@ def start_dashboard(redis_address,
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable, "-u", dashboard_filepath,
+        sys.executable,
+        "-u",
+        dashboard_filepath,
         "--redis-address={}".format(redis_address),
         "--http-port={}".format(port),
         "--token={}".format(token),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
 
+    if sys.version_info <= (3, 0):
+        return None, None
     try:
-        process_info = start_ray_process(
-            command,
-            ray_constants.PROCESS_TYPE_DASHBOARD,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file)
-    except Exception:
-        logger.warning("Failed to start the dashboard. The dashboard requires "
-                       "python3 and 'pip install psutil setproctitle'.")
-    else:
-        dashboard_url = ("http://localhost:{}/?token={}".format(
-            port, token))
-        print("\n" + "=" * 70)
-        print("View the dashboard at {}".format(dashboard_url))
-        print("=" * 70 + "\n")
-        return dashboard_url, process_info
+        import aiohttp  # noqa: F401
+        import psutil  # noqa: F401
+    except ImportError:
+        logger.warning(
+            "Failed to start the dashboard. The dashboard requires Python 3 "
+            "as well as 'pip install aiohttp psutil'.")
+        return None, None
 
-    return None, None
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    dashboard_url = "http://{}:{}/?token={}".format(
+        ray.services.get_node_ip_address(), port, token)
+    print("\n" + "=" * 70)
+    print("View the dashboard at {}".format(dashboard_url))
+    print("=" * 70 + "\n")
+    return dashboard_url, process_info
 
 
 def start_ui(redis_address, notebook_name, stdout_file=None, stderr_file=None):

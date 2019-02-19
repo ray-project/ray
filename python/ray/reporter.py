@@ -18,13 +18,6 @@ except ModuleNotFoundError:
     import sys
     sys.exit(1)
 
-try:
-    import setproctitle
-except ModuleNotFoundError:
-    print("The reporter requires setproctitle to run.")
-    import sys
-    sys.exit(1)
-
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -32,6 +25,7 @@ import ray.utils
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
@@ -44,16 +38,15 @@ def recursive_asdict(o):
         return L
 
     if isinstance(o, dict):
-        D = {
-            k: recursive_asdict(v)
-            for k, v in o.items()
-        }
+        D = {k: recursive_asdict(v) for k, v in o.items()}
         return D
 
     return o
 
+
 def jsonify_asdict(o):
     return json.dumps(recursive_asdict(o))
+
 
 def running_worker(s):
     if "ray_worker" not in s:
@@ -64,18 +57,19 @@ def running_worker(s):
 
     return True
 
+
 def determine_ip_address():
     """Return the first IP address for an ethernet interface on the system."""
     addrs = [
-        x.address
-        for k, v in psutil.net_if_addrs().items() if k[0] == "e"
-        for x in v
-        if x.family == AddressFamily.AF_INET
+        x.address for k, v in psutil.net_if_addrs().items() if k[0] == "e"
+        for x in v if x.family == AddressFamily.AF_INET
     ]
     return addrs[0]
 
+
 def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
+
 
 class Reporter(object):
     """A monitor process for monitoring Ray nodes.
@@ -94,7 +88,8 @@ class Reporter(object):
 
         _ = psutil.cpu_percent()  # For initialization
 
-        self.redis_key = "{}.{}".format(ray.gcs_utils.REPORTER_CHANNEL, self.hostname)
+        self.redis_key = "{}.{}".format(ray.gcs_utils.REPORTER_CHANNEL,
+                                        self.hostname)
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -110,10 +105,8 @@ class Reporter(object):
 
     @staticmethod
     def get_network_stats():
-        now = datetime.datetime.utcnow()
         ifaces = [
-            v
-            for k, v in psutil.net_io_counters(pernic=True).items()
+            v for k, v in psutil.net_io_counters(pernic=True).items()
             if k[0] == "e"
         ]
 
@@ -128,24 +121,19 @@ class Reporter(object):
 
     @staticmethod
     def get_disk_usage():
-        return {
-            x: psutil.disk_usage(x)
-            for x in ["/", "/tmp"]
-        }
+        return {x: psutil.disk_usage(x) for x in ["/", "/tmp"]}
 
     @staticmethod
     def get_workers():
         return [
-            x.as_dict(attrs=["pid", "create_time", "cpu_times", "name", "memory_full_info"])
-            for x in psutil.process_iter()
-            if running_worker(x.name())
+            x.as_dict(attrs=[
+                "pid", "create_time", "cpu_times", "name", "memory_full_info"
+            ]) for x in psutil.process_iter() if running_worker(x.name())
         ]
 
     def get_load_avg(self):
         load = os.getloadavg()
-        per_cpu_load = tuple(
-            ( round(x/self.cpu_counts[0], 2) for x in load )
-        )
+        per_cpu_load = tuple((round(x / self.cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 
     def get_all_stats(self):
@@ -155,10 +143,8 @@ class Reporter(object):
         self.network_stats_hist.append((now, network_stats))
         self.network_stats_hist = self.network_stats_hist[-7:]
         then, prev_network_stats = self.network_stats_hist[0]
-        netstats = (
-            (network_stats[0]-prev_network_stats[0])/(now - then),
-            (network_stats[1]-prev_network_stats[1])/(now - then)
-        )
+        netstats = ((network_stats[0] - prev_network_stats[0]) / (now - then),
+                    (network_stats[1] - prev_network_stats[1]) / (now - then))
 
         return {
             "now": now,
@@ -192,7 +178,8 @@ class Reporter(object):
                 traceback.print_exc()
                 pass
 
-            time.sleep(ray_constants.REPORTER_UPDATE_INTERVAL_MS/1000)
+            time.sleep(ray_constants.REPORTER_UPDATE_INTERVAL_MS / 1000)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -225,8 +212,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    reporter = Reporter(
-        args.redis_address, redis_password=args.redis_password)
+    reporter = Reporter(args.redis_address, redis_password=args.redis_password)
 
     try:
         reporter.run()
