@@ -2,7 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import aiohttp.web
+try:
+    import aiohttp.web
+except ModuleNotFoundError:
+    print("The reporter requires aiohttp to run.")
+    import sys
+    sys.exit(1)
+
 import argparse
 import datetime
 import json
