@@ -222,7 +222,8 @@ class ExportFormat(object):
             if export_formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL
             ]:
-                raise TuneError("Unsupported export format: " + export_format)
+                raise TuneError("Unsupported export format: " +
+                                export_formats[i])
 
 
 class Trial(object):
