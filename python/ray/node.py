@@ -10,6 +10,7 @@ import json
 import os
 import logging
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -23,6 +24,8 @@ from ray.utils import try_to_create_directory
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+PY3 = sys.version_info.major >= 3
 
 
 class Node(object):
@@ -435,11 +438,13 @@ class Node(object):
             self.start_redis()
             self.start_monitor()
             self.start_raylet_monitor()
-            self.start_dashboard()
+            if PY3:
+                self.start_dashboard()
 
         self.start_plasma_store()
         self.start_raylet()
-        self.start_reporter()
+        if PY3:
+            self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

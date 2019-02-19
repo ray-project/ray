@@ -18,6 +18,13 @@ except ModuleNotFoundError:
     import sys
     sys.exit(1)
 
+try:
+    import setproctitle
+except ModuleNotFoundError:
+    print("The reporter requires setproctitle to run.")
+    import sys
+    sys.exit(1)
+
 import ray.ray_constants as ray_constants
 import ray.utils
 
