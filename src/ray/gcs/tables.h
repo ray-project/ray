@@ -188,12 +188,14 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data to delete from the GCS.
+  /// \return Void.
   void Delete(const JobID &job_id, const ID &id);
 
   /// Delete several keys from redis.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param ids The vector of IDs to delete from the GCS.
+  /// \return Void.
   void Delete(const JobID &job_id, const std::vector<ID> &ids);
 
   /// Returns debug string for class.

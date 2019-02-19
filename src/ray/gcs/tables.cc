@@ -183,7 +183,7 @@ void Log<ID, Data>::Delete(const JobID &job_id, const std::vector<ID> &ids) {
   }
   // Breaking really large deletion commands into batches of smaller size.
   const size_t batch_size =
-      RayConfig::instance().num_maximum_num_gcs_deletion() * kUniqueIDSize;
+      RayConfig::instance().maximum_gcs_deletion_batch_size() * kUniqueIDSize;
   for (const auto &pair : sharded_data) {
     std::string current_data = pair.second.str();
     for (size_t cur = 0; cur < pair.second.str().size(); cur += batch_size) {
