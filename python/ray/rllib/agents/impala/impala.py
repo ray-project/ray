@@ -72,9 +72,6 @@ DEFAULT_CONFIG = with_common_config({
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
 
-    # Actions are chosen based on this distribution, if provided
-    "dist_type": None,
-
     # Learning params.
     "grad_clip": 40.0,
     # either "adam" or "rmsprop"

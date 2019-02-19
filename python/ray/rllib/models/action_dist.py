@@ -125,16 +125,15 @@ class MultiCategorical(ActionDistribution):
         # If tensor is provided, unstack it into list
         if isinstance(actions, tf.Tensor):
             actions = tf.unstack(actions, axis=1)
-        logps = tf.stack([cat.logp(act)
-                          for cat, act in zip(self.cats, actions)])
+        logps = tf.stack(
+            [cat.logp(act) for cat, act in zip(self.cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
     def entropy(self):
         return tf.stack([cat.entropy() for cat in self.cats], axis=1)
 
     def kl(self, other):
-        return [cat.kl(oth_cat)
-                for cat, oth_cat in zip(self.cats, other.cats)]
+        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
 
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
@@ -158,8 +157,8 @@ class DiagGaussian(ActionDistribution):
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(
             tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
-            0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-            tf.reduce_sum(self.log_std, reduction_indices=[1]))
+                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+                tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     @override(ActionDistribution)
     def kl(self, other):

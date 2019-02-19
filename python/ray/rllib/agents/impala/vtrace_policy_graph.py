@@ -135,9 +135,9 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
             actions = tf.placeholder(tf.int64, actions_shape, name="ac")
             dones = tf.placeholder(tf.bool, [None], name="dones")
             rewards = tf.placeholder(tf.float32, [None], name="rewards")
-            behaviour_logits = tf.placeholder(tf.float32,
-                                              [None, sum(output_hidden_shape)],
-                                              name="behaviour_logits")
+            behaviour_logits = tf.placeholder(
+                tf.float32, [None, sum(output_hidden_shape)],
+                name="behaviour_logits")
             observations = tf.placeholder(
                 tf.float32, [None] + list(observation_space.shape))
             existing_state_in = None
@@ -149,8 +149,8 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"],
-            dist_type=self.config["dist_type"])
+            action_space,
+            self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
@@ -225,10 +225,10 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
         self.loss = VTraceLoss(
             actions=make_time_major(loss_actions, drop_last=True),
-            actions_logp=make_time_major(action_dist.logp(actions),
-                                         drop_last=True),
-            actions_entropy=make_time_major(action_dist.entropy(),
-                                            drop_last=True),
+            actions_logp=make_time_major(
+                action_dist.logp(actions), drop_last=True),
+            actions_entropy=make_time_major(
+                action_dist.entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
             behaviour_logits=make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
@@ -253,17 +253,16 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
             for i, kl in enumerate(kls):
                 self.KL_stats.update({
-                    f"mean_KL_{i}": tf.reduce_mean(kl),
-                    f"max_KL_{i}": tf.reduce_max(kl),
-                    f"median_KL_{i}": tf.contrib.distributions.percentile(
-                        kl, 50.0),
+                    "mean_KL_{}".format(i): tf.reduce_mean(kl),
+                    "max_KL_{}".format(i): tf.reduce_max(kl),
+                    "median_KL_{}".format(i): tf.contrib.distributions.
+                    percentile(kl, 50.0),
                 })
         else:
             self.KL_stats = {
                 "mean_KL": tf.reduce_mean(kls[0]),
                 "max_KL": tf.reduce_max(kls[0]),
-                "median_KL": tf.contrib.distributions.percentile(
-                    kls[0], 50.0),
+                "median_KL": tf.contrib.distributions.percentile(kls[0], 50.0),
             }
 
         # Initialize TFPolicyGraph
@@ -299,7 +298,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
         self.stats_fetches = {
-            "stats": {
+            "stats": dict({
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "policy_loss": self.loss.pi_loss,
                 "entropy": self.loss.entropy,
@@ -309,8 +308,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                 "vf_explained_var": explained_variance(
                     tf.reshape(self.loss.vtrace_returns.vs, [-1]),
                     tf.reshape(make_time_major(values, drop_last=True), [-1])),
-                **self.KL_stats,
-            },
+            }, **self.KL_stats),
         }
 
     @override(TFPolicyGraph)
