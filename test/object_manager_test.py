@@ -234,7 +234,10 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     def f(size):
         return np.zeros(size, dtype=np.uint8)
 
-    x_ids = [f.remote(10**i) for i in [1, 2, 3, 4, 5]]
+    # Transfer an object to warm up the object manager.
+    ray.get(f.remote(10**6))
+
+    x_ids = [f.remote(10**i) for i in [1, 2, 3, 4]]
     assert not any(
         ray.worker.global_worker.plasma_client.contains(
             ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
@@ -245,7 +248,10 @@ def test_object_transfer_retry(ray_start_empty_cluster):
     start_time = time.time()
     xs = ray.get(x_ids)
     end_time = time.time()
-    assert end_time - start_time < repeated_push_delay
+    if end_time - start_time > repeated_push_delay:
+        warnings.warn("The initial transfer took longer than the repeated "
+                      "push delay, so this test may not be testing the thing "
+                      "it's supposed to test.")
 
     # Cause all objects to be flushed.
     del xs
