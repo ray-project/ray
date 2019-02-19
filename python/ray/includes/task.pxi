@@ -12,7 +12,6 @@ from ray.includes.task cimport (
     SerializeTaskAsString,
 )
 
-from ray.utils import _random_string
 
 cdef class Task:
     cdef:
@@ -140,17 +139,23 @@ cdef class Task:
         cdef:
             CTaskSpecification *task_spec = self.task_spec.get()
             int64_t num_args = task_spec.NumArgs()
+            int32_t lang = <int32_t>task_spec.GetLanguage()
             int count
         arg_list = []
-        for i in range(num_args):
-            count = task_spec.ArgIdCount(i)
-            if count > 0:
-                assert count == 1
-                arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
-            else:
-                serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
-                obj = pickle.loads(serialized_str)
-                arg_list.append(obj)
+
+        if lang == <int32_t>LANGUAGE_PYTHON:
+            for i in range(num_args):
+                count = task_spec.ArgIdCount(i)
+                if count > 0:
+                    assert count == 1
+                    arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
+                else:
+                    serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
+                    obj = pickle.loads(serialized_str)
+                    arg_list.append(obj)
+        elif lang == <int32_t>LANGUAGE_JAVA:
+            arg_list = num_args * ["<java-argument>"]
+
         return arg_list
 
     def returns(self):
@@ -177,6 +182,10 @@ cdef class Task:
             required_resources[py_resource_name] = resource_value
             postincrement(iterator)
         return required_resources
+
+    def language(self):
+        """Return the language of the task."""
+        return Language.from_native(self.task_spec.get().GetLanguage())
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
