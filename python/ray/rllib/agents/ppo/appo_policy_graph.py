@@ -6,6 +6,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 import logging
 import gym
@@ -196,7 +197,7 @@ class AsyncPPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
                             gym.spaces.multi_discrete.MultiDiscrete):
                 is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
-                output_hidden_shape = action_space.nvec
+                output_hidden_shape = action_space.nvec.astype(np.int32)
             elif self.config["vtrace"]:
                 raise UnsupportedSpaceException(
                     "Action space {} is not supported for APPO with VTrace.".

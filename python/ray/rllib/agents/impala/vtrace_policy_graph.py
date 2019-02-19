@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import gym
 import ray
+import numpy as np
 import tensorflow as tf
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -126,7 +127,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
                             gym.spaces.multi_discrete.MultiDiscrete):
                 is_multidiscrete = True
                 actions_shape = [None, len(action_space.nvec)]
-                output_hidden_shape = action_space.nvec
+                output_hidden_shape = action_space.nvec.astype(np.int32)
             else:
                 raise UnsupportedSpaceException(
                     "Action space {} is not supported for IMPALA.".format(
