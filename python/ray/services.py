@@ -1138,7 +1138,7 @@ def build_java_worker_command(
         command += "-Dray.raylet.socket-name={} ".format(raylet_name)
 
     if redis_password is not None:
-        command += ("-Dray.redis-password=%s", redis_password)
+        command += "-Dray.redis.password={} ".format(redis_password)
 
     command += "-Dray.home={} ".format(RAY_HOME)
     # TODO(suquark): We should use temp_dir as the input of a java worker.

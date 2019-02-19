@@ -428,8 +428,8 @@ def stop():
         ]
         subprocess.call(
             ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
-    except ImportError:
-        pass
+    except Exception:
+        logger.exception("Error shutting down jupyter")
 
 
 @cli.command()
