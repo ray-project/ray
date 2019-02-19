@@ -154,8 +154,6 @@ requires = [
     "typing",
     "flatbuffers",
     "faulthandler;python_version<'3.3'",
-    # aiohttp is required by the Dashboard.
-    "aiohttp",
 ]
 
 setup(
