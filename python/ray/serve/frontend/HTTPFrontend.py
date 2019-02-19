@@ -1,8 +1,7 @@
+import ray
+import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
-import uvicorn
-
-import ray
 
 
 @ray.remote
@@ -20,14 +19,14 @@ class HTTPFrontendActor:
             data = await request.json()
             actor_name = request.path_params["actor"]
             actor_method = request.path_params["method"]
-            
+
             result_future = self.router.send.remote(actor_name, actor_method, data)
             result = ray.get(result_future)
 
             return JSONResponse(
                 {
                     "success": True,
-                    "actor": actor,
+                    "actor": actor_name,
                     "method": actor_method,
                     "result": result,
                 }
