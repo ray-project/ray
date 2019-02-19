@@ -276,8 +276,8 @@ void TestDeleteKeysFromLog(const JobID &job_id,
   for (const auto &object_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [object_id, data_vector](
-                               gcs::AsyncGcsClient *client, const ObjectID &id,
-                               const std::vector<ObjectTableDataT> &data) {
+        gcs::AsyncGcsClient *client, const ObjectID &id,
+        const std::vector<ObjectTableDataT> &data) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data.size(), 1);
       test->IncrementNumCallbacks();
