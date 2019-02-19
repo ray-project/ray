@@ -8,7 +8,6 @@ import datetime
 import json
 import logging
 import os
-import random
 import socket
 import threading
 import traceback
@@ -43,12 +42,11 @@ class Dashboard(object):
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, http_port, redis_password=None):
+    def __init__(self, redis_address, http_port, token, redis_password=None):
         """Initialize the dashboard object."""
         self.ip = socket.gethostbyname(socket.gethostname())
         self.port = http_port
-        # 256-bit random token
-        self.token = format(random.SystemRandom().getrandbits(256), 'x')
+        self.token = token
         self.node_stats = NodeStats(redis_address, redis_password)
 
         self.app = aiohttp.web.Application(middlewares=[self.auth_middleware])
@@ -283,6 +281,11 @@ if __name__ == "__main__":
         type=int,
         help="The port to use for the HTTP server.")
     parser.add_argument(
+        "--token",
+        required=True,
+        type=str,
+        help="The token to use for the HTTP server.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -312,6 +315,7 @@ if __name__ == "__main__":
     dashboard = Dashboard(
         args.redis_address,
         args.http_port,
+        args.token,
         redis_password=args.redis_password,
     )
 

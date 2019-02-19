@@ -81,6 +81,7 @@ class Node(object):
             self._plasma_store_socket_name = None
             self._raylet_socket_name = None
             self._webui_url = None
+            self._dashboard_url = None
         else:
             self._plasma_store_socket_name = (
                 ray_params.plasma_store_socket_name)
@@ -300,15 +301,16 @@ class Node(object):
     def start_dashboard(self):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
-        process_info = ray.services.start_dashboard(
+        self._dashboard_url, process_info = ray.services.start_dashboard(
             self.redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
-        self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
-            process_info
-        ]
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
+                process_info
+            ]
 
     def start_ui(self):
         """Start the web UI."""
