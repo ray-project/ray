@@ -500,8 +500,9 @@ class FunctionActorManager(object):
                 ))
             self._num_task_executions[driver_id][function_id] = 0
         except Exception:
-            raise Exception("Function {} failed to be loaded from local code.".
-                            format(function_descriptor))
+            raise Exception(
+                "Function {} failed to be loaded from local code.".format(
+                    function_descriptor))
 
     def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -525,8 +526,8 @@ class FunctionActorManager(object):
         while True:
             with self._worker.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id in self.
-                             _function_execution_info[driver_id])):
+                        and (function_descriptor.function_id in
+                             self._function_execution_info[driver_id])):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -662,8 +663,9 @@ class FunctionActorManager(object):
             module = importlib.import_module(module_name)
             return getattr(module, class_name)._modified_class
         except Exception:
-            raise Exception("Actor {} failed to be imported from local code.".
-                            format(class_name))
+            raise Exception(
+                "Actor {} failed to be imported from local code.".format(
+                    class_name))
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
         class TemporaryActor(object):

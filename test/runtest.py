@@ -25,8 +25,6 @@ import pickle
 import pytest
 
 import ray
-from ray.function_manager import FunctionDescriptor
-import ray.ray_constants as ray_constants
 import ray.test.cluster_utils
 import ray.test.test_utils
 from ray.utils import _random_string
@@ -786,8 +784,7 @@ def test_defining_remote_functions(shutdown_only):
 
     # Test that we can close over plain old data.
     data = [
-        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60,
-        {
+        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
             "a": np.zeros(3)
         }
     ]
