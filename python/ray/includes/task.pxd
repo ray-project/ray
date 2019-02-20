@@ -18,9 +18,9 @@ from ray.includes.unique_ids cimport (
 )
 
 
-cdef extern from "ray/raylet/task_execution_spec.h"\
+cdef extern from "ray/raylet/task_execution_spec.h" \
         namespace "ray::raylet" nogil:
-    cdef cppclass CTaskExecutionSpecification\
+    cdef cppclass CTaskExecutionSpecification \
             "ray::raylet::TaskExecutionSpecification":
         CTaskExecutionSpecification(const c_vector[CObjectID] &&dependencies)
         CTaskExecutionSpecification(

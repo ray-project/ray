@@ -108,7 +108,7 @@ cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
-cdef extern from "ray/raylet/scheduling_resources.h"\
+cdef extern from "ray/raylet/scheduling_resources.h" \
         namespace "ray::raylet" nogil:
     cdef cppclass ResourceSet "ResourceSet":
         ResourceSet()
