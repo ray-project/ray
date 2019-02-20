@@ -353,22 +353,27 @@ pyx_library(
 cc_binary(
     name = "raylet_library_java.so",
     srcs = [
-        "src/ray/id.h",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
+        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
+        "src/ray/id.h",
         "src/ray/raylet/raylet_client.h",
         "src/ray/util/logging.h",
-        "@bazel_tools//tools/jdk:current_java_runtime",
-    ],
+        "@bazel_tools//tools/jdk:jni_header",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
     includes = [
         "src",
-        "external/local_jdk/include",
+        "external/bazel_tools/tools/jdk/include",
     ] + select({
-        "@bazel_tools//src/conditions:darwin": ["external/local_jdk/include/darwin"],
-        "//conditions:default": ["external/local_jdk/include/linux"],
+        "@bazel_tools//src/conditions:windows": ["external/bazel_tools/tools/jdk/include/windows"],
+        "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
+        "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
     linkshared = 1,
-    linkstatic = 1,
+    linkstatic = 0,
     deps = [
         "//:raylet_lib",
         "@plasma//:plasma_client",
