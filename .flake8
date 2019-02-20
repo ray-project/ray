@@ -1,3 +1,0 @@
-[flake8]
-filename = *.pyx,*.pxd,*.pxi
-ignore = E211,E225,E226,E227,E999
