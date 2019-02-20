@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 from contextlib import contextmanager
+import colorama
 import atexit
 import faulthandler
 import hashlib
 import inspect
+import json
 import logging
 import numpy as np
 import os
@@ -1587,6 +1589,7 @@ def print_logs(redis_client, threads_stopped):
     """
     pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
     pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+    localhost = services.get_node_ip_address()
     try:
         # Keep track of the number of consecutive log messages that have been
         # received with no break in between. If this number grows continually,
@@ -1604,7 +1607,18 @@ def print_logs(redis_client, threads_stopped):
                 threads_stopped.wait(timeout=0.01)
                 continue
             num_consecutive_messages_received += 1
-            print(ray.utils.decode(msg["data"]), file=sys.stderr)
+
+            data = json.loads(ray.utils.decode(msg["data"]))
+            if data["ip"] == localhost:
+                for line in data["lines"]:
+                    print("{}{}(pid={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.RESET_ALL, line))
+            else:
+                for line in data["lines"]:
+                    print("{}{}(pid={}, ip={}){} {}".format(
+                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
                     and num_consecutive_messages_received > 0):
