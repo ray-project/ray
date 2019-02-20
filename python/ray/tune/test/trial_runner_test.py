@@ -798,7 +798,8 @@ class RunExperimentTest(unittest.TestCase):
             }
         })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertFalse(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
 
     def testCustomTrialString(self):
         [trial] = run_experiments({

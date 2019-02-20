@@ -88,8 +88,9 @@ class UnifiedLogger(Logger):
                  use_default_loggers=True,
                  custom_loggers=None,
                  sync_function=None):
-        self._logger_list = ([_JsonLogger, _TFLogger, _CSVLogger]
-                             if use_default_loggers else [])
+        self._logger_list = []
+        if use_default_loggers:
+            self._logger_list += [_JsonLogger, _TFLogger, _CSVLogger]
         self._sync_function = sync_function
         self._log_syncer = None
         if custom_loggers:
