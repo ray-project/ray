@@ -37,7 +37,8 @@ cdef class Task:
 
         for item in function_descriptor:
             if not isinstance(item, bytes):
-                raise TypeError("'function_descriptor' takes a list of byte strings.")
+                raise TypeError(
+                    "'function_descriptor' takes a list of byte strings.")
             c_function_descriptor.push_back(item)
 
         # Parse the resource map.
@@ -46,33 +47,47 @@ cdef class Task:
         if required_resources.count(b"CPU") == 0:
             required_resources[b"CPU"] = 1.0
         if placement_resource_map is not None:
-            required_placement_resources = resource_map_from_dict(placement_resource_map)
+            required_placement_resources = (
+                resource_map_from_dict(placement_resource_map))
 
         # Parse the arguments from the list.
         for arg in arguments:
             if isinstance(arg, ObjectID):
                 references = c_vector[CObjectID]()
                 references.push_back((<ObjectID>arg).data)
-                task_args.push_back(static_pointer_cast[CTaskArgument, CTaskArgumentByReference](make_shared[CTaskArgumentByReference](references)))
+                task_args.push_back(
+                    static_pointer_cast[CTaskArgument,
+                                        CTaskArgumentByReference](
+                        make_shared[CTaskArgumentByReference](references)))
             else:
-                pickled_str = pickle.dumps(arg, protocol=pickle.HIGHEST_PROTOCOL)
-                task_args.push_back(static_pointer_cast[CTaskArgument, CTaskArgumentByValue](make_shared[CTaskArgumentByValue](<uint8_t *>pickled_str.c_str(), pickled_str.size())))
+                pickled_str = pickle.dumps(
+                    arg, protocol=pickle.HIGHEST_PROTOCOL)
+                task_args.push_back(
+                    static_pointer_cast[CTaskArgument,
+                                        CTaskArgumentByValue](
+                        make_shared[CTaskArgumentByValue](
+                            <uint8_t *>pickled_str.c_str(),
+                            pickled_str.size())))
 
         for new_actor_handle in new_actor_handles:
-            task_new_actor_handles.push_back((<ActorHandleID?>new_actor_handle).data)
+            task_new_actor_handles.push_back(
+                (<ActorHandleID?>new_actor_handle).data)
 
         self.task_spec.reset(new CTaskSpecification(
-            CUniqueID(driver_id.data), parent_task_id.data, parent_counter, actor_creation_id.data,
-            actor_creation_dummy_object_id.data, max_actor_reconstructions, CUniqueID(actor_id.data),
-            CUniqueID(actor_handle_id.data), actor_counter, task_new_actor_handles, task_args, num_returns,
-            required_resources, required_placement_resources, LANGUAGE_PYTHON,
-            c_function_descriptor))
+            CUniqueID(driver_id.data), parent_task_id.data, parent_counter,
+            actor_creation_id.data, actor_creation_dummy_object_id.data,
+            max_actor_reconstructions, CUniqueID(actor_id.data),
+            CUniqueID(actor_handle_id.data), actor_counter,
+            task_new_actor_handles, task_args, num_returns,
+            required_resources, required_placement_resources,
+            LANGUAGE_PYTHON, c_function_descriptor))
 
         # Set the task's execution dependencies.
         self.execution_dependencies.reset(new c_vector[CObjectID]())
         if execution_arguments is not None:
             for execution_arg in execution_arguments:
-                self.execution_dependencies.get().push_back((<ObjectID?>execution_arg).data)
+                self.execution_dependencies.get().push_back(
+                    (<ObjectID?>execution_arg).data)
 
     @staticmethod
     cdef make(unique_ptr[CTaskSpecification]& task_spec):
@@ -108,7 +123,8 @@ cdef class Task:
         return self.task_spec.get().SerializeAsString()
 
     def _serialized_raylet_task(self):
-        return SerializeTaskAsString(self.execution_dependencies.get(), self.task_spec.get())
+        return SerializeTaskAsString(
+            self.execution_dependencies.get(), self.task_spec.get())
 
     def driver_id(self):
         """Return the driver ID for this task."""
@@ -128,7 +144,8 @@ cdef class Task:
 
     def function_descriptor_list(self):
         """Return the function descriptor for this task."""
-        cdef c_vector[c_string] function_descriptor = self.task_spec.get().FunctionDescriptor()
+        cdef c_vector[c_string] function_descriptor = (
+            self.task_spec.get().FunctionDescriptor())
         results = []
         for i in range(function_descriptor.size()):
             results.append(function_descriptor[i])
@@ -148,9 +165,11 @@ cdef class Task:
                 count = task_spec.ArgIdCount(i)
                 if count > 0:
                     assert count == 1
-                    arg_list.append(ObjectID.from_native(task_spec.ArgId(i, 0)))
+                    arg_list.append(
+                        ObjectID.from_native(task_spec.ArgId(i, 0)))
                 else:
-                    serialized_str = task_spec.ArgVal(i)[:task_spec.ArgValLength(i)]
+                    serialized_str = (
+                        task_spec.ArgVal(i)[:task_spec.ArgValLength(i)])
                     obj = pickle.loads(serialized_str)
                     arg_list.append(obj)
         elif lang == <int32_t>LANGUAGE_JAVA:
@@ -169,15 +188,18 @@ cdef class Task:
     def required_resources(self):
         """Return the resource dictionary of the task."""
         cdef:
-            unordered_map[c_string, double] resource_map = self.task_spec.get().GetRequiredResources().GetResourceMap()
+            unordered_map[c_string, double] resource_map = (
+                self.task_spec.get().GetRequiredResources().GetResourceMap())
             c_string resource_name
             double resource_value
-            unordered_map[c_string, double].iterator iterator = resource_map.begin()
+            unordered_map[c_string, double].iterator iterator = (
+                resource_map.begin())
 
         required_resources = {}
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
-            py_resource_name = str(resource_name)  # bytes for Py2, unicode for Py3
+            # bytes for Py2, unicode for Py3
+            py_resource_name = str(resource_name)
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
             postincrement(iterator)
@@ -193,7 +215,8 @@ cdef class Task:
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
-        return ObjectID.from_native(self.task_spec.get().ActorCreationDummyObjectId())
+        return ObjectID.from_native(
+            self.task_spec.get().ActorCreationDummyObjectId())
 
     def actor_id(self):
         """Return the actor ID for this task."""

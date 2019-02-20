@@ -14,29 +14,37 @@ from ray.includes.unique_ids cimport (
 
 cdef extern from "ray/status.h" namespace "ray" nogil:
     cdef cppclass StatusCode:
-         pass
+        pass
 
     cdef cppclass CRayStatus "ray::Status":
         RayStatus()
         RayStatus(StatusCode code, const c_string &msg)
-        RayStatus(const CRayStatus &s);
+        RayStatus(const CRayStatus &s)
 
         @staticmethod
         CRayStatus OK()
+
         @staticmethod
         CRayStatus OutOfMemory()
+
         @staticmethod
         CRayStatus KeyError()
+
         @staticmethod
         CRayStatus Invalid()
+
         @staticmethod
         CRayStatus IOError()
+
         @staticmethod
         CRayStatus TypeError()
+
         @staticmethod
         CRayStatus UnknownError()
+
         @staticmethod
         CRayStatus NotImplemented()
+
         @staticmethod
         CRayStatus RedisError()
 
@@ -75,12 +83,12 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
 cdef extern from "ray/id.h" namespace "ray" nogil:
     const CTaskID FinishTaskId(const CTaskID &task_id)
     const CObjectID ComputeReturnId(const CTaskID &task_id,
-                                   int64_t return_index)
+                                    int64_t return_index)
     const CObjectID ComputePutId(const CTaskID &task_id, int64_t put_index)
     const CTaskID ComputeTaskId(const CObjectID &object_id)
     const CTaskID GenerateTaskId(const CDriverID &driver_id,
-                                const CTaskID &parent_task_id,
-                                int parent_task_counter)
+                                 const CTaskID &parent_task_id,
+                                 int parent_task_counter)
     int64_t ComputeObjectIndex(const CObjectID &object_id)
 
 
@@ -92,18 +100,21 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
         pass
 
 
-# This is a workaround for C++ enum class since Cython has no corresponding representation.
+# This is a workaround for C++ enum class since Cython has no corresponding
+# representation.
 cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
-cdef extern from "ray/raylet/scheduling_resources.h" namespace "ray::raylet" nogil:
+cdef extern from "ray/raylet/scheduling_resources.h"\
+        namespace "ray::raylet" nogil:
     cdef cppclass ResourceSet "ResourceSet":
         ResourceSet()
         ResourceSet(const unordered_map[c_string, double] &resource_map)
-        ResourceSet(const c_vector[c_string] &resource_labels, const c_vector[double] resource_capacity)
+        ResourceSet(const c_vector[c_string] &resource_labels,
+                    const c_vector[double] resource_capacity)
         c_bool operator==(const ResourceSet &rhs) const
         c_bool IsEqual(const ResourceSet &other) const
         c_bool IsSubset(const ResourceSet &other) const
