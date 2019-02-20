@@ -151,8 +151,7 @@ class VTracePolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
         # Setup the policy
         dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space,
-            self.config["model"])
+            action_space, self.config["model"])
         prev_actions = ModelCatalog.get_action_placeholder(action_space)
         prev_rewards = tf.placeholder(tf.float32, [None], name="prev_reward")
         self.model = ModelCatalog.get_model(
