@@ -88,6 +88,11 @@ def make_parser(parser_creator=None, **kwargs):
         "then it must be a string template for syncer to run and needs to "
         "include replacement fields '{local_dir}' and '{remote_dir}'.")
     parser.add_argument(
+        "--use-default-loggers",
+        default=False,
+        type=bool,
+        help="Whether to use Tune's default loggers.")
+    parser.add_argument(
         "--custom-loggers",
         default=None,
         help="List of custom logger creators to be used with each Trial.")
@@ -192,6 +197,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         restore_path=spec.get("restore"),
         upload_dir=args.upload_dir,
         trial_name_creator=spec.get("trial_name_creator"),
+        use_default_loggers=args.use_default_loggers,
         custom_loggers=spec.get("custom_loggers"),
         # str(None) doesn't create None
         sync_function=spec.get("sync_function"),

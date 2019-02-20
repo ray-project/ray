@@ -62,6 +62,7 @@ class Experiment(object):
             to (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
+        use_default_loggers (bool): Whether to use Tune's default loggers.
         custom_loggers (list): List of custom logger creators to be used with
             each Trial. See `ray/tune/logger.py`.
         sync_function (func|str): Function for syncing the local_dir to
@@ -117,6 +118,7 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
+                 use_default_loggers=True,
                  custom_loggers=None,
                  sync_function=None,
                  checkpoint_freq=0,
@@ -145,6 +147,7 @@ class Experiment(object):
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
             "upload_dir": upload_dir or "",  # argparse converts None to "null"
             "trial_name_creator": trial_name_creator,
+            "use_default_loggers": use_default_loggers,
             "custom_loggers": custom_loggers,
             "sync_function": sync_function,
             "checkpoint_freq": checkpoint_freq,

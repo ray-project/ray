@@ -424,6 +424,9 @@ via the Experiment object as follows:
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
 
+Tune has default loggers for Tensorboard, CSV, and JSON formats. To turn these off, set
+``use_default_loggers=False`` in the ``Experiment`` initializer.
+
 You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
 
 An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.

@@ -254,6 +254,7 @@ class Trial(object):
                  restore_path=None,
                  upload_dir=None,
                  trial_name_creator=None,
+                 use_default_loggers=True,
                  custom_loggers=None,
                  sync_function=None,
                  max_failures=0):
@@ -274,6 +275,7 @@ class Trial(object):
             or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.upload_dir = upload_dir
+        self.use_default_loggers = use_default_loggers
         self.custom_loggers = custom_loggers
         self.sync_function = sync_function
         validate_sync_function(sync_function)
@@ -331,6 +333,7 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 upload_uri=self.upload_dir,
+                use_default_loggers=self.use_default_loggers,
                 custom_loggers=self.custom_loggers,
                 sync_function=self.sync_function)
 
@@ -507,6 +510,7 @@ class Trial(object):
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
+        # These are non-pickleable entries.
         pickle_data = {
             "_checkpoint": self._checkpoint,
             "config": self.config,

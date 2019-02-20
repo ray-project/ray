@@ -75,6 +75,7 @@ class UnifiedLogger(Logger):
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
         upload_uri (str): Optional URI where the logdir is sync'ed to.
+        use_default_loggers (bool): Whether to use Tune's default loggers.
         custom_loggers (list): List of custom logger creators.
         sync_function (func|str): Optional function for syncer to run.
             See ray/python/ray/tune/log_sync.py
@@ -84,9 +85,11 @@ class UnifiedLogger(Logger):
                  config,
                  logdir,
                  upload_uri=None,
+                 use_default_loggers=True,
                  custom_loggers=None,
                  sync_function=None):
-        self._logger_list = [_JsonLogger, _TFLogger, _CSVLogger]
+        self._logger_list = ([_JsonLogger, _TFLogger, _CSVLogger]
+                             if use_default_loggers else [])
         self._sync_function = sync_function
         self._log_syncer = None
         if custom_loggers:
