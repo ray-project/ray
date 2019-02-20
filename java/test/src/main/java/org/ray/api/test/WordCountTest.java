@@ -8,7 +8,6 @@ import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.util.FileUtil;
 import org.testng.Assert;
-import org.testng.annotations.Test;
 
 /**
  * given a directory of document files on each "machine", we would like to count the appearance of
