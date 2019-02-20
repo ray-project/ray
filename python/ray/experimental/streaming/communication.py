@@ -18,7 +18,7 @@ forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
 
 # Used to choose output channel in case of hash-based shuffling
 def _hash(value):
-    if type(value) is int:
+    if isinstance(value, int):
         return value
     try:
         return int(hashlib.sha1(value.encode("utf-8")).hexdigest(), 16)

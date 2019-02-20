@@ -8,40 +8,44 @@ import time
 import ray
 from ray.experimental.streaming.batched_queue import BatchedQueue
 
+
+@pytest.fixture
+def ray_start():
+    # Start the Ray processes.
+    ray.init(num_cpus=2)
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @ray.remote
 class Reader(object):
-    def __init__(self, queue, max_reads_per_second=float("inf")):
+    def __init__(self, queue):
         self.queue = queue
-        self.max_reads_per_second = max_reads_per_second
         self.num_reads = 0
         self.start = time.time()
 
-    def read_forever(self):
+    def read(self, read_slowly):
         expected_value = 0
-        while True:
-            N = 100000
-            for _ in range(N):
-                x = self.queue.read_next()
-                assert x == expected_value, (x, expected_value)
-                expected_value += 1
-                self.num_reads += 1
-                while (self.num_reads / (time.time() - self.start) >
-                       self.max_reads_per_second):
-                    time.sleep(0.1)
+        for _ in range(1000):
+            x = self.queue.read_next()
+            assert x == expected_value, (x, expected_value)
+            expected_value += 1
+            self.num_reads += 1
+            if read_slowly:
+                time.sleep(0.001)
 
-def test_batched_queue():
+
+def test_batched_queue(ray_start):
     # Batched queue parameters
     max_queue_size = 10000  # Max number of batches in queue
     max_batch_size = 1000  # Max number of elements per batch
     batch_timeout = 0.001  # 1ms flush timeout
     prefetch_depth = 10  # Number of batches to prefetch from plasma
     background_flush = False  # Don't use daemon thread for flushing
-    max_reads_per_second = float("inf")
-
-    ray.init()
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
-
-    for _ in range(2):
+    # Two tests: one with a big queue and slow reader, and
+    # a second one with a small queue and a faster reader
+    for read_slowly in [True, False]:
         # Construct the batched queue
         queue = BatchedQueue(
             max_size=max_queue_size,
@@ -50,15 +54,13 @@ def test_batched_queue():
             prefetch_depth=prefetch_depth,
             background_flush=background_flush)
         # Create and start the reader
-        reader = Reader.remote(queue, max_reads_per_second)
-        reader.read_forever.remote()
+        reader = Reader.remote(queue)
+        object_id = reader.read.remote(read_slowly=read_slowly)
         value = 0
-        for _ in range(5):
-            N = 100000
-            for _ in range(N):
-                queue.put_next(value)
-                value += 1
+        for _ in range(1000):
+            queue.put_next(value)
+            value += 1
         queue._flush_writes()
-        # Test once more with backpressure
-        max_reads_per_second = 50000  # Max throughput
-    ray.shutdown()
+        ray.get(object_id)
+        # Test once more with a very small queue size and a faster reader
+        max_queue_size = 10

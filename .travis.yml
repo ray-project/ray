@@ -63,6 +63,16 @@ matrix:
         # Make sure that the README is formatted properly.
         - cd python
         - python setup.py check --restructuredtext --strict --metadata
+        - cd ..
+        # Run Bazel linter Buildifier.
+        - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+        - tar -xf go1.11.linux-amd64.tar.gz
+        - mkdir $HOME/go_dir
+        - export GOROOT=`pwd`/go
+        - export GOPATH="$HOME/go_dir"
+        - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
+        - go get github.com/bazelbuild/buildtools/buildifier
+        - ./.travis/bazel-format.sh
 
     - os: linux
       dist: trusty
@@ -169,6 +179,14 @@ script:
   - python -m pytest -v --durations=10 python/ray/rllib/test/test_optimizers.py
   - python -m pytest -v --durations=10 python/ray/rllib/test/test_evaluators.py
 
+  # streaming tests
+  - python -m pytest -v --durations=10 test/test_batched_queue.py
+  - python -m pytest -v --durations=10 test/test_logical_graph.py
+  
+  # streaming tests
+  - python -m pytest -v --durations=10 test/test_batched_queue.py
+  - python -m pytest -v --durations=10 test/test_logical_graph.py
+
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=10 python/ray/experimental/test/async_test.py
 
@@ -193,6 +211,7 @@ script:
   - python -m pytest -v --durations=10 test/cython_test.py
   - python -m pytest -v --durations=10 test/credis_test.py
   - python -m pytest -v --durations=10 test/node_manager_test.py
+  - python -m pytest -v --durations=10 test/test_signal.py
   # TODO(yuhguo): object_manager_test.py requires a lot of CPU/memory, and
   # better be put in Jenkins. However, it fails frequently in Jenkins, but
   # works well in Travis. We should consider moving it back to Jenkins once
@@ -202,8 +221,11 @@ script:
   # ray temp file tests
   - python -m pytest -v --durations=10 test/tempfile_test.py
 
+  # ray debug tools tests
+  - python -m pytest -v --durations=10 test/debug_tools_test.py
+
   # modin test files
-  - python python/ray/test/test_modin.py
+  - python -m pytest -v --durations=10 python/ray/test/test_modin.py
 
 deploy:
   - provider: s3

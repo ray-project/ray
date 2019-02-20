@@ -5,7 +5,6 @@ from __future__ import print_function
 import argparse
 import logging
 import time
-import wikipedia
 
 import ray
 from ray.experimental.streaming.streaming import Environment
@@ -16,15 +15,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--input-file", required=True,
-                    help="the input text file")
+parser.add_argument("--input-file", required=True, help="the input text file")
+
 
 # A class used to check attribute-based key selection
 class Record(object):
-    def __init__(self,record):
+    def __init__(self, record):
         k, _ = record
         self.word = k
         self.record = record
+
 
 # Splits input line into words and outputs objects of type Record
 # each one consisting of a key (word) and a tuple (word,1)
@@ -35,9 +35,11 @@ def splitter(line):
         records.append(Record((w, 1)))
     return records
 
+
 # Receives an object of type Record and returns the actual tuple
 def as_tuple(record):
     return record.record
+
 
 if __name__ == "__main__":
     # Get program parameters
@@ -65,10 +67,10 @@ if __name__ == "__main__":
                 .map(as_tuple) \
                 .sum(1) \
                 .inspect(print)     # Prints the content of the
-                                    # stream to stdout
+    # stream to stdout
     start = time.time()
-    env_handle = env.execute()      # Deploys and executes the dataflow
-    ray.get(env_handle)             # Stay alive until execution finishes
+    env_handle = env.execute()  # Deploys and executes the dataflow
+    ray.get(env_handle)  # Stay alive until execution finishes
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))
