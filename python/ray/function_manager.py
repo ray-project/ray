@@ -708,8 +708,9 @@ class FunctionActorManager(object):
 
         actor_class = None
         try:
-            actor_class = pickle.loads(pickled_class)
-        except Exception as e:
+            with self._worker.lock:
+                actor_class = pickle.loads(pickled_class)
+        except Exception:
             logger.error(
                 "Failed to load actor class %s.", class_name, stack_info=True)
             # The actor class failed to be unpickled, create a fake actor

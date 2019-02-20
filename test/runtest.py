@@ -2891,10 +2891,10 @@ def test_load_code_from_local(shutdown_only):
     # Test actor class with constructor.
     actor = WithConstructor.remote(1)
     assert ray.get(actor.get_data.remote()) == 1
-    # # Test actor class without constructor.
-    # actor = WithConstructor.remote()
-    # actor.set_data.remote(1)
-    # assert ray.get(actor.get_data.remote()) == 1
-    # # Test derived actor class.
-    # actor = DerivedClass.remote(1)
-    # assert ray.get(actor.get_data.remote()) == 1
+    # Test actor class without constructor.
+    actor = WithoutConstructor.remote()
+    actor.set_data.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1
+    # Test derived actor class.
+    actor = DerivedClass.remote(1)
+    assert ray.get(actor.get_data.remote()) == 1
