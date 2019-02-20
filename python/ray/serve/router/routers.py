@@ -1,7 +1,8 @@
 import logging
+import time
 from collections import defaultdict
 from functools import total_ordering
-from typing import Callable, List, Mapping, Set
+from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 from ray.serve.object_id import get_new_oid
@@ -34,16 +35,14 @@ class SingleQuery:
 class DeadlineAwareRouter:
     def __init__(self, router_name):
         # Runtime Data
-        self.query_queues: Mapping[str, PriorityQueue] = defaultdict(PriorityQueue)
-        self.running_queries: Mapping[ray.ObjectID, ray.actor.ActorHandle] = dict()
-        self.actor_handles: Mapping[str, List[ray.actor.ActorHandle]] = defaultdict(
-            list
-        )
+        self.query_queues: Dict[str, PriorityQueue] = defaultdict(PriorityQueue)
+        self.running_queries: Dict[ray.ObjectID, ray.actor.ActorHandle] = dict()
+        self.actor_handles: Dict[str, List[ray.actor.ActorHandle]] = defaultdict(list)
 
         # Actor Metadata
-        self.managed_actors: Mapping[str, ray.actor.ActorClass] = dict()
-        self.actor_init_arguments: Mapping[str, List] = dict()
-        self.max_batch_size: Mapping[str, int] = dict()
+        self.managed_actors: Dict[str, ray.actor.ActorClass] = dict()
+        self.actor_init_arguments: Dict[str, Tuple[List, Dict]] = dict()
+        self.max_batch_size: Dict[str, int] = dict()
 
         self.name = router_name
 
@@ -58,11 +57,12 @@ class DeadlineAwareRouter:
         actor_name: str,
         actor_class: ray.actor.ActorClass,
         init_args: List = [],
+        init_kwargs: dict = {},
         num_replicas: int = 1,
         max_batch_size: int = -1,  # Unbounded batch size
     ):
         self.managed_actors[actor_name] = actor_class
-        self.actor_init_arguments[actor_name] = init_args
+        self.actor_init_arguments[actor_name] = (init_args, init_kwargs)
         self.max_batch_size[actor_name] = max_batch_size
 
         ray.experimental.get_actor(self.name).set_replica.remote(
@@ -77,8 +77,10 @@ class DeadlineAwareRouter:
         # Increase the number of replicas
         if new_replica_count > current_replicas:
             for _ in range(new_replica_count - current_replicas):
+                args = self.actor_init_arguments[actor_name][0]
+                kwargs = self.actor_init_arguments[actor_name][1]
                 new_actor_handle = self.managed_actors[actor_name].remote(
-                    *self.actor_init_arguments[actor_name]
+                    *args, **kwargs
                 )
                 self.actor_handles[actor_name].append(new_actor_handle)
 
@@ -96,6 +98,12 @@ class DeadlineAwareRouter:
 
         result_oid = get_new_oid()
         self.query_queues[actor_name].push(SingleQuery(data, result_oid, deadline_s))
+
+        print_debug(
+            "Received request for actor {0}, assigning object id {1}".format(
+                actor_name, result_oid
+            )
+        )
 
         return [result_oid]
 
@@ -116,19 +124,23 @@ class DeadlineAwareRouter:
         for actor_name, queue in self.query_queues.items():
             print_debug("Go overing actor", actor_name, "with length", len(queue))
             # try to drain the queue
-            while len(queue) != 0:
-                for actor_handle in self.actor_handles[actor_name]:
-                    if actor_handle in busy_actors:
-                        continue
 
-                    # A free actor found. Dispatch queries
-                    batch = self._get_next_batch(actor_name)
-                    print_debug("Assining batch", batch, "to", actor_handle)
-                    assert len(batch)
+            for actor_handle in self.actor_handles[actor_name]:
+                if len(queue) == 0:
+                    break
 
-                    actor_handle._dispatch.remote(batch)
-                    self._mark_running(batch, actor_handle)
+                if actor_handle in busy_actors:
+                    continue
 
+                # A free actor found. Dispatch queries
+                batch = self._get_next_batch(actor_name)
+                print_debug("Assining batch", batch, "to", actor_handle)
+                assert len(batch)
+
+                actor_handle._dispatch.remote(batch)
+                self._mark_running(batch, actor_handle)
+
+        # time.sleep(2)
         ray.experimental.get_actor(self.name).loop.remote()
 
     def _get_next_batch(self, actor_name: str) -> List[SingleQuery]:
@@ -139,6 +151,7 @@ class DeadlineAwareRouter:
         if batch_size == -1:
             inp = self.query_queues[actor_name].try_pop()
             while inp:
+                print_debug("Adding {0} to batch for actor {1}".format(inp, actor_name))
                 inputs.append(inp)
                 inp = self.query_queues[actor_name].try_pop()
         else:
