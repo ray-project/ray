@@ -84,6 +84,9 @@ else
     format_changed
 fi
 
+# Lint Cython files (see .flake8 in the root directory)
+flake8
+
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'
     echo 'Files updated:'
