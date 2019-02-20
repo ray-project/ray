@@ -395,6 +395,10 @@ class TrialRunner(object):
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
+            # Checkpoints to disk. This should be checked even if
+            # the scheduler decision is STOP or PAUSE. Note that
+            # PAUSE only checkpoints to memory and does not update
+            # the global checkpoint state.
             self._checkpoint_trial_if_needed(trial)
 
             if decision == TrialScheduler.CONTINUE:
