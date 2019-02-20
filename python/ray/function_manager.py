@@ -500,6 +500,8 @@ class FunctionActorManager(object):
                 ))
             self._num_task_executions[driver_id][function_id] = 0
         except Exception:
+            logger.error(
+                "Failed to load function %s.", function_name, stack_info=True)
             raise Exception(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
@@ -664,6 +666,8 @@ class FunctionActorManager(object):
             module = importlib.import_module(module_name)
             return getattr(module, class_name)._modified_class
         except Exception:
+            logger.error(
+                "Failed to load actor_class %s.", class_name, stack_info=True)
             raise Exception(
                 "Actor {} failed to be imported from local code.".format(
                     class_name))
